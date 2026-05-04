@@ -1,0 +1,86 @@
+version: "2"
+
+linters:
+  # Tắt tất cả mặc định, chỉ bật những gì cần thiết
+  default: none
+  enable:
+    # ── Correctness (Quan trọng nhất) ──────────────────────────────────
+    - errcheck          # Không bỏ qua error returns
+    - govet             # go vet standard checks
+    - staticcheck       # SA* analysis suite — bắt bugs tinh vi
+    - ineffassign       # Phát hiện gán biến không có tác dụng
+    - copyloopvar       # Không copy loop variable vào goroutine (Go <1.22)
+
+    # ── Error handling ─────────────────────────────────────────────────
+    - errorlint         # Dùng errors.Is/As thay vì == cho wrapped errors
+    - nilerr            # return nil sau khi check err != nil
+
+    # ── Safety / Security ──────────────────────────────────────────────
+    - gosec             # Phát hiện lỗi bảo mật (hardcoded key, weak rand...)
+    - bodyclose         # Đảm bảo HTTP response body được Close()
+    - contextcheck      # ctx phải được truyền đúng vào goroutines/calls
+
+    # ── Code quality ───────────────────────────────────────────────────
+    - gocognit          # Cognitive complexity (ngưỡng: 20)
+    - cyclop            # Cyclomatic complexity (ngưỡng: 15)
+    - dupl              # Phát hiện code duplicate
+
+    # ── Style / Readability ────────────────────────────────────────────
+    - misspell          # Lỗi chính tả trong comment/string
+    - godot             # Top-level comments phải kết thúc bằng dấu chấm
+    - whitespace        # Trailing whitespace, blank lines thừa
+    - noctx             # HTTP request phải có context
+
+  settings:
+    gocognit:
+      min-complexity: 20
+
+    cyclop:
+      max-complexity: 15
+
+    gosec:
+      excludes:
+        - G404  # math/rand — OK với order ID generation (timestamp-based)
+        - G115  # int overflow conversion — OK với time.UnixMilli
+        - G304  # File path via variable — config files are user-controlled by design
+        - G704  # SSRF taint — HTTP client calls are internal to exchange API
+        - G301  # Dir permissions 0755 — OK for log directory
+        - G302  # File permissions 0666 — OK for log files
+        - G104  # Unhandled error — handled separately via errcheck exclusions
+
+    misspell:
+      locale: US
+
+    godot:
+      scope: toplevel   # Chỉ check top-level function/type comments
+
+    dupl:
+      threshold: 150    # Số token tối thiểu để coi là duplicate
+
+  exclusions:
+    generated: lax
+    rules:
+      # cleanup calls — error không critical
+      - path: internal/executor
+        linters: [errcheck]
+        text: "Unsubscribe|CloseAllPositions|CancelOrder|ws\\.Unsubscribe"
+
+      # defer close/sync patterns — standard Go idiom
+      - linters: [errcheck]
+        text: "resp\\.Body\\.Close|zapLog\\.Sync|conn\\.Close"
+
+      # SSRF false positive — internal exchange API only
+      - path: internal/exchange
+        linters: [gosec]
+        text: "G704"
+
+      # Misspell: CANCELLED is British English — intentional
+      - linters: [misspell]
+        text: "cancelled|CANCELLED|Realised"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax

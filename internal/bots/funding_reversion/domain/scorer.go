@@ -1,0 +1,51 @@
+package domain
+
+import (
+	"math"
+	"sort"
+)
+
+// ScoreAndRank scores candidates and returns the sorted list.
+func ScoreAndRank(candidates []Candidate) []Candidate {
+	// Calculate scores
+	for i := range candidates {
+		c := &candidates[i]
+		if c.SafetyResult == nil || !c.SafetyResult.Passed {
+			c.CoinScore = 0
+			continue
+		}
+
+		// Score = expectedProfit × liquidityScore
+		// liquidityScore: higher volume = more liquid = better
+		liquidityScore := math.Log10(c.Amount24+1) / 10.0
+		if liquidityScore > 1 {
+			liquidityScore = 1
+		}
+
+		c.ExpectedProfit = c.SafetyResult.ExpectedProfit
+		c.ImpactRatio = c.SafetyResult.ImpactRatio
+
+		c.CoinScore = c.ExpectedProfit * 10000 * liquidityScore
+	}
+
+	// Filter passed candidates
+	var passed []Candidate
+	for _, c := range candidates {
+		if c.CoinScore > 0 {
+			passed = append(passed, c)
+		}
+	}
+
+	// Sort by score descending
+	sort.Slice(passed, func(i, j int) bool {
+		return passed[i].CoinScore > passed[j].CoinScore
+	})
+
+	// Return all passed candidates
+	// Mark selected coins as ARMED
+	for i := range passed {
+		passed[i].Phase = "ARMED"
+	}
+
+	return passed
+}
