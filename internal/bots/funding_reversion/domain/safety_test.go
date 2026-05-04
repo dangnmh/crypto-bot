@@ -3,19 +3,17 @@ package domain
 import (
 	"math"
 	"testing"
-
-	"crypto-bot/internal/bots/funding_reversion/config"
 )
 
 func TestEvaluateSafety(t *testing.T) {
 	c := Candidate{
-		Config: config.SymbolConfig{
+		Config: TradeConfig{
 			MarginUSDT:          100,
 			Leverage:            10,
 			MaxPriceDiffPercent: 0.5,
 		},
-		FundingRate: 0.02, // 2%
-		Volume:      50,
+		TradeIntent: TradeIntent{FundingRate: 0.02}, // 2%
+		TradePlan:   TradePlan{Volume: 50, Slippage: 0},
 		MarketData: MarketData{
 			Amount24: 1000000, // Large liquidity
 		},
@@ -23,7 +21,6 @@ func TestEvaluateSafety(t *testing.T) {
 			MinVol:       10,
 			TakerFeeRate: 0.0006, // 0.06%
 		},
-		Slippage: 0, // Fallback to config
 	}
 
 	maxImpact := 0.05
@@ -53,7 +50,7 @@ func TestEvaluateSafety(t *testing.T) {
 
 	t.Run("Failed High Impact Ratio", func(t *testing.T) {
 		c2 := c
-		c2.MarketData.Amount24 = 10000 // 1000 / 10000 = 0.1 > maxImpact 0.05
+		c2.Amount24 = 10000 // 1000 / 10000 = 0.1 > maxImpact 0.05
 		res := c2.EvaluateSafety(maxImpact)
 		if res.Passed {
 			t.Error("expected safety to fail due to high impact ratio")

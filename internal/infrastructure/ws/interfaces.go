@@ -1,25 +1,44 @@
 package ws
 
-import "time"
+import (
+	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/store"
+	"time"
+
+	pkgws "crypto-bot/pkg/ws"
+)
 
 // Subscriber handles channel subscription/unsubscription.
 // Satisfied by *Client. Enables mock-based testing of executor.
 type Subscriber interface {
-	Subscribe(symbol, channel string) error
-	Unsubscribe(symbol, channel string) error
+	SubscribeTicker(symbol string) error
+	UnsubscribeTicker(symbol string) error
+
+	SubscribeKline(symbol string) error
+	UnsubscribeKline(symbol string) error
+
 	SubscribeDepth(symbol, step string) error
 	UnsubscribeDepth(symbol, step string) error
+
+	SubscribePersonal() error
 }
 
-// OrderNotifier handles order fill callbacks.
-// Satisfied by *Client. Enables mock-based testing of executor.
-type OrderNotifier interface {
-	OnOrderUpdate(orderID string, timeout time.Duration, callback func(WsOrderDeal))
-	RemoveOrderCallback(orderID string)
-}
 
-// Compile-time interface compliance checks.
-var (
-	_ Subscriber    = (*Client)(nil)
-	_ OrderNotifier = (*Client)(nil)
-)
+// ExchangeAdapter encapsulates all exchange-specific WS logic.
+type ExchangeAdapter interface {
+	Subscriber // Inherit Subscribe, Unsubscribe methods
+
+	// SetPool allows the Engine to inject the WS pool after initialization.
+	SetPool(pool *pkgws.Pool)
+
+	// Auth & Routing
+	GetPingConfig() (payload interface{}, interval time.Duration)
+	GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client)
+	GetChannelExtractor() func([]byte) string
+
+	// Parsers (raw JSON []byte to domain objects)
+	ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error)
+	ParseDepth(data []byte) (symbol string, ob *exchange.OrderBook, err error)
+	ParseKline(data []byte) (symbol string, k *exchange.Kline, err error)
+	ParseOrder(data []byte) (*exchange.WsOrderDeal, error)
+}

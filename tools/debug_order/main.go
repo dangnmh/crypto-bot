@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"os"
 
-	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
+	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange/mexc"
+	pkgconfig "crypto-bot/pkg/config"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
 
@@ -25,13 +27,14 @@ func main() {
 	defer cleanup()
 
 	// Load Configuration relative to project root
-	cfg, err := config.Load("system.jsonc")
+	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding_reversion/system.jsonc")
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	client := exchange.NewClient(cfg.API.BaseURL, cfg.APIKey, cfg.APISecret, cfg.Logging)
+	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
+	client := mexc.NewClient(httpPool, cfg.API.Future.BaseURL, cfg.APIKey, cfg.APISecret, cfg.Logging)
 
 	// 1. Get Order Details
 	orderPath := fmt.Sprintf("/api/v1/private/order/get/%s", orderID)

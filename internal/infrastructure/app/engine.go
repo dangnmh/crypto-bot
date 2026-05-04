@@ -7,14 +7,17 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/logger"
+	pkgws "crypto-bot/pkg/ws"
+
+	"github.com/cskr/pubsub"
 )
 
 // Bot defines the interface that any sub-bot must implement to be run by the Engine.
 type Bot interface {
+	RunAsBackground(ctx context.Context) error
 	Run(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
@@ -22,57 +25,66 @@ type Bot interface {
 // Engine manages the lifecycle of the shared infrastructure components.
 type Engine struct {
 	Cfg           *sysconfig.SystemConfig
-	Client        *exchange.Client
-	Store         *store.GlobalStore
+	Client        exchange.Client
+	Adapter       ws.ExchangeAdapter
 	TimeSync      *timesync.TimeSync
-	WS            *ws.Client
+	WS            *pkgws.Pool
+	Bus           *pubsub.PubSub
 	loggerCleanup func()
 }
 
-// NewEngine initializes the core components and logger.
-func NewEngine(cfg *sysconfig.SystemConfig) *Engine {
-	cleanup := logger.InitLogger(cfg.Logging.Level)
-
-	slog.Info("⚙️ Initializing Engine...", "base_url", cfg.API.BaseURL)
-
-	client := exchange.NewClient(cfg.API.BaseURL, cfg.APIKey, cfg.APISecret, cfg.Logging)
-	gs := store.New()
-	ts := timesync.New(client, time.Duration(cfg.API.TimeSyncInterval))
-	wsClient := ws.NewClient(cfg.API.WSURL, cfg.APIKey, cfg.APISecret, gs, cfg.Logging)
-
-	return &Engine{
-		Cfg:           cfg,
-		Client:        client,
-		Store:         gs,
-		TimeSync:      ts,
-		WS:            wsClient,
-		loggerCleanup: cleanup,
-	}
+// EngineConfig holds the dependencies needed to create an Engine.
+// The Client and Adapter are injected, allowing different exchange providers (MEXC, Binance, etc.)
+type EngineConfig struct {
+	SystemConfig *sysconfig.SystemConfig
+	Client       exchange.Client
+	Adapter      ws.ExchangeAdapter
 }
 
-// StartBackgroundServices launches all required sync and connection routines.
-// It blocks until initial data has been populated.
-func (e *Engine) StartBackgroundServices(ctx context.Context, symbols []string) {
-	go e.Client.WarmUp(ctx, 4*time.Second)
+// NewEngine initializes the core components with an injected exchange client.
+func NewEngine(cfg EngineConfig) *Engine {
+	sysCfg := cfg.SystemConfig
+	cleanup := logger.InitLogger(sysCfg.Logging.Level)
 
-	go e.TimeSync.Start(ctx)
-	e.TimeSync.WaitReady(ctx)
+	slog.Info("⚙️ Initializing Engine...", "base_url", sysCfg.API.Future.BaseURL)
 
-	go e.Store.StartTickerSync(ctx, e.Client, time.Duration(e.Cfg.API.TickerSyncInterval))
-	go e.Store.StartContractSync(ctx, e.Client, time.Duration(e.Cfg.API.ContractSyncInterval))
+	ts := timesync.New(cfg.Client, time.Duration(sysCfg.Sync.Time))
 
-	if len(symbols) > 0 {
-		go e.Store.StartFundingSync(ctx, e.Client, symbols, time.Duration(e.Cfg.API.FundingSyncInterval))
+	// Create generic WS pool with exchange-specific auth and extractors
+	wsLogger := slog.Default().With("component", "websocket")
+	wsClientOpts := []pkgws.ClientOption{}
+
+	if cfg.Adapter != nil {
+		if payload, interval := cfg.Adapter.GetPingConfig(); payload != nil && interval > 0 {
+			wsClientOpts = append(wsClientOpts, pkgws.WithPing(payload, interval))
+		}
+
+		if extractor := cfg.Adapter.GetChannelExtractor(); extractor != nil {
+			wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
+		}
+
+		if hook := cfg.Adapter.GetAuthHook(sysCfg.APIKey, sysCfg.APISecret); hook != nil {
+			wsClientOpts = append(wsClientOpts, pkgws.WithOnConnected(hook))
+		}
 	}
 
-	e.Store.WaitReady(ctx)
+	wsPool := pkgws.NewPool(sysCfg.API.WebSocket.WSURL, sysCfg.API.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
 
-	go e.WS.Connect(ctx)
-	e.WS.WaitReady(ctx)
+	if cfg.Adapter != nil {
+		cfg.Adapter.SetPool(wsPool)
+	}
 
-	_ = e.WS.SubscribeOrderDeals()
+	bus := pubsub.New(100)
 
-	slog.Info("🟢 Engine Background Services Ready")
+	return &Engine{
+		Cfg:           sysCfg,
+		Client:        cfg.Client,
+		Adapter:       cfg.Adapter,
+		TimeSync:      ts,
+		WS:            wsPool,
+		Bus:           bus,
+		loggerCleanup: cleanup,
+	}
 }
 
 // Shutdown cleans up the engine resources.

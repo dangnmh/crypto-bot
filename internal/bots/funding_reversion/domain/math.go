@@ -1,15 +1,13 @@
 package domain
 
 import (
-	"crypto-bot/internal/infrastructure/exchange"
+	shared "crypto-bot/internal/domain"
 	"math"
 )
 
 // CalculateATR computes the Average True Range for a given slice of klines.
-// It uses a simple moving average (SMA) of the True Range for simplicity,
-// or you can implement Wilder's Smoothing if desired. Here we use standard ATR
-// via Wilder's Smoothing Method (RMA).
-func CalculateATR(klines []exchange.Kline, period int) float64 {
+// Uses Wilder's Smoothing Method (RMA).
+func CalculateATR(klines []shared.Kline, period int) float64 {
 	if len(klines) <= 1 || period <= 0 {
 		return 0
 	}
@@ -50,7 +48,7 @@ func CalculateATR(klines []exchange.Kline, period int) float64 {
 }
 
 // ATRPercent converts absolute ATR value to a percentage of the last close price.
-func ATRPercent(klines []exchange.Kline, period int) float64 {
+func ATRPercent(klines []shared.Kline, period int) float64 {
 	atr := CalculateATR(klines, period)
 	if len(klines) == 0 || atr == 0 {
 		return 0

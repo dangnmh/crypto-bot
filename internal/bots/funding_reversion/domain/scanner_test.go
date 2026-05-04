@@ -3,22 +3,21 @@ package domain
 import (
 	"testing"
 
-	"crypto-bot/internal/bots/funding_reversion/config"
-	"crypto-bot/internal/infrastructure/exchange"
+	shared "crypto-bot/internal/domain"
 )
 
 func TestScanFundingRates(t *testing.T) {
-	configs := []config.SymbolConfig{
+	configs := []ScanConfig{
 		{Symbol: "BTC_USDT", MinFundingRate: 0.005}, // 0.5%
 		{Symbol: "ETH_USDT", MinFundingRate: 0.01},  // 1%
 		{Symbol: "XRP_USDT", MinFundingRate: 0.001}, // 0.1%
 	}
 
-	tickers := []exchange.Ticker{
-		{Symbol: "BTC_USDT", FundingRate: 0.006, LastPrice: 60000, Bid1: 59999, Ask1: 60001, Volume24: 100, Amount24: 6000000}, // Meets criteria (0.6% > 0.5%), FR > 0 (LONG)
-		{Symbol: "ETH_USDT", FundingRate: -0.015, LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 200, Amount24: 600000},    // Meets criteria (|-1.5%| > 1%), FR < 0 (SHORT)
-		{Symbol: "XRP_USDT", FundingRate: 0.0005, LastPrice: 0.5, Bid1: 0.49, Ask1: 0.51, Volume24: 10000, Amount24: 5000},     // Fails criteria (0.05% < 0.1%)
-		{Symbol: "DOGE_USDT", FundingRate: 0.02, LastPrice: 0.1, Bid1: 0.09, Ask1: 0.11, Volume24: 100000, Amount24: 10000},    // Not in config
+	tickers := []ScanResult{
+		{Symbol: "BTC_USDT", FundingRate: 0.006, LastPrice: 60000, BestBid: 59999, BestAsk: 60001, Volume24: 100, Amount24: 6000000}, // Meets criteria (0.6% > 0.5%), FR > 0 (LONG)
+		{Symbol: "ETH_USDT", FundingRate: -0.015, LastPrice: 3000, BestBid: 2999, BestAsk: 3001, Volume24: 200, Amount24: 600000},    // Meets criteria (|-1.5%| > 1%), FR < 0 (SHORT)
+		{Symbol: "XRP_USDT", FundingRate: 0.0005, LastPrice: 0.5, BestBid: 0.49, BestAsk: 0.51, Volume24: 10000, Amount24: 5000},     // Fails criteria (0.05% < 0.1%)
+		{Symbol: "DOGE_USDT", FundingRate: 0.02, LastPrice: 0.1, BestBid: 0.09, BestAsk: 0.11, Volume24: 100000, Amount24: 10000},    // Not in config
 	}
 
 	candidates := ScanFundingRates(tickers, configs)
@@ -32,10 +31,10 @@ func TestScanFundingRates(t *testing.T) {
 	if btc.Symbol != "BTC_USDT" {
 		t.Errorf("expected BTC_USDT, got %s", btc.Symbol)
 	}
-	if btc.Side != exchange.SideOpenLong {
+	if btc.Side != shared.SideOpenLong {
 		t.Errorf("expected BTC SideOpenLong for FR > 0, got %d", btc.Side)
 	}
-	if btc.CloseSide != exchange.SideCloseLong {
+	if btc.CloseSide != shared.SideCloseLong {
 		t.Errorf("expected BTC CloseSideLong for FR > 0, got %d", btc.CloseSide)
 	}
 	if btc.RefPriceType != "bestAsk" {
@@ -47,10 +46,10 @@ func TestScanFundingRates(t *testing.T) {
 	if eth.Symbol != "ETH_USDT" {
 		t.Errorf("expected ETH_USDT, got %s", eth.Symbol)
 	}
-	if eth.Side != exchange.SideOpenShort {
+	if eth.Side != shared.SideOpenShort {
 		t.Errorf("expected ETH SideOpenShort for FR < 0, got %d", eth.Side)
 	}
-	if eth.CloseSide != exchange.SideCloseShort {
+	if eth.CloseSide != shared.SideCloseShort {
 		t.Errorf("expected ETH CloseSideShort for FR < 0, got %d", eth.CloseSide)
 	}
 	if eth.RefPriceType != "bestBid" {
@@ -58,29 +57,29 @@ func TestScanFundingRates(t *testing.T) {
 	}
 }
 
-func TestEnrichWithContractDetails(t *testing.T) {
+func TestEnrichWithContractSpec(t *testing.T) {
 	candidates := []Candidate{
-		{Symbol: "BTC_USDT"},
-		{Symbol: "ETH_USDT"},
+		{TradeIntent: TradeIntent{Symbol: "BTC_USDT"}},
+		{TradeIntent: TradeIntent{Symbol: "ETH_USDT"}},
 	}
 
-	details := []exchange.ContractDetail{
-		{Symbol: "BTC_USDT", PriceUnit: 0.5, VolUnit: 1, MinVol: 2, ContractSize: 0.001, TakerFeeRate: 0.0006},
+	specs := map[string]ContractSpec{
+		"BTC_USDT": {PriceUnit: 0.5, VolUnit: 1, MinVol: 2, ContractSize: 0.001, TakerFeeRate: 0.0006},
 	}
 
-	EnrichWithContractDetails(candidates, details)
+	EnrichWithContractSpec(candidates, specs)
 
-	if candidates[0].ContractSpec.PriceUnit != 0.5 {
-		t.Errorf("expected BTC PriceUnit 0.5, got %f", candidates[0].ContractSpec.PriceUnit)
+	if candidates[0].PriceUnit != 0.5 {
+		t.Errorf("expected BTC PriceUnit 0.5, got %f", candidates[0].PriceUnit)
 	}
-	if candidates[0].ContractSpec.MinVol != 2 {
-		t.Errorf("expected BTC MinVol 2, got %d", candidates[0].ContractSpec.MinVol)
+	if candidates[0].MinVol != 2 {
+		t.Errorf("expected BTC MinVol 2, got %d", candidates[0].MinVol)
 	}
-	if candidates[0].ContractSpec.TakerFeeRate != 0.0006 {
-		t.Errorf("expected BTC TakerFeeRate 0.0006, got %f", candidates[0].ContractSpec.TakerFeeRate)
+	if candidates[0].TakerFeeRate != 0.0006 {
+		t.Errorf("expected BTC TakerFeeRate 0.0006, got %f", candidates[0].TakerFeeRate)
 	}
 
-	if candidates[1].ContractSpec.PriceUnit != 0 {
-		t.Errorf("expected ETH untouched (0), got %f", candidates[1].ContractSpec.PriceUnit)
+	if candidates[1].PriceUnit != 0 {
+		t.Errorf("expected ETH untouched (0), got %f", candidates[1].PriceUnit)
 	}
 }

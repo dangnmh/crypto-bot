@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"log"
 
-	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
+	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange/mexc"
+	pkgconfig "crypto-bot/pkg/config"
+	"crypto-bot/pkg/httpclient"
 )
 
 func main() {
-	cfg, err := config.Load("system.jsonc")
+	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding_reversion/system.jsonc")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	client := exchange.NewClient(cfg.API.BaseURL, cfg.APIKey, cfg.APISecret, cfg.Logging)
+	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
+	client := mexc.NewClient(httpPool, cfg.API.Future.BaseURL, cfg.APIKey, cfg.APISecret, cfg.Logging)
 	ctx := context.Background()
 
 	resp, err := client.GetCtx(ctx, "/api/v1/private/order/list/history_orders", map[string]string{

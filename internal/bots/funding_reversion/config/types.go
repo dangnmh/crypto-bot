@@ -1,9 +1,5 @@
 package config
 
-import (
-	sysconfig "crypto-bot/internal/infrastructure/config"
-)
-
 // OpenType specifies the margin mode for a position.
 type OpenType string
 
@@ -86,11 +82,11 @@ type SymbolConfig struct {
 
 // Config is the root configuration containing both System and Funding configs.
 type Config struct {
-	System  *sysconfig.SystemConfig
+	System  *SystemConfig
 	Symbols []SymbolConfig
 }
 
-// TradingDefaults is a temporary parsing struct to extract the opaque tradingDefaults block from system config
+// TradingDefaults is a temporary parsing struct to extract the opaque tradingDefaults block from system config.
 type TradingDefaults struct {
 	MinFundingRate      float64 `json:"minFundingRate"`
 	MaxPriceDiffPercent float64 `json:"maxPriceDiffPercent"`

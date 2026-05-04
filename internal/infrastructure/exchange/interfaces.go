@@ -1,6 +1,9 @@
 package exchange
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // MarketDataProvider is the interface for reading market data.
 // Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
@@ -16,7 +19,10 @@ type MarketDataProvider interface {
 // Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
 type OrderExecutor interface {
 	CreateOrder(ctx context.Context, req SubmitOrderRequest) (string, error)
+	CreateTrackOrder(ctx context.Context, req SubmitTrackOrderRequest) (string, error)
 	CancelOrder(ctx context.Context, symbol, orderID string) error
+	CancelOrders(ctx context.Context, orderIDs []string) error
+	CancelAllOpenOrders(ctx context.Context, symbol string) error
 	GetOrder(ctx context.Context, orderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
 	CloseAllPositions(ctx context.Context, symbol string) error
@@ -31,9 +37,10 @@ type AccountProvider interface {
 	GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)
 }
 
-// Compile-time interface compliance checks.
-var (
-	_ MarketDataProvider = (*Client)(nil)
-	_ OrderExecutor      = (*Client)(nil)
-	_ AccountProvider    = (*Client)(nil)
-)
+// Client is the generic composite interface for any Exchange provider.
+type Client interface {
+	MarketDataProvider
+	OrderExecutor
+	AccountProvider
+	WarmUp(ctx context.Context, interval time.Duration)
+}

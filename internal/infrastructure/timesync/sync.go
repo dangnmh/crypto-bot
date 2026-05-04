@@ -13,7 +13,7 @@ import (
 // TimeSync continuously synchronizes local time with MEXC server time.
 // Uses Exponential Moving Average to smooth out network jitter.
 type TimeSync struct {
-	client    *exchange.Client
+	client    exchange.Client
 	mu        sync.RWMutex
 	offset    int64 // server - local (ms)
 	latency   int64 // round-trip time (ms)
@@ -27,7 +27,7 @@ type TimeSync struct {
 }
 
 // New creates a new TimeSync service.
-func New(client *exchange.Client, interval time.Duration) *TimeSync {
+func New(client exchange.Client, interval time.Duration) *TimeSync {
 	return &TimeSync{
 		client:   client,
 		alpha:    0.3,

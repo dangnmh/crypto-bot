@@ -1,4 +1,4 @@
-package exchange
+package mexc
 
 import (
 	"bytes"
@@ -29,20 +29,13 @@ type Client struct {
 	logger     *slog.Logger
 }
 
-// NewClient creates a new MEXC API client with optimized connection pooling.
-func NewClient(baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
-	transport := &http.Transport{
-		MaxIdleConns:        10,
-		MaxIdleConnsPerHost: 6,
-		IdleConnTimeout:     60 * time.Second,
-		TLSHandshakeTimeout: 5 * time.Second,
-		DisableCompression:  false,
-	}
-
+// NewClient creates a new MEXC API client using the provided optimized connection pool.
+func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange")
 
-	var rt http.RoundTripper = transport
-	if logCfg.HTTP {
+	// If HTTP logging is enabled, wrap the underlying transport of the injected client
+	if logCfg.HTTP && httpClient.Transport != nil {
+		rt := httpClient.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
@@ -59,18 +52,16 @@ func NewClient(baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
 		)
+		httpClient.Transport = rt
 	}
 
 	return &Client{
-		httpClient: &http.Client{
-			Transport: rt,
-			Timeout:   10 * time.Second,
-		},
-		baseURL:   strings.TrimRight(baseURL, "/"),
-		apiKey:    apiKey,
-		apiSecret: apiSecret,
-		logCfg:    logCfg,
-		logger:    logger,
+		httpClient: httpClient,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		apiSecret:  apiSecret,
+		logCfg:     logCfg,
+		logger:     logger,
 	}
 }
 

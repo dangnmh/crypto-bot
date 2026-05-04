@@ -1,4 +1,4 @@
-package exchange
+package mexc
 
 import (
 	"crypto/hmac"

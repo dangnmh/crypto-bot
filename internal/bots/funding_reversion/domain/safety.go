@@ -52,7 +52,7 @@ func (c *Candidate) EvaluateSafety(maxImpactRatio float64) *SafetyResult {
 	// Gross profit is the absolute funding rate percentage
 	// We subtract the estimated slippage (which includes the entry/exit cost if using OB sweep)
 	// and round-trip taker fees.
-	feePct := c.ContractSpec.TakerFeeRate * 100.0 * 2 // round-trip
+	feePct := c.TakerFeeRate * 100.0 * 2 // round-trip
 	grossProfitPct := math.Abs(c.FundingRate * 100.0)
 	result.ExpectedProfit = grossProfitPct - result.EstSlippage - feePct
 

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	shared "crypto-bot/internal/domain"
+
 	"crypto-bot/internal/bots/funding_reversion/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/timesync"
@@ -26,7 +28,7 @@ func (r *OrderResult) IsSuccess() bool {
 }
 
 // FireIOC sends a single IOC order for capturing the peak.
-func FireIOC(ctx context.Context, client *exchange.Client, coin *domain.Candidate, ts *timesync.TimeSync, logger *slog.Logger, ob *exchange.OrderBook) OrderResult {
+func FireIOC(ctx context.Context, client exchange.Client, coin *domain.Candidate, ts *timesync.TimeSync, logger *slog.Logger, ob *shared.OrderBook) OrderResult {
 	coin.Phase = "FIRED_IOC"
 	extOID := fmt.Sprintf("ioc_%s_%d", coin.Symbol, time.Now().UnixMilli())
 
@@ -40,7 +42,7 @@ func FireIOC(ctx context.Context, client *exchange.Client, coin *domain.Candidat
 		Symbol:       coin.Symbol,
 		Price:        iocPrice,
 		Vol:          coin.Volume,
-		Side:         coin.Side,
+		Side:         int(coin.Side),
 		Type:         exchange.OrderTypeIOC,
 		OpenType:     coin.Config.ParsedOpenType,
 		PositionMode: coin.Config.ParsedPositionMode,
@@ -57,7 +59,7 @@ func FireIOC(ctx context.Context, client *exchange.Client, coin *domain.Candidat
 		"symbol", coin.Symbol,
 		"price", iocPrice,
 		"vol", coin.Volume,
-		"side", coin.Side,
+		"side", coin.Side.String(),
 		"bestBid", coin.BestBid,
 		"bestAsk", coin.BestAsk,
 		"spreadPct", spread,
@@ -77,7 +79,7 @@ func FireIOC(ctx context.Context, client *exchange.Client, coin *domain.Candidat
 }
 
 // FireLimitTrap sends a Maker POST-ONLY order to catch the dump.
-func FireLimitTrap(ctx context.Context, client *exchange.Client, coin *domain.Candidate, ts *timesync.TimeSync, logger *slog.Logger) OrderResult {
+func FireLimitTrap(ctx context.Context, client exchange.Client, coin *domain.Candidate, ts *timesync.TimeSync, logger *slog.Logger) OrderResult {
 	coin.Phase = "FIRED_TRAP"
 	extOID := fmt.Sprintf("trp_%s_%d", coin.Symbol, time.Now().UnixMilli())
 
@@ -92,11 +94,11 @@ func FireLimitTrap(ctx context.Context, client *exchange.Client, coin *domain.Ca
 	}
 
 	// If main sniper side is SHORT, trap side should be LONG, and vice-versa
-	trapSide := exchange.SideOpenLong
-	trapCloseSide := exchange.SideCloseLong
-	if coin.Side == exchange.SideOpenLong {
-		trapSide = exchange.SideOpenShort
-		trapCloseSide = exchange.SideCloseShort
+	trapSide := shared.SideOpenLong
+	trapCloseSide := shared.SideCloseLong
+	if coin.Side == shared.SideOpenLong {
+		trapSide = shared.SideOpenShort
+		trapCloseSide = shared.SideCloseShort
 	}
 	trapCandidate := *coin
 	trapCandidate.Side = trapSide
@@ -106,7 +108,7 @@ func FireLimitTrap(ctx context.Context, client *exchange.Client, coin *domain.Ca
 		Symbol:       coin.Symbol,
 		Price:        trapPrice,
 		Vol:          coin.Volume,
-		Side:         trapSide,
+		Side:         int(trapSide),
 		Type:         exchange.OrderTypeLimit,
 		OpenType:     coin.Config.ParsedOpenType,
 		PositionMode: coin.Config.ParsedPositionMode,
@@ -119,7 +121,7 @@ func FireLimitTrap(ctx context.Context, client *exchange.Client, coin *domain.Ca
 		"peakPrice", coin.GetPeakPrice(),
 		"trapPrice", trapPrice,
 		"vol", coin.Volume,
-		"trapSide", trapSide,
+		"trapSide", trapSide.String(),
 		"extOid", extOID,
 	)
 

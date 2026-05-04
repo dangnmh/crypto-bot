@@ -6,13 +6,11 @@ import (
 	"os"
 	"strings"
 
-	sysconfig "crypto-bot/internal/infrastructure/config"
-
 	"github.com/tailscale/hujson"
 )
 
 // Load reads funding.json and returns the Config.
-func Load(sysCfg *sysconfig.SystemConfig, fundingPath string) (*Config, error) {
+func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	fundData, err := os.ReadFile(fundingPath)
 	if err != nil {
 		return nil, fmt.Errorf("read funding config %s: %w", fundingPath, err)

@@ -7,48 +7,56 @@ import (
 func TestScoreAndRank(t *testing.T) {
 	candidates := []Candidate{
 		{
-			Symbol: "COIN_A",
-			SafetyResult: &SafetyResult{
-				Passed:         true,
-				ExpectedProfit: 1.5,
+			TradeIntent: TradeIntent{Symbol: "COIN_A"},
+			TradePlan: TradePlan{
+				SafetyResult: &SafetyResult{
+					Passed:         true,
+					ExpectedProfit: 1.5,
+				},
 			},
 			MarketData: MarketData{
 				Amount24: 1000000, // 10^6 -> log10=6 -> score=0.6 -> CoinScore = 1.5 * 10000 * 0.6 = 9000
 			},
 		},
 		{
-			Symbol: "COIN_B",
-			SafetyResult: &SafetyResult{
-				Passed:         true,
-				ExpectedProfit: 2.0,
+			TradeIntent: TradeIntent{Symbol: "COIN_B"},
+			TradePlan: TradePlan{
+				SafetyResult: &SafetyResult{
+					Passed:         true,
+					ExpectedProfit: 2.0,
+				},
 			},
 			MarketData: MarketData{
 				Amount24: 100, // 10^2 -> log10=2 -> score=0.2 -> CoinScore = 2.0 * 10000 * 0.2 = 4000
 			},
 		},
 		{
-			Symbol: "COIN_C",
-			SafetyResult: &SafetyResult{
-				Passed:         true,
-				ExpectedProfit: 0.5,
+			TradeIntent: TradeIntent{Symbol: "COIN_C"},
+			TradePlan: TradePlan{
+				SafetyResult: &SafetyResult{
+					Passed:         true,
+					ExpectedProfit: 0.5,
+				},
 			},
 			MarketData: MarketData{
 				Amount24: 10000000000, // 10^10 -> log10=10 -> score=1.0 (capped) -> CoinScore = 0.5 * 10000 * 1.0 = 5000
 			},
 		},
 		{
-			Symbol: "COIN_FAIL",
-			SafetyResult: &SafetyResult{
-				Passed:         false, // Should be filtered out
-				ExpectedProfit: 10.0,
+			TradeIntent: TradeIntent{Symbol: "COIN_FAIL"},
+			TradePlan: TradePlan{
+				SafetyResult: &SafetyResult{
+					Passed:         false, // Should be filtered out
+					ExpectedProfit: 10.0,
+				},
 			},
 			MarketData: MarketData{
 				Amount24: 1000000,
 			},
 		},
 		{
-			Symbol: "COIN_NIL_SAFETY",
-			SafetyResult: nil, // Should be filtered out
+			TradeIntent: TradeIntent{Symbol: "COIN_NIL_SAFETY"},
+			TradePlan:   TradePlan{SafetyResult: nil}, // Should be filtered out
 			MarketData: MarketData{
 				Amount24: 1000000,
 			},
@@ -65,7 +73,7 @@ func TestScoreAndRank(t *testing.T) {
 	// COIN_A (9000 approx)
 	// COIN_C (5000 approx)
 	// COIN_B (4000 approx)
-	
+
 	if ranked[0].Symbol != "COIN_A" {
 		t.Errorf("expected rank 1 to be COIN_A, got %s", ranked[0].Symbol)
 	}

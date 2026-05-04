@@ -10,8 +10,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
+	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange/mexc"
+	"crypto-bot/pkg/httpclient"
 )
 
 type FundingRateDetail struct {
@@ -29,7 +30,8 @@ func main() {
 	fmt.Println("🔍 Scanning MEXC Futures market for top funding rates...")
 
 	// Create a new exchange client. No API keys needed for public market data.
-	client := exchange.NewClient("https://contract.mexc.com", "", "", config.LoggingConfig{})
+	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
+	client := mexc.NewClient(httpPool, "https://contract.mexc.com", "", "", sysconfig.LoggingConfig{})
 
 	// Give a timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

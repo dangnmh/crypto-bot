@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"crypto-bot/internal/infrastructure/exchange"
+	shared "crypto-bot/internal/domain"
 )
 
 // CalculateIOCPrice calculates the IOC limit price based on side and market conditions.
@@ -13,7 +13,7 @@ import (
 // SHORT: iocPrice = bestBid - slippage  (sell at lower price, ceil to tick)
 //
 // Prices are rounded to the nearest valid tick (priceUnit) then snapped to PriceScale decimals.
-func (c *Candidate) CalculateIOCPrice(ob *exchange.OrderBook) (float64, error) {
+func (c *Candidate) CalculateIOCPrice(ob *shared.OrderBook) (float64, error) {
 	if c.PriceUnit <= 0 {
 		return 0, fmt.Errorf("%w: %f", ErrInvalidPriceUnit, c.PriceUnit)
 	}
@@ -23,10 +23,10 @@ func (c *Candidate) CalculateIOCPrice(ob *exchange.OrderBook) (float64, error) {
 	var snap func(float64) float64
 
 	switch c.Side {
-	case exchange.SideOpenLong:
+	case shared.SideOpenLong:
 		refPrice, direction = c.BestAsk, 1
 		snap = math.Floor // LONG → floor (don't overshoot)
-	case exchange.SideOpenShort:
+	case shared.SideOpenShort:
 		refPrice, direction = c.BestBid, -1
 		snap = math.Ceil // SHORT → ceil (don't undershoot)
 	default:
@@ -45,9 +45,9 @@ func (c *Candidate) CalculateIOCPrice(ob *exchange.OrderBook) (float64, error) {
 	// Sanity check: ensure IOC price is at least as aggressive as the reference price.
 	// After Floor rounding (LONG) or Ceil rounding (SHORT), the price may have
 	// snapped back below/above the current best price, causing guaranteed No-Fill.
-	if c.Side == exchange.SideOpenLong && iocPrice < refPrice {
+	if c.Side == shared.SideOpenLong && iocPrice < refPrice {
 		iocPrice = roundToScale(refPrice+c.PriceUnit, c.PriceScale)
-	} else if c.Side == exchange.SideOpenShort && iocPrice > refPrice {
+	} else if c.Side == shared.SideOpenShort && iocPrice > refPrice {
 		iocPrice = roundToScale(refPrice-c.PriceUnit, c.PriceScale)
 	}
 
@@ -58,7 +58,7 @@ func (c *Candidate) CalculateIOCPrice(ob *exchange.OrderBook) (float64, error) {
 	return iocPrice, nil
 }
 
-func (c *Candidate) calculateSlippage(ob *exchange.OrderBook, refPrice float64) float64 {
+func (c *Candidate) calculateSlippage(ob *shared.OrderBook, refPrice float64) float64 {
 	calc := newSlippageCalculator(c, c.Config.DynamicPricing)
 	slippage := calc.Calculate(refPrice, ob)
 
@@ -80,9 +80,9 @@ func (c *Candidate) CalculateVolume() float64 {
 
 	// Use the price we'll actually pay, not the stale LastPrice
 	refPrice := c.LastPrice // fallback
-	if c.Side == exchange.SideOpenLong && c.BestAsk > 0 {
+	if c.Side == shared.SideOpenLong && c.BestAsk > 0 {
 		refPrice = c.BestAsk
-	} else if c.Side == exchange.SideOpenShort && c.BestBid > 0 {
+	} else if c.Side == shared.SideOpenShort && c.BestBid > 0 {
 		refPrice = c.BestBid
 	}
 
@@ -98,7 +98,7 @@ func (c *Candidate) CalculateVolume() float64 {
 
 // GetPeakPrice returns the reference extreme price right before firing IOC logic.
 func (c *Candidate) GetPeakPrice() float64 {
-	if c.Side == exchange.SideOpenLong {
+	if c.Side == shared.SideOpenLong {
 		// Shooter LONG -> Reversion Trap SHORT (Sell High) -> need bestAsk peak
 		return c.BestAsk
 	}
@@ -114,13 +114,13 @@ func (c *Candidate) CalculateTrapPrice() float64 {
 
 	// Translate Sniper Side directly mathematically without an intermediate TrapSide variable
 	switch c.Side {
-	case exchange.SideOpenShort:
+	case shared.SideOpenShort:
 		// Sniper SHORT (Entered Short). Crowd is Long. At T=0, crowd sells.
 		// Market DUMPS (reverts downward).
 		// Trap must be LONG placed BELOW the PeakPrice.
 		rawPrice = c.GetPeakPrice() * (1 - c.Config.TrapDepthPct)
 		snap = math.Floor
-	case exchange.SideOpenLong:
+	case shared.SideOpenLong:
 		// Sniper LONG (Entered Long). Crowd is Short. At T=0, crowd buys.
 		// Market PUMPS (reverts upward).
 		// Trap must be SHORT placed ABOVE the PeakPrice.
@@ -142,11 +142,11 @@ func (c *Candidate) CalculateTrapPrice() float64 {
 		return 0
 	}
 	peak := c.GetPeakPrice()
-	if c.Side == exchange.SideOpenShort && trapPrice >= peak {
+	if c.Side == shared.SideOpenShort && trapPrice >= peak {
 		// Trap LONG should be BELOW peak, not above
 		return 0
 	}
-	if c.Side == exchange.SideOpenLong && trapPrice <= peak {
+	if c.Side == shared.SideOpenLong && trapPrice <= peak {
 		// Trap SHORT should be ABOVE peak, not below
 		return 0
 	}

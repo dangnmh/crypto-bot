@@ -1,0 +1,196 @@
+package ws
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+)
+
+// Pool manages multiple WebSocket clients to bypass subscription limits (e.g., 30 pairs/conn).
+type Pool struct {
+	url           string
+	maxPairs      int
+	logger        *slog.Logger
+	clientOptions []ClientOption
+
+	privateClient *Client
+
+	mu             sync.RWMutex
+	publicClients  []*Client
+	clientSubCount []int
+	topicRouting   map[string]int // topic -> public client index
+
+	handlerMu sync.RWMutex
+	handlers  map[string][]Handler
+}
+
+// NewPool creates a new generic WS connection pool.
+func NewPool(wsURL string, maxPairs int, logger *slog.Logger, opts ...ClientOption) *Pool {
+	if logger == nil {
+		logger = slog.Default().With("component", "wspool")
+	}
+
+	return &Pool{
+		url:           wsURL,
+		maxPairs:      maxPairs,
+		handlers:      make(map[string][]Handler),
+		logger:        logger,
+		clientOptions: opts,
+		topicRouting:  make(map[string]int),
+	}
+}
+
+// Connect initiates the primary authenticated connection.
+func (p *Pool) Connect(ctx context.Context) {
+	p.mu.Lock()
+	if p.privateClient == nil {
+		p.privateClient = NewClient(p.url, p.logger, p.clientOptions...)
+		p.attachHandlers(p.privateClient)
+		go p.privateClient.Connect(ctx)
+	}
+	p.mu.Unlock()
+}
+
+// On registers a callback for a specific WebSocket channel.
+func (p *Pool) On(channel string, handler Handler) {
+	p.handlerMu.Lock()
+	p.handlers[channel] = append(p.handlers[channel], handler)
+	p.handlerMu.Unlock()
+
+	// Push the new handler down to all existing clients.
+	// Since Client.OnMessage supports 1 handler per channel, we should wrap them if there are multiple.
+	// But it's easier to just rebuild a single broadcast func per channel and pass it.
+
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	mergedHandler := func(data []byte) {
+		p.handlerMu.RLock()
+		cbs := p.handlers[channel]
+		p.handlerMu.RUnlock()
+		for _, cb := range cbs {
+			cb(data)
+		}
+	}
+
+	if p.privateClient != nil {
+		p.privateClient.OnMessage(channel, mergedHandler)
+	}
+	for _, pc := range p.publicClients {
+		pc.OnMessage(channel, mergedHandler)
+	}
+}
+
+// attachHandlers pushes all registered handlers to a new child client.
+func (p *Pool) attachHandlers(client *Client) {
+	p.handlerMu.RLock()
+	defer p.handlerMu.RUnlock()
+	for channel := range p.handlers {
+		ch := channel // capture loop var
+		client.OnMessage(ch, func(data []byte) {
+			p.handlerMu.RLock()
+			cbs := p.handlers[ch]
+			p.handlerMu.RUnlock()
+			for _, cb := range cbs {
+				cb(data)
+			}
+		})
+	}
+}
+
+// WaitReady blocks until the primary connection is authenticated and ready.
+func (p *Pool) WaitReady(ctx context.Context) {
+	p.mu.RLock()
+	pc := p.privateClient
+	p.mu.RUnlock()
+	if pc != nil {
+		pc.WaitReady(ctx)
+	}
+}
+
+// Close gracefully shuts down all connections.
+func (p *Pool) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.privateClient != nil {
+		p.privateClient.Close()
+	}
+
+	for _, pc := range p.publicClients {
+		pc.Close()
+	}
+}
+
+// getOrCreatePublicClient returns the index of an available public client or creates a new one.
+// Callers must hold p.mu.Lock().
+func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) int {
+	for i, count := range p.clientSubCount {
+		if count < p.maxPairs {
+			return i
+		}
+	}
+
+	idx := len(p.publicClients)
+	newClient := NewClient(p.url, p.logger, p.clientOptions...)
+	p.attachHandlers(newClient)
+	p.publicClients = append(p.publicClients, newClient)
+	p.clientSubCount = append(p.clientSubCount, 0)
+
+	p.logger.Info("🌊 Spawning new public WS connection", "pool_idx", idx)
+	go newClient.Connect(ctx)
+	newClient.WaitReady(ctx)
+
+	return idx
+}
+
+// SubscribePublic tracks a subscription topic and routes it to an available public client.
+func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg interface{}) error {
+	p.mu.Lock()
+	idx, exists := p.topicRouting[topic]
+	if !exists {
+		idx = p.getOrCreatePublicClientIdx(ctx)
+		p.topicRouting[topic] = idx
+		p.clientSubCount[idx]++
+	}
+	client := p.publicClients[idx]
+	p.mu.Unlock()
+
+	return client.SendJSON(msg)
+}
+
+// UnsubscribePublic removes a topic tracking and routes the unsubscribe message to the correct client.
+func (p *Pool) UnsubscribePublic(ctx context.Context, topic string, msg interface{}) error {
+	p.mu.Lock()
+	idx, exists := p.topicRouting[topic]
+	if !exists {
+		p.mu.Unlock()
+		return nil // Topic not tracked, nothing to unsubscribe
+	}
+
+	client := p.publicClients[idx]
+	p.clientSubCount[idx]--
+	delete(p.topicRouting, topic)
+	p.mu.Unlock()
+
+	return client.SendJSON(msg)
+}
+
+// GetPrivateClient returns the primary authenticated client.
+func (p *Pool) GetPrivateClient() *Client {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.privateClient
+}
+
+// SendPrivate routes a generic JSON payload to the private authenticated client.
+func (p *Pool) SendPrivate(msg interface{}) error {
+	p.mu.RLock()
+	pc := p.privateClient
+	p.mu.RUnlock()
+
+	if pc != nil {
+		return pc.SendJSON(msg)
+	}
+	return nil
+}

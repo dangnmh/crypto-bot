@@ -1,12 +1,8 @@
 package exchange
 
-// APIResponse is the generic MEXC Futures REST response envelope.
-type APIResponse[T any] struct {
-	Success bool   `json:"success"`
-	Code    int    `json:"code"`
-	Data    T      `json:"data"`
-	Message string `json:"message,omitempty"`
-}
+import (
+	"fmt"
+)
 
 // ContractDetail holds contract specification for a symbol.
 type ContractDetail struct {
@@ -283,8 +279,30 @@ const (
 	OpenTypeCross    = 2
 )
 
-// Kline Intervals.
 const (
 	IntervalMin1 = "Min1"
-	IntervalMin5 = "Min5"
 )
+
+// WsOrderDeal represents the parsed data from push.personal.order.
+type WsOrderDeal struct {
+	Symbol       string      `json:"symbol"`
+	OrderID      interface{} `json:"orderId"`
+	Price        float64     `json:"price"`
+	Vol          float64     `json:"vol"`
+	Side         int         `json:"side"`
+	DealAvgPrice float64     `json:"dealAvgPrice"`
+	DealVol      float64     `json:"dealVol"`
+	State        int         `json:"state"` // 2: filled partly, 3: filled, 4: canceled
+	ExternalOID  string      `json:"externalOid"`
+	TakerFee     float64     `json:"takerFee"`
+	MakerFee     float64     `json:"makerFee"`
+	Profit       float64     `json:"profit"`
+}
+
+// GetOrderID returns the order ID as a string, handling both string and numeric JSON formats.
+func (w *WsOrderDeal) GetOrderID() string {
+	if s, ok := w.OrderID.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", w.OrderID)
+}

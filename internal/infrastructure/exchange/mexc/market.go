@@ -1,9 +1,11 @@
-package exchange
+package mexc
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"crypto-bot/internal/infrastructure/exchange"
 )
 
 // Ping checks connectivity to the MEXC API server.
@@ -26,12 +28,12 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 }
 
 // GetContractDetails returns all contract specifications.
-func (c *Client) GetContractDetails(ctx context.Context) ([]ContractDetail, error) {
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
 	body, err := c.GetCtx(ctx, "/api/v1/contract/detail", nil)
 	if err != nil {
 		return nil, err
 	}
-	var resp APIResponse[[]ContractDetail]
+	var resp APIResponse[[]exchange.ContractDetail]
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse contract details: %w", err)
 	}
@@ -42,7 +44,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]ContractDetail, erro
 }
 
 // GetTickers returns ticker data for all symbols, or a specific symbol.
-func (c *Client) GetTickers(ctx context.Context, symbol string) ([]Ticker, error) {
+func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	params := map[string]string{}
 	if symbol != "" {
 		params["symbol"] = symbol
@@ -62,21 +64,21 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]Ticker, error
 	}
 
 	// Try unmarshaling as an array
-	var tickers []Ticker
+	var tickers []exchange.Ticker
 	if err := json.Unmarshal(rawResp.Data, &tickers); err == nil {
 		return tickers, nil
 	}
 
 	// If array fails, try unmarshaling as a single object (happens on MEXC when symbol is specified)
-	var single Ticker
+	var single exchange.Ticker
 	if err := json.Unmarshal(rawResp.Data, &single); err != nil {
 		return nil, fmt.Errorf("parse ticker data: %w", err)
 	}
-	return []Ticker{single}, nil
+	return []exchange.Ticker{single}, nil
 }
 
 // GetFundingRate returns current funding rate details for a specific symbol.
-func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*FundingRateDetail, error) {
+func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
 	if symbol == "" {
 		return nil, fmt.Errorf("symbol is required for GetFundingRate")
 	}
@@ -86,7 +88,7 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*FundingRat
 		return nil, err
 	}
 
-	var resp APIResponse[FundingRateDetail]
+	var resp APIResponse[exchange.FundingRateDetail]
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse funding rate: %w", err)
 	}
@@ -97,7 +99,7 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*FundingRat
 }
 
 // GetFundingRateHistory returns funding rate history for a symbol.
-func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageNum, pageSize int) ([]FundingRateHistory, error) {
+func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageNum, pageSize int) ([]exchange.FundingRateHistory, error) {
 	params := map[string]string{
 		"symbol":    symbol,
 		"page_num":  fmt.Sprintf("%d", pageNum),
@@ -110,7 +112,7 @@ func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageN
 	}
 
 	var resp APIResponse[struct {
-		ResultList []FundingRateHistory `json:"resultList"`
+		ResultList []exchange.FundingRateHistory `json:"resultList"`
 	}]
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse funding rate history: %w", err)
@@ -122,7 +124,7 @@ func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageN
 }
 
 // GetKlines returns candlestick data for a symbol.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]Kline, error) {
+func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
 	if symbol == "" {
 		return nil, fmt.Errorf("symbol is required for GetKlines")
 	}
@@ -161,13 +163,13 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	}
 
 	n := len(resp.Data.Time)
-	var klines []Kline
+	var klines []exchange.Kline
 	for i := 0; i < n; i++ {
 		// Safety check against misaligned arrays
 		if i >= len(resp.Data.Open) || i >= len(resp.Data.Close) || i >= len(resp.Data.High) || i >= len(resp.Data.Low) || i >= len(resp.Data.Vol) || i >= len(resp.Data.Amount) {
 			break
 		}
-		klines = append(klines, Kline{
+		klines = append(klines, exchange.Kline{
 			Timestamp: resp.Data.Time[i] * 1000, // API sometimes returns seconds, but let's assume it's standard or handle if needed. Usually ms? If it's 10 digits, it's seconds. We will keep as is, but we might need to check if it's sec or ms.
 			Open:      resp.Data.Open[i],
 			Close:     resp.Data.Close[i],

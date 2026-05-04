@@ -3,24 +3,30 @@
   // API Configuration — Kết nối MEXC Exchange
   // ══════════════════════════════════════════════════════════════
   "api": {
-    "baseURL": "https://api.mexc.com",
-    "wsURL": "wss://contract.mexc.com/edge",
+    "future": {
+      "baseURL": "https://api.mexc.com",
+    },
+    "websocket": {
+      "wsURL": "wss://contract.mexc.com/edge",
+    },
+  },
 
+  "sync": {
     // Tần suất đồng bộ đồng hồ local với server MEXC.
     // Càng ngắn càng chính xác cho lệnh bắn tại T-Nms. 60s là đủ tốt.
-    "timeSyncInterval": "60s",
+    "time": "60s",
 
     // Tần suất làm mới bảng giá tổng quan (ticker) qua REST.
     // Dùng để scan FR, BestBid/Ask. 300s = 5 phút (WS ticker bổ sung real-time).
-    "tickerSyncInterval": "300s",
+    "ticker": "300s",
 
     // Tần suất làm mới thông số hợp đồng (PriceUnit, MinVol, Fee...).
     // Hiếm khi thay đổi nên 3600s = 1 giờ là đủ.
-    "contractSyncInterval": "3600s",
+    "contract": "3600s",
 
     // Tần suất lấy Funding Rate chính xác per-symbol qua REST.
     // 10s đảm bảo FR luôn tươi cho recheck tại T-2s.
-    "fundingSyncInterval": "10s",
+    "funding": "10s",
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -32,9 +38,11 @@
 
     // Bật/tắt log từng loại message WS ở mức INFO.
     // ticker=true sẽ rất spam (mỗi 100ms/symbol). Chỉ bật khi debug giá.
-    "ticker": false,
-    "order": true,     // Log khi có lệnh được đặt/khớp/hủy
-    "position": true,  // Log khi position thay đổi
+    "ws": {
+      "ticker": false,
+      "order": true, // Log khi có lệnh được đặt/khớp/hủy
+      "position": true, // Log khi position thay đổi
+    },
 
     // Log chi tiết HTTP request/response (method, path, status, latency).
     "http": true,
@@ -74,7 +82,6 @@
   // Bất kỳ field nào cũng có thể override per-symbol trong funding.jsonc.
   // ══════════════════════════════════════════════════════════════
   "tradingDefaults": {
-
     // ── Bộ lọc vào lệnh ──
 
     // Ngưỡng FR tối thiểu để bot chấp nhận đánh (0.3 = 0.3%).
@@ -155,8 +162,8 @@
 
       // Độ sâu bẫy (% so với peak price). FR=0.7% → 0.7×4=2.8%.
       "trapDepthMultiplier": 4.0,
-      "minTrapDepth": 1.5,  // Sàn: không bẫy quá gần (dễ bị fill ngay, không phải "râu")
-      "maxTrapDepth": 6.0,  // Trần: không bẫy quá xa (khó dính, kẹt vốn)
+      "minTrapDepth": 1.5, // Sàn: không bẫy quá gần (dễ bị fill ngay, không phải "râu")
+      "maxTrapDepth": 6.0, // Trần: không bẫy quá xa (khó dính, kẹt vốn)
 
       // TP cho lệnh Trap. FR=0.7% → 0.7×2.5=1.75%.
       // Trap bắt nhịp hồi (bounce) → FR cao = bounce lớn → TP nới.
@@ -177,14 +184,14 @@
       // Ngưỡng kích hoạt trailing (% lãi). FR=0.7% → 0.7×1.5=1.05%.
       // Trailing chỉ bật khi PnL đạt mức này. Trước đó = dead zone không có chốt lời.
       "trailingActivationMultiplier": 1.5,
-      "minActivation": 0.2,  // Sàn: ít nhất 0.2% lãi mới bật (cover entry cost)
-      "maxActivation": 3.0,  // Trần: FR cực cao cũng không đợi quá 3%
+      "minActivation": 0.2, // Sàn: ít nhất 0.2% lãi mới bật (cover entry cost)
+      "maxActivation": 3.0, // Trần: FR cực cao cũng không đợi quá 3%
 
       // Tỷ lệ rút râu trigger close (% tụt từ đỉnh). FR=0.7% → 0.7×0.7=0.49%.
       // Giá leo lên đỉnh rồi tụt 0.49% → MEXC tự close position.
       "trailingCallbackMultiplier": 0.7,
-      "minCallback": 0.3,  // Sàn: tụt ít nhất 0.3% mới chốt (tránh noise)
-      "maxCallback": 1.5,  // Trần: không nới quá 1.5% (giữ lời)
+      "minCallback": 0.3, // Sàn: tụt ít nhất 0.3% mới chốt (tránh noise)
+      "maxCallback": 1.5, // Trần: không nới quá 1.5% (giữ lời)
     },
 
     // ══════════════════════════════════════════════════════════════
@@ -196,8 +203,8 @@
       "enabled": true,
       // Giá trị cứng fallback khi dynamicPricing.enabled=false.
       // Khi enabled=true → bị override bởi FR × trailingActivationMultiplier/CallbackMultiplier.
-      "activationPct": 1.0,  // Bật trailing khi lãi ≥ 1%
-      "callbackPct": 0.5,    // Chốt khi giá tụt 0.5% từ đỉnh
+      "activationPct": 1.0, // Bật trailing khi lãi ≥ 1%
+      "callbackPct": 0.5, // Chốt khi giá tụt 0.5% từ đỉnh
     },
 
     // ══════════════════════════════════════════════════════════════
@@ -209,16 +216,16 @@
 
     // Giá trị cứng fallback khi dynamicPricing.enabled=false.
     // Khi enabled=true → bị override bởi FR × trapDepthMultiplier/TpMultiplier/SlMultiplier.
-    "trapDepthPct": 2.5,      // Đặt bẫy sâu 2.5% dưới/trên peak
+    "trapDepthPct": 2.5, // Đặt bẫy sâu 2.5% dưới/trên peak
     "trapTakeProfitPct": 1.5, // Chốt lời trap khi bounce 1.5%
-    "trapStopLossPct": 1.5,   // Cắt lỗ trap nếu giá đi tiếp 1.5%
+    "trapStopLossPct": 1.5, // Cắt lỗ trap nếu giá đi tiếp 1.5%
 
     // Trailing riêng cho lệnh Trap (không bị FR-dynamic override).
     // Trap bắt râu nến → cần activation=0 (bật ngay khi fill, không chờ).
     "trapTrailingConfig": {
       "enabled": true,
-      "activationPct": 0,   // Bật ngay lập tức — râu nến nảy nhanh, không chờ được
-      "callbackPct": 0.5,   // Tụt 0.5% từ đỉnh bounce → chốt
+      "activationPct": 0, // Bật ngay lập tức — râu nến nảy nhanh, không chờ được
+      "callbackPct": 0.5, // Tụt 0.5% từ đỉnh bounce → chốt
     },
   },
 }

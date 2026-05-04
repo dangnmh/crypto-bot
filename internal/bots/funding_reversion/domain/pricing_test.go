@@ -4,8 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"crypto-bot/internal/bots/funding_reversion/config"
-	"crypto-bot/internal/infrastructure/exchange"
+	shared "crypto-bot/internal/domain"
 )
 
 func almostEqual(a, b, eps float64) bool {
@@ -15,7 +14,7 @@ func almostEqual(a, b, eps float64) bool {
 func TestCalculateIOCPrice(t *testing.T) {
 	tests := []struct {
 		name                string
-		side                int
+		side                shared.Side
 		bestBid             float64
 		bestAsk             float64
 		priceUnit           float64
@@ -26,7 +25,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 	}{
 		{
 			name:                "LONG basic",
-			side:                exchange.SideOpenLong,
+			side:                shared.SideOpenLong,
 			bestBid:             65000,
 			bestAsk:             65010,
 			priceUnit:           0.1,
@@ -36,7 +35,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 		},
 		{
 			name:                "SHORT basic",
-			side:                exchange.SideOpenShort,
+			side:                shared.SideOpenShort,
 			bestBid:             65000,
 			bestAsk:             65010,
 			priceUnit:           0.1,
@@ -46,7 +45,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 		},
 		{
 			name:                "min 2-tick buffer enforced",
-			side:                exchange.SideOpenLong,
+			side:                shared.SideOpenLong,
 			bestBid:             10,
 			bestAsk:             10,
 			priceUnit:           0.01,
@@ -56,7 +55,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 		},
 		{
 			name:                "PriceScale cleans float artifacts",
-			side:                exchange.SideOpenLong,
+			side:                shared.SideOpenLong,
 			bestBid:             0.4070,
 			bestAsk:             0.4074,
 			priceUnit:           0.0001,
@@ -76,7 +75,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 		},
 		{
 			name:                "zero bestAsk for LONG",
-			side:                exchange.SideOpenLong,
+			side:                shared.SideOpenLong,
 			bestBid:             100,
 			bestAsk:             0,
 			priceUnit:           0.01,
@@ -86,7 +85,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 		},
 		{
 			name:                "zero priceUnit",
-			side:                exchange.SideOpenLong,
+			side:                shared.SideOpenLong,
 			bestBid:             100,
 			bestAsk:             101,
 			priceUnit:           0,
@@ -99,7 +98,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Candidate{
-				Side: tt.side,
+				TradeIntent: TradeIntent{Side: tt.side},
 				MarketData: MarketData{
 					BestBid: tt.bestBid,
 					BestAsk: tt.bestAsk,
@@ -108,7 +107,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 					PriceUnit:  tt.priceUnit,
 					PriceScale: tt.priceScale,
 				},
-				Config: config.SymbolConfig{MaxPriceDiffPercent: tt.maxPriceDiffPercent},
+				Config: TradeConfig{MaxPriceDiffPercent: tt.maxPriceDiffPercent},
 			}
 			got, err := c.CalculateIOCPrice(nil)
 
@@ -192,7 +191,7 @@ func TestCalculateVolume(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Candidate{
-				Config: config.SymbolConfig{MarginUSDT: tt.marginUSDT, Leverage: tt.leverage},
+				Config: TradeConfig{MarginUSDT: tt.marginUSDT, Leverage: tt.leverage},
 				ContractSpec: ContractSpec{
 					ContractSize: tt.contractSize,
 					MinVol:       int(tt.minVol),
@@ -251,7 +250,7 @@ func TestFloorToScale(t *testing.T) {
 func TestCalculateTrapPrice(t *testing.T) {
 	tests := []struct {
 		name         string
-		side         int
+		side         shared.Side
 		peakPrice    float64
 		trapDepthPct float64
 		priceScale   int
@@ -260,7 +259,7 @@ func TestCalculateTrapPrice(t *testing.T) {
 	}{
 		{
 			name:         "Sniper SHORT -> Trap LONG (Buy Dump) - Real Bug Scenario",
-			side:         exchange.SideOpenShort,
+			side:         shared.SideOpenShort,
 			peakPrice:    0.1465,
 			trapDepthPct: 0.05, // 5%
 			priceScale:   4,
@@ -269,7 +268,7 @@ func TestCalculateTrapPrice(t *testing.T) {
 		},
 		{
 			name:         "Sniper LONG -> Trap SHORT (Sell Pump)",
-			side:         exchange.SideOpenLong,
+			side:         shared.SideOpenLong,
 			peakPrice:    65000,
 			trapDepthPct: 0.02, // 2%
 			priceScale:   1,
@@ -278,7 +277,7 @@ func TestCalculateTrapPrice(t *testing.T) {
 		},
 		{
 			name:         "Sniper SHORT -> Trap LONG (Buy Dump) with Fractional Snapping",
-			side:         exchange.SideOpenShort,
+			side:         shared.SideOpenShort,
 			peakPrice:    0.00001465,
 			trapDepthPct: 0.05,
 			priceScale:   8,
@@ -287,7 +286,7 @@ func TestCalculateTrapPrice(t *testing.T) {
 		},
 		{
 			name:         "Sniper LONG -> Trap SHORT (Sell Pump) with Fractional Snapping",
-			side:         exchange.SideOpenLong,
+			side:         shared.SideOpenLong,
 			peakPrice:    0.00001465,
 			trapDepthPct: 0.05,
 			priceScale:   8,
@@ -304,7 +303,7 @@ func TestCalculateTrapPrice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Candidate{
-				Side: tt.side,
+				TradeIntent: TradeIntent{Side: tt.side},
 				MarketData: MarketData{
 					BestBid: tt.peakPrice,
 					BestAsk: tt.peakPrice,
@@ -313,7 +312,7 @@ func TestCalculateTrapPrice(t *testing.T) {
 					PriceUnit:  tt.priceUnit,
 					PriceScale: tt.priceScale,
 				},
-				Config: config.SymbolConfig{TrapDepthPct: tt.trapDepthPct},
+				Config: TradeConfig{TrapDepthPct: tt.trapDepthPct},
 			}
 			got := c.CalculateTrapPrice()
 			if !almostEqual(got, tt.wantPrice, 1e-10) {

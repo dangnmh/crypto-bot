@@ -6,24 +6,25 @@ import (
 	"sync"
 	"time"
 
-	"crypto-bot/internal/bots/funding_reversion/config"
+	shared "crypto-bot/internal/domain"
+
+	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/ws"
 )
 
 // TrailingManager handles post-fill trailing stop placement.
 // Serializes concurrent calls to prevent API race conditions
 // when both IOC and Trap fill simultaneously.
 type TrailingManager struct {
-	client *exchange.Client
-	ws     *ws.Client
+	client exchange.Client
+	ws     watcher.OrderNotifier
 	log    *slog.Logger
 	ctx    context.Context
 	mu     sync.Mutex
 }
 
 // NewTrailingManager creates a new trailing stop manager.
-func NewTrailingManager(ctx context.Context, client *exchange.Client, wsClient *ws.Client, log *slog.Logger) *TrailingManager {
+func NewTrailingManager(ctx context.Context, client exchange.Client, wsClient watcher.OrderNotifier, log *slog.Logger) *TrailingManager {
 	return &TrailingManager{ctx: ctx, client: client, ws: wsClient, log: log}
 }
 
@@ -34,13 +35,13 @@ func (tm *TrailingManager) SetupFillCallback(orderID string, res *OrderResult) {
 	}
 
 	resCopy := *res
-	tm.ws.OnOrderUpdate(orderID, 5*time.Second, func(deal ws.WsOrderDeal) {
+	tm.ws.OnOrderUpdate(orderID, 5*time.Second, func(deal exchange.WsOrderDeal) {
 		tm.handleOrderFill(tm.ctx, deal, &resCopy)
 	})
 }
 
 // handleOrderFill executes via callback when an order update is received.
-func (tm *TrailingManager) handleOrderFill(ctx context.Context, deal ws.WsOrderDeal, r *OrderResult) {
+func (tm *TrailingManager) handleOrderFill(ctx context.Context, deal exchange.WsOrderDeal, r *OrderResult) {
 	if !exchange.IsTerminalOrderState(deal.State) {
 		return // not fully filled or canceled
 	}
@@ -83,11 +84,9 @@ func (tm *TrailingManager) PlaceTrailingStop(ctx context.Context, res *OrderResu
 
 	c := res.Candidate
 
-	var trailCfg config.TrailingConfig
+	var trailCfg = c.Config.TrailingConfig
 	if c.Phase == "FIRED_TRAP" {
 		trailCfg = c.Config.TrapTrailingConfig
-	} else {
-		trailCfg = c.Config.TrailingConfig
 	}
 
 	if !trailCfg.Enabled {
@@ -97,7 +96,7 @@ func (tm *TrailingManager) PlaceTrailingStop(ctx context.Context, res *OrderResu
 
 	var activePrice float64
 	if trailCfg.ActivationPct > 0 {
-		if c.CloseSide == exchange.SideCloseLong {
+		if c.CloseSide == shared.SideCloseLong {
 			activePrice = res.Order.DealAvgPrice * (1 + trailCfg.ActivationPct)
 		} else {
 			activePrice = res.Order.DealAvgPrice * (1 - trailCfg.ActivationPct)
@@ -107,7 +106,7 @@ func (tm *TrailingManager) PlaceTrailingStop(ctx context.Context, res *OrderResu
 	req := exchange.SubmitTrackOrderRequest{
 		Symbol:       c.Symbol,
 		Leverage:     c.Config.Leverage,
-		Side:         c.CloseSide,
+		Side:         int(c.CloseSide),
 		Vol:          res.Order.DealVol,
 		OpenType:     c.Config.ParsedOpenType,
 		PositionMode: c.Config.ParsedPositionMode,

@@ -19,6 +19,7 @@ func main() {
 	symbol := os.Args[1]
 	url := fmt.Sprintf("https://contract.mexc.com/api/v1/contract/detail?symbol=%s", symbol)
 
+	//nolint:gosec,noctx // intentional variable URL in scratch tool
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Fatalf("Lỗi gọi API: %v", err)
