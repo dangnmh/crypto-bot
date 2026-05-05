@@ -50,18 +50,6 @@ func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engi
 
 	stores := app.NewStoreRegistry().WithFunding().WithKline()
 
-	// Set up shared WS event routing
-	router := ws.NewEventRouter(ws.EventRouterConfig{
-		Pool:       engine.WS,
-		Adapter:    engine.Adapter,
-		PriceStore: stores.Price,
-		DepthStore: stores.Depth,
-		Bus:        engine.Bus,
-		KlineStore: stores.Kline,
-		LogCfg:     sysCfg.Logging,
-	})
-	router.Setup()
-
 	return &Sniper{
 		cfg:           cfg,
 		sysCfg:        sysCfg,
