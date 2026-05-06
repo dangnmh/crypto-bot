@@ -1,0 +1,18 @@
+stateDiagram-v2
+    [*] --> JUMP_PLACED : Workflow Manager spawns
+    JUMP_PLACED --> MONITORING : Order Submitted
+
+    MONITORING --> CANCELLED : Event wall_disappeared or Timeout
+    MONITORING --> FILLED : Event order_filled
+
+    FILLED --> EXIT_STRATEGY : Place TP and Monitor Wall
+
+    EXIT_STRATEGY --> BAILOUT : Event wall_disappeared
+    EXIT_STRATEGY --> TRAILING : Profit >= 0.3%
+    EXIT_STRATEGY --> DONE : TP Hit or Timeout Exit
+
+    TRAILING --> DONE : Trailing Stop Hit
+    BAILOUT --> DONE : Market Order Filled
+    CANCELLED --> DONE : Cleanup complete
+
+    DONE --> [*] : bus.Unsub and goroutine exits
