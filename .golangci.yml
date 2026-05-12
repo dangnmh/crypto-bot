@@ -1,86 +1,389 @@
 version: "2"
 
+# ═══════════════════════════════════════════════════════════════════════
+# golangci-lint v2 configuration for crypto-bot
+#
+# Rules are categorized by importance:
+#   🔴 MUST-HAVE    — Catches real bugs, data loss, security holes
+#   🟡 IMPORTANT    — Prevents subtle issues, enforces Go idioms
+#   🟢 NICE-TO-HAVE — Style consistency, readability improvements
+#
+# Philosophy: "default: none" — every enabled rule is intentional.
+# ═══════════════════════════════════════════════════════════════════════
+
 linters:
-  # Tắt tất cả mặc định, chỉ bật những gì cần thiết
   default: none
   enable:
-    # ── Correctness (Quan trọng nhất) ──────────────────────────────────
-    - errcheck          # Không bỏ qua error returns
-    - govet             # go vet standard checks
-    - staticcheck       # SA* analysis suite — bắt bugs tinh vi
-    - ineffassign       # Phát hiện gán biến không có tác dụng
-    - copyloopvar       # Không copy loop variable vào goroutine (Go <1.22)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔴 MUST-HAVE — Correctness & Bug Prevention
+    # These catch real bugs that cause crashes, data loss, or silent
+    # failures in production. Never disable these.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    # ── Error handling ─────────────────────────────────────────────────
-    - errorlint         # Dùng errors.Is/As thay vì == cho wrapped errors
-    - nilerr            # return nil sau khi check err != nil
+    # errcheck: Detects unchecked error returns.
+    # WHY: Ignoring errors is the #1 source of silent failures in Go.
+    #      In a trading bot, a silently-failed order cancel can cause
+    #      real financial loss.
+    - errcheck
 
-    # ── Safety / Security ──────────────────────────────────────────────
-    - gosec             # Phát hiện lỗi bảo mật (hardcoded key, weak rand...)
-    - bodyclose         # Đảm bảo HTTP response body được Close()
-    - contextcheck      # ctx phải được truyền đúng vào goroutines/calls
+    # govet: The official Go static analyzer (go vet).
+    # WHY: Catches misaligned struct fields, incorrect printf args,
+    #      unreachable code, and other compiler-adjacent bugs.
+    - govet
 
-    # ── Code quality ───────────────────────────────────────────────────
-    - gocognit          # Cognitive complexity (ngưỡng: 20)
-    - cyclop            # Cyclomatic complexity (ngưỡng: 15)
-    - dupl              # Phát hiện code duplicate
+    # staticcheck: The most comprehensive Go static analysis suite.
+    # WHY: SA* rules catch nil derefs, impossible type assertions,
+    #      deprecated API usage, and dozens of subtle bug patterns.
+    #      This is the single most valuable linter in the ecosystem.
+    - staticcheck
 
-    # ── Style / Readability ────────────────────────────────────────────
-    - misspell          # Lỗi chính tả trong comment/string
-    - godot             # Top-level comments phải kết thúc bằng dấu chấm
-    - whitespace        # Trailing whitespace, blank lines thừa
-    - noctx             # HTTP request phải có context
+    # ineffassign: Detects assignments that are never read.
+    # WHY: Usually indicates a logic error — e.g., you assigned an
+    #      error to a variable but forgot to check it.
+    - ineffassign
 
+    # copyloopvar: Detects loop variable capture bugs.
+    # WHY: Classic Go gotcha — capturing &v in a goroutine inside a
+    #      for loop. Fixed in Go 1.22+ but still catches legacy patterns.
+    - copyloopvar
+
+    # nilerr: Detects "if err != nil { return nil }" anti-pattern.
+    # WHY: Swallowing errors after checking them is almost always a bug.
+    #      Critical in a trading bot where error propagation = safety.
+    - nilerr
+
+    # bodyclose: Ensures HTTP response bodies are closed.
+    # WHY: Unclosed bodies leak goroutines and file descriptors.
+    #      Under high-frequency API polling, this causes OOM crashes.
+    - bodyclose
+
+    # durationcheck: Detects two durations multiplied together.
+    # WHY: time.Second * time.Second = nonsensical huge duration.
+    #      Easy mistake when computing intervals dynamically.
+    - durationcheck
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔴 MUST-HAVE — Error Handling
+    # Proper error wrapping is critical for debugging production issues.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # errorlint: Enforces proper error wrapping with %w and errors.Is/As.
+    # WHY: Using == to compare errors breaks when errors are wrapped.
+    #      Our structured error types (APIError, RateLimitError) rely
+    #      on errors.As() working correctly through the error chain.
+    - errorlint
+
+    # errname: Enforces Err* prefix for sentinel errors, *Error suffix for types.
+    # WHY: Go convention. Makes grep-ability and IDE autocomplete reliable.
+    #      e.g., ErrInvalidPriceUnit, APIError — not InvalidPrice, ApiErr.
+    - errname
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🔴 MUST-HAVE — Safety & Security
+    # Financial systems have elevated security requirements.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # gosec: Detects hardcoded credentials, weak crypto, SSRF, etc.
+    # WHY: Trading bot handles API keys, secrets, and real money.
+    #      Even one hardcoded key in a commit = catastrophic.
+    - gosec
+
+    # contextcheck: Ensures context.Context is propagated correctly.
+    # WHY: Without proper context propagation, cancellation signals
+    #      don't reach HTTP calls, causing goroutine leaks on shutdown.
+    - contextcheck
+
+    # noctx: Detects HTTP requests without context.Context.
+    # WHY: HTTP calls without context can't be cancelled/timed out.
+    #      In a trading bot, a hanging API call during shutdown can
+    #      leave orphaned orders on the exchange.
+    - noctx
+
+    # fatcontext: Detects nested contexts in loops (context leak).
+    # WHY: Creating context.WithCancel/Timeout inside a loop without
+    #      calling cancel() leaks goroutines. Subtle and dangerous.
+    - fatcontext
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🟡 IMPORTANT — Code Quality & Maintainability
+    # Prevents code from becoming unmaintainable over time.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # gocognit: Measures cognitive complexity of functions.
+    # WHY: High cognitive complexity = hard to understand = bugs.
+    #      Forces you to extract helpers and simplify logic.
+    #      Threshold 25 is pragmatic for trading logic with many branches.
+    - gocognit
+
+    # cyclop: Measures cyclomatic complexity (# of independent paths).
+    # WHY: Complementary to gocognit. High cyclop = hard to test.
+    #      Forces you to break functions into testable units.
+    - cyclop
+
+    # dupl: Detects duplicated code blocks.
+    # WHY: Duplicate code = duplicate bugs. When you fix one copy,
+    #      you forget the other. We already removed 14 ParseResponse
+    #      duplicates — this prevents regression.
+    - dupl
+
+    # goconst: Detects repeated string/number literals.
+    # WHY: Magic strings like "/api/v1/contract/ping" repeated across
+    #      files should be constants. Prevents typo-based routing bugs.
+    - goconst
+
+    # gocritic: Opinionated but high-signal style/perf/bug checks.
+    # WHY: Catches real issues like append-to-wrong-slice, unnecessary
+    #      type conversions, and suboptimal string building.
+    - gocritic
+
+    # exhaustive: Checks switch statements on enums for completeness.
+    # WHY: When you add a new Side or OrderType, every switch must
+    #      handle it. Without this, new enum values silently fall
+    #      through to default — very dangerous in trading logic.
+    - exhaustive
+
+    # forcetypeassert: Forbids unchecked type assertions (x.(T) without ok).
+    # WHY: Panicking type assertion in a trading bot = entire bot crashes.
+    #      Always use x, ok := msg.(T) pattern.
+    - forcetypeassert
+
+    # unconvert: Detects unnecessary type conversions.
+    # WHY: float64(x) where x is already float64 adds noise and can
+    #      hide precision issues. Clean conversions = clear intent.
+    - unconvert
+
+    # containedctx: Detects context.Context stored in structs.
+    # WHY: Go best practice — context should be passed as first arg,
+    #      not stored in structs. Stored contexts prevent GC and make
+    #      cancellation semantics unclear.
+    - containedctx
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🟡 IMPORTANT — Performance
+    # Relevant for a low-latency trading system.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # prealloc: Detects slice declarations that could be pre-allocated.
+    # WHY: Pre-allocating slices avoids repeated heap allocations.
+    #      In hot paths (OB processing), this reduces GC pressure.
+    - prealloc
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🟢 NICE-TO-HAVE — Style & Readability
+    # Consistent style across the codebase. Low friction to fix.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # misspell: Catches typos in comments and strings.
+    # WHY: Misspelled log messages make grep-based debugging harder.
+    #      Auto-fixable, zero cost to maintain.
+    - misspell
+
+    # godot: Top-level comments must end with a period.
+    # WHY: Go documentation convention (godoc). Makes exported API
+    #      docs look professional. Auto-fixable.
+    - godot
+
+    # whitespace: Removes unnecessary blank lines at function edges.
+    # WHY: Consistent formatting. Auto-fixable.
+    - whitespace
+
+    # dupword: Detects accidentally duplicated words in comments.
+    # WHY: "the the", "is is" — common copy-paste artifacts.
+    #      Auto-fixable, zero noise.
+    - dupword
+
+    # dogsled: Flags excessive blank identifiers (_, _, _, _ := f()).
+    # WHY: More than 2 blanks usually means you should restructure
+    #      the return values or use a named struct.
+    - dogsled
+
+    # godoclint: Validates godoc formatting (param names, etc).
+    # WHY: Ensures exported function docs are parseable by go doc.
+    - godoclint
+
+    # goprintffuncname: Printf-style functions must end with 'f'.
+    # WHY: Go convention — Logf, Errorf, Warnf. Prevents format-string
+    #      bugs where %s is passed to a non-formatting function.
+    - goprintffuncname
+
+    # asciicheck: Identifiers must be ASCII-only.
+    # WHY: Prevents invisible Unicode characters (zero-width spaces,
+    #      Cyrillic lookalikes) from sneaking into identifiers.
+    #      Security-relevant for a financial system.
+    - asciicheck
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🟢 NICE-TO-HAVE — Testing Quality
+    # Enforces test hygiene.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # paralleltest: Tests should call t.Parallel() where possible.
+    # WHY: Parallel tests run faster and expose race conditions.
+    - paralleltest
+
+    # tparallel: Detects incorrect t.Parallel() usage in subtests.
+    # WHY: Calling t.Parallel() in parent but not subtests, or vice
+    #      versa, causes confusing test ordering bugs.
+    - tparallel
+
+    # testpackage: Tests should use _test package (black-box testing).
+    # WHY: Forces you to test through the public API, which produces
+    #      more maintainable tests that survive refactoring.
+    - testpackage
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Linter-specific settings
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   settings:
     gocognit:
-      min-complexity: 20
+      # Cognitive complexity threshold.
+      # 25 is pragmatic for trading logic (many price/side branches).
+      # Default is 30; we're stricter but not unreasonably so.
+      min-complexity: 25
 
     cyclop:
+      # Cyclomatic complexity threshold.
+      # 15 means "at most 15 independent execution paths".
+      # Functions above this are nearly impossible to fully unit-test.
       max-complexity: 15
 
     gosec:
       excludes:
-        - G404  # math/rand — OK với order ID generation (timestamp-based)
-        - G115  # int overflow conversion — OK với time.UnixMilli
-        - G304  # File path via variable — config files are user-controlled by design
-        - G704  # SSRF taint — HTTP client calls are internal to exchange API
-        - G301  # Dir permissions 0755 — OK for log directory
-        - G302  # File permissions 0666 — OK for log files
-        - G104  # Unhandled error — handled separately via errcheck exclusions
+        # G404: Use of math/rand instead of crypto/rand.
+        # OK for non-security uses (order ID suffix, jitter delays).
+        - G404
+        # G115: Integer overflow on conversion.
+        # OK for time.UnixMilli() and similar bounded conversions.
+        - G115
+        # G304: File path from variable.
+        # Config/log files are user-controlled by design.
+        - G304
+        # G301: Directory created with mode 0755.
+        # Standard for log directories.
+        - G301
+        # G302: File created with mode 0666.
+        # Standard for log files.
+        - G302
+        # G104: Unhandled error (defer close patterns).
+        # Handled more precisely by errcheck exclusions below.
+        - G104
+        # G704: SSRF via taint analysis.
+        # Exchange API URLs are constructed from config, not user input.
+        - G704
 
     misspell:
+      # Use US English spelling (e.g., "color" not "colour").
       locale: US
 
     godot:
-      scope: toplevel   # Chỉ check top-level function/type comments
+      # Only check top-level (exported) comments, not inline.
+      scope: toplevel
 
     dupl:
-      threshold: 150    # Số token tối thiểu để coi là duplicate
+      # Minimum token count to flag as duplicate.
+      # 120 is stricter than default (150) — catches smaller copy-paste.
+      threshold: 120
 
+    goconst:
+      # Minimum occurrences before flagging as "should be a constant".
+      min-occurrences: 3
+      # Minimum string length to consider.
+      min-len: 3
+
+    gocritic:
+      # Enable most check groups except experimental.
+      enabled-tags:
+        - diagnostic # Bug-finding rules
+        - style # Idiomatic Go style
+        - performance # Performance optimizations
+      disabled-checks:
+        # hugeParam: Flags large value params. We pass OrderBook by
+        # pointer already; remaining value types are intentional.
+        - hugeParam
+        # unnamedResult: We use unnamed returns in simple getters.
+        - unnamedResult
+
+    exhaustive:
+      # Also check map literal keys against enum values.
+      check-map: true
+      # Require explicit default case to be marked exhaustive.
+      default-signifies-exhaustive: true
+
+    prealloc:
+      # Only flag simple loops (for range), not complex control flow.
+      simple: true
+
+    dogsled:
+      # Max blank identifiers allowed. 2 is standard (_, err := ...).
+      max-blank-identifiers: 2
+
+    errcheck:
+      # Also check type assertion results (x.(T) without ok).
+      check-type-assertions: true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Exclusion rules
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   exclusions:
+    # Skip generated code (protobuf, mockgen, etc.).
     generated: lax
+
     rules:
-      # cleanup calls — error không critical
-      - path: internal/executor
+      # ── errcheck: Cleanup calls where error is non-critical ──
+      # These are fire-and-forget cleanup operations where logging
+      # the error is sufficient (already handled in the functions).
+      - path: internal/
         linters: [errcheck]
         text: "Unsubscribe|CloseAllPositions|CancelOrder|ws\\.Unsubscribe"
 
-      # defer close/sync patterns — standard Go idiom
+      # ── errcheck: Standard defer-close patterns ──
+      # Go idiom: defer resp.Body.Close() — error on close is almost
+      # never actionable and logging it adds noise.
       - linters: [errcheck]
-        text: "resp\\.Body\\.Close|zapLog\\.Sync|conn\\.Close"
+        text: "resp\\.Body\\.Close|zapLog\\.Sync|conn\\.Close|rows\\.Close"
 
-      # SSRF false positive — internal exchange API only
-      - path: internal/exchange
-        linters: [gosec]
-        text: "G704"
-
-      # Misspell: CANCELLED is British English — intentional
+      # ── misspell: Intentional British English in exchange API ──
+      # MEXC API uses "CANCELLED" (British). We match their spelling
+      # in constants and log messages for consistency.
       - linters: [misspell]
         text: "cancelled|CANCELLED|Realised"
 
+      # ── goconst: Don't flag short test strings ──
+      - path: ".*_test\\.go"
+        linters: [goconst]
+
+      # ── exhaustive: Allow non-exhaustive switches in tests ──
+      - path: ".*_test\\.go"
+        linters: [exhaustive]
+
+      # ── tools/: Debug & scratch scripts — relaxed rules ──
+      # These are one-off developer utilities, not production code.
+      - path: "tools/"
+        linters: [errcheck, gocritic, gosec, govet, noctx, forcetypeassert]
+
+      # ── gocritic: sloppyReassign — valid in WS parser chains ──
+      # Sequential Unmarshal calls reusing `err` is a common Go pattern.
+      - linters: [gocritic]
+        text: "sloppyReassign"
+
+      # ── gocritic: exitAfterDefer — acceptable in main() ──
+      # os.Exit in main after defer is standard CLI pattern.
+      - linters: [gocritic]
+        text: "exitAfterDefer"
+
+      # ── gocritic: commentedOutCode — false positives on inline notes ──
+      - path: ".*_test\\.go"
+        linters: [gocritic]
+        text: "commentedOutCode"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Formatters
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 formatters:
   enable:
+    # gofmt: Standard Go formatting. Non-negotiable.
     - gofmt
+    # goimports: Organizes imports into stdlib / external / internal groups.
     - goimports
   exclusions:
     generated: lax

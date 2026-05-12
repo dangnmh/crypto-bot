@@ -20,11 +20,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var resp APIResponse[int64]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return 0, fmt.Errorf("parse server time: %w", err)
-	}
-	return resp.Data, nil
+	return ParseResponse[int64](body, "server_time")
 }
 
 // GetContractDetails returns all contract specifications.
@@ -33,21 +29,14 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	if err != nil {
 		return nil, err
 	}
-	var resp APIResponse[[]exchange.ContractDetail]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse contract details: %w", err)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Message)
-	}
-	return resp.Data, nil
+	return ParseResponse[[]exchange.ContractDetail](body, "contract_details")
 }
 
 // GetTickers returns ticker data for all symbols, or a specific symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	params := map[string]string{}
 	if symbol != "" {
-		params["symbol"] = symbol
+		params[paramSymbol] = symbol
 	}
 
 	body, err := c.GetCtx(ctx, "/api/v1/contract/ticker", params)
@@ -55,23 +44,22 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, err
 	}
 
-	var rawResp APIResponse[json.RawMessage]
-	if err := json.Unmarshal(body, &rawResp); err != nil {
-		return nil, fmt.Errorf("parse tickers envelope: %w", err)
-	}
-	if !rawResp.Success {
-		return nil, fmt.Errorf("API error %d: %s", rawResp.Code, rawResp.Message)
+	// MEXC ticker endpoint returns either an array or a single object depending on params.
+	// Use RawMessage to handle both cases.
+	raw, err := ParseResponse[json.RawMessage](body, "ticker")
+	if err != nil {
+		return nil, err
 	}
 
-	// Try unmarshaling as an array
+	// Try unmarshaling as an array first.
 	var tickers []exchange.Ticker
-	if err := json.Unmarshal(rawResp.Data, &tickers); err == nil {
+	if err := json.Unmarshal(raw, &tickers); err == nil {
 		return tickers, nil
 	}
 
-	// If array fails, try unmarshaling as a single object (happens on MEXC when symbol is specified)
+	// If array fails, try as a single object (MEXC returns this when symbol is specified).
 	var single exchange.Ticker
-	if err := json.Unmarshal(rawResp.Data, &single); err != nil {
+	if err := json.Unmarshal(raw, &single); err != nil {
 		return nil, fmt.Errorf("parse ticker data: %w", err)
 	}
 	return []exchange.Ticker{single}, nil
@@ -88,20 +76,17 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 		return nil, err
 	}
 
-	var resp APIResponse[exchange.FundingRateDetail]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse funding rate: %w", err)
+	data, err := ParseResponse[exchange.FundingRateDetail](body, "funding_rate")
+	if err != nil {
+		return nil, err
 	}
-	if !resp.Success {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Message)
-	}
-	return &resp.Data, nil
+	return &data, nil
 }
 
 // GetFundingRateHistory returns funding rate history for a symbol.
 func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageNum, pageSize int) ([]exchange.FundingRateHistory, error) {
 	params := map[string]string{
-		"symbol":    symbol,
+		paramSymbol: symbol,
 		"page_num":  fmt.Sprintf("%d", pageNum),
 		"page_size": fmt.Sprintf("%d", pageSize),
 	}
@@ -111,16 +96,14 @@ func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageN
 		return nil, err
 	}
 
-	var resp APIResponse[struct {
+	type resultWrapper struct {
 		ResultList []exchange.FundingRateHistory `json:"resultList"`
-	}]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse funding rate history: %w", err)
 	}
-	if !resp.Success {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Message)
+	data, err := ParseResponse[resultWrapper](body, "funding_rate_history")
+	if err != nil {
+		return nil, err
 	}
-	return resp.Data.ResultList, nil
+	return data.ResultList, nil
 }
 
 // GetKlines returns candlestick data for a symbol.
@@ -154,31 +137,145 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		Amount []float64 `json:"amount"`
 	}
 
-	var resp APIResponse[klineData]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse klines: %w", err)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("API error %d: %s", resp.Code, resp.Message)
+	data, err := ParseResponse[klineData](body, "klines")
+	if err != nil {
+		return nil, err
 	}
 
-	n := len(resp.Data.Time)
-	var klines []exchange.Kline
+	n := len(data.Time)
+	klines := make([]exchange.Kline, 0, n)
 	for i := 0; i < n; i++ {
-		// Safety check against misaligned arrays
-		if i >= len(resp.Data.Open) || i >= len(resp.Data.Close) || i >= len(resp.Data.High) || i >= len(resp.Data.Low) || i >= len(resp.Data.Vol) || i >= len(resp.Data.Amount) {
+		// Safety check against misaligned arrays.
+		if i >= len(data.Open) || i >= len(data.Close) || i >= len(data.High) || i >= len(data.Low) || i >= len(data.Vol) || i >= len(data.Amount) {
 			break
 		}
 		klines = append(klines, exchange.Kline{
-			Timestamp: resp.Data.Time[i] * 1000, // API sometimes returns seconds, but let's assume it's standard or handle if needed. Usually ms? If it's 10 digits, it's seconds. We will keep as is, but we might need to check if it's sec or ms.
-			Open:      resp.Data.Open[i],
-			Close:     resp.Data.Close[i],
-			High:      resp.Data.High[i],
-			Low:       resp.Data.Low[i],
-			Volume:    resp.Data.Vol[i],
-			Amount:    resp.Data.Amount[i],
+			Timestamp: data.Time[i] * 1000, // API returns seconds; convert to ms.
+			Open:      data.Open[i],
+			Close:     data.Close[i],
+			High:      data.High[i],
+			Low:       data.Low[i],
+			Volume:    data.Vol[i],
+			Amount:    data.Amount[i],
 		})
 	}
 
 	return klines, nil
+}
+
+// GetDepthSnapshot returns the full orderbook snapshot for a symbol via REST.
+// Endpoint: GET /api/v1/contract/depth/{symbol}?limit={limit}.
+func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
+	}
+
+	params := map[string]string{}
+	if limit > 0 {
+		params["limit"] = fmt.Sprintf("%d", limit)
+	}
+
+	body, err := c.GetCtx(ctx, "/api/v1/contract/depth/"+symbol, params)
+	if err != nil {
+		return nil, err
+	}
+
+	type depthData struct {
+		Asks    [][]json.Number `json:"asks"`
+		Bids    [][]json.Number `json:"bids"`
+		Version int64           `json:"version"`
+	}
+
+	data, err := ParseResponse[depthData](body, "depth_snapshot")
+	if err != nil {
+		return nil, err
+	}
+
+	ob := &exchange.OrderBook{
+		Symbol:  symbol,
+		Version: data.Version,
+		Asks:    make([]exchange.OrderBookEntry, 0, len(data.Asks)),
+		Bids:    make([]exchange.OrderBookEntry, 0, len(data.Bids)),
+	}
+
+	for _, level := range data.Asks {
+		if len(level) < 2 {
+			continue
+		}
+		p, _ := level[0].Float64()
+		v, _ := level[1].Float64()
+		if p > 0 {
+			ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
+		}
+	}
+
+	for _, level := range data.Bids {
+		if len(level) < 2 {
+			continue
+		}
+		p, _ := level[0].Float64()
+		v, _ := level[1].Float64()
+		if p > 0 {
+			ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
+		}
+	}
+
+	return ob, nil
+}
+
+// GetDepthCommits returns the latest incremental depth commits for a symbol.
+// Endpoint: GET /api/v1/contract/depth_commits/{symbol}/{limit}.
+// Used for packet-loss recovery when maintaining a local incremental orderbook.
+func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required for GetDepthCommits")
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	path := fmt.Sprintf("/api/v1/contract/depth_commits/%s/%d", symbol, limit)
+	body, err := c.GetCtx(ctx, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	type rawCommit struct {
+		Version int64           `json:"version"`
+		Asks    [][]json.Number `json:"asks"`
+		Bids    [][]json.Number `json:"bids"`
+	}
+
+	rawCommits, err := ParseResponse[[]rawCommit](body, "depth_commits")
+	if err != nil {
+		return nil, err
+	}
+
+	commits := make([]exchange.DepthCommit, 0, len(rawCommits))
+	for _, rc := range rawCommits {
+		dc := exchange.DepthCommit{
+			Version: rc.Version,
+			Asks:    make([]exchange.OrderBookEntry, 0, len(rc.Asks)),
+			Bids:    make([]exchange.OrderBookEntry, 0, len(rc.Bids)),
+		}
+		for _, level := range rc.Asks {
+			if len(level) < 2 {
+				continue
+			}
+			p, _ := level[0].Float64()
+			v, _ := level[1].Float64()
+			dc.Asks = append(dc.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
+		}
+		for _, level := range rc.Bids {
+			if len(level) < 2 {
+				continue
+			}
+			p, _ := level[0].Float64()
+			v, _ := level[1].Float64()
+			dc.Bids = append(dc.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
+		}
+		commits = append(commits, dc)
+	}
+
+	return commits, nil
 }

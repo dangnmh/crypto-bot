@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -38,7 +39,7 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 
 // GetPrice returns the latest price for a symbol.
 // Returns error if data is stale (older than maxAge) or not found.
-func (s *PriceStore) GetPrice(symbol string, maxAge time.Duration) (*PriceData, error) {
+func (s *PriceStore) GetPrice(_ context.Context, symbol string, maxAge time.Duration) (*PriceData, error) {
 	s.mu.RLock()
 	pd, ok := s.prices[symbol]
 	s.mu.RUnlock()
@@ -56,7 +57,7 @@ func (s *PriceStore) GetPrice(symbol string, maxAge time.Duration) (*PriceData, 
 }
 
 // GetBestBidAsk returns the best bid and ask for a symbol.
-func (s *PriceStore) GetBestBidAsk(symbol string) (bid, ask float64, err error) {
+func (s *PriceStore) GetBestBidAsk(_ context.Context, symbol string) (bid, ask float64, err error) {
 	s.mu.RLock()
 	pd, ok := s.prices[symbol]
 	s.mu.RUnlock()

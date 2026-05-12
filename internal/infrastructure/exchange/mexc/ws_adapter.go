@@ -36,48 +36,48 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(symbol string) error {
 	msg := map[string]interface{}{
-		"method": "sub.ticker",
-		"param":  map[string]string{"symbol": symbol},
+		paramMethod: "sub.ticker",
+		paramParam:  map[string]string{paramSymbol: symbol},
 	}
-	topic := symbol + ":ticker"
+	topic := symbol + ":" + channelTicker
 	return a.pool.SubscribePublic(context.Background(), topic, msg)
 }
 
 // UnsubscribeTicker unsubscribes from ticker push.
 func (a *WsAdapter) UnsubscribeTicker(symbol string) error {
 	msg := map[string]interface{}{
-		"method": "unsub.ticker",
-		"param":  map[string]string{"symbol": symbol},
+		paramMethod: "unsub.ticker",
+		paramParam:  map[string]string{paramSymbol: symbol},
 	}
-	topic := symbol + ":ticker"
+	topic := symbol + ":" + channelTicker
 	return a.pool.UnsubscribePublic(context.Background(), topic, msg)
 }
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(symbol string) error {
 	msg := map[string]interface{}{
-		"method": "sub.kline",
-		"param":  map[string]string{"symbol": symbol, "interval": "Min1"},
+		paramMethod: "sub.kline",
+		paramParam:  map[string]string{paramSymbol: symbol, "interval": "Min1"},
 	}
-	topic := symbol + ":kline"
+	topic := symbol + ":" + channelKline
 	return a.pool.SubscribePublic(context.Background(), topic, msg)
 }
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(symbol string) error {
 	msg := map[string]interface{}{
-		"method": "unsub.kline",
-		"param":  map[string]string{"symbol": symbol},
+		paramMethod: "unsub.kline",
+		paramParam:  map[string]string{paramSymbol: symbol},
 	}
-	topic := symbol + ":kline"
+	topic := symbol + ":" + channelKline
 	return a.pool.UnsubscribePublic(context.Background(), topic, msg)
 }
 
 // SubscribePersonal subscribes to personal order updates.
 func (a *WsAdapter) SubscribePersonal() error {
 	msg := map[string]interface{}{
-		"method": "personal.filter",
-		"param": map[string]interface{}{
+		paramMethod: "personal.filter",
+		paramParam: map[string]interface{}{
 			"filters": []map[string]string{
 				{"filter": "order"},
 				{"filter": "position"},
@@ -91,16 +91,16 @@ func (a *WsAdapter) SubscribePersonal() error {
 func (a *WsAdapter) SubscribeDepth(symbol, step string) error {
 	method := "sub.depth.full"
 	param := map[string]interface{}{
-		"symbol": symbol,
-		"limit":  20,
+		paramSymbol: symbol,
+		"limit":     20,
 	}
 	if step != "" {
 		method = "sub.depth.step"
 		param["step"] = step
 	}
 	msg := map[string]interface{}{
-		"method": method,
-		"param":  param,
+		paramMethod: method,
+		paramParam:  param,
 	}
 	topic := symbol + ":depth:" + step
 	return a.pool.SubscribePublic(context.Background(), topic, msg)
@@ -110,16 +110,16 @@ func (a *WsAdapter) SubscribeDepth(symbol, step string) error {
 func (a *WsAdapter) UnsubscribeDepth(symbol, step string) error {
 	method := "unsub.depth.full"
 	param := map[string]interface{}{
-		"symbol": symbol,
-		"limit":  20,
+		paramSymbol: symbol,
+		"limit":     20,
 	}
 	if step != "" {
 		method = "unsub.depth.step"
 		param["step"] = step
 	}
 	msg := map[string]interface{}{
-		"method": method,
-		"param":  param,
+		paramMethod: method,
+		paramParam:  param,
 	}
 	topic := symbol + ":depth:" + step
 	return a.pool.UnsubscribePublic(context.Background(), topic, msg)
@@ -127,7 +127,7 @@ func (a *WsAdapter) UnsubscribeDepth(symbol, step string) error {
 
 // GetPingConfig returns the ping payload and interval for MEXC.
 func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
-	return map[string]string{"method": "ping"}, 15 * time.Second
+	return map[string]string{paramMethod: "ping"}, 15 * time.Second
 }
 
 // GetAuthHook returns the OnConnected hook for MEXC authentication.
@@ -143,8 +143,8 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		signature := hex.EncodeToString(mac.Sum(nil))
 
 		msg := map[string]interface{}{
-			"method": "login",
-			"param": map[string]interface{}{
+			paramMethod: "login",
+			paramParam: map[string]interface{}{
 				"apiKey":    apiKey,
 				"reqTime":   reqTime,
 				"signature": signature,
@@ -164,11 +164,11 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		if err := json.Unmarshal(data, &baseMsg); err == nil {
 			switch baseMsg.Channel {
 			case "push.ticker":
-				return "ticker"
+				return channelTicker
 			case "push.depth.full", "push.depth.step":
-				return "depth"
+				return channelDepth
 			case "push.kline":
-				return "kline"
+				return channelKline
 			case "push.personal.order":
 				return "personal.order"
 			case "push.personal.position":
@@ -236,7 +236,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 
 // ParseDepth parses raw JSON into exchange.OrderBook using jsonparser for speed.
 func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *exchange.OrderBook, err error) {
-	symbolVal, err := jsonparser.GetString(data, "symbol")
+	symbolVal, err := jsonparser.GetString(data, paramSymbol)
 	if err != nil {
 		return "", nil, err
 	}

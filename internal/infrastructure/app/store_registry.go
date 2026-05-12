@@ -17,6 +17,8 @@ import (
 
 // StoreRegistry groups all injectable stores that a bot may need.
 // Only non-nil stores participate in the lifecycle.
+//
+// Deprecated: Use CentralStore with NewCentralStore() + StoreOption functions instead.
 type StoreRegistry struct {
 	Ticker   *store.TickerStore
 	Contract *store.ContractStore
@@ -32,6 +34,8 @@ type StoreRegistry struct {
 // NewStoreRegistry creates a StoreRegistry with the required base stores
 // (Ticker, Contract, Price) pre-initialized. Optional stores (Funding, Kline, Depth)
 // can be set after construction.
+//
+// Deprecated: Use NewCentralStore() with StoreOption functions instead.
 func NewStoreRegistry() *StoreRegistry {
 	wg := &sync.WaitGroup{}
 	return &StoreRegistry{
@@ -55,7 +59,7 @@ func (r *StoreRegistry) WithKline() *StoreRegistry {
 	return r
 }
 
-// SyncConfig holds the intervals needed by StartStores.
+// StoreSyncConfig holds the intervals needed by StartStores.
 type StoreSyncConfig struct {
 	TickerInterval   types.Duration
 	ContractInterval types.Duration
@@ -89,4 +93,3 @@ func (r *StoreRegistry) WaitReady(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-

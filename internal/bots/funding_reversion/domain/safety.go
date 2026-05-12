@@ -3,6 +3,8 @@ package domain
 import (
 	"fmt"
 	"math"
+
+	"crypto-bot/pkg/decmath"
 )
 
 // SafetyResult holds the result of safety evaluation for a candidate.
@@ -20,12 +22,12 @@ func (c *Candidate) EvaluateSafety(maxImpactRatio float64) *SafetyResult {
 	result := &SafetyResult{Passed: true}
 
 	// Position size (USDT)
-	positionSize := c.Config.MarginUSDT * float64(c.Config.Leverage)
+	positionSize := decmath.Mul(c.Config.MarginUSDT, float64(c.Config.Leverage))
 	result.PositionSizeUSDT = positionSize
 
 	// Impact ratio
 	if c.Amount24 > 0 {
-		result.ImpactRatio = positionSize / c.Amount24
+		result.ImpactRatio = decmath.Div(positionSize, c.Amount24)
 	}
 
 	if result.ImpactRatio > maxImpactRatio {
@@ -52,9 +54,9 @@ func (c *Candidate) EvaluateSafety(maxImpactRatio float64) *SafetyResult {
 	// Gross profit is the absolute funding rate percentage
 	// We subtract the estimated slippage (which includes the entry/exit cost if using OB sweep)
 	// and round-trip taker fees.
-	feePct := c.TakerFeeRate * 100.0 * 2 // round-trip
-	grossProfitPct := math.Abs(c.FundingRate * 100.0)
-	result.ExpectedProfit = grossProfitPct - result.EstSlippage - feePct
+	feePct := decmath.Mul(decmath.Mul(c.TakerFeeRate, 100.0), 2) // round-trip
+	grossProfitPct := math.Abs(decmath.Mul(c.FundingRate, 100.0))
+	result.ExpectedProfit = decmath.Sub(decmath.Sub(grossProfitPct, result.EstSlippage), feePct)
 
 	return result
 }

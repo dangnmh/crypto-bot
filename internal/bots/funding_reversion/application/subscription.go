@@ -22,30 +22,48 @@ func NewSubscriptionManager(wsClient ws.Subscriber, symbol string, dynCfg domain
 }
 
 // SubscribeAll subscribes to all required WS channels for the trading cycle.
-func (sm *SubscriptionManager) SubscribeAll() {
-	_ = sm.ws.SubscribeTicker(sm.symbol)
+func (sm *SubscriptionManager) SubscribeAll() error {
+	if err := sm.ws.SubscribeTicker(sm.symbol); err != nil {
+		sm.log.Error("🔴 Failed to subscribe ticker", "symbol", sm.symbol, "error", err)
+		return err
+	}
 	if sm.dynCfg.Enabled {
-		_ = sm.ws.SubscribeKline(sm.symbol)
-		if sm.dynCfg.SlippageMode == "OB_IMBALANCE" {
-			_ = sm.ws.SubscribeDepth(sm.symbol, sm.dynCfg.ObStep)
+		if err := sm.ws.SubscribeKline(sm.symbol); err != nil {
+			sm.log.Error("🔴 Failed to subscribe kline", "symbol", sm.symbol, "error", err)
+			return err
+		}
+		if sm.dynCfg.SlippageMode == domain.SlippageModeOBImbalance {
+			if err := sm.ws.SubscribeDepth(sm.symbol, sm.dynCfg.ObStep); err != nil {
+				sm.log.Error("🔴 Failed to subscribe depth", "symbol", sm.symbol, "error", err)
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // UnsubscribeAll cleans up all WS subscriptions for the trading cycle.
 func (sm *SubscriptionManager) UnsubscribeAll() {
-	_ = sm.ws.UnsubscribeTicker(sm.symbol)
+	if err := sm.ws.UnsubscribeTicker(sm.symbol); err != nil {
+		sm.log.Warn("⚠️ Failed to unsubscribe ticker", "symbol", sm.symbol, "error", err)
+	}
 	if sm.dynCfg.Enabled {
-		_ = sm.ws.UnsubscribeKline(sm.symbol)
-		if sm.dynCfg.SlippageMode == "OB_IMBALANCE" {
-			_ = sm.ws.UnsubscribeDepth(sm.symbol, sm.dynCfg.ObStep)
+		if err := sm.ws.UnsubscribeKline(sm.symbol); err != nil {
+			sm.log.Warn("⚠️ Failed to unsubscribe kline", "symbol", sm.symbol, "error", err)
+		}
+		if sm.dynCfg.SlippageMode == domain.SlippageModeOBImbalance {
+			if err := sm.ws.UnsubscribeDepth(sm.symbol, sm.dynCfg.ObStep); err != nil {
+				sm.log.Warn("⚠️ Failed to unsubscribe depth", "symbol", sm.symbol, "error", err)
+			}
 		}
 	}
 }
 
 // UnsubscribeDepthOnly cleans up only depth subscription (called at cycle end).
 func (sm *SubscriptionManager) UnsubscribeDepthOnly() {
-	if sm.dynCfg.Enabled && sm.dynCfg.SlippageMode == "OB_IMBALANCE" {
-		_ = sm.ws.UnsubscribeDepth(sm.symbol, sm.dynCfg.ObStep)
+	if sm.dynCfg.Enabled && sm.dynCfg.SlippageMode == domain.SlippageModeOBImbalance {
+		if err := sm.ws.UnsubscribeDepth(sm.symbol, sm.dynCfg.ObStep); err != nil {
+			sm.log.Warn("⚠️ Failed to unsubscribe depth", "symbol", sm.symbol, "error", err)
+		}
 	}
 }

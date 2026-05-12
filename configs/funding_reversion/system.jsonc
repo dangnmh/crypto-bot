@@ -1,231 +1,128 @@
 {
   // ══════════════════════════════════════════════════════════════
-  // API Configuration — Kết nối MEXC Exchange
+  // API — Kết nối MEXC Exchange
   // ══════════════════════════════════════════════════════════════
   "api": {
-    "future": {
-      "baseURL": "https://api.mexc.com",
-    },
-    "websocket": {
-      "wsURL": "wss://contract.mexc.com/edge",
-    },
-  },
-
-  "sync": {
-    // Tần suất đồng bộ đồng hồ local với server MEXC.
-    // Càng ngắn càng chính xác cho lệnh bắn tại T-Nms. 60s là đủ tốt.
-    "time": "60s",
-
-    // Tần suất làm mới bảng giá tổng quan (ticker) qua REST.
-    // Dùng để scan FR, BestBid/Ask. 300s = 5 phút (WS ticker bổ sung real-time).
-    "ticker": "300s",
-
-    // Tần suất làm mới thông số hợp đồng (PriceUnit, MinVol, Fee...).
-    // Hiếm khi thay đổi nên 3600s = 1 giờ là đủ.
-    "contract": "3600s",
-
-    // Tần suất lấy Funding Rate chính xác per-symbol qua REST.
-    // 10s đảm bảo FR luôn tươi cho recheck tại T-2s.
-    "funding": "10s",
+    "future":    { "baseURL": "https://api.mexc.com" },
+    "websocket": { "wsURL": "wss://contract.mexc.com/edge" }
   },
 
   // ══════════════════════════════════════════════════════════════
-  // Logging — Điều khiển mức độ log
+  // Sync — Tần suất đồng bộ dữ liệu
+  // ══════════════════════════════════════════════════════════════
+  "sync": {
+    "time":     "60s",   // Đồng bộ đồng hồ local ↔ server (cho fire chính xác tại T-Nms)
+    "ticker":   "300s",  // Refresh bảng giá tổng quan qua REST (WS bổ sung real-time)
+    "contract": "3600s", // Refresh thông số hợp đồng (PriceUnit, MinVol, Fee — hiếm đổi)
+    "funding":  "10s"    // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  // Logging
   // ══════════════════════════════════════════════════════════════
   "logging": {
-    // Mức log: "debug" (rất chi tiết), "info" (bình thường), "warn", "error".
-    "level": "info",
-
-    // Bật/tắt log từng loại message WS ở mức INFO.
-    // ticker=true sẽ rất spam (mỗi 100ms/symbol). Chỉ bật khi debug giá.
-    "ws": {
-      "ticker": false,
-      "order": true, // Log khi có lệnh được đặt/khớp/hủy
-      "position": true, // Log khi position thay đổi
-    },
-
-    // Log chi tiết HTTP request/response (method, path, status, latency).
-    "http": true,
+    "level": "debug",
+    "ws":    { "ticker": true, "order": true, "position": true },
+    "http":  true
   },
 
   // ══════════════════════════════════════════════════════════════
-  // Safety — Ngưỡng an toàn cứng, bảo vệ hệ thống
+  // Safety — Ngưỡng bảo vệ hệ thống
   // ══════════════════════════════════════════════════════════════
   "safety": {
-    // % vốn tối đa cho phép 1 symbol chiếm (VD: 10 = tối đa 10% tổng vốn/symbol).
-    "maxCapitalPctPerSymbol": 10,
+    "maxCapitalPctPerSymbol": 10,   // Tối đa 10% tổng vốn cho 1 symbol
+    "maxImpactRatio":         1,    // Reject nếu position > 1% volume 24h
 
-    // Tỷ lệ Impact tối đa = PositionSize / Volume24h (%).
-    // Nếu lệnh bạn chiếm > 5% volume 24h → slippage tự hại cực lớn → reject.
-    // Hiện safe vì margin nhỏ ($3). Khi scale vốn lên PHẢI giảm xuống ~1%.
-    "maxImpactRatio": 1,
+    "maxLatency":        "200ms",   // Abort nếu RTT > 200ms
+    "bufferTime":        "10ms",    // Bắn tại T - (Latency/2 + Buffer)
 
-    // Latency API tối đa. Nếu round-trip > 200ms → abort chu kỳ (sợ miss cửa sổ).
-    "maxLatency": "200ms",
-
-    // Thời gian đệm thêm vào sau khi tính latency.
-    // Lệnh sẽ được bắn tại: T - (Latency/2 + BufferTime)
-    // VD: RTT = 80ms → One-way = 40ms. Buffer = 10ms → Bắn trước 50ms.
-    "bufferTime": "10ms",
-
-    // Timeout tối đa chờ lệnh khớp + trailing kích hoạt.
-    // 30s đủ cho trailing bật. Nếu hết 30s chưa có fill → CloseAll + abort.
-    "holdDuration": "30s",
-
-    // Đặt lệnh Trap sau settle bao lâu.
-    // 50ms = chờ settle xong, giá peak đã hình thành → lấy peak price → ném bẫy.
-    "trapAfterSettle": "50ms",
+    "trapAfterSettle":   "50ms",    // Chờ peak hình thành → ném bẫy
+    "holdDuration":      "30s",     // Timeout chờ fill + trailing kích hoạt
+    "postSettleTimeout": "60s"      // Force close nếu quá thời gian
   },
 
   // ══════════════════════════════════════════════════════════════
-  // Trading Defaults — Config mặc định cho TẤT CẢ symbol.
-  // Bất kỳ field nào cũng có thể override per-symbol trong funding.jsonc.
+  // Trading Defaults — Giá trị mặc định cho TẤT CẢ symbol
+  // Mỗi field có thể override per-symbol trong funding.jsonc
   // ══════════════════════════════════════════════════════════════
   "tradingDefaults": {
-    // ── Bộ lọc vào lệnh ──
 
-    // Ngưỡng FR tối thiểu để bot chấp nhận đánh (0.3 = 0.3%).
-    // FR < 0.3% → lợi nhuận quá nhỏ, phí giao dịch ăn hết → skip.
-    "minFundingRate": 0.3,
+    // ── 1. Entry Filter ──────────────────────────────────────────
+    "minFundingRate":      0.3,       // FR tối thiểu (%). < 0.3% → phí ăn hết lời → skip
+    "maxPriceDiffPercent": 0.8,       // Slippage tĩnh fallback (%)
 
-    // ── Slippage & Vốn ──
+    // ── 2. Position ──────────────────────────────────────────────
+    "leverage":     5,
+    "openType":     "ISOLATED",       // ISOLATED (an toàn) | CROSS (rủi ro cao)
+    "positionMode": "HEDGE",          // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
 
-    // Slippage tĩnh fallback (%) khi OB sweep không khả dụng.
-    // Khi dynamicPricing.enabled=true + OB_IMBALANCE mode → giá trị này gần như không dùng.
-    "maxPriceDiffPercent": 0.8,
+    // ── 3. Funding Reversion (Đảo chiều sau Funding) ─────────────
+    "fundingReversion": {
+      "enabled":       true,
+      "takeProfitPct": 3,
+      "stopLossPct":   3,
 
-    // Đòn bẩy mặc định. 5x = rủi ro vừa phải cho shitcoin.
-    "leverage": 5,
+      // Master toggle + slippage + TP/SL multipliers
+      "dynamicPricing": {
+        "enabled": true,
 
-    // Chế độ margin: "ISOLATED" (tách biệt, an toàn) hoặc "CROSS" (chia sẻ, rủi ro cao).
-    "openType": "ISOLATED",
+        "slippageMode":     "OB_IMBALANCE",
+        "obBufferPct":      0.7,
+        "obMaxSlippagePct": 1,
+        "obStep":           "",
+        "spreadMultiplier": 3.0,
 
-    // Chế độ vị thế: "HEDGE" (bắt buộc nếu dùng Straddle Trap) hoặc "ONE_WAY".
-    "positionMode": "HEDGE",
+        "tpFundingMultiplier": 2.0,
+        "tpAtrMultiplier":     0.0,
 
-    // ── TP/SL cứng (Fallback) ──
-    // Chỉ dùng khi dynamicPricing.enabled = false.
-    // Khi enabled = true → bị override bởi FR × tpFundingMultiplier và ATR × slAtrMultiplier.
-    "takeProfitPct": 3,
-    "stopLossPct": 3,
+        "slAtrMultiplier":     1.5,
+        "slFundingMultiplier": 1.0
+      },
 
-    // ══════════════════════════════════════════════════════════════
-    // Dynamic Pricing — Tự động tính mọi thứ dựa trên FR & ATR
-    // Khi enabled=true, các giá trị cứng ở trên (TP/SL, Trap, Trailing) đều bị override.
-    // ══════════════════════════════════════════════════════════════
-    "dynamicPricing": {
-      // Bật/tắt toàn bộ hệ thống dynamic pricing.
-      "enabled": true,
+      // Trailing Stop (MEXC TrackOrder)
+      "trailing": {
+        "enabled":       true,
+        "activationPct": 1.0,
+        "callbackPct":   0.5,
 
-      // ── Slippage Mode ──
-      // "OB_IMBALANCE": Quét Order Book tới khi đủ volume → tính slippage chính xác.
-      // "SPREAD_MULTIPLIER": Dùng spread hiện tại × hệ số → đơn giản hơn, kém chính xác hơn.
-      "slippageMode": "OB_IMBALANCE",
+        "activationMultiplier": 1.5,
+        "minActivation":        0.2,
+        "maxActivation":        3.0,
 
-      // Buffer % thêm vào sau khi OB sweep xong.
-      // OB có thể thay đổi giữa lúc tính và lúc bắn (~10ms) → buffer 0.7% bù đệm.
-      "obBufferPct": 0.7,
-
-      // Hard cap slippage tuyệt đối (%). Dù OB sweep tính ra bao nhiêu, KHÔNG vượt quá 1%.
-      // Chống trường hợp OB rỗng → sweep ra slippage 5% → lỗ nặng.
-      "obMaxSlippagePct": 1,
-
-      // Gộp sổ lệnh theo bước. "" = dùng depth.full (chi tiết nhất).
-      // Điền "10" = gộp theo bước $10 (dùng sub.depth.step, nhẹ hơn nhưng kém chính xác).
-      "obStep": "",
-
-      // Hệ số nhân spread cho mode SPREAD_MULTIPLIER.
-      // VD: Spread 0.1% × 3.0 = slippage tối đa 0.3%. Cũng là fallback cho OB_IMBALANCE.
-      "spreadMultiplier": 3.0,
-
-      // ── TP/SL Dynamic (base trên FR + ATR) ──
-
-      // TP = |FR%| × hệ số này. VD: FR=0.5% × 2.0 = TP 1.0%.
-      // Set 2.0 để TP cứng làm "phao cứu sinh" xa → nhường việc chốt lời cho Trailing Stop.
-      "tpFundingMultiplier": 2.0,
-
-      // TP += ATR% × hệ số này. Set 0.0 = không cộng ATR vào TP.
-      // Tránh TP cứng dính quá sớm do nhiễu giá.
-      "tpAtrMultiplier": 0.0,
-
-      // SL = max(FR × slFundingMultiplier, ATR × slAtrMultiplier).
-      // ATR 1% × 1.5 = SL 1.5%. Đảm bảo SL đủ xa để không bị râu nến quét oan.
-      "slAtrMultiplier": 1.5,
-
-      // SL tối thiểu dựa trên FR. VD: FR=0.5% × 1.0 = SL ít nhất 0.5%.
-      // Bot lấy MAX giữa cái này và ATR-based SL → luôn chọn cái xa hơn.
-      "slFundingMultiplier": 1.0,
-
-      // ── FR-Dynamic Trap: Tự scale Trap theo |FR| ──
-      // Công thức: giá_trị = clamp(|FR%| × multiplier, min, max)
-      // FR cao → đám đông xả mạnh → râu nến dài → trap phải xa hơn.
-
-      // Độ sâu bẫy (% so với peak price). FR=0.7% → 0.7×4=2.8%.
-      "trapDepthMultiplier": 4.0,
-      "minTrapDepth": 1.5, // Sàn: không bẫy quá gần (dễ bị fill ngay, không phải "râu")
-      "maxTrapDepth": 6.0, // Trần: không bẫy quá xa (khó dính, kẹt vốn)
-
-      // TP cho lệnh Trap. FR=0.7% → 0.7×2.5=1.75%.
-      // Trap bắt nhịp hồi (bounce) → FR cao = bounce lớn → TP nới.
-      "trapTpMultiplier": 2.5,
-      "minTrapTP": 1.0,
-      "maxTrapTP": 5.0,
-
-      // SL cho lệnh Trap. FR=0.7% → 0.7×2=1.4%.
-      // FR cao = biến động mạnh → SL chặt quá = bị quét oan trước khi bounce.
-      "trapSlMultiplier": 2.0,
-      "minTrapSL": 1.0,
-      "maxTrapSL": 4.0,
-
-      // ── FR-Dynamic Trailing: Tự scale Trailing theo |FR| ──
-      // FR nhỏ = sóng nhỏ → trailing bật sớm, callback chặt.
-      // FR lớn = sóng lớn → trailing bật muộn hơn, callback nới để ride trend.
-
-      // Ngưỡng kích hoạt trailing (% lãi). FR=0.7% → 0.7×1.5=1.05%.
-      // Trailing chỉ bật khi PnL đạt mức này. Trước đó = dead zone không có chốt lời.
-      "trailingActivationMultiplier": 1.5,
-      "minActivation": 0.2, // Sàn: ít nhất 0.2% lãi mới bật (cover entry cost)
-      "maxActivation": 3.0, // Trần: FR cực cao cũng không đợi quá 3%
-
-      // Tỷ lệ rút râu trigger close (% tụt từ đỉnh). FR=0.7% → 0.7×0.7=0.49%.
-      // Giá leo lên đỉnh rồi tụt 0.49% → MEXC tự close position.
-      "trailingCallbackMultiplier": 0.7,
-      "minCallback": 0.3, // Sàn: tụt ít nhất 0.3% mới chốt (tránh noise)
-      "maxCallback": 1.5, // Trần: không nới quá 1.5% (giữ lời)
+        "callbackMultiplier":   0.7,
+        "minCallback":          0.3,
+        "maxCallback":          1.5
+      }
     },
 
-    // ══════════════════════════════════════════════════════════════
-    // Trailing Stop — Native MEXC TrackOrder
-    // Đẩy trailing xuống engine sàn → triệt tiêu network latency.
-    // Bot crash giữa chừng vẫn an toàn vì sàn tự chốt.
-    // ══════════════════════════════════════════════════════════════
-    "trailingConfig": {
-      "enabled": true,
-      // Giá trị cứng fallback khi dynamicPricing.enabled=false.
-      // Khi enabled=true → bị override bởi FR × trailingActivationMultiplier/CallbackMultiplier.
-      "activationPct": 1.0, // Bật trailing khi lãi ≥ 1%
-      "callbackPct": 0.5, // Chốt khi giá tụt 0.5% từ đỉnh
-    },
+    // ── 4. Straddle Trap (Gọng Kìm / Catch the Dump) ─────────────
+    // Static fallback + FR-dynamic multipliers + dedicated trailing
+    // Yêu cầu: positionMode = HEDGE
+    "fundingTrap": {
+      "enabled":       true,
+      "depthPct":      2.5,           // Fallback: sâu 2.5% dưới/trên peak
+      "takeProfitPct": 1.5,           // Fallback: chốt lời khi bounce 1.5%
+      "stopLossPct":   1.5,           // Fallback: cắt lỗ nếu giá đi tiếp 1.5%
 
-    // ══════════════════════════════════════════════════════════════
-    // Straddle Trapping — Gọng Kìm bắt râu nến
-    // Sau khi IOC fill, ném thêm lệnh Limit ngược chiều bắt nhịp hồi.
-    // Yêu cầu: positionMode = "HEDGE" (2 vị thế ngược chiều cùng lúc).
-    // ══════════════════════════════════════════════════════════════
-    "enableHedgeTrap": true,
+      // FR-Dynamic: clamp(|FR%| × multiplier, min, max)
+      "depthMultiplier": 4.0,         // FR=0.7% → 0.7×4 = 2.8%
+      "minDepth":        1.5,
+      "maxDepth":        6.0,
 
-    // Giá trị cứng fallback khi dynamicPricing.enabled=false.
-    // Khi enabled=true → bị override bởi FR × trapDepthMultiplier/TpMultiplier/SlMultiplier.
-    "trapDepthPct": 2.5, // Đặt bẫy sâu 2.5% dưới/trên peak
-    "trapTakeProfitPct": 1.5, // Chốt lời trap khi bounce 1.5%
-    "trapStopLossPct": 1.5, // Cắt lỗ trap nếu giá đi tiếp 1.5%
+      "tpMultiplier":    2.5,         // FR=0.7% → 0.7×2.5 = 1.75%
+      "minTP":           1.0,
+      "maxTP":           5.0,
 
-    // Trailing riêng cho lệnh Trap (không bị FR-dynamic override).
-    // Trap bắt râu nến → cần activation=0 (bật ngay khi fill, không chờ).
-    "trapTrailingConfig": {
-      "enabled": true,
-      "activationPct": 0, // Bật ngay lập tức — râu nến nảy nhanh, không chờ được
-      "callbackPct": 0.5, // Tụt 0.5% từ đỉnh bounce → chốt
-    },
-  },
+      "slMultiplier":    2.0,         // FR=0.7% → 0.7×2 = 1.4%
+      "minSL":           1.0,
+      "maxSL":           4.0,
+
+      // Trailing riêng cho Trap (râu nến nảy nhanh → bật ngay)
+      "trailing": {
+        "enabled":       true,
+        "activationPct": 0,           // Bật ngay khi fill
+        "callbackPct":   0.5          // Tụt 0.5% từ đỉnh → chốt
+      }
+    }
+  }
 }

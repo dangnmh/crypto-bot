@@ -1,50 +1,50 @@
-package exchange
+package exchange_test
 
 import (
 	"testing"
+
+	"crypto-bot/internal/infrastructure/exchange"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSideStr(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
+		name     string
 		side     int
 		expected string
 	}{
-		{SideOpenLong, "LONG"},
-		{SideOpenShort, "SHORT"},
-		{SideCloseShort, "CLOSE_SHORT"},
-		{SideCloseLong, "CLOSE_LONG"},
-		{999, "UNKNOWN"},
+		{"long", exchange.SideOpenLong, "LONG"},
+		{"short", exchange.SideOpenShort, "SHORT"},
+		{"close short", exchange.SideCloseShort, "CLOSE_SHORT"},
+		{"close long", exchange.SideCloseLong, "CLOSE_LONG"},
+		{"unknown", 999, "UNKNOWN"},
 	}
 
 	for _, tt := range tests {
-		actual := SideStr(tt.side)
-		if actual != tt.expected {
-			t.Errorf("SideStr(%d): expected %s, got %s", tt.side, tt.expected, actual)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, exchange.SideStr(tt.side))
+		})
 	}
 }
 
 func TestCloseSideFor(t *testing.T) {
-	if CloseSideFor(SideOpenLong) != SideCloseLong {
-		t.Errorf("CloseSideFor(SideOpenLong) should be SideCloseLong")
-	}
-	if CloseSideFor(SideOpenShort) != SideCloseShort {
-		t.Errorf("CloseSideFor(SideOpenShort) should be SideCloseShort")
-	}
+	t.Parallel()
+	assert.Equal(t, exchange.SideCloseLong, exchange.CloseSideFor(exchange.SideOpenLong))
+	assert.Equal(t, exchange.SideCloseShort, exchange.CloseSideFor(exchange.SideOpenShort))
 }
 
 func TestIsTerminalOrderState(t *testing.T) {
-	terminalStates := []int{OrderStateFilled, OrderStateCanceled, OrderStatePartial}
+	t.Parallel()
+	terminalStates := []int{exchange.OrderStateFilled, exchange.OrderStateCanceled, exchange.OrderStatePartial}
 	for _, state := range terminalStates {
-		if !IsTerminalOrderState(state) {
-			t.Errorf("expected state %d to be terminal", state)
-		}
+		assert.True(t, exchange.IsTerminalOrderState(state))
 	}
 
 	nonTerminalStates := []int{1, 2, 6}
 	for _, state := range nonTerminalStates {
-		if IsTerminalOrderState(state) {
-			t.Errorf("expected state %d to NOT be terminal", state)
-		}
+		assert.False(t, exchange.IsTerminalOrderState(state))
 	}
 }

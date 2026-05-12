@@ -3,6 +3,8 @@ package exchange
 import (
 	"context"
 	"time"
+
+	"crypto-bot/internal/domain"
 )
 
 // MarketDataProvider is the interface for reading market data.
@@ -13,6 +15,8 @@ type MarketDataProvider interface {
 	GetFundingRate(ctx context.Context, symbol string) (*FundingRateDetail, error)
 	GetServerTime(ctx context.Context) (int64, error)
 	GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]Kline, error)
+	GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error)
+	GetDepthCommits(ctx context.Context, symbol string, limit int) ([]DepthCommit, error)
 }
 
 // OrderExecutor is the interface for placing and managing orders.

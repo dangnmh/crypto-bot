@@ -62,7 +62,7 @@ func (s *TickerStore) syncTickers(ctx context.Context, client exchange.Client) {
 }
 
 // GetTicker returns the latest ticker data for a symbol.
-func (s *TickerStore) GetTicker(symbol string) (*TickerData, error) {
+func (s *TickerStore) GetTicker(_ context.Context, symbol string) (*TickerData, error) {
 	s.mu.RLock()
 	td, ok := s.tickers[symbol]
 	s.mu.RUnlock()
@@ -74,7 +74,7 @@ func (s *TickerStore) GetTicker(symbol string) (*TickerData, error) {
 }
 
 // GetAllTickers returns all ticker data as a slice.
-func (s *TickerStore) GetAllTickers() []*TickerData {
+func (s *TickerStore) GetAllTickers(_ context.Context) []*TickerData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

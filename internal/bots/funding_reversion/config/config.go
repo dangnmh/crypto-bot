@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"crypto-bot/internal/bots/funding_reversion/domain"
+
 	"github.com/tailscale/hujson"
 )
 
@@ -42,7 +44,7 @@ func (c *Config) validate() error {
 	var defaults TradingDefaults
 	if c.System.TradingDefaults != nil {
 		if err := json.Unmarshal(c.System.TradingDefaults, &defaults); err != nil {
-			return fmt.Errorf("failed to parse trading defaults: %w", err)
+			return fmt.Errorf("parse trading defaults: %w", err)
 		}
 	}
 
@@ -73,92 +75,107 @@ func (c *Config) validate() error {
 }
 
 func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
-	defaultFloat(&sc.MinFundingRate, d.MinFundingRate)
 	defaultFloat(&sc.MaxPriceDiffPercent, d.MaxPriceDiffPercent)
+	defaultFloat(&sc.MinFundingRate, d.MinFundingRate)
 	defaultInt(&sc.Leverage, d.Leverage)
-	defaultStr((*string)(&sc.OpenType), string(d.OpenType))
-	defaultStr((*string)(&sc.PositionMode), string(d.PositionMode))
-	defaultFloat(&sc.TakeProfitPct, d.TakeProfitPct)
-	defaultFloat(&sc.StopLossPct, d.StopLossPct)
-	defaultFloat(&sc.TrapDepthPct, d.TrapDepthPct)
-	defaultFloat(&sc.TrapTakeProfitPct, d.TrapTakeProfitPct)
-	defaultFloat(&sc.TrapStopLossPct, d.TrapStopLossPct)
+	defaultStr((*string)(&sc.OpenType), d.OpenType)
+	defaultStr((*string)(&sc.PositionMode), d.PositionMode)
 
-	if !sc.DynamicPricing.Enabled && d.DynamicPricing.Enabled {
-		sc.DynamicPricing = d.DynamicPricing
-	}
-	if !sc.TrailingConfig.Enabled && d.TrailingConfig.Enabled {
-		sc.TrailingConfig = d.TrailingConfig
-	}
-	if !sc.TrapTrailingConfig.Enabled && d.TrapTrailingConfig.Enabled {
-		sc.TrapTrailingConfig = d.TrapTrailingConfig
+	if !sc.FundingReversion.Enabled && d.FundingReversion.Enabled {
+		sc.FundingReversion = d.FundingReversion
+	} else if sc.FundingReversion.Enabled {
+		defaultFloat(&sc.FundingReversion.TakeProfitPct, d.FundingReversion.TakeProfitPct)
+		defaultFloat(&sc.FundingReversion.StopLossPct, d.FundingReversion.StopLossPct)
+		if !sc.FundingReversion.DynamicPricing.Enabled && d.FundingReversion.DynamicPricing.Enabled {
+			sc.FundingReversion.DynamicPricing = d.FundingReversion.DynamicPricing
+		}
+		if !sc.FundingReversion.Trailing.Enabled && d.FundingReversion.Trailing.Enabled {
+			sc.FundingReversion.Trailing = d.FundingReversion.Trailing
+		}
 	}
 
-	if sc.EnableHedgeTrap == nil {
-		sc.EnableHedgeTrap = d.EnableHedgeTrap
+	if !sc.FundingTrap.Enabled && d.FundingTrap.Enabled {
+		sc.FundingTrap = d.FundingTrap
+	} else if sc.FundingTrap.Enabled {
+		defaultFloat(&sc.FundingTrap.DepthPct, d.FundingTrap.DepthPct)
+		defaultFloat(&sc.FundingTrap.TakeProfitPct, d.FundingTrap.TakeProfitPct)
+		defaultFloat(&sc.FundingTrap.StopLossPct, d.FundingTrap.StopLossPct)
+		if !sc.FundingTrap.Trailing.Enabled && d.FundingTrap.Trailing.Enabled {
+			sc.FundingTrap.Trailing = d.FundingTrap.Trailing
+		}
 	}
 }
 
 func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
-	sc.MinFundingRate /= 100
 	sc.MaxPriceDiffPercent /= 100
 
-	if sc.TakeProfitPct <= 0 {
-		sc.TakeProfitPct = 20
-	}
-	if sc.StopLossPct <= 0 {
-		sc.StopLossPct = 5
-	}
-	sc.TakeProfitPct /= 100
-	sc.StopLossPct /= 100
+	sc.MinFundingRate /= 100
 
-	if sc.IsHedgeTrapEnabled() {
-		if sc.TrapDepthPct <= 0 {
-			sc.TrapDepthPct = 5
+	if sc.FundingReversion.Enabled {
+		if sc.FundingReversion.TakeProfitPct <= 0 {
+			sc.FundingReversion.TakeProfitPct = 20
 		}
-		if sc.TrapTakeProfitPct <= 0 {
-			sc.TrapTakeProfitPct = 2
+		if sc.FundingReversion.StopLossPct <= 0 {
+			sc.FundingReversion.StopLossPct = 5
 		}
-		if sc.TrapStopLossPct <= 0 {
-			sc.TrapStopLossPct = 2
+		sc.FundingReversion.TakeProfitPct /= 100
+		sc.FundingReversion.StopLossPct /= 100
+
+		sc.FundingReversion.Trailing.ActivationPct /= 100
+		sc.FundingReversion.Trailing.CallbackPct /= 100
+
+		if sc.FundingReversion.DynamicPricing.Enabled {
+			setTrailingDynamicDefaults(&sc.FundingReversion.Trailing)
 		}
-		sc.TrapDepthPct /= 100
-		sc.TrapTakeProfitPct /= 100
-		sc.TrapStopLossPct /= 100
 	}
 
-	sc.TrailingConfig.ActivationPct /= 100
-	sc.TrailingConfig.CallbackPct /= 100
-	sc.TrapTrailingConfig.ActivationPct /= 100
-	sc.TrapTrailingConfig.CallbackPct /= 100
+	if sc.FundingTrap.Enabled {
+		if sc.FundingTrap.DepthPct <= 0 {
+			sc.FundingTrap.DepthPct = 5
+		}
+		if sc.FundingTrap.TakeProfitPct <= 0 {
+			sc.FundingTrap.TakeProfitPct = 2
+		}
+		if sc.FundingTrap.StopLossPct <= 0 {
+			sc.FundingTrap.StopLossPct = 2
+		}
+		sc.FundingTrap.DepthPct /= 100
+		sc.FundingTrap.TakeProfitPct /= 100
+		sc.FundingTrap.StopLossPct /= 100
 
-	if sc.DynamicPricing.Enabled {
-		setDynamicDefaults(&sc.DynamicPricing)
+		sc.FundingTrap.Trailing.ActivationPct /= 100
+		sc.FundingTrap.Trailing.CallbackPct /= 100
+
+		if sc.FundingReversion.DynamicPricing.Enabled {
+			setTrapDynamicDefaults(&sc.FundingTrap)
+		}
 	}
 }
 
-func setDynamicDefaults(dp *DynamicPricingConfig) {
-	defaultFloat(&dp.TrapDepthMultiplier, 4.0)
-	defaultFloat(&dp.MinTrapDepth, 1.5)
-	defaultFloat(&dp.MaxTrapDepth, 6.0)
-	defaultFloat(&dp.TrapTpMultiplier, 2.5)
-	defaultFloat(&dp.MinTrapTP, 1.0)
-	defaultFloat(&dp.MaxTrapTP, 5.0)
-	defaultFloat(&dp.TrapSlMultiplier, 2.0)
-	defaultFloat(&dp.MinTrapSL, 1.0)
-	defaultFloat(&dp.MaxTrapSL, 4.0)
+func setTrapDynamicDefaults(trap *domain.FundingTrapConfig) {
+	defaultFloat(&trap.DepthMultiplier, 4.0)
+	defaultFloat(&trap.MinDepth, 1.5)
+	defaultFloat(&trap.MaxDepth, 6.0)
+	defaultFloat(&trap.TpMultiplier, 2.5)
+	defaultFloat(&trap.MinTP, 1.0)
+	defaultFloat(&trap.MaxTP, 5.0)
+	defaultFloat(&trap.SlMultiplier, 2.0)
+	defaultFloat(&trap.MinSL, 1.0)
+	defaultFloat(&trap.MaxSL, 4.0)
+}
 
-	defaultFloat(&dp.TrailingActivationMultiplier, 1.5)
-	defaultFloat(&dp.MinActivation, 0.2)
-	defaultFloat(&dp.MaxActivation, 3.0)
-	defaultFloat(&dp.TrailingCallbackMultiplier, 0.7)
-	defaultFloat(&dp.MinCallback, 0.3)
-	defaultFloat(&dp.MaxCallback, 1.5)
+func setTrailingDynamicDefaults(trail *domain.TrailingConfig) {
+	defaultFloat(&trail.ActivationMultiplier, 1.5)
+	defaultFloat(&trail.MinActivation, 0.2)
+	defaultFloat(&trail.MaxActivation, 3.0)
+	defaultFloat(&trail.CallbackMultiplier, 0.7)
+	defaultFloat(&trail.MinCallback, 0.3)
+	defaultFloat(&trail.MaxCallback, 1.5)
 }
 
 func (c *Config) defaultSymbolModes(sc *SymbolConfig) {
 	switch strings.ToUpper(string(sc.OpenType)) {
-	case "ISOLATED":
+	case string(OpenTypeIsolated):
 		sc.ParsedOpenType = 1
 	case "CROSS":
 		sc.ParsedOpenType = 2
@@ -167,7 +184,7 @@ func (c *Config) defaultSymbolModes(sc *SymbolConfig) {
 	}
 
 	switch strings.ToUpper(string(sc.PositionMode)) {
-	case "HEDGE":
+	case string(PositionModeHedge):
 		sc.ParsedPositionMode = 1
 	case "ONE_WAY":
 		sc.ParsedPositionMode = 2
@@ -178,7 +195,7 @@ func (c *Config) defaultSymbolModes(sc *SymbolConfig) {
 
 // IsHedgeTrapEnabled returns true if hedge trap is enabled for this symbol config.
 func (sc *SymbolConfig) IsHedgeTrapEnabled() bool {
-	return sc.EnableHedgeTrap != nil && *sc.EnableHedgeTrap
+	return sc.FundingTrap.Enabled
 }
 
 func defaultFloat(target *float64, fallback float64) {

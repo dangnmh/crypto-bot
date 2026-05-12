@@ -63,7 +63,7 @@ func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, 
 }
 
 // GetFunding returns the funding rate details for a symbol.
-func (s *FundingStore) GetFunding(symbol string) (*FundingData, error) {
+func (s *FundingStore) GetFunding(_ context.Context, symbol string) (*FundingData, error) {
 	s.mu.RLock()
 	fd, ok := s.funding[symbol]
 	s.mu.RUnlock()
@@ -75,7 +75,7 @@ func (s *FundingStore) GetFunding(symbol string) (*FundingData, error) {
 }
 
 // GetSettleTime returns the next funding settlement time for a symbol.
-func (s *FundingStore) GetSettleTime(symbol string) (time.Time, error) {
+func (s *FundingStore) GetSettleTime(_ context.Context, symbol string) (time.Time, error) {
 	s.mu.RLock()
 	fd, ok := s.funding[symbol]
 	s.mu.RUnlock()

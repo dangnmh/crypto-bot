@@ -1,2 +1,17 @@
+# Environment
 .env
+
+# Build artifacts
+bin/
+
+# Logs
 logs/
+
+# Coverage
+.coverage/
+coverage
+coverage.out
+coverage.html
+
+# SonarQube
+.scannerwork/

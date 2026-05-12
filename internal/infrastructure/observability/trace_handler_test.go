@@ -1,0 +1,89 @@
+package observability_test
+
+import (
+	"context"
+	"log/slog"
+	"testing"
+
+	"crypto-bot/internal/infrastructure/observability"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestTraceHandler(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		fn   func(t *testing.T)
+	}{
+		{
+			name: "Enabled delegates to inner",
+			fn: func(t *testing.T) {
+				th := observability.NewTraceHandler(slog.Default().Handler())
+				assert.True(t, th.Enabled(context.Background(), slog.LevelInfo))
+			},
+		},
+		{
+			name: "Handle without span succeeds",
+			fn: func(t *testing.T) {
+				th := observability.NewTraceHandler(slog.Default().Handler())
+				r := slog.NewRecord(time.Now(), slog.LevelInfo, "test", 0)
+				assert.NoError(t, th.Handle(context.Background(), r))
+			},
+		},
+		{
+			name: "Handle with correlation ID succeeds",
+			fn: func(t *testing.T) {
+				th := observability.NewTraceHandler(slog.Default().Handler())
+				ctx := observability.WithCorrelationIDValue(context.Background(), "req-123")
+				r := slog.NewRecord(time.Now(), slog.LevelInfo, "test", 0)
+				assert.NoError(t, th.Handle(ctx, r))
+			},
+		},
+		{
+			name: "WithAttrs returns non-nil handler",
+			fn: func(t *testing.T) {
+				th := observability.NewTraceHandler(slog.Default().Handler())
+				h2 := th.WithAttrs([]slog.Attr{slog.String("key", "val")})
+				require.NotNil(t, h2)
+				_, ok := h2.(*observability.TraceHandler)
+				assert.True(t, ok, "should return *observability.TraceHandler")
+			},
+		},
+		{
+			name: "WithGroup returns non-nil handler",
+			fn: func(t *testing.T) {
+				th := observability.NewTraceHandler(slog.Default().Handler())
+				h2 := th.WithGroup("grp")
+				require.NotNil(t, h2)
+				_, ok := h2.(*observability.TraceHandler)
+				assert.True(t, ok, "should return *observability.TraceHandler")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.fn(t)
+		})
+	}
+}
+
+func TestInitTelemetry_NoMetricsPort(t *testing.T) {
+	t.Parallel()
+	tel, shutdown := observability.InitTelemetry(observability.TelemetryConfig{
+		ServiceName: "test-svc",
+		MetricsPort: 0,
+	})
+	defer func() { _ = shutdown(context.Background()) }()
+
+	require.NotNil(t, tel)
+	assert.NotNil(t, tel.TracerProvider)
+	assert.NotNil(t, tel.MeterProvider)
+	assert.NotNil(t, tel.Tracer)
+	assert.NotNil(t, tel.Meter)
+}

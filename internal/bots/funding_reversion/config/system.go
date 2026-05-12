@@ -34,6 +34,9 @@ type SafetyConfig struct {
 	HoldDuration types.Duration `json:"holdDuration"` // max time to hold position (e.g. "30s")
 	// Hedge Trapping configurations
 	TrapAfterSettle types.Duration `json:"trapAfterSettle"` // Duration after settle to throw trap
+
+	// Post-settle safety
+	PostSettleTimeout types.Duration `json:"postSettleTimeout"` // Max time to wait for position close (default 60s)
 }
 
 // LoadSystemConfig loads the system configuration from the given path.
@@ -70,6 +73,9 @@ func (c *SystemConfig) validate() error {
 	}
 	if c.Safety.TrapAfterSettle <= 0 {
 		c.Safety.TrapAfterSettle = types.Duration(10 * 1e6) // 10ms
+	}
+	if c.Safety.PostSettleTimeout <= 0 {
+		c.Safety.PostSettleTimeout = types.Duration(60 * 1e9) // 60s
 	}
 	if c.Sync.FundingSync <= 0 {
 		c.Sync.FundingSync = types.Duration(10 * 1e9) // 10s

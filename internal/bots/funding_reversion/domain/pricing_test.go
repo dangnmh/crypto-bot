@@ -1,10 +1,13 @@
-package domain
+package domain_test
 
 import (
 	"math"
 	"testing"
 
+	domain "crypto-bot/internal/bots/funding_reversion/domain"
+
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/pkg/decmath"
 )
 
 func almostEqual(a, b, eps float64) bool {
@@ -12,6 +15,7 @@ func almostEqual(a, b, eps float64) bool {
 }
 
 func TestCalculateIOCPrice(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                string
 		side                shared.Side
@@ -97,17 +101,18 @@ func TestCalculateIOCPrice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Candidate{
-				TradeIntent: TradeIntent{Side: tt.side},
-				MarketData: MarketData{
+			t.Parallel()
+			c := &domain.Candidate{
+				TradeIntent: domain.TradeIntent{Side: tt.side},
+				MarketData: domain.MarketData{
 					BestBid: tt.bestBid,
 					BestAsk: tt.bestAsk,
 				},
-				ContractSpec: ContractSpec{
+				ContractSpec: domain.ContractSpec{
 					PriceUnit:  tt.priceUnit,
 					PriceScale: tt.priceScale,
 				},
-				Config: TradeConfig{MaxPriceDiffPercent: tt.maxPriceDiffPercent},
+				Config: domain.TradeConfig{MaxPriceDiffPercent: tt.maxPriceDiffPercent},
 			}
 			got, err := c.CalculateIOCPrice(nil)
 
@@ -128,6 +133,7 @@ func TestCalculateIOCPrice(t *testing.T) {
 }
 
 func TestCalculateVolume(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		marginUSDT   float64
@@ -190,14 +196,15 @@ func TestCalculateVolume(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Candidate{
-				Config: TradeConfig{MarginUSDT: tt.marginUSDT, Leverage: tt.leverage},
-				ContractSpec: ContractSpec{
+			t.Parallel()
+			c := &domain.Candidate{
+				Config: domain.TradeConfig{MarginUSDT: tt.marginUSDT, Leverage: tt.leverage},
+				ContractSpec: domain.ContractSpec{
 					ContractSize: tt.contractSize,
 					MinVol:       int(tt.minVol),
 					VolScale:     tt.volScale,
 				},
-				MarketData: MarketData{
+				MarketData: domain.MarketData{
 					LastPrice: tt.lastPrice,
 				},
 			}
@@ -210,6 +217,7 @@ func TestCalculateVolume(t *testing.T) {
 }
 
 func TestRoundToScale(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		v    float64
 		n    int
@@ -222,13 +230,14 @@ func TestRoundToScale(t *testing.T) {
 		{100.0, 0, 100},
 	}
 	for _, tt := range tests {
-		if got := roundToScale(tt.v, tt.n); !almostEqual(got, tt.want, 1e-10) {
-			t.Errorf("roundToScale(%v, %d) = %v, want %v", tt.v, tt.n, got, tt.want)
+		if got := decmath.RoundToScale(tt.v, tt.n); !almostEqual(got, tt.want, 1e-10) {
+			t.Errorf("decmath.RoundToScale(%v, %d) = %v, want %v", tt.v, tt.n, got, tt.want)
 		}
 	}
 }
 
 func TestFloorToScale(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		v    float64
 		n    int
@@ -241,13 +250,14 @@ func TestFloorToScale(t *testing.T) {
 		{0.12345, 4, 0.1234},
 	}
 	for _, tt := range tests {
-		if got := floorToScale(tt.v, tt.n); !almostEqual(got, tt.want, 1e-10) {
-			t.Errorf("floorToScale(%v, %d) = %v, want %v", tt.v, tt.n, got, tt.want)
+		if got := decmath.FloorToScale(tt.v, tt.n); !almostEqual(got, tt.want, 1e-10) {
+			t.Errorf("decmath.FloorToScale(%v, %d) = %v, want %v", tt.v, tt.n, got, tt.want)
 		}
 	}
 }
 
 func TestCalculateTrapPrice(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		side         shared.Side
@@ -302,17 +312,18 @@ func TestCalculateTrapPrice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Candidate{
-				TradeIntent: TradeIntent{Side: tt.side},
-				MarketData: MarketData{
+			t.Parallel()
+			c := &domain.Candidate{
+				TradeIntent: domain.TradeIntent{Side: tt.side},
+				MarketData: domain.MarketData{
 					BestBid: tt.peakPrice,
 					BestAsk: tt.peakPrice,
 				},
-				ContractSpec: ContractSpec{
+				ContractSpec: domain.ContractSpec{
 					PriceUnit:  tt.priceUnit,
 					PriceScale: tt.priceScale,
 				},
-				Config: TradeConfig{TrapDepthPct: tt.trapDepthPct},
+				Config: domain.TradeConfig{FundingTrap: domain.FundingTrapConfig{DepthPct: tt.trapDepthPct}},
 			}
 			got := c.CalculateTrapPrice()
 			if !almostEqual(got, tt.wantPrice, 1e-10) {
@@ -320,4 +331,232 @@ func TestCalculateTrapPrice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetPeakPrice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		side    shared.Side
+		bestBid float64
+		bestAsk float64
+		want    float64
+	}{
+		{"LONG returns bestAsk", shared.SideOpenLong, 100, 101, 101},
+		{"SHORT returns bestBid", shared.SideOpenShort, 100, 101, 100},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &domain.Candidate{
+				TradeIntent: domain.TradeIntent{Side: tt.side},
+				MarketData:  domain.MarketData{BestBid: tt.bestBid, BestAsk: tt.bestAsk},
+			}
+			if got := c.GetPeakPrice(); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCalculateVolume_UsesRefPrice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		side      shared.Side
+		lastPrice float64
+		bestBid   float64
+		bestAsk   float64
+		wantPrice float64 // the ref price used
+	}{
+		{
+			name:      "LONG uses BestAsk when available",
+			side:      shared.SideOpenLong,
+			lastPrice: 100,
+			bestBid:   99,
+			bestAsk:   102,
+			wantPrice: 102,
+		},
+		{
+			name:      "SHORT uses BestBid when available",
+			side:      shared.SideOpenShort,
+			lastPrice: 100,
+			bestBid:   98,
+			bestAsk:   102,
+			wantPrice: 98,
+		},
+		{
+			name:      "LONG falls back to LastPrice when BestAsk is 0",
+			side:      shared.SideOpenLong,
+			lastPrice: 100,
+			bestBid:   99,
+			bestAsk:   0,
+			wantPrice: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &domain.Candidate{
+				TradeIntent: domain.TradeIntent{Side: tt.side},
+				Config:      domain.TradeConfig{MarginUSDT: 100, Leverage: 10},
+				ContractSpec: domain.ContractSpec{
+					ContractSize: 1.0,
+					MinVol:       1,
+					VolScale:     2,
+				},
+				MarketData: domain.MarketData{
+					LastPrice: tt.lastPrice,
+					BestBid:   tt.bestBid,
+					BestAsk:   tt.bestAsk,
+				},
+			}
+			got := c.CalculateVolume()
+			// notional = 100*10 = 1000, vol = 1000 / (1.0 * refPrice)
+			expectedVol := decmath.FloorToScale(1000.0/tt.wantPrice, 2)
+			if !almostEqual(got, expectedVol, 0.01) {
+				t.Errorf("got %v, want %v (ref price %v)", got, expectedVol, tt.wantPrice)
+			}
+		})
+	}
+}
+
+func TestPrepareDynamicPricing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("disabled does nothing", func(t *testing.T) {
+		t.Parallel()
+		c := &domain.Candidate{
+			Config: domain.TradeConfig{
+				FundingReversion: domain.FundingReversionConfig{
+					TakeProfitPct: 0.2,
+					StopLossPct:   0.05,
+					DynamicPricing: domain.DynamicPricingConfig{
+						Enabled: false,
+					},
+				},
+			},
+		}
+		c.PrepareDynamicPricing()
+		if c.Config.FundingReversion.TakeProfitPct != 0.2 {
+			t.Errorf("TP changed: got %v", c.Config.FundingReversion.TakeProfitPct)
+		}
+	})
+
+	t.Run("calculates TP and SL from ATR and FR", func(t *testing.T) {
+		t.Parallel()
+		c := &domain.Candidate{
+			TradeIntent: domain.TradeIntent{FundingRate: 0.001}, // 0.1%
+			MarketData:  domain.MarketData{LastPrice: 100},
+			TradePlan:   domain.TradePlan{ATR: 2.0}, // 2% ATR
+			Config: domain.TradeConfig{
+				FundingReversion: domain.FundingReversionConfig{
+					TakeProfitPct: 0.01,
+					StopLossPct:   0.01,
+					DynamicPricing: domain.DynamicPricingConfig{
+						Enabled:             true,
+						TpFundingMultiplier: 10.0,
+						TpAtrMultiplier:     2.0,
+						SlFundingMultiplier: 5.0,
+						SlAtrMultiplier:     1.5,
+					},
+				},
+			},
+		}
+		c.PrepareDynamicPricing()
+
+		// frPct = 0.1, atrPct = 2.0
+		// tp = 0.1*10 + 2.0*2 = 5.0
+		// sl = max(0.1*5, 2.0*1.5) = max(0.5, 3.0) = 3.0
+		if c.Config.FundingReversion.TakeProfitPct != 5.0 {
+			t.Errorf("TP: got %v, want 5.0", c.Config.FundingReversion.TakeProfitPct)
+		}
+		if c.Config.FundingReversion.StopLossPct != 3.0 {
+			t.Errorf("SL: got %v, want 3.0", c.Config.FundingReversion.StopLossPct)
+		}
+	})
+
+	t.Run("calculates trap params when hedge trap enabled", func(t *testing.T) {
+		t.Parallel()
+		c := &domain.Candidate{
+			TradeIntent: domain.TradeIntent{FundingRate: -0.002}, // -0.2%
+			MarketData:  domain.MarketData{LastPrice: 50},
+			TradePlan:   domain.TradePlan{ATR: 1.0},
+			Config: domain.TradeConfig{
+				FundingTrap: domain.FundingTrapConfig{
+					Enabled:         true,
+					DepthMultiplier: 4.0,
+					MinDepth:        1.5,
+					MaxDepth:        6.0,
+					TpMultiplier:    2.5,
+					MinTP:           1.0,
+					MaxTP:           5.0,
+					SlMultiplier:    2.0,
+					MinSL:           1.0,
+					MaxSL:           4.0,
+				},
+				FundingReversion: domain.FundingReversionConfig{
+					DynamicPricing: domain.DynamicPricingConfig{
+						Enabled:             true,
+						TpFundingMultiplier: 5.0,
+						TpAtrMultiplier:     1.0,
+						SlFundingMultiplier: 2.0,
+						SlAtrMultiplier:     1.0,
+					},
+				},
+			},
+		}
+		c.PrepareDynamicPricing()
+
+		// frPct = 0.2
+		// Trap.DepthPct = ClampPct(0.2*4.0, 1.5, 6.0) = ClampPct(0.8, 1.5, 6.0) = 1.5/100 = 0.015
+		if !almostEqual(c.Config.FundingTrap.DepthPct, 0.015, 1e-6) {
+			t.Errorf("Trap.DepthPct: got %v, want 0.015", c.Config.FundingTrap.DepthPct)
+		}
+	})
+
+	t.Run("calculates trailing params", func(t *testing.T) {
+		t.Parallel()
+		c := &domain.Candidate{
+			TradeIntent: domain.TradeIntent{FundingRate: 0.005}, // 0.5%
+			MarketData:  domain.MarketData{LastPrice: 100},
+			TradePlan:   domain.TradePlan{ATR: 3.0},
+			Config: domain.TradeConfig{
+				FundingReversion: domain.FundingReversionConfig{
+					Trailing: domain.TrailingConfig{
+						Enabled:              true,
+						ActivationMultiplier: 1.5,
+						MinActivation:        0.2,
+						MaxActivation:        3.0,
+						CallbackMultiplier:   0.7,
+						MinCallback:          0.3,
+						MaxCallback:          1.5,
+					},
+					DynamicPricing: domain.DynamicPricingConfig{
+						Enabled:             true,
+						TpFundingMultiplier: 5.0,
+						TpAtrMultiplier:     1.0,
+						SlFundingMultiplier: 2.0,
+						SlAtrMultiplier:     1.0,
+					},
+				},
+			},
+		}
+		c.PrepareDynamicPricing()
+
+		// frPct = 0.5
+		// ActivationPct = ClampPct(0.5*1.5, 0.2, 3.0) = ClampPct(0.75, 0.2, 3.0) = 0.75/100 = 0.0075
+		if !almostEqual(c.Config.FundingReversion.Trailing.ActivationPct, 0.0075, 1e-6) {
+			t.Errorf("ActivationPct: got %v, want 0.0075", c.Config.FundingReversion.Trailing.ActivationPct)
+		}
+
+		// CallbackPct = ClampPct(0.5*0.7, 0.3, 1.5) = ClampPct(0.35, 0.3, 1.5) = 0.35/100 = 0.0035
+		if !almostEqual(c.Config.FundingReversion.Trailing.CallbackPct, 0.0035, 1e-6) {
+			t.Errorf("CallbackPct: got %v, want 0.0035", c.Config.FundingReversion.Trailing.CallbackPct)
+		}
+	})
 }

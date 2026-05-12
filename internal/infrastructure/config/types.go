@@ -39,9 +39,11 @@ type LoggingConfig struct {
 
 // SystemConfig contains universally required configuration for any bot connecting to the exchange.
 type SystemConfig struct {
-	API       APIConfig     `json:"api"`
-	Logging   LoggingConfig `json:"logging"`
-	Sync      SyncConfig    `json:"sync"`
-	APIKey    string        `json:"-"`
-	APISecret string        `json:"-"`
+	API         APIConfig     `json:"api"`
+	Logging     LoggingConfig `json:"logging"`
+	Sync        SyncConfig    `json:"sync"`
+	DryRun      bool          `json:"dryRun"`
+	MetricsPort int           `json:"metricsPort"`
+	APIKey      string        `json:"-"`
+	APISecret   string        `json:"-"`
 }

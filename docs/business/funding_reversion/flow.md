@@ -1,19 +1,44 @@
-# Funding Reversion Bot — Flow
+# Funding Reversion Bot — Tổng Quan
 
-**Chiến lược: Funding Reversion** — Vào lệnh ngược chiều Sniper trước giờ Funding, đợi hiệu ứng xả hàng của đám đông săn phí để ăn chênh lệch giá.
-
----
-
-## Chiến lược Reversion — Side Logic
-
-| Funding Rate       | Sniper (cũ)      | Reversion (hiện tại) | Lý do                                                 |
-| ------------------ | ---------------- | -------------------- | ----------------------------------------------------- |
-| **FR > 0** (dương) | SHORT (nhận phí) | **LONG**             | Sniper SHORT → xả (buy) → giá pump → ta LONG ăn pump  |
-| **FR < 0** (âm)    | LONG (nhận phí)  | **SHORT**            | Sniper LONG → xả (sell) → giá dump → ta SHORT ăn dump |
+**Chiến lược: Funding Reversion + Straddle Trap** — Bot kết hợp 2 luồng giao dịch song song, cùng khai thác hiệu ứng xả hàng sau giờ Funding Settlement.
 
 ---
 
-## Tổng quan kiến trúc
+## Hai Luồng Giao Dịch
+
+Bot vận hành **2 luồng (flow) độc lập** trên cùng một chu kỳ Funding:
+
+| # | Luồng | Mục đích | Tài liệu chi tiết |
+|---|-------|---------|-------------------|
+| 1 | **Reversion** | Bắn IOC tính toán đến sàn đúng T±0 (né Fee) → cưỡi sóng chính (PUMP/DUMP) do Snipers xả hàng | [reversion_flow.md](reversion_flow.md) |
+| 2 | **Straddle Trap** | Đặt lệnh Limit ngược chiều sau settle → bắt râu nến dội lại (wick bounce) | [trap_flow.md](trap_flow.md) |
+
+### Quan Hệ Giữa Hai Luồng
+
+```
+Reversion: Ăn sóng CHÍNH (theo chiều FR) — né Funding Fee
+Trap:      Ăn sóng HỒI  (ngược chiều FR)
+
+Timeline:
+T-(latency/2)  Bot bắn IOC ─────→ (lệnh bay qua mạng) ─────→ 🎯 Lệnh đến sàn
+T±0            ═══ SETTLE ═══    ← IOC khớp tại đây (né Fee) → 🏄 Cưỡi PUMP/DUMP
+T+50ms         Trap Limit đặt sâu ──→ chờ dội ──→ 🎣 Bắt wick bounce
+```
+
+> **Hai luồng hoàn toàn song song**, không ảnh hưởng lẫn nhau. Reversion bắn thành công hay thất bại, Trap vẫn sẽ quăng lệnh nếu được bật.
+
+---
+
+## Side Logic — Hướng Vào Lệnh
+
+| Funding Rate       | Sniper (đám đông)| Reversion Side | Trap Side (ngược Reversion) | Cơ chế |
+| ------------------ | ---------------- | -------------- | -------------------------- | ------ |
+| **FR > 0** (dương) | SHORT (nhận phí) | **LONG**       | **SHORT**                  | Sniper SHORT → xả (buy) → PUMP → ta LONG ăn pump → giá dội → Trap SHORT bắt dội |
+| **FR < 0** (âm)    | LONG (nhận phí)  | **SHORT**      | **LONG**                   | Sniper LONG → xả (sell) → DUMP → ta SHORT ăn dump → giá nảy → Trap LONG bắt nảy |
+
+---
+
+## Kiến Trúc Hệ Thống
 
 ```mermaid
 flowchart TD
@@ -34,123 +59,107 @@ flowchart TD
     style SPAWN fill:#0f3460,stroke:#e94560,color:#fff
 ```
 
-**Nguyên tắc:** Mỗi symbol chạy trên **1 goroutine riêng**, hoàn toàn độc lập qua cơ chế State Machine (FSM). Không liên quan gì đến symbol khác.
+**Nguyên tắc:** Mỗi symbol chạy trên **1 goroutine riêng**, hoàn toàn độc lập qua cơ chế Event-Driven (Watermill). Không liên quan gì đến symbol khác.
 
 ---
 
-## Per-Symbol Worker Flow & State Machine
+## Event Chain — Chuỗi Sự Kiện Tổng Quan
 
-Mỗi Worker vận hành như một cỗ máy trạng thái (FSM) với các chuyển đổi (Transitions) rõ ràng:
+Thay vì dùng State Machine (FSM), bot dùng **Event-Driven Architecture** qua Watermill. Mỗi handler subscribe 1 topic và publish downstream event.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> IDLE: Khởi tạo Worker
+flowchart TD
+    START["cycle.start"] --> SCAN["cycle.candidate.found<br/>📍 Scan FR"]
+    SCAN --> ARM["cycle.armed<br/>📍 Subscribe WS + Calc IOC"]
+    ARM --> WAIT2["cycle.wait.complete<br/>📍 Sleep đến T-2s"]
+    WAIT2 --> CONFIRM["cycle.confirmed<br/>📍 Recheck FR lần cuối"]
 
-    IDLE --> SCAN: Tìm thấy Settle Time
-    SCAN --> ABORT: FR quá thấp / Lỗi dữ liệu
+    CONFIRM --> IOC["cycle.ioc.fired<br/>📍 Bắn IOC"]
+    CONFIRM --> TRAP["cycle.trap.fired<br/>📍 Đặt Trap Limit"]
 
-    SCAN --> ARM: FR >= Threshold
-    ARM --> ABORT: Tính IOC / Safety FAIL
-    ARM --> WAIT: Safety PASS
+    IOC --> FILL["cycle.order.filled<br/>📍 IOC khớp"]
+    TRAP --> FILL2["cycle.order.filled<br/>📍 Trap khớp"]
 
-    WAIT --> RECHECK: Ngủ đến T-2s
+    FILL --> TRAIL["cycle.trailing.placed<br/>📍 Trailing Stop"]
+    FILL2 --> TRAIL2["cycle.trailing.placed<br/>📍 Trailing Stop (Trap)"]
 
-    RECHECK --> FIRE_IOC: FR giữ nguyên chiều
-    RECHECK --> ABORT: FR đổi dấu / Quá thấp
+    TRAIL --> DONE["cycle.done ✅"]
+    TRAIL2 --> DONE
 
-    FIRE_IOC --> FIRE_TRAP: Bật Hedge Trap (Limit)
-    FIRE_IOC --> HOLD: Tắt Hedge Trap
+    CONFIRM -.->|FR đổi dấu| ABORT["cycle.abort ❌"]
+    IOC -.->|Lỗi gửi lệnh| ABORT
+    FILL -.->|Timeout no fill| ABORT
 
-    FIRE_TRAP --> HOLD: Quăng lệnh Trap xong
-
-    HOLD --> PLACE_TRAILING: Khớp Lệnh (Fill Entry) Thành Công
-    HOLD --> ABORT: Hết Timeout không khớp lệnh
-
-    PLACE_TRAILING --> DONE: Đặt TrackOrder Xong
-
-    ABORT --> IDLE: Về ngủ chờ chu kỳ sau
-    DONE --> IDLE: Hoàn tất chu kỳ, về ngủ
+    style START fill:#0f3460,stroke:#e94560,color:#fff
+    style DONE fill:#005c2a,stroke:#e94560,color:#fff
+    style ABORT fill:#8b0000,stroke:#e94560,color:#fff
 ```
+
+### Pre-Settle Chain (Tuần tự — Shared)
+
+Chuỗi `scan → arm → wait → recheck → confirmed` là **chung** cho cả Reversion lẫn Trap. Mọi kiểm tra FR, subscribe WS, tính IOC, safety check đều xảy ra **một lần duy nhất**.
+
+### Post-Settle Fan-Out (Song song — Tách biệt)
+
+Sau khi nhận event `cycle.confirmed`:
+- **Reversion flow**: `fire_ioc → fill_watcher → trailing` (xem [reversion_flow.md](reversion_flow.md))
+- **Trap flow**: `fire_trap → fill_watcher → trailing` (xem [trap_flow.md](trap_flow.md))
 
 ---
 
-## Chi tiết các Phase (States)
+## Cấu Hình
 
-### 1. State: `scan` (T - 5 phút)
-- Đọc Funding Rate (FR) từ GlobalStore.
-- Nếu `|FR| < minFundingRate` → Chuyển sang `abort`.
-- Build ứng viên với **reversion side** (FR+ → LONG, FR- → SHORT).
+Hai luồng được cấu hình **độc lập** trong `system.jsonc`:
 
-### 2. State: `arm` (T - vài phút)
-- Subscribe WS Ticker để lấy giá Real-time.
-- Tiến hành tính toán **Entry Price (IOC)** và **Volume** (Xem chi tiết tại [price_flow.md](price_flow.md)).
-- Chạy Safety Check: Đánh giá Position Size so với Volume 24h (Max Impact Ratio) và Minimum Volume. Nếu Pass → `wait`.
+```jsonc
+{
+  "tradingDefaults": {
+    // ── Reversion (Entry IOC + Trailing) ──
+    "fundingReversion": {
+      "enabled": true,
+      "takeProfitPct": 3,
+      "stopLossPct": 3,
+      "dynamicPricing": { /* ... */ },
+      "trailing": { /* ... */ }
+    },
 
-### 3. State: `wait`
-- Gọi `ts.Until()` để sleep chính xác đến `T - 2s` (Server-synced). Không làm gì cả để tiết kiệm tài nguyên.
-
-### 4. State: `recheck` (T - 2 giây)
-- Xác nhận lại lần cuối FR chưa đổi dấu và vẫn `>= minFR`.
-- Chống rủi ro "bị lừa" phút chót.
-
-### 5. State: `fire_ioc` (T - 200ms)
-- Bắt đầu Snapshot lại giá và chờ đúng điểm nổ (Fire Offset).
-- Quăng lệnh **Entry IOC (Market)** lên sàn.
-- Ghi nhận `OrderID` chờ khớp.
-
-### 6. State: `fire_trap` (T + 10ms) (Tuỳ chọn Hedge Trap)
-- Nếu bật tính năng `enableHedgeTrap`, đợi Settle Time đi qua 10ms.
-- Quăng lưới lệnh **Limit Order** sâu bên dưới (hoặc trên đỉnh) để bắt râu nến dội lại.
-
-### 7. State: `hold` (Chờ khớp lệnh Entry)
-1. **Wait for Deal:** Dùng channel WebSocket `dealChan` chờ sàn báo về lệnh `Entry IOC` (hoặc `Trap`) đã khớp được bao nhiêu volume (`dealVol`).
-2. **Timeout Check:** Có timeout bảo vệ (ví dụ 3 giây). Nếu hết giờ không có tín hiệu khớp, quăng lệnh `CloseAll` và chuyển sang `abort`.
-3. Nếu `dealVol` > 0, lập tức chuyển sang `place_trailing`.
-
-### 8. State: `place_trailing` (Kích hoạt Trailing Stop)
-Đây là state đã được nâng cấp thay vì gồng lệnh thủ công như trước:
-- Ngay khi có thông tin `dealVol` > 0 từ state `hold`.
-- Bot gọi API `POST /api/v1/private/trackorder/place`.
-- Bắn cấu hình Trailing Stop (`backType=1`, `backValue=callbackPct`, `vol=dealVol`, ngược `side` Entry) cho sàn MEXC.
-- Sàn sẽ **tự động dò đỉnh/đáy** và đóng lệnh khi giá rút râu đúng tỷ lệ `callbackPct`.
-- Bot không cần chờ xem lệnh đóng ở đâu. Chuyển sang `done`.
-
-### 9. State: `done` / `abort`
-- Dọn dẹp: Hủy đăng ký (Unsubscribe) WebSocket Ticker.
-- Ghi Log tổng kết tiến trình.
-- Đưa goroutine về trạng thái `idle` và tính thời gian Settle kế tiếp (Thường là 8 tiếng sau).
-
----
-
-
-
-## Sơ Đồ Cấu Trúc Trailing (Native MEXC)
-
-```mermaid
-flowchart LR
-    A["Bot: Khớp Entry IOC"] --> B["Bot: Gọi API TrackOrder"]
-    B --> C((MEXC Server))
-    
-    C -->|Theo dõi| D["Giá leo dần lên đỉnh"]
-    D -->|Cập nhật| E["Peak Price mới"]
-    E -->|Giá rút râu| F["MEXC Tự Kích Hoạt Market Close"]
-    
-    style C fill:#0f3460,stroke:#e94560,color:#fff
-    style F fill:#005c2a,stroke:#e94560,color:#fff
+    // ── Straddle Trap (Limit + Trailing riêng) ──
+    "fundingTrap": {
+      "enabled": true,
+      "depthPct": 2.5,
+      "takeProfitPct": 1.5,
+      "stopLossPct": 1.5,
+      "trailing": { /* ... */ }
+    }
+  }
+}
 ```
 
-> 💡 **Ưu điểm của mô hình này:** 
-> Việc đẩy Trailing Order (`trackorder`) xuống trực tiếp Engine của MEXC giúp triệt tiêu hoàn toàn **độ trễ mạng (Network Latency)**. Râu nến rút nhanh cỡ nào thì Engine sàn tự cắt lệnh ngay tức thì, đồng thời chống được rủi ro Bot bị crash/đứt cáp giữa chừng lúc đang gồng.
+> Có thể bật/tắt từng luồng **độc lập**: `fundingReversion.enabled` và `fundingTrap.enabled`.
 
 ---
 
 ## Error Handling
 
-| Trường hợp lỗi | Hành động (FSM Action) |
-| --- | --- |
-| Settle Passed / No Settle | Sleep 1 phút, thử lại |
-| FR không đủ điều kiện | `abort` → Bỏ qua chu kỳ này |
-| Tính toán IOC thất bại | `abort` → Hủy chu kỳ |
-| Lệnh IOC không khớp (No Fill) | `abort` → Dọn dẹp rác (CancelAll) |
-| Đặt TrackOrder (Trailing) lỗi | Gọi API `close_all` khẩn cấp để chốt lệnh tĩnh |
-| Bot tắt ngang sau khi đặt TrackOrder | An toàn. Sàn vẫn chốt lời theo TrackOrder |
+| Trường hợp lỗi | Ảnh hưởng | Hành động |
+| --- | --- | --- |
+| Settle Passed / No Settle | Cả hai luồng | Worker kết thúc, chờ chu kỳ tiếp theo |
+| FR không đủ điều kiện | Cả hai luồng (pre-settle) | `abort` → Bỏ qua chu kỳ |
+| Tính toán IOC thất bại | Reversion | `abort` → Hủy chu kỳ |
+| Lệnh IOC không khớp (No Fill) | Reversion | `abort` → CancelAll |
+| Lệnh Trap không khớp | Trap (không ảnh hưởng Reversion) | Tự hết hạn hoặc CancelAll cuối chu kỳ |
+| Đặt TrackOrder lỗi (Reversion) | Reversion | `close_all` khẩn cấp |
+| Đặt TrackOrder lỗi (Trap) | Trap | `close_all` khẩn cấp |
+| Bot tắt ngang sau TrackOrder | An toàn | Sàn vẫn chốt lời theo TrackOrder |
+
+---
+
+## Tài Liệu Liên Quan
+
+| Tài liệu | Nội dung |
+|-----------|---------|
+| [reversion_flow.md](reversion_flow.md) | Chi tiết luồng Reversion (IOC + Trailing) |
+| [trap_flow.md](trap_flow.md) | Chi tiết luồng Straddle Trap (Limit + Trailing) |
+| [price_flow.md](price_flow.md) | Logic tính giá Entry & Volume |
+| [depth.md](depth.md) | Phân tích Orderbook & Wall Detection |
+| [trap_strategy_guide.md](trap_strategy_guide.md) | Bảng tra cứu Trap Depth theo FR |

@@ -30,9 +30,9 @@ func ScoreAndRank(candidates []Candidate) []Candidate {
 
 	// Filter passed candidates
 	var passed []Candidate
-	for _, c := range candidates {
-		if c.CoinScore > 0 {
-			passed = append(passed, c)
+	for i := range candidates {
+		if candidates[i].CoinScore > 0 {
+			passed = append(passed, candidates[i])
 		}
 	}
 
@@ -44,7 +44,7 @@ func ScoreAndRank(candidates []Candidate) []Candidate {
 	// Return all passed candidates
 	// Mark selected coins as ARMED
 	for i := range passed {
-		passed[i].Phase = "ARMED"
+		passed[i].Phase = PhaseArmed
 	}
 
 	return passed

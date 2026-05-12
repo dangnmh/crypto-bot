@@ -1,27 +1,27 @@
 package store
 
 import (
-	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/domain"
 	"sync"
 )
 
 // KlineBuffer holds a thread-safe ring buffer (or slice) of recent klines.
 type KlineBuffer struct {
 	mu     sync.RWMutex
-	klines []exchange.Kline
+	klines []domain.Kline
 	maxLen int
 }
 
 func NewKlineBuffer(maxLen int) *KlineBuffer {
 	return &KlineBuffer{
-		klines: make([]exchange.Kline, 0, maxLen),
+		klines: make([]domain.Kline, 0, maxLen),
 		maxLen: maxLen,
 	}
 }
 
 // Add appends a kline or updates the most recent one if it's the same timeframe.
 // For simplicity, we just push and keep the latest maxLen klines.
-func (b *KlineBuffer) Add(k exchange.Kline) {
+func (b *KlineBuffer) Add(k domain.Kline) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -47,11 +47,11 @@ func (b *KlineBuffer) Add(k exchange.Kline) {
 }
 
 // GetKlines returns a copy of the current klines.
-func (b *KlineBuffer) GetKlines() []exchange.Kline {
+func (b *KlineBuffer) GetKlines() []domain.Kline {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	out := make([]exchange.Kline, len(b.klines))
+	out := make([]domain.Kline, len(b.klines))
 	copy(out, b.klines)
 	return out
 }

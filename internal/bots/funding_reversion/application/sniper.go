@@ -3,12 +3,13 @@ package application
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"crypto-bot/internal/bots/funding_reversion/config"
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 
@@ -27,8 +28,8 @@ type CloseResult struct {
 	Profit      float64
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Sniper — top-level orchestrator
+// ──────────────────────────────────────────────────────────────────────.
+// Sniper — top-level orchestrator.
 // ──────────────────────────────────────────────────────────────────────.
 
 // Sniper spawns one independent worker goroutine per configured symbol.
@@ -39,16 +40,31 @@ type Sniper struct {
 	client        exchange.Client
 	ws            ws.Subscriber
 	orderNotifier *watcher.OrderWatcher
-	stores        *app.StoreRegistry
-	timeSync      *timesync.TimeSync
+	stores        *app.CentralStore
+	timeSync      domain.Clock
+	log           *slog.Logger
+	bgWg          sync.WaitGroup // tracks background goroutines (§5.2)
 }
 
 // NewSniper creates a new Sniper instance.
-func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engine) *Sniper {
+func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engine, log *slog.Logger) *Sniper {
 	wsSub := engine.Adapter
-	orderWatcher := watcher.NewOrderWatcher(engine.Bus, slog.Default().With("component", "funding_reversion_order_watcher"))
+	orderWatcher := watcher.NewOrderWatcher(engine.Bus, log.With("component", "order_watcher"))
 
-	stores := app.NewStoreRegistry().WithFunding().WithKline()
+	// Build funding symbols list for the FundingStore option.
+	fundingSymbols := make([]string, 0, len(cfg.Symbols))
+	for i := range cfg.Symbols {
+		fundingSymbols = append(fundingSymbols, cfg.Symbols[i].Symbol)
+	}
+
+	stores := app.NewCentralStore(
+		app.WithTicker(engine.Client, time.Duration(sysCfg.Sync.Ticker)),
+		app.WithContract(engine.Client, time.Duration(sysCfg.Sync.Contract)),
+		app.WithFunding(engine.Client, time.Duration(sysCfg.Sync.FundingSync), fundingSymbols),
+		app.WithPrice(),
+		app.WithDepth(),
+		app.WithKline(),
+	)
 
 	return &Sniper{
 		cfg:           cfg,
@@ -59,89 +75,119 @@ func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engi
 		orderNotifier: orderWatcher,
 		stores:        stores,
 		timeSync:      engine.TimeSync,
+		log:           log,
 	}
 }
 
 // RunAsBackground launches all required sync and connection routines for Funding Reversion.
 func (s *Sniper) RunAsBackground(ctx context.Context) error {
-	// 1. WarmUp + TimeSync
-	go s.engine.Client.WarmUp(ctx, 4*time.Second)
-	go s.engine.TimeSync.Start(ctx)
+	// 1. WarmUp + TimeSync.
+	s.bgWg.Add(1)
+	go func() {
+		defer s.bgWg.Done()
+		s.engine.Client.WarmUp(ctx, 4*time.Second)
+	}()
+	s.bgWg.Add(1)
+	go func() {
+		defer s.bgWg.Done()
+		s.engine.TimeSync.Start(ctx)
+	}()
 	s.engine.TimeSync.WaitReady(ctx)
 
-	// 2. Build funding symbols list
-	var fundingSymbols []string
-	for _, sym := range s.cfg.Symbols {
-		fundingSymbols = append(fundingSymbols, sym.Symbol)
-	}
-
-	// 3. Start stores + wait for initial data
-	s.stores.StartStores(ctx, s.engine, app.StoreSyncConfig{
-		TickerInterval:   s.sysCfg.Sync.Ticker,
-		ContractInterval: s.sysCfg.Sync.Contract,
-		FundingInterval:  s.sysCfg.Sync.FundingSync,
-		FundingSymbols:   fundingSymbols,
-	})
+	// 2. Start stores + wait for initial data.
+	s.stores.Start(ctx)
 	if err := s.stores.WaitReady(ctx); err != nil {
 		return err
 	}
 
-	// 4. Connect WS + subscribe personal channels
-	go s.engine.WS.Connect(ctx)
+	// 3. Connect WS + subscribe personal channels.
+	s.bgWg.Add(1)
+	go func() {
+		defer s.bgWg.Done()
+		s.engine.WS.Connect(ctx)
+	}()
 	s.engine.WS.WaitReady(ctx)
 
+	// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
+	s.stores.WireWS(s.engine.WS, s.engine.Adapter)
+
 	if s.engine.Adapter != nil {
-		_ = s.engine.Adapter.SubscribePersonal()
+		if err := s.engine.Adapter.SubscribePersonal(); err != nil {
+			s.log.Warn("⚠️ Failed to subscribe personal channels", "error", err)
+		}
 	}
 
-	slog.Info("🟢 Funding Reversion Background Services Ready")
+	s.log.Info("🟢 Funding Reversion Background Services Ready")
 	return nil
 }
 
 // Run starts all symbol workers. Blocks until all stop or context is cancelled.
 func (s *Sniper) Run(ctx context.Context) error {
-	slog.Info("🚀 Sniper — launching per-symbol workers", "symbols", len(s.cfg.Symbols))
+	s.log.Info("🚀 Sniper — launching per-symbol workers", "symbols", len(s.cfg.Symbols))
 
 	g, workerCtx := errgroup.WithContext(ctx)
-	for _, sc := range s.cfg.Symbols {
-		g.Go(s.spawnWorker(ctx, workerCtx, sc))
+	for i := range s.cfg.Symbols {
+		g.Go(s.spawnWorker(workerCtx, s.cfg.Symbols[i]))
 	}
 
 	err := g.Wait()
-	slog.Info("🛑 All workers stopped")
+	s.log.Info("🛑 All workers stopped")
 	return err
 }
 
 // Stop implements the app.Bot interface. It executes any explicit teardown.
 // The primary graceful shutdown is handled by the context passed to Run().
-func (s *Sniper) Stop(ctx context.Context) error {
-	slog.Info("🛑 Sniper explicit stop invoked")
+func (s *Sniper) Stop(_ context.Context) error {
+	s.log.Info("🛑 Sniper explicit stop invoked")
+	s.bgWg.Wait()
 	return nil
 }
 
-func (s *Sniper) spawnWorker(parentCtx, workerCtx context.Context, symCfg config.SymbolConfig) func() error {
+// spawnWorker creates a closure that runs one complete cycle for a symbol.
+// This replaces the former symbolWorker struct — the orchestrator now
+// handles all cycle logic directly.
+func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) func() error {
 	return func() error {
-		log := slog.Default().With("w", "sniper", "sym", symCfg.Symbol)
-		w := &symbolWorker{
-			cfg:           symCfg,
-			global:        s.cfg,
-			client:        s.client,
-			ws:            s.ws,
-			orderNotifier: s.orderNotifier,
-			tickerStore:   s.stores.Ticker,
-			contractStore: s.stores.Contract,
-			priceStore:    s.stores.Price,
-			fundingStore:  s.stores.Funding,
-			klineStore:    s.stores.Kline,
-			depthStore:    s.stores.Depth,
-			ts:            s.timeSync,
-			log:           log,
-			trailing:      NewTrailingManager(parentCtx, s.client, s.orderNotifier, log),
-			subs:          NewSubscriptionManager(s.ws, symCfg.Symbol, toTradeConfig(symCfg).DynamicPricing, log),
+		log := s.log.With("sym", symCfg.Symbol)
+		log.Info("🚀 Worker started")
+		defer log.Info("🛑 Worker stopped")
+
+		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, s.stores.Funding())
+		if err != nil {
+			log.Error("🔴 No settle time", "error", err)
+			return nil
 		}
-		w.log.Info("🚀 Worker started")
-		w.run(workerCtx)
-		w.log.Info("🛑 Worker stopped")
+
+		// Wait until T-5m before actively entering the cycle.
+		if d := s.timeSync.Until(settle.Add(-5 * time.Minute)); d > 0 {
+			log.Debug("😴 Waiting for cycle window", "settle", settle, "wait", d)
+			if err := s.timeSync.Sleep(ctx, d); err != nil {
+				return nil
+			}
+		}
+
+		// If we are already past the firing deadline (T-5s), skip.
+		if s.timeSync.Until(settle.Add(-5*time.Second)) <= 0 {
+			log.Warn("🔴 Settle time passed or missed", "settle", settle)
+			return nil
+		}
+
+		// Execute one funding cycle via event-driven orchestrator.
+		deps := Deps{
+			Client:        s.client,
+			WsSub:         s.ws,
+			OrderNotifier: s.orderNotifier,
+			TickerStore:   s.stores.Ticker(),
+			ContractStore: s.stores.Contract(),
+			PriceStore:    s.stores.Price(),
+			FundingStore:  s.stores.Funding(),
+			KlineStore:    s.stores.Kline(),
+			DepthStore:    s.stores.Depth(),
+			Clock:         s.timeSync,
+			Log:           log,
+		}
+		orchestrator := NewCycleOrchestrator(symCfg, s.cfg, deps)
+		orchestrator.Run(ctx, settle)
 		return nil
 	}
 }

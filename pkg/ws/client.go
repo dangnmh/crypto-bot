@@ -12,6 +12,8 @@ import (
 )
 
 // Handler is a callback function for processing raw WebSocket messages.
+const msgPong = "pong"
+
 type Handler func(data []byte)
 
 // Client manages a generic WebSocket connection.
@@ -135,7 +137,10 @@ func (c *Client) Connect(ctx context.Context) {
 
 // dial establishes the WebSocket connection.
 func (c *Client) dial() error {
-	conn, _, err := websocket.DefaultDialer.Dial(c.url, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(c.url, nil)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return err
 	}
@@ -212,7 +217,7 @@ func (c *Client) processMessage(data []byte) {
 	}
 
 	channel := c.channelExtractor(data)
-	if channel == "" || channel == "pong" {
+	if channel == "" || channel == msgPong {
 		return
 	}
 

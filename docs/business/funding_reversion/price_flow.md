@@ -39,9 +39,69 @@ flowchart TD
     SNAP["Tick Snap = SnapFunc(RawPrice / PriceUnit) * PriceUnit"] --> ROUND_PRICE
     ROUND_PRICE["IOC Price = round(TickSnap, priceScale)"] --> CALC_VOL
     
-    CALC_VOL["Raw Vol = (Margin * Leverage) / (ContractSize * LastPrice)"] --> ROUND_VOL
+    CALC_VOL["Raw Vol = (Margin * Leverage) / (ContractSize * RefPrice)<br/>RefPrice = BestAsk (LONG) / BestBid (SHORT)"] --> ROUND_VOL
     ROUND_VOL["Volume = floor(RawVol, volScale)"] --> DONE["Trả về (IOC Price, Volume)"]
 
     style START fill:#0f3460,stroke:#e94560,color:#fff
     style DONE fill:#005c2a,stroke:#e94560,color:#fff
 ```
+
+---
+
+## Logic Tính Take Profit Price
+
+Được thực hiện trong phase `fire_ioc`. Bot tính giá chốt lời tự động dựa trên 2 nguồn: **Dynamic Pricing (FR + ATR)** cho TP chính và **OB wall detection** cho safety cap.
+
+### Dynamic Pricing (TP chính — dựa trên thống kê)
+
+```
+TP% = (|FR%| × TpFundingMultiplier) + (ATR% × TpAtrMultiplier)
+```
+
+Ví dụ: FR = -0.5%, ATR% = 0.3%, TpFundingMul = 2.0, TpAtrMul = 1.5
+→ TP% = (0.5 × 2.0) + (0.3 × 1.5) = **1.45%**
+
+### OB Wall Detection (safety cap — giảm TP nếu có tường chặn)
+
+```mermaid
+flowchart TD
+    START2["Bắt đầu tính TP"] --> ENTRY{"Side?"}
+
+    ENTRY -- "LONG" --> LONG_ENTRY["Entry = BestAsk<br/>Scan: Ask side<br/>maxTP = Entry × (1 + maxTPPct)"]
+    ENTRY -- "SHORT" --> SHORT_ENTRY["Entry = BestBid<br/>Scan: Bid side<br/>maxTP = Entry × (1 - maxTPPct)"]
+
+    LONG_ENTRY --> SCAN
+    SHORT_ENTRY --> SCAN
+
+    SCAN["Quét OB levels<br/>Tìm level có Vol ≥ 3× avg"] --> WALL{Tìm thấy Wall?}
+
+    WALL -- "Có" --> SNAP["TP = Wall Price ± 2 ticks<br/>(đặt trước tường)"]
+    SNAP --> CLAMP["Clamp: TP ≤ maxTP"]
+
+    WALL -- "Không" --> FALLBACK["TP = maxTP<br/>(fallback FR×mul + ATR)"]
+
+    CLAMP --> TICK["Tick Snap + Scale"]
+    FALLBACK --> TICK
+
+    TICK --> SANITY{"TP đúng phía<br/>so với Entry?"}
+    SANITY -- "Đúng" --> TP_DONE["TakeProfitPrice ✅"]
+    SANITY -- "Sai" --> TP_ZERO["TP = 0 (bỏ qua)"]
+
+    style START2 fill:#0f3460,stroke:#e94560,color:#fff
+    style TP_DONE fill:#005c2a,stroke:#e94560,color:#fff
+```
+
+> ⚠️ **Lưu ý:** OB trước settle là "sổ lệnh ma" — wall có thể biến mất sau settle. TP từ wall chỉ là **safety cap** (chỉ giảm TP, không tăng). Xem `depth.md §3.4`.
+
+### Phối Hợp Đóng Vị Thế
+
+```
+Fire IOC (có TakeProfitPrice = safety cap)
+    ↓
+IOC Fill → Đặt Trailing Stop (cưỡi sóng)
+    ↓
+Ai chạm trước thì đóng:
+  • Trailing đóng trước → ăn đậm (sóng mạnh)
+  • TP trigger đóng trước → safety net (sóng yếu/chạm wall)
+```
+

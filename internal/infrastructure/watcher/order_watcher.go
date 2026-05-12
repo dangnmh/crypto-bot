@@ -1,13 +1,14 @@
 package watcher
 
 import (
+	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
-
-	"github.com/cskr/pubsub"
+	"crypto-bot/pkg/eventbus"
 )
 
 // OrderNotifier handles order fill callbacks.
@@ -20,12 +21,12 @@ type OrderNotifier interface {
 // It allows independent bots or FSMs to subscribe to specific order executions.
 type OrderWatcher struct {
 	mu     sync.RWMutex
-	broker *pubsub.PubSub
+	broker *eventbus.Bus
 	logger *slog.Logger
 }
 
 // NewOrderWatcher creates a new OrderWatcher wrapping a shared event bus.
-func NewOrderWatcher(bus *pubsub.PubSub, logger *slog.Logger) *OrderWatcher {
+func NewOrderWatcher(bus *eventbus.Bus, logger *slog.Logger) *OrderWatcher {
 	return &OrderWatcher{
 		broker: bus,
 		logger: logger,
@@ -39,41 +40,46 @@ func (w *OrderWatcher) Publish(deal exchange.WsOrderDeal) {
 
 	topic := deal.GetOrderID()
 	w.logger.Debug("📢 Publishing order deal", "orderID", topic, "state", deal.State)
-	w.broker.Pub(deal, topic)
-}
-
-// Subscribe returns a channel that receives updates for a specific OrderID.
-func (w *OrderWatcher) Subscribe(orderID string) chan interface{} {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	w.logger.Debug("📥 Subscribing to order updates", "orderID", orderID)
-	return w.broker.Sub(orderID)
-}
-
-// Unsubscribe removes the subscription for a specific OrderID.
-func (w *OrderWatcher) Unsubscribe(ch chan interface{}, orderID string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	w.logger.Debug("📤 Unsubscribing from order updates", "orderID", orderID)
-	w.broker.Unsub(ch, orderID)
+	if err := w.broker.Publish(topic, deal); err != nil {
+		w.logger.Error("Failed to publish order deal", "orderID", topic, "error", err)
+	}
 }
 
 // OnOrderUpdate registers a callback for a specific order ID (implements OrderNotifier).
 // The callback will be removed automatically after the specified timeout.
 func (w *OrderWatcher) OnOrderUpdate(orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
-	ch := w.Subscribe(orderID)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+	ch, err := w.broker.Subscribe(ctx, orderID)
+	if err != nil {
+		w.logger.Error("Failed to subscribe to order updates", "orderID", orderID, "error", err)
+		cancel()
+		return
+	}
+
+	w.logger.Debug("📥 Subscribing to order updates", "orderID", orderID)
 
 	go func() {
-		defer w.Unsubscribe(ch, orderID)
-		select {
-		case msg := <-ch:
-			if deal, ok := msg.(exchange.WsOrderDeal); ok {
-				callback(deal)
+		defer cancel()
+		defer w.logger.Debug("📤 Unsubscribed from order updates", "orderID", orderID)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				var deal exchange.WsOrderDeal
+				if err := json.Unmarshal(msg.Payload, &deal); err == nil {
+					callback(deal)
+				} else {
+					w.logger.Error("Failed to unmarshal order deal", "orderID", orderID, "error", err)
+				}
+				msg.Ack()
 			}
-		case <-time.After(timeout):
-			// Timeout, do nothing
 		}
 	}()
 }

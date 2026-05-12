@@ -2,7 +2,82 @@ package exchange
 
 import (
 	"fmt"
+
+	"crypto-bot/internal/domain"
 )
+
+// ──────────────────────────────────────────────────────────────────────
+// Type aliases — reference domain as single source of truth
+// ──────────────────────────────────────────────────────────────────────.
+
+// OrderBook is an alias for the domain OrderBook type.
+type OrderBook = domain.OrderBook
+
+// OrderBookEntry is an alias for the domain OrderBookEntry type.
+type OrderBookEntry = domain.OrderBookEntry
+
+// Kline is an alias for the domain Kline type.
+type Kline = domain.Kline
+
+// DepthCommit represents one incremental depth update (exchange-agnostic).
+// Exchange adapters convert their raw commit format into this struct.
+type DepthCommit struct {
+	Version int64            `json:"version"`
+	Asks    []OrderBookEntry `json:"asks"` // Updated ask levels
+	Bids    []OrderBookEntry `json:"bids"` // Updated bid levels
+}
+
+// Side constants — delegate to domain for backward compat.
+const (
+	SideOpenLong   = int(domain.SideOpenLong)
+	SideCloseShort = int(domain.SideCloseShort)
+	SideOpenShort  = int(domain.SideOpenShort)
+	SideCloseLong  = int(domain.SideCloseLong)
+)
+
+// SideStr returns a human-readable string for the side constant.
+func SideStr(side int) string {
+	return domain.Side(side).String()
+}
+
+// CloseSideFor returns the close side for a given open side.
+func CloseSideFor(openSide int) int {
+	return int(domain.CloseSideFor(domain.Side(openSide)))
+}
+
+// Order state — delegate to domain.
+const (
+	OrderStateFilled   = domain.OrderStateFilled
+	OrderStateCanceled = domain.OrderStateCanceled
+	OrderStatePartial  = domain.OrderStatePartial
+)
+
+// IsTerminalOrderState delegates to domain.
+func IsTerminalOrderState(state int) bool {
+	return domain.IsTerminalOrderState(state)
+}
+
+// Order type — delegate to domain.
+const (
+	OrderTypeLimit    = domain.OrderTypeLimit
+	OrderTypePostOnly = domain.OrderTypePostOnly
+	OrderTypeIOC      = domain.OrderTypeIOC
+	OrderTypeFOK      = domain.OrderTypeFOK
+	OrderTypeMarket   = domain.OrderTypeMarket
+)
+
+// Open type — delegate to domain.
+const (
+	OpenTypeIsolated = domain.OpenTypeIsolated
+	OpenTypeCross    = domain.OpenTypeCross
+)
+
+// IntervalMin1 delegates to domain.
+const IntervalMin1 = domain.IntervalMin1
+
+// ──────────────────────────────────────────────────────────────────────
+// Exchange-specific API types (NOT duplicated in domain)
+// ──────────────────────────────────────────────────────────────────────.
 
 // ContractDetail holds contract specification for a symbol.
 type ContractDetail struct {
@@ -82,31 +157,6 @@ type FundingRateDetail struct {
 	CollectCycle   int     `json:"collectCycle"`
 	NextSettleTime int64   `json:"nextSettleTime"`
 	Timestamp      int64   `json:"timestamp"`
-}
-
-// Kline holds a single candlestick.
-type Kline struct {
-	Timestamp int64   `json:"timestamp"` // or "t" in WS
-	Open      float64 `json:"open"`      // or "o"
-	Close     float64 `json:"close"`     // or "c"
-	High      float64 `json:"high"`      // or "h"
-	Low       float64 `json:"low"`       // or "l"
-	Volume    float64 `json:"volume"`    // or "v"
-	Amount    float64 `json:"amount"`    // or "a"
-}
-
-// OrderBookEntry represents a single price level in the order book.
-type OrderBookEntry struct {
-	Price  float64
-	Volume float64
-}
-
-// OrderBook represents the full or partial depth of a market.
-type OrderBook struct {
-	Symbol  string
-	Version int64
-	Asks    []OrderBookEntry // Sorted by price ascending (lowest ask first)
-	Bids    []OrderBookEntry // Sorted by price descending (highest bid first)
 }
 
 // AssetInfo holds account asset information.
@@ -219,69 +269,6 @@ type ChangeLeverageRequest struct {
 	OpenType     int    `json:"openType"`
 	PositionType int    `json:"positionType"`
 }
-
-// Order side constants.
-const (
-	SideOpenLong   = 1
-	SideCloseShort = 2
-	SideOpenShort  = 3
-	SideCloseLong  = 4
-)
-
-// SideStr returns a human-readable string for the side constant.
-func SideStr(side int) string {
-	switch side {
-	case SideOpenLong:
-		return "LONG"
-	case SideOpenShort:
-		return "SHORT"
-	case SideCloseShort:
-		return "CLOSE_SHORT"
-	case SideCloseLong:
-		return "CLOSE_LONG"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// CloseSideFor returns the close side for a given open side.
-func CloseSideFor(openSide int) int {
-	if openSide == SideOpenLong {
-		return SideCloseLong
-	}
-	return SideCloseShort
-}
-
-// Order state constants.
-const (
-	OrderStateFilled   = 3
-	OrderStateCanceled = 4
-	OrderStatePartial  = 5
-)
-
-// IsTerminalOrderState returns true if the order state is a terminal state.
-func IsTerminalOrderState(state int) bool {
-	return state == OrderStateFilled || state == OrderStateCanceled || state == OrderStatePartial
-}
-
-// Order type constants.
-const (
-	OrderTypeLimit    = 1
-	OrderTypePostOnly = 2
-	OrderTypeIOC      = 3
-	OrderTypeFOK      = 4
-	OrderTypeMarket   = 5
-)
-
-// Open type constants.
-const (
-	OpenTypeIsolated = 1
-	OpenTypeCross    = 2
-)
-
-const (
-	IntervalMin1 = "Min1"
-)
 
 // WsOrderDeal represents the parsed data from push.personal.order.
 type WsOrderDeal struct {

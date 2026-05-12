@@ -4,6 +4,7 @@ import (
 	"math"
 
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/pkg/decmath"
 )
 
 // SlippageCalculator defines the strategy interface for computing slippage.
@@ -19,7 +20,7 @@ type staticSlippage struct {
 }
 
 func (s *staticSlippage) Calculate(refPrice float64, _ *shared.OrderBook) float64 {
-	return math.Max(refPrice*(s.maxDiffPct/100.0), s.priceUnit*2)
+	return math.Max(decmath.Mul(refPrice, s.maxDiffPct/100.0), decmath.Mul(s.priceUnit, 2))
 }
 
 // spreadSlippage implements spread-multiplier slippage with hard cap.
@@ -35,8 +36,8 @@ type spreadSlippage struct {
 func (s *spreadSlippage) Calculate(refPrice float64, _ *shared.OrderBook) float64 {
 	maxDiff := s.maxDiffPct
 	if s.bestBid > 0 {
-		spreadPct := (s.bestAsk - s.bestBid) / s.bestBid * 100.0
-		dynDiff := spreadPct * s.multiplier
+		spreadPct := decmath.Mul(decmath.Div(decmath.Sub(s.bestAsk, s.bestBid), s.bestBid), 100.0)
+		dynDiff := decmath.Mul(spreadPct, s.multiplier)
 		if dynDiff > maxDiff {
 			maxDiff = dynDiff
 		}
@@ -46,7 +47,7 @@ func (s *spreadSlippage) Calculate(refPrice float64, _ *shared.OrderBook) float6
 			maxDiff = s.maxSlippagePct
 		}
 	}
-	return math.Max(refPrice*(maxDiff/100.0), s.priceUnit*2)
+	return math.Max(decmath.Mul(refPrice, maxDiff/100.0), decmath.Mul(s.priceUnit, 2))
 }
 
 // obImbalanceSlippage implements orderbook-sweep slippage with hard cap.
@@ -60,8 +61,8 @@ type obImbalanceSlippage struct {
 
 func (o *obImbalanceSlippage) Calculate(refPrice float64, ob *shared.OrderBook) float64 {
 	if ob == nil {
-		// Fallback: if no OB data, return minimum tick slippage
-		return o.priceUnit * 2
+		// Fallback: if no OB data, return minimum tick slippage.
+		return decmath.Mul(o.priceUnit, 2)
 	}
 
 	sweepPrice := refPrice
@@ -75,16 +76,16 @@ func (o *obImbalanceSlippage) Calculate(refPrice float64, ob *shared.OrderBook) 
 				break
 			}
 		}
-		sweepPrice *= (1 + o.bufferPct/100.0)
+		sweepPrice = decmath.Mul(sweepPrice, decmath.Add(1, o.bufferPct/100.0))
 
-		maxPrice := refPrice * (1 + o.maxSlippagePct/100.0)
+		maxPrice := decmath.Mul(refPrice, decmath.Add(1, o.maxSlippagePct/100.0))
 		if sweepPrice > maxPrice {
 			sweepPrice = maxPrice
 		}
-		return sweepPrice - refPrice
+		return decmath.Sub(sweepPrice, refPrice)
 	}
 
-	// SHORT → Eat Bids (Descending)
+	// SHORT → Eat Bids (Descending).
 	for _, bid := range ob.Bids {
 		sweepPrice = bid.Price
 		remVol -= bid.Volume
@@ -92,13 +93,13 @@ func (o *obImbalanceSlippage) Calculate(refPrice float64, ob *shared.OrderBook) 
 			break
 		}
 	}
-	sweepPrice *= (1 - o.bufferPct/100.0)
+	sweepPrice = decmath.Mul(sweepPrice, decmath.Sub(1, o.bufferPct/100.0))
 
-	minPrice := refPrice * (1 - o.maxSlippagePct/100.0)
+	minPrice := decmath.Mul(refPrice, decmath.Sub(1, o.maxSlippagePct/100.0))
 	if sweepPrice < minPrice {
 		sweepPrice = minPrice
 	}
-	return refPrice - sweepPrice
+	return decmath.Sub(refPrice, sweepPrice)
 }
 
 // newSlippageCalculator is the factory that selects the appropriate strategy
@@ -112,7 +113,7 @@ func newSlippageCalculator(c *Candidate, dyn DynamicPricingConfig) SlippageCalcu
 	}
 
 	switch dyn.SlippageMode {
-	case "OB_IMBALANCE":
+	case SlippageModeOBImbalance:
 		return &obImbalanceSlippage{
 			volume:         c.Volume,
 			side:           c.Side,

@@ -1,26 +1,29 @@
-package domain
+package domain_test
 
 import (
 	"testing"
+
+	domain "crypto-bot/internal/bots/funding_reversion/domain"
 
 	shared "crypto-bot/internal/domain"
 )
 
 func TestScanFundingRates(t *testing.T) {
-	configs := []ScanConfig{
+	t.Parallel()
+	configs := []domain.ScanConfig{
 		{Symbol: "BTC_USDT", MinFundingRate: 0.005}, // 0.5%
 		{Symbol: "ETH_USDT", MinFundingRate: 0.01},  // 1%
 		{Symbol: "XRP_USDT", MinFundingRate: 0.001}, // 0.1%
 	}
 
-	tickers := []ScanResult{
+	tickers := []domain.ScanResult{
 		{Symbol: "BTC_USDT", FundingRate: 0.006, LastPrice: 60000, BestBid: 59999, BestAsk: 60001, Volume24: 100, Amount24: 6000000}, // Meets criteria (0.6% > 0.5%), FR > 0 (LONG)
 		{Symbol: "ETH_USDT", FundingRate: -0.015, LastPrice: 3000, BestBid: 2999, BestAsk: 3001, Volume24: 200, Amount24: 600000},    // Meets criteria (|-1.5%| > 1%), FR < 0 (SHORT)
 		{Symbol: "XRP_USDT", FundingRate: 0.0005, LastPrice: 0.5, BestBid: 0.49, BestAsk: 0.51, Volume24: 10000, Amount24: 5000},     // Fails criteria (0.05% < 0.1%)
 		{Symbol: "DOGE_USDT", FundingRate: 0.02, LastPrice: 0.1, BestBid: 0.09, BestAsk: 0.11, Volume24: 100000, Amount24: 10000},    // Not in config
 	}
 
-	candidates := ScanFundingRates(tickers, configs)
+	candidates := domain.ScanFundingRates(tickers, configs)
 
 	if len(candidates) != 2 {
 		t.Fatalf("expected 2 candidates, got %d", len(candidates))
@@ -58,16 +61,17 @@ func TestScanFundingRates(t *testing.T) {
 }
 
 func TestEnrichWithContractSpec(t *testing.T) {
-	candidates := []Candidate{
-		{TradeIntent: TradeIntent{Symbol: "BTC_USDT"}},
-		{TradeIntent: TradeIntent{Symbol: "ETH_USDT"}},
+	t.Parallel()
+	candidates := []domain.Candidate{
+		{TradeIntent: domain.TradeIntent{Symbol: "BTC_USDT"}},
+		{TradeIntent: domain.TradeIntent{Symbol: "ETH_USDT"}},
 	}
 
-	specs := map[string]ContractSpec{
+	specs := map[string]domain.ContractSpec{
 		"BTC_USDT": {PriceUnit: 0.5, VolUnit: 1, MinVol: 2, ContractSize: 0.001, TakerFeeRate: 0.0006},
 	}
 
-	EnrichWithContractSpec(candidates, specs)
+	domain.EnrichWithContractSpec(candidates, specs)
 
 	if candidates[0].PriceUnit != 0.5 {
 		t.Errorf("expected BTC PriceUnit 0.5, got %f", candidates[0].PriceUnit)
@@ -81,5 +85,47 @@ func TestEnrichWithContractSpec(t *testing.T) {
 
 	if candidates[1].PriceUnit != 0 {
 		t.Errorf("expected ETH untouched (0), got %f", candidates[1].PriceUnit)
+	}
+}
+
+func TestScanFundingRates_EmptyInputs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no tickers", func(t *testing.T) {
+		t.Parallel()
+		candidates := domain.ScanFundingRates(nil, []domain.ScanConfig{{Symbol: "BTC_USDT", MinFundingRate: 0.001}})
+		if len(candidates) != 0 {
+			t.Errorf("expected 0 candidates, got %d", len(candidates))
+		}
+	})
+
+	t.Run("no configs", func(t *testing.T) {
+		t.Parallel()
+		candidates := domain.ScanFundingRates([]domain.ScanResult{{Symbol: "BTC_USDT", FundingRate: 0.01}}, nil)
+		if len(candidates) != 0 {
+			t.Errorf("expected 0 candidates, got %d", len(candidates))
+		}
+	})
+}
+
+func TestTradeConfig_IsHedgeTrapEnabled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config domain.TradeConfig
+		want   bool
+	}{
+		{"enabled", domain.TradeConfig{FundingTrap: domain.FundingTrapConfig{Enabled: true}}, true},
+		{"disabled", domain.TradeConfig{FundingTrap: domain.FundingTrapConfig{Enabled: false}}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.config.IsHedgeTrapEnabled(); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

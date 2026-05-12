@@ -1,6 +1,6 @@
 # Crypto-Bot Architecture
 
-> Last updated: 2026-05-06 — Reflects post-refactoring state (Phases 1–7 complete + Architecture Debt cleanup).
+> Last updated: 2026-05-12 — Reflects post-refactoring state (Config decoupling, Engine optimizations, and Coverage improvements).
 
 ## 1. Overview
 
@@ -190,7 +190,7 @@ type Bot interface {
 2. `bot.Run(ctx)` — main strategy loop (goroutine)
 3. Signal handler (`SIGINT`/`SIGTERM`)
 4. `bot.Stop(shutdownCtx)` — 5s timeout for cleanup
-5. `engine.Shutdown()` — close WS pool, flush logger
+5. `engine.Shutdown(ctx)` — close WS pool, flush logger with context propagation
 
 ### 4.3 StoreRegistry (`infrastructure/app/store_registry.go`)
 
@@ -468,8 +468,18 @@ defer shutdown(ctx)
 ### Bot Config (`funding.jsonc`)
 ```jsonc
 [
-  { "symbol": "STEEM_USDT", "marginUSDT": 3 }
-  // All other fields inherit from tradingDefaults
+  { 
+    "symbol": "STEEM_USDT", 
+    "marginUSDT": 3,
+    "fundingReversion": {
+      "enabled": true,
+      "takeProfitPct": 3
+    },
+    "fundingTrap": {
+      "enabled": true,
+      "depthPct": 2.5
+    }
+  }
 ]
 ```
 
@@ -481,45 +491,59 @@ defer shutdown(ctx)
 |---------|----------|----------|
 | `internal/domain` | **100%** | Table-driven, pure functions |
 | `pkg/decmath` | **96.6%** | Edge cases (0.1+0.2=0.3), benchmarks |
-| `observability` | **92.9%** | Metrics, health, correlation ID |
-| `exchange` | **84.2%** | Structured error types |
-| `funding_reversion/domain` | **54.7%** | Pricing, safety, scanner, scorer |
-| `infrastructure/app` | **34.2%** | EventBus, EngineBuilder |
-| `store` | **31.1%** | Depth, kline stores |
+| `observability` | **92.8%** | Metrics, health, correlation ID |
+| `exchange` | **96.2%** | Structured error types |
+| `funding_reversion/config` | **94.7%** | Default copy + struct merging |
+| `funding_reversion/domain` | **83.4%** | Pricing, safety, scanner, scorer |
+| `infrastructure/app` | **86.6%** | EventBus, EngineBuilder, lifecycle |
+| `store` | **97.7%** | Depth, kline stores |
+| `infrastructure/journal` | **92.6%** | Trade journaling |
+| `exchange/mexc` | **79.2%** | Rest and WS clients |
+| `pkg/ws` | **92.0%** | WebSockets connection pools |
 
 ---
 
 ## 10. Suggested Improvements
 
-### 🔴 High Priority
+### 🔴 High Priority — Blocking Live Trading
 
-| # | Improvement | Why | Effort |
-|---|-------------|-----|--------|
-| 1 | **Graceful WS reconnect with state recovery** | WS disconnect currently loses all subscription state. Should replay subscriptions on reconnect. | L |
-| 2 | **Merge `TradeConfig`/`SymbolConfig` duplication** | Two config structs store overlapping fields. Single struct with validation. | S |
+| # | Improvement | Why | Where | Effort |
+|---|-------------|-----|-------|--------|
+| 1 | **Wire Penny Jumper order execution** | `runWorkflow()` has 4 `TODO` stubs: place order, cancel on timeout, cancel on wall disappear, cancel on volume drop. Currently logs `[STUB]` instead of placing real orders. | [workflow_manager.go:194-241](file:///e:/projects/crypto-bot/internal/bots/penny_jumper/application/workflow_manager.go#L194-L241) | M |
+| 2 | **WS reconnect with subscription replay** | WS disconnect loses all subscription state. Pool should track active topics and replay `Subscribe*()` calls on reconnect. Critical for long-running sessions. | `pkg/ws/pool.go`, `ws_adapter.go` | L |
+| 3 | **Wire `OrderJournal` + `PnLTracker` into bots** | Both are implemented and tested (`journal/` package, 76.6% coverage) but neither bot calls `Record()` or `RecordEntry()`. No trade history is captured. | `sniper.go`, `penny.go`, `journal/` | S |
 
-### 🟡 Medium Priority
+### 🟡 Medium Priority — Correctness & Reliability
 
-| # | Improvement | Why | Effort |
-|---|-------------|-----|--------|
-| 3 | **Persistent order journal** | Log all order placements/fills to SQLite/CSV for post-trade analysis. | M |
-| 4 | **PnL tracker** | Real-time profit/loss tracking per symbol per session. | M |
-| 5 | **Context propagation audit** | Many public I/O methods still lack `context.Context` first parameter. | S |
+| # | Improvement | Why | Where | Effort |
+|---|-------------|-----|-------|--------|
+| 4 | **`context.Context` propagation in WS adapter** | 6 methods in `ws_adapter.go` use `context.Background()` instead of propagating the caller's context. Prevents cancellation of WS subscribe/unsubscribe during shutdown. | [ws_adapter.go:43-125](file:///e:/projects/crypto-bot/internal/infrastructure/exchange/mexc/ws_adapter.go#L43-L125) | S |
+| 5 | **Replace `float64` with `decimal` in Penny Jumper domain** | `Wall.Price`, `Wall.Volume`, `WallHistory`, `Scorer` all use `float64`. Funding Reversion uses `pkg/decmath` for financial precision, but Penny Jumper does not. Risk of floating-point drift in price comparisons (e.g., `prev.Price == newWall.Price`). | `penny_jumper/domain/wall.go`, `scorer.go`, `wall_history.go` | M |
 
-### 🟢 Nice to Have
+### 🟢 Nice to Have — Features & Scale
 
-| # | Improvement | Why | Effort |
-|---|-------------|-----|--------|
-| 6 | **Multi-exchange support** | Add Binance/Bybit adapters (interface already exists). | L |
-| 7 | **Backtesting framework** | Replay historical klines/depth through the same pipeline. | XL |
-| 8 | **Dry-run mode** | Execute full pipeline but log orders instead of placing them. | S |
+| # | Improvement | Why | Where | Effort |
+|---|-------------|-----|-------|--------|
+| 6 | **Multi-exchange support** | Add Binance/Bybit adapters. Interface already exists (`ExchangeAdapter`, `exchange.Client`). | New `binance/` package | L |
+| 7 | **Backtesting framework** | Replay historical klines/depth through the same event pipeline. `EventBus` architecture makes this feasible — inject mock adapter that replays recorded data. | New `backtest/` package | XL |
+| 8 | **Dashboard / monitoring UI** | WebSocket-based live dashboard showing active workflows, PnL, wall detections. Prometheus metrics already exposed. | New `cmd/dashboard/` | L |
+| 9 | **Rate limiter for REST API calls** | No explicit rate limiting on `exchange.Client` methods. MEXC returns 429 but current code doesn't backoff gracefully. | `pkg/httpclient/` or `exchange/mexc/client.go` | M |
 
-### Architecture Debt
+---
 
-| Item | Current State | Target State |
-|------|--------------|-------------|
-| `Engine.Bus` | ✅ Typed `*EventBus` | Done — all consumers use typed `EventBus.Publish/Subscribe/Unsubscribe` |
-| WS handler registration | ✅ `pool.On()` → `EventBus.Publish()` | Done — WS adapter parses raw bytes at boundary, publishes typed events |
-| `exchange.Client` | ✅ `MarketDataProvider + OrderExecutor + AccountProvider` | Done — ISP applied |
-| `Runner.RunBot` shutdown | ✅ `sync.WaitGroup` with timeout | Done — deterministic shutdown, no `time.Sleep` |
-| `Sniper.spawnWorker` | Returns `func() error` closure | Deferred — current `errgroup` pattern is clean and testable |
+### Architecture Debt (Resolved)
+
+| Item | Status |
+|------|--------|
+| `Engine.Bus` → typed `*EventBus` | ✅ Done — all consumers use `EventBus.Publish/Subscribe/Unsubscribe` |
+| WS handler → EventBus boundary | ✅ Done — `pool.On()` parses raw bytes, publishes via `EventBus` |
+| `exchange.Client` ISP split | ✅ Done — `MarketDataProvider + OrderExecutor + AccountProvider` |
+| `Runner.RunBot` deterministic shutdown | ✅ Done — `sync.WaitGroup` with 5s timeout, no `time.Sleep` |
+| `Sniper.spawnWorker` → WorkerPool | ⏸️ Deferred — current `errgroup` pattern is clean |
+| Dry-run mode | ✅ Done — `DryRunClient` wraps real client, intercepts writes |
+| Persistent order journal | ✅ Done — `CSVJournal` with daily rotation (not yet wired to bots) |
+| PnL tracker | ✅ Done — `PnLTracker` with per-symbol summaries (not yet wired to bots) |
+| Merge `TradeConfig`/`SymbolConfig` duplication | ✅ Done — Deep decoupled JSON tree, tests passing |
+| Inject `*slog.Logger` instead of `slog.Default()` | ✅ Done — Engine scope propagates log context automatically |
+
+

@@ -62,7 +62,7 @@ func (s *ContractStore) syncContracts(ctx context.Context, client exchange.Clien
 }
 
 // GetContract returns the contract specification for a symbol.
-func (s *ContractStore) GetContract(symbol string) (*ContractData, error) {
+func (s *ContractStore) GetContract(_ context.Context, symbol string) (*ContractData, error) {
 	s.mu.RLock()
 	cd, ok := s.contracts[symbol]
 	s.mu.RUnlock()

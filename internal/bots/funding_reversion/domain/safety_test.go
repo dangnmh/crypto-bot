@@ -1,23 +1,26 @@
-package domain
+package domain_test
 
 import (
 	"math"
 	"testing"
+
+	domain "crypto-bot/internal/bots/funding_reversion/domain"
 )
 
 func TestEvaluateSafety(t *testing.T) {
-	c := Candidate{
-		Config: TradeConfig{
+	t.Parallel()
+	c := domain.Candidate{
+		Config: domain.TradeConfig{
 			MarginUSDT:          100,
 			Leverage:            10,
 			MaxPriceDiffPercent: 0.5,
 		},
-		TradeIntent: TradeIntent{FundingRate: 0.02}, // 2%
-		TradePlan:   TradePlan{Volume: 50, Slippage: 0},
-		MarketData: MarketData{
+		TradeIntent: domain.TradeIntent{FundingRate: 0.02}, // 2%
+		TradePlan:   domain.TradePlan{Volume: 50, Slippage: 0},
+		MarketData: domain.MarketData{
 			Amount24: 1000000, // Large liquidity
 		},
-		ContractSpec: ContractSpec{
+		ContractSpec: domain.ContractSpec{
 			MinVol:       10,
 			TakerFeeRate: 0.0006, // 0.06%
 		},
@@ -26,6 +29,7 @@ func TestEvaluateSafety(t *testing.T) {
 	maxImpact := 0.05
 
 	t.Run("Passed Safety", func(t *testing.T) {
+		t.Parallel()
 		res := c.EvaluateSafety(maxImpact)
 		if !res.Passed {
 			t.Errorf("expected safety to pass, got rejected: %s", res.RejectReason)
@@ -49,6 +53,7 @@ func TestEvaluateSafety(t *testing.T) {
 	})
 
 	t.Run("Failed High Impact Ratio", func(t *testing.T) {
+		t.Parallel()
 		c2 := c
 		c2.Amount24 = 10000 // 1000 / 10000 = 0.1 > maxImpact 0.05
 		res := c2.EvaluateSafety(maxImpact)
@@ -58,6 +63,7 @@ func TestEvaluateSafety(t *testing.T) {
 	})
 
 	t.Run("Failed Low Volume", func(t *testing.T) {
+		t.Parallel()
 		c3 := c
 		c3.Volume = 5 // < MinVol 10
 		res := c3.EvaluateSafety(maxImpact)
@@ -67,6 +73,7 @@ func TestEvaluateSafety(t *testing.T) {
 	})
 
 	t.Run("Slippage Override from Orderbook", func(t *testing.T) {
+		t.Parallel()
 		c4 := c
 		c4.Slippage = 1.2 // Calculated slippage takes precedence over config (0.5)
 		res := c4.EvaluateSafety(maxImpact)

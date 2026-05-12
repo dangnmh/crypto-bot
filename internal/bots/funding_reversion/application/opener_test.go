@@ -1,19 +1,21 @@
-package application
+package application_test
 
 import (
+	"crypto-bot/internal/bots/funding_reversion/application"
 	"errors"
 	"testing"
 )
 
 func TestOrderResultIsSuccess(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
-		result   OrderResult
+		result   application.OrderResult
 		expected bool
 	}{
 		{
 			name: "Success",
-			result: OrderResult{
+			result: application.OrderResult{
 				OrderID: "12345",
 				Error:   nil,
 			},
@@ -21,7 +23,7 @@ func TestOrderResultIsSuccess(t *testing.T) {
 		},
 		{
 			name: "Error present",
-			result: OrderResult{
+			result: application.OrderResult{
 				OrderID: "12345",
 				Error:   errors.New("API error"),
 			},
@@ -29,7 +31,7 @@ func TestOrderResultIsSuccess(t *testing.T) {
 		},
 		{
 			name: "Empty OrderID",
-			result: OrderResult{
+			result: application.OrderResult{
 				OrderID: "",
 				Error:   nil,
 			},
@@ -37,7 +39,7 @@ func TestOrderResultIsSuccess(t *testing.T) {
 		},
 		{
 			name: "Empty OrderID and Error",
-			result: OrderResult{
+			result: application.OrderResult{
 				OrderID: "",
 				Error:   errors.New("API error"),
 			},
@@ -47,6 +49,7 @@ func TestOrderResultIsSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			actual := tt.result.IsSuccess()
 			if actual != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, actual)

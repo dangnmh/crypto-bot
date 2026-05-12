@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -9,10 +10,9 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/ws"
+	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/logger"
 	pkgws "crypto-bot/pkg/ws"
-
-	"github.com/cskr/pubsub"
 )
 
 // Bot defines the interface that any sub-bot must implement to be run by the Engine.
@@ -29,7 +29,7 @@ type Engine struct {
 	Adapter       ws.ExchangeAdapter
 	TimeSync      *timesync.TimeSync
 	WS            *pkgws.Pool
-	Bus           *pubsub.PubSub
+	Bus           *eventbus.Bus
 	loggerCleanup func()
 }
 
@@ -46,12 +46,13 @@ func NewEngine(cfg EngineConfig) *Engine {
 	sysCfg := cfg.SystemConfig
 	cleanup := logger.InitLogger(sysCfg.Logging.Level)
 
-	slog.Info("⚙️ Initializing Engine...", "base_url", sysCfg.API.Future.BaseURL)
+	engineLogger := slog.Default().With("component", "engine")
+	engineLogger.Info("⚙️ Initializing Engine...", "base_url", sysCfg.API.Future.BaseURL)
 
 	ts := timesync.New(cfg.Client, time.Duration(sysCfg.Sync.Time))
 
 	// Create generic WS pool with exchange-specific auth and extractors
-	wsLogger := slog.Default().With("component", "websocket")
+	wsLogger := engineLogger.With("subsystem", "websocket")
 	wsClientOpts := []pkgws.ClientOption{}
 
 	if cfg.Adapter != nil {
@@ -74,7 +75,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		cfg.Adapter.SetPool(wsPool)
 	}
 
-	bus := pubsub.New(100)
+	bus := eventbus.New(engineLogger.With("subsystem", "eventbus"))
 
 	return &Engine{
 		Cfg:           sysCfg,
@@ -87,12 +88,30 @@ func NewEngine(cfg EngineConfig) *Engine {
 	}
 }
 
-// Shutdown cleans up the engine resources.
-func (e *Engine) Shutdown() {
-	if e.WS != nil {
-		e.WS.Close()
-	}
-	if e.loggerCleanup != nil {
-		e.loggerCleanup()
+// Shutdown cleans up the engine resources with a timeout.
+func (e *Engine) Shutdown(ctx context.Context) error {
+	errCh := make(chan error, 1)
+
+	go func() {
+		var errs []error
+		if e.WS != nil {
+			e.WS.Close()
+		}
+		if e.Bus != nil {
+			if err := e.Bus.Close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		if e.loggerCleanup != nil {
+			e.loggerCleanup()
+		}
+		errCh <- errors.Join(errs...)
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }

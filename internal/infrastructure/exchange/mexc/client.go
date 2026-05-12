@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -94,7 +95,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		url += "?" + qs
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create GET request: %w", err)
 	}
@@ -173,13 +174,22 @@ func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Log a warning if the response was non-200 and transport logger didn't log due to config
-		if !c.logCfg.HTTP {
-			c.logger.Warn("🟡 Non-200 response",
-				"status", resp.StatusCode,
-				"body", string(body),
-			)
+		path := req.URL.Path
+
+		// Rate limit gets a dedicated error type for programmatic handling.
+		if isRateLimited(resp.StatusCode) {
+			return nil, &exchange.RateLimitError{
+				Message: string(body),
+				Path:    path,
+			}
 		}
+
+		c.logger.Warn("🟡 Non-200 response",
+			"status", resp.StatusCode,
+			"path", path,
+			"body", string(body),
+		)
+		return nil, toHTTPError(resp.StatusCode, body, path)
 	}
 
 	return body, nil

@@ -159,3 +159,14 @@ func (ts *TimeSync) Now() time.Time {
 func (ts *TimeSync) Until(target time.Time) time.Duration {
 	return time.Duration(target.UnixMilli()-ts.GetServerTime()) * time.Millisecond
 }
+
+// Sleep blocks until the duration elapses or the context is cancelled.
+// This wraps time.After to allow tests to mock out time delays.
+func (ts *TimeSync) Sleep(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
+}

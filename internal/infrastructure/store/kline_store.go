@@ -1,10 +1,11 @@
 package store
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 
-	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/domain"
 )
 
 // KlineStore manages historical candlestick data buffers.
@@ -23,7 +24,7 @@ func NewKlineStore() *KlineStore {
 }
 
 // InitKlines initializes the kline buffer for a symbol with historical REST data.
-func (s *KlineStore) InitKlines(symbol string, maxLen int, initial []exchange.Kline) {
+func (s *KlineStore) InitKlines(symbol string, maxLen int, initial []domain.Kline) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -38,7 +39,7 @@ func (s *KlineStore) InitKlines(symbol string, maxLen int, initial []exchange.Kl
 }
 
 // AddKline adds a new kline (usually from WS push) to the buffer.
-func (s *KlineStore) AddKline(symbol string, k exchange.Kline) {
+func (s *KlineStore) AddKline(symbol string, k domain.Kline) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -52,7 +53,7 @@ func (s *KlineStore) AddKline(symbol string, k exchange.Kline) {
 }
 
 // GetKlines returns a copy of the klines buffer for a symbol.
-func (s *KlineStore) GetKlines(symbol string) []exchange.Kline {
+func (s *KlineStore) GetKlines(_ context.Context, symbol string) []domain.Kline {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -61,7 +62,7 @@ func (s *KlineStore) GetKlines(symbol string) []exchange.Kline {
 		return nil
 	}
 
-	res := make([]exchange.Kline, len(buf.klines))
+	res := make([]domain.Kline, len(buf.klines))
 	copy(res, buf.klines)
 	return res
 }

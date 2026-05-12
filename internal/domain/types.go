@@ -21,6 +21,22 @@ func (s Side) IsLong() bool {
 	return s == SideOpenLong || s == SideCloseLong
 }
 
+// Opposite returns the inverse side (e.g., LONG -> SHORT).
+func (s Side) Opposite() Side {
+	switch s {
+	case SideOpenLong:
+		return SideOpenShort
+	case SideOpenShort:
+		return SideOpenLong
+	case SideCloseLong:
+		return SideCloseShort
+	case SideCloseShort:
+		return SideCloseLong
+	default:
+		return s
+	}
+}
+
 // CloseSideFor returns the close side for a given open side.
 func CloseSideFor(openSide Side) Side {
 	if openSide == SideOpenLong {
@@ -77,3 +93,47 @@ type OrderBook struct {
 	Asks    []OrderBookEntry // Sorted by price ascending (lowest ask first)
 	Bids    []OrderBookEntry // Sorted by price descending (highest bid first)
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// OrderState — terminal state of an order
+// ──────────────────────────────────────────────────────────────────────.
+
+const (
+	OrderStateFilled   = 3
+	OrderStateCanceled = 4
+	OrderStatePartial  = 5
+)
+
+// IsTerminalOrderState returns true if the order state is a terminal state.
+func IsTerminalOrderState(state int) bool {
+	return state == OrderStateFilled || state == OrderStateCanceled || state == OrderStatePartial
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// OrderType — execution strategy for an order
+// ──────────────────────────────────────────────────────────────────────.
+
+const (
+	OrderTypeLimit    = 1
+	OrderTypePostOnly = 2
+	OrderTypeIOC      = 3
+	OrderTypeFOK      = 4
+	OrderTypeMarket   = 5
+)
+
+// ──────────────────────────────────────────────────────────────────────
+// OpenType — margin mode
+// ──────────────────────────────────────────────────────────────────────.
+
+const (
+	OpenTypeIsolated = 1
+	OpenTypeCross    = 2
+)
+
+// ──────────────────────────────────────────────────────────────────────
+// Interval — kline interval constants
+// ──────────────────────────────────────────────────────────────────────.
+
+const (
+	IntervalMin1 = "Min1"
+)

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"crypto-bot/internal/infrastructure/observability"
 )
 
 // multiHandler fans out log records to multiple slog handlers.
@@ -49,7 +51,8 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: handlers}
 }
 
-// InitLogger initializes the global slog logger with console (text) + file (JSON) output.
+// InitLogger initializes the global slog logger with console (JSON) + file (JSON) output.
+// All handlers are wrapped with TraceHandler to auto-inject trace_id, span_id, req_id.
 // Returns a cleanup function to close the log file.
 func InitLogger(level string) func() {
 	var slogLevel slog.Level
@@ -69,17 +72,21 @@ func InitLogger(level string) func() {
 	opts := &slog.HandlerOptions{Level: slogLevel, AddSource: true}
 	consoleHandler := slog.NewJSONHandler(os.Stdout, opts)
 
-	_ = os.MkdirAll("logs", 0o755)
-	file, err := os.OpenFile(
-		fmt.Sprintf("logs/app-%s.jsonl", time.Now().Format("2006-01-02_15-04-05")),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666,
-	)
-	if err != nil {
-		panic(err)
+	handlers := []slog.Handler{observability.NewTraceHandler(consoleHandler)}
+
+	var file *os.File
+	if err := os.MkdirAll("logs", 0o755); err == nil {
+		file, err = os.OpenFile(
+			fmt.Sprintf("logs/app-%s.jsonl", time.Now().Format("2006-01-02_15-04-05")),
+			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666,
+		)
+		if err == nil {
+			fileHandler := slog.NewJSONHandler(file, opts)
+			handlers = append(handlers, observability.NewTraceHandler(fileHandler))
+		}
 	}
 
-	fileHandler := slog.NewJSONHandler(file, opts)
-	handler := &multiHandler{handlers: []slog.Handler{consoleHandler, fileHandler}}
+	handler := &multiHandler{handlers: handlers}
 
 	slog.SetDefault(slog.New(handler))
 

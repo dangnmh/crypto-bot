@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"time"
@@ -23,7 +24,6 @@ type Subscriber interface {
 	SubscribePersonal() error
 }
 
-
 // ExchangeAdapter encapsulates all exchange-specific WS logic.
 type ExchangeAdapter interface {
 	Subscriber // Inherit Subscribe, Unsubscribe methods
@@ -31,14 +31,14 @@ type ExchangeAdapter interface {
 	// SetPool allows the Engine to inject the WS pool after initialization.
 	SetPool(pool *pkgws.Pool)
 
-	// Auth & Routing
+	// Auth & Routing.
 	GetPingConfig() (payload interface{}, interval time.Duration)
 	GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client)
 	GetChannelExtractor() func([]byte) string
 
-	// Parsers (raw JSON []byte to domain objects)
+	// Parsers (raw JSON []byte to domain objects).
 	ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error)
-	ParseDepth(data []byte) (symbol string, ob *exchange.OrderBook, err error)
-	ParseKline(data []byte) (symbol string, k *exchange.Kline, err error)
+	ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error)
+	ParseKline(data []byte) (symbol string, k *domain.Kline, err error)
 	ParseOrder(data []byte) (*exchange.WsOrderDeal, error)
 }

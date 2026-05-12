@@ -6,6 +6,20 @@ import (
 	shared "crypto-bot/internal/domain"
 )
 
+// SlippageMode constants for DynamicPricingConfig.SlippageMode.
+const (
+	SlippageModeOBImbalance     = "OB_IMBALANCE"
+	SlippageModeSpreadMultipler = "SPREAD_MULTIPLIER"
+)
+
+// Phase constants.
+const (
+	PhaseScanning  = "SCANNING"
+	PhaseArmed     = "ARMED"
+	PhaseFiredIOC  = "FIRED_IOC"
+	PhaseFiredTrap = "FIRED_TRAP"
+)
+
 // MarketData holds live market prices from the store/WS.
 type MarketData struct {
 	LastPrice float64
@@ -36,68 +50,78 @@ type TradeConfig struct {
 	MaxPriceDiffPercent float64
 	MarginUSDT          float64
 	Leverage            int
-	TakeProfitPct       float64
-	StopLossPct         float64
+	FundingReversion    FundingReversionConfig
+	FundingTrap         FundingTrapConfig
 
-	// Hedge Trap
-	EnableHedgeTrap    bool
-	TrapDepthPct       float64
-	TrapTakeProfitPct  float64
-	TrapStopLossPct    float64
-	TrapTrailingConfig TrailingConfig
-
-	// Dynamic Pricing
-	DynamicPricing DynamicPricingConfig
-
-	// Trailing
-	TrailingConfig TrailingConfig
-
-	// Parsed exchange-specific values
+	// Parsed exchange-specific values.
 	ParsedOpenType     int
 	ParsedPositionMode int
 }
 
-// TrailingConfig holds configuration for the Trailing Stop mechanism.
-type TrailingConfig struct {
-	Enabled       bool
-	ActivationPct float64
-	CallbackPct   float64
+// FundingReversionConfig holds configuration specific to the reversion strategy.
+type FundingReversionConfig struct {
+	Enabled        bool                 `json:"enabled"`
+	TakeProfitPct  float64              `json:"takeProfitPct"`
+	StopLossPct    float64              `json:"stopLossPct"`
+	DynamicPricing DynamicPricingConfig `json:"dynamicPricing"`
+	Trailing       TrailingConfig       `json:"trailing"`
 }
 
-// DynamicPricingConfig holds multipliers for auto-calculating Slippage, TP, and SL.
+// TrailingConfig holds configuration for the Trailing Stop mechanism.
+// Static fields are fallbacks; dynamic multipliers override them when DynamicPricing is enabled.
+type TrailingConfig struct {
+	Enabled       bool    `json:"enabled"`
+	ActivationPct float64 `json:"activationPct"`
+	CallbackPct   float64 `json:"callbackPct"`
+
+	// Dynamic multipliers (FR-scaled). Populated from config, applied in PrepareDynamicPricing.
+	ActivationMultiplier float64 `json:"activationMultiplier"`
+	MinActivation        float64 `json:"minActivation"`
+	MaxActivation        float64 `json:"maxActivation"`
+	CallbackMultiplier   float64 `json:"callbackMultiplier"`
+	MinCallback          float64 `json:"minCallback"`
+	MaxCallback          float64 `json:"maxCallback"`
+}
+
+// FundingTrapConfig holds all straddle trap configuration in one place.
+type FundingTrapConfig struct {
+	Enabled       bool    `json:"enabled"`
+	DepthPct      float64 `json:"depthPct"`
+	TakeProfitPct float64 `json:"takeProfitPct"`
+	StopLossPct   float64 `json:"stopLossPct"`
+
+	// Dynamic multipliers (FR-scaled).
+	DepthMultiplier float64 `json:"depthMultiplier"`
+	MinDepth        float64 `json:"minDepth"`
+	MaxDepth        float64 `json:"maxDepth"`
+	TpMultiplier    float64 `json:"tpMultiplier"`
+	MinTP           float64 `json:"minTP"`
+	MaxTP           float64 `json:"maxTP"`
+	SlMultiplier    float64 `json:"slMultiplier"`
+	MinSL           float64 `json:"minSL"`
+	MaxSL           float64 `json:"maxSL"`
+
+	Trailing TrailingConfig `json:"trailing"`
+}
+
+// DynamicPricingConfig holds the master toggle and multipliers for slippage, TP, and SL.
+// Trap and trailing multipliers live in their respective config sections.
 type DynamicPricingConfig struct {
-	Enabled             bool
-	SlippageMode        string
-	ObBufferPct         float64
-	ObMaxSlippagePct    float64
-	ObStep              string
-	SpreadMultiplier    float64
-	TpFundingMultiplier float64
-	TpAtrMultiplier     float64
-	SlAtrMultiplier     float64
-	SlFundingMultiplier float64
-
-	TrapDepthMultiplier float64
-	MinTrapDepth        float64
-	MaxTrapDepth        float64
-	TrapTpMultiplier    float64
-	MinTrapTP           float64
-	MaxTrapTP           float64
-	TrapSlMultiplier    float64
-	MinTrapSL           float64
-	MaxTrapSL           float64
-
-	TrailingActivationMultiplier float64
-	MinActivation                float64
-	MaxActivation                float64
-	TrailingCallbackMultiplier   float64
-	MinCallback                  float64
-	MaxCallback                  float64
+	Enabled             bool    `json:"enabled"`
+	SlippageMode        string  `json:"slippageMode"`
+	ObBufferPct         float64 `json:"obBufferPct"`
+	ObMaxSlippagePct    float64 `json:"obMaxSlippagePct"`
+	ObStep              string  `json:"obStep"`
+	SpreadMultiplier    float64 `json:"spreadMultiplier"`
+	TpFundingMultiplier float64 `json:"tpFundingMultiplier"`
+	TpAtrMultiplier     float64 `json:"tpAtrMultiplier"`
+	SlAtrMultiplier     float64 `json:"slAtrMultiplier"`
+	SlFundingMultiplier float64 `json:"slFundingMultiplier"`
 }
 
 // IsHedgeTrapEnabled returns true if hedge trap is enabled.
 func (tc *TradeConfig) IsHedgeTrapEnabled() bool {
-	return tc.EnableHedgeTrap
+	return tc.FundingTrap.Enabled
 }
 
 // TradeIntent captures the directional decision from funding rate analysis.
@@ -187,7 +211,7 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 				Volume24:  t.Volume24,
 				Amount24:  t.Amount24,
 			},
-			Phase: "SCANNING",
+			Phase: PhaseScanning,
 		}
 
 		// ⭐ Side determination — Reversion strategy

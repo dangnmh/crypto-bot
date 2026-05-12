@@ -24,3 +24,42 @@ Tài liệu này dùng để tra cứu nhanh tỷ lệ đặt bẫy `TrapDepthPc
 
 > [!TIP]
 > Hãy copy linh hoạt tỷ lệ rải mìn này vào tệp `funding.jsonc` cho từng Symbol cụ thể dựa theo dữ liệu soi quét trước giờ khớp lệnh khoảng 30 phút.
+
+---
+
+## 📊 Dynamic Pricing — Tự Tính Trap Depth Từ FR + ATR
+
+Khi bật `DynamicPricing`, bot tự tính `TrapDepthPct` thay vì dùng giá trị cố định:
+
+```
+TrapDepth% = FR% × TrapDepthMultiplier
+             clamp trong [MinTrapDepth, MaxTrapDepth]
+
+TrapTP%    = FR% × TrapTpMultiplier
+             clamp trong [MinTrapTP, MaxTrapTP]
+
+TrapSL%    = FR% × TrapSlMultiplier
+             clamp trong [MinTrapSL, MaxTrapSL]
+```
+
+**Ví dụ:** FR = 0.8%, TrapDepthMultiplier = 4.0, min = 1.5%, max = 6.0%
+→ TrapDepth = 0.8 × 4.0 = **3.2%** (nằm trong [1.5, 6.0] → giữ nguyên)
+
+> **ATR** (Average True Range) đo biên độ dao động trung bình theo nến 1 phút. Coin biên độ lớn (ATR cao) → TP/SL rộng hơn. Xem giải thích chi tiết tại `depth.md §8.1`.
+
+---
+
+## ⚠️ Cảnh Báo: OB Trước Settle Là "Sổ Lệnh Ma"
+
+> [!WARNING]
+> Đa số trader đã **close position trước giờ Funding** để né phí. OB trước settle là "skeleton book" — mỏng cả Bid lẫn Ask. Tường (Wall) thấy ở T-2s **có thể biến mất** ở T+0.5s khi giá thực sự dump/pump.
+
+**Hệ quả cho Trap:**
+- Wall neo Trap ở T-2s có thể bị rút khi settle → giá rơi qua Trap → kẹt đáy
+- OB chỉ tin cậy cho **slippage IOC** (tức thì), KHÔNG tin cậy cho Trap placement
+
+**Biện pháp:**
+- Trap depth nên dựa vào **FR × multiplier** (thống kê), không phải wall position
+- Nếu có wall detection, chỉ dùng làm **safety cap** (giảm depth nếu wall quá sát)
+- Xem phân tích chi tiết tại `depth.md §3.4`
+
