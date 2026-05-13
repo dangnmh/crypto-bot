@@ -113,7 +113,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	}
 
 	params := map[string]string{
-		"interval": interval,
+		paramInterval: interval,
 	}
 	if start > 0 {
 		params["start"] = fmt.Sprintf("%d", start)

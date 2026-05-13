@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding_reversion/system.jsonc")
+	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding/system.jsonc")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}

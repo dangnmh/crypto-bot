@@ -57,7 +57,7 @@ func (a *WsAdapter) UnsubscribeTicker(symbol string) error {
 func (a *WsAdapter) SubscribeKline(symbol string) error {
 	msg := map[string]interface{}{
 		paramMethod: "sub.kline",
-		paramParam:  map[string]string{paramSymbol: symbol, "interval": "Min1"},
+		paramParam:  map[string]string{paramSymbol: symbol, paramInterval: "Min1"},
 	}
 	topic := symbol + ":" + channelKline
 	return a.pool.SubscribePublic(context.Background(), topic, msg)
@@ -79,7 +79,7 @@ func (a *WsAdapter) SubscribePersonal() error {
 		paramMethod: "personal.filter",
 		paramParam: map[string]interface{}{
 			"filters": []map[string]string{
-				{"filter": "order"},
+				{paramFilter: "order"},
 				{"filter": "position"},
 			},
 		},
@@ -92,7 +92,7 @@ func (a *WsAdapter) SubscribeDepth(symbol, step string) error {
 	method := "sub.depth.full"
 	param := map[string]interface{}{
 		paramSymbol: symbol,
-		"limit":     20,
+		paramLimit:  20,
 	}
 	if step != "" {
 		method = "sub.depth.step"
@@ -111,7 +111,7 @@ func (a *WsAdapter) UnsubscribeDepth(symbol, step string) error {
 	method := "unsub.depth.full"
 	param := map[string]interface{}{
 		paramSymbol: symbol,
-		"limit":     20,
+		paramLimit:  20,
 	}
 	if step != "" {
 		method = "unsub.depth.step"

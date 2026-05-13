@@ -72,6 +72,52 @@ Use compile-time interface compliance checks to ensure concrete types satisfy th
 
 Never use pointers to interfaces (`*SomeInterface`). Interfaces are already reference types internally. Passing `*SomeInterface` is almost always a bug.
 
+### 2.6 Generics (Type Parameters)
+
+Use generics to eliminate repetitive boilerplate where the logic is **identical** across types and only the concrete type varies. Prefer generics over `any`/`interface{}` + type assertions when the type can be statically known.
+
+#### When to Use
+
+- **Deserialization helpers** — avoid repeating unmarshal + error-wrap for every event/config type:
+  ```go
+  func unmarshal[T any](data []byte) (T, error) {
+      var v T
+      if err := json.Unmarshal(data, &v); err != nil {
+          return v, fmt.Errorf("unmarshal %T: %w", v, err)
+      }
+      return v, nil
+  }
+  ```
+- **Response envelope parsing** — one function handles every API endpoint:
+  ```go
+  func ParseResponse[T any](body []byte, path string) (T, error)
+  ```
+- **Generic wrapper structs** — typed containers where the shape is fixed but the payload varies:
+  ```go
+  type APIResponse[T any] struct {
+      Success bool   `json:"success"`
+      Code    int    `json:"code"`
+      Data    T      `json:"data"`
+  }
+  ```
+- **Configuration loaders** — read file + unmarshal into any config struct:
+  ```go
+  func Load[T any](path string) (*T, error)
+  ```
+
+#### When NOT to Use
+
+- **Don't use generics just because you can.** If there are only 1–2 concrete types, a regular function is clearer.
+- **Don't add type parameters to methods on concrete structs.** Go does not allow type parameters on methods — use top-level generic functions instead.
+- **Don't use generics for domain logic.** Domain types (e.g., `Candidate`, `CycleRecord`) should be concrete. Generics belong in infrastructure/utility layers.
+- **Don't create generic interfaces.** Prefer non-generic interfaces with concrete method signatures. A `Repository[T]` interface is almost never the right abstraction in Go.
+
+#### Naming Conventions
+
+- Use short, conventional names for unconstrained type parameters: `T`, `U`, `V`.
+- Use descriptive names when the constraint communicates intent: `Elem`, `Key`, `Result`.
+- Constraint interfaces go in the same file as the generic function if single-use, or in `pkg/` if shared.
+
 ---
 
 ## 3. Constructor & Configuration Patterns

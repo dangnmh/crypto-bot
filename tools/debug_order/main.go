@@ -27,7 +27,7 @@ func main() {
 	defer cleanup()
 
 	// Load Configuration relative to project root
-	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding_reversion/system.jsonc")
+	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding/system.jsonc")
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)

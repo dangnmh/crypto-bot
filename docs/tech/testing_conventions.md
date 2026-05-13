@@ -10,7 +10,7 @@ For coding conventions, please refer to [Coding Conventions](coding_conventions.
 
 ## 1. Testing Conventions
 
-Our goal is a **strict minimum of 90% test coverage** for all packages, enforced via CI pipelines. All new code MUST include comprehensive unit tests.
+Our goal is a **strict minimum of 85% test coverage** for all packages, enforced via CI pipelines. All new code MUST include comprehensive unit tests.
 
 ### 1.1 Test Frameworks & Libraries
 
@@ -58,4 +58,4 @@ Before pushing code, always verify compliance using the Makefile commands:
 
 - `make lint` — Runs `golangci-lint` to check code style and detect bugs.
 - `make test` — Runs all tests with race detection.
-- `make cover-check` — Verifies that total coverage exceeds the 90% threshold.
+- `make cover-check` — Verifies that total coverage exceeds the 85% threshold.

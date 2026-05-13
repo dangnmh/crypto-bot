@@ -1,7 +1,0 @@
-[
-  // ── Per-Symbol configs ──
-  // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
-  // Add any field here to override the default for this specific symbol.
-
-  { "symbol": "GIGA_USDT", "marginUSDT": 3 }
-]

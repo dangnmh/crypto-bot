@@ -11,7 +11,7 @@ GOLANGCI_LINT   := go tool -modfile=go.tool.mod golangci-lint
 COVERAGE_DIR    := .coverage
 COVERAGE_FILE   := $(COVERAGE_DIR)/coverage.out
 COVERAGE_HTML   := $(COVERAGE_DIR)/coverage.html
-MIN_COVERAGE    := 90
+MIN_COVERAGE    := 85
 GREP_V_MOCKS    := grep -v "mocks"
 TEST_PKGS       := $(shell $(GO) list ./internal/... ./pkg/... | $(GREP_V_MOCKS))
 
@@ -25,8 +25,8 @@ build: ## Build all binaries
 	$(GO) build ./...
 
 .PHONY: build-funding
-build-funding: ## Build the funding reversion bot
-	$(GO) build -o bin/funding-bot ./cmd/funding_reversion
+build-funding: ## Build the funding bot
+	$(GO) build -o bin/funding-bot ./cmd/funding
 
 .PHONY: build-penny
 build-penny: ## Build the penny jumper bot

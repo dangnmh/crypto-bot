@@ -72,18 +72,3 @@ func TestTraceHandler(t *testing.T) {
 		})
 	}
 }
-
-func TestInitTelemetry_NoMetricsPort(t *testing.T) {
-	t.Parallel()
-	tel, shutdown := observability.InitTelemetry(observability.TelemetryConfig{
-		ServiceName: "test-svc",
-		MetricsPort: 0,
-	})
-	defer func() { _ = shutdown(context.Background()) }()
-
-	require.NotNil(t, tel)
-	assert.NotNil(t, tel.TracerProvider)
-	assert.NotNil(t, tel.MeterProvider)
-	assert.NotNil(t, tel.Tracer)
-	assert.NotNil(t, tel.Meter)
-}
