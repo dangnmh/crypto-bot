@@ -11,17 +11,27 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeFireIOC handles cycle.confirmed → snapshot price → fire IOC with TP+SL.
+// subscribeFireIOC handles funding.reversion.confirmed → snapshot price → fire IOC with TP+SL.
 func (o *CycleOrchestrator) subscribeFireIOC(ctx context.Context, settle time.Time) {
-	o.consumeTopic(ctx, events.TopicConfirmed, func(_ *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionConfirmed, func(_ *message.Message) {
 		o.handleFireIOC(ctx, settle)
 	})
 }
 
 func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time) {
 	latencyMs := o.deps.Clock.LatencyMs()
+	maxLatency := time.Duration(o.cfg.FundingReversion.MaxLatency)
+	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
+		o.deps.Log.Warn("🔴 Latency too high, aborting IOC fire",
+			slog.Int64("latency_rtt", latencyMs),
+			slog.Duration("max_latency", maxLatency),
+		)
+		o.abort(domain.PhaseFire, "latency too high")
+		return
+	}
+
 	oneWayMs := latencyMs / 2
-	bufferTime := time.Duration(o.global.System.Safety.BufferTime)
+	bufferTime := time.Duration(o.cfg.FundingReversion.BufferTime)
 	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
 
 	o.deps.Log.Info("⏱️ Firing configuration",
@@ -101,7 +111,8 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 	})
 
 	if res.IsSuccess() {
-		o.publishOrLog(events.TopicIOCFired, events.IOCFiredEvent{
+		o.publishOrLog(events.TopicReversionIOCFired, events.IOCFiredEvent{
+			Flow:      events.FlowReversion,
 			Symbol:    c.Symbol,
 			OrderID:   res.OrderID,
 			Side:      c.Side,

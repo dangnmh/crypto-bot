@@ -1,148 +1,129 @@
-# Backlog — Lý Thuyết Chưa Implement & Open Questions
+# Funding Backlog
 
-> **Mục đích:** Tập trung tất cả các phân tích lý thuyết, ý tưởng chưa triển khai, và các vấn đề mở vào một file duy nhất. Tách biệt khỏi tài liệu mô tả logic đã implement trong code.
->
-> **Nguồn gốc:** Nội dung được trích từ `depth.md`, `trap_flow.md`, `trap_strategy_guide.md` trong quá trình hệ thống hóa tài liệu.
+Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm. Câu hỏi mở nằm ở [question.md](question.md), suggestion nằm ở [suggest.md](suggest.md), concern của logic hiện tại nằm ở [concern.md](concern.md).
 
----
+## Priority Backlog
 
-## 1. Imbalance Ratio — Đo Lực Long/Short
+| Priority | Item | Why | Owner doc |
+|---|---|---|---|
+| P0 | Minimal Cycle Recorder JSONL with MFE/MAE | Không có dữ liệu thì TP/SL/Trap tuning là cảm tính | [analyze.md](analyze.md) |
+| P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
+| P0 | Percent-unit audit | Tránh nhầm `3` với `0.03` | [README.md](README.md) |
+| P1 | Trap size ratio | Trap rủi ro hơn Reversion và không nên mặc định cùng size | [trap_flow.md](trap_flow.md) |
+| P1 | Cycle exposure cap | Giới hạn tổng notional/loss của nhiều flow cùng symbol | [flow.md](flow.md) |
+| P1 | Journal daily report/query | Biến JSONL thành quyết định config | [journal_analysis.md](journal_analysis.md) |
+| P2 | Runtime trap wall verification | Giảm rủi ro paper wall trước/cùng lúc đặt Trap | [trap_flow.md](trap_flow.md) |
+| P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
+| P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
 
-> **Nguồn gốc:** `depth.md §2` — tag `[LÝ THUYẾT]`
->
-> **Trạng thái:** Chưa implement. Code hiện tại không tính Imbalance Ratio.
+## P0 Details
 
-### 1.1 Cách Đo
+### Minimal Cycle Recorder JSONL
 
-Quét tổng volume Bid vs Ask trong biên độ giá gần (2–3% quanh giá hiện tại):
+Done criteria:
 
-```
-Imbalance Ratio = Tổng Bid Volume / Tổng Ask Volume
-```
+- Record `done`, `abort`, `timeout`, and `no_fill`.
+- Include `schema_version`.
+- Include `req_id`, `symbol`, `settle_time`, `flow`.
+- Include Reversion fields when Reversion runs.
+- Include Trap fields when Trap runs.
+- Include MFE/MAE from fill until close/timeout.
+- Recorder failure logs error but does not panic trading path.
+- Unit tests cover record assembly and append failure.
 
-### 1.2 Đọc Vị Kết Quả
+### Split Event Topics By Flow
 
-| Imbalance Ratio | Ý nghĩa | Hành động |
-|---|---|---|
-| **> 2.0** | Bid áp đảo → "Sàn bê tông" bên dưới | Thuận lợi cho LONG. TP dãn rộng, SL bóp sát dưới Bid Wall |
-| **1.5 – 2.0** | Bid nhỉnh hơn | Thuận lợi nhẹ cho LONG |
-| **0.7 – 1.5** | Cân bằng → Giằng co | Trung lập. Dùng TP/SL tĩnh |
-| **0.5 – 0.7** | Ask nhỉnh hơn | Thuận lợi nhẹ cho SHORT |
-| **< 0.5** | Ask áp đảo → "Trần sắt" bên trên | Thuận lợi cho SHORT. TP dãn rộng |
+Target topic layout:
 
-### 1.3 Cảnh Báo Spoofing
-
-Altcoin thanh khoản thấp trên MEXC Futures bị spoofing rất nặng. Nguyên tắc lọc:
-
-| Quy tắc | Lý do |
-|---|---|
-| Chỉ tin 3–5 levels gần nhất | Sát giá → ít bị giả hơn |
-| Wall phải tồn tại > 10–15 giây | Wall spoofing thường nhấp nháy |
-| So sánh tương đối, không tuyệt đối | So với 24h volume |
-
----
-
-## 2. Điều Chỉnh TP & SL Linh Hoạt Theo OB
-
-> **Nguồn gốc:** `depth.md §3` — tag `[LÝ THUYẾT]`
->
-> **Trạng thái:** Chưa implement. Code hiện tại chỉ dùng OB wall làm safety cap cho TP.
-
-### 2.1 LONG — Tình huống A: Đường trống phía trên (Ask mỏng, Bid dày)
-
-```
-Giá: $18.00 | Ask Wall: KHÔNG CÓ | Bid Wall: $17.80
-→ TP: Dãn rộng x1.5–x2 | SL: Đặt ngay dưới Bid Wall $17.78
+```text
+funding.scan.candidate_found
+funding.reversion.candidate
+funding.reversion.ioc_fired
+funding.reversion.order_filled
+funding.reversion.trailing_placed
+funding.trap.candidate
+funding.trap.order_placed
+funding.trap.order_filled
+funding.trap.trailing_placed
+funding.prefunding.candidate
 ```
 
-### 2.2 LONG — Tình huống B: Tường Ask chặn ngay trên đầu
+Shared scan can publish to multiple flow candidate topics. Downstream handlers should not consume one generic confirmation topic for unrelated flow behavior.
 
+### Percent-Unit Audit
+
+Audit config, docs, code, and journal fields:
+
+| Field type | User-facing | Internal |
+|---|---:|---:|
+| TP/SL/depth/trailing percent | `3` | `0.03` |
+| Funding threshold | Prefer `0.003 (0.3%)` | `0.003` |
+| Journal percent output | `3.0` | avoid mixed schemas |
+
+## P1 Details
+
+### Trap Size Ratio
+
+Proposed config:
+
+```jsonc
+{
+  "fundingTrap": {
+    "sizeRatio": 0.5,
+    "maxNotionalUSDT": 10000
+  }
+}
 ```
-Giá: $18.00 | Ask Wall: $18.15 (15% 24h vol) | Bid Wall: Không rõ
-→ TP: Bóp ngắn dưới tường $18.13 | SL: Giữ tĩnh từ config
+
+Start with 25%-50% of Reversion notional until journal proves stable expectancy.
+
+### Cycle Exposure Cap
+
+Proposed config:
+
+```jsonc
+{
+  "risk": {
+    "maxCycleNotionalUSDT": 30000,
+    "maxCycleLossUSDT": 150,
+    "disableSymbolAfterCriticalCloseFailure": true
+  }
+}
 ```
 
-### 2.3 SHORT — Áp dụng ngược lại hoàn toàn
+The risk controller should see all flow legs for the same `symbol + settle_time`.
 
-### 2.4 Quy Tắc An Toàn
+## P2 Details
 
-> **Hard limit: TP/SL điều chỉnh KHÔNG BAO GIỜ vượt quá giới hạn config.**
+### Runtime Trap Wall Verification
 
----
+If using OB-assisted Trap:
 
-## 3. Chiến Lược Đặt Bẫy (Trap) Neo Tường OB
+- Verify wall still exists immediately before order placement.
+- Cancel or skip if wall disappears.
+- Record `wall_verified`, `wall_age_ms`, `wall_distance_pct`.
 
-> **Nguồn gốc:** `depth.md §4` — tag `[LÝ THUYẾT]`
->
-> **Trạng thái:** Tham khảo. Code dùng FR × multiplier làm primary. OB wall chỉ fallback.
+### Imbalance Ratio Filter
 
-### 3.1 Quy Trình Neo Tường
+Do not use as primary signal. If implemented, use as filter or journal feature:
 
-1. **Tìm Khoảng Trống (Liquidity Void):** Quét OB phía ngược hướng trade. Volume mỏng = khoảng trống.
-2. **Xác Định Tường Dội:** Level có volume ≥ 3× average volume per level.
-3. **Đặt Trap Trước Tường:** 1 tick trước tường dội.
-4. **TP/SL:** TP = quay lại gần giá ban đầu (hồi 50-80%). SL = bên dưới/trên tường.
+```text
+imbalance_ratio = bid_volume_near_price / ask_volume_near_price
+```
 
-### 3.2 Khi KHÔNG NÊN Đặt Trap (OB-based)
+Guardrails:
 
-| Tình huống | Hành động |
-|---|---|
-| Không tìm thấy tường rõ ràng | Skip hoặc fallback % cố định |
-| Tường quá xa (> 5%) | Skip |
-| Tường quá sát (< 0.5%) | Skip |
-| Tường nhấp nháy (< 10s) | Skip — spoofing |
-| Imbalance ∈ [0.7, 1.5] | Skip hoặc giảm size 50% |
+- Use near levels only.
+- Require persistence if acting on walls.
+- Compare by symbol/liquidity bucket.
 
-### 3.3 Rủi Ro "Tường Giấy" (Paper Wall)
+## P3 Details
 
-Kịch bản xấu: Wall bị rút lúc settle → giá rơi thẳng qua → Trap kẹt đáy.
+### Pre-Funding Wave
 
-**Biện pháp đề xuất (chưa implement):**
-- Trailing SL trên Trap: fill mà giá không nảy 3-5s → cắt lỗ
-- Position size Trap nhỏ hơn IOC
-- Verify Wall tại T-2s: biến mất → cancel Trap
+Implement only after journal proves:
 
----
-
-## 4. Multi-Snapshot Timing Protocol
-
-> **Nguồn gốc:** `depth.md §5`
->
-> **Trạng thái:** Chưa implement. Code chỉ đọc OB tại 2 thời điểm: fire_ioc và fire_trap.
-
-Ý tưởng đọc OB tại nhiều thời điểm:
-
-| Thời điểm | Hành động | Độ tin cậy |
-|---|---|---|
-| T-60s | Subscribe OB WS | Thấp |
-| T-10s | Snapshot #1: Imbalance Ratio | ⚠️ Trung bình |
-| T-5s | Snapshot #2: Xác nhận Wall | ⚠️ Trung bình |
-| T-2s | Final Lock: Slippage IOC | ✅ Slippage / ⚠️ TP |
-
-**Quy tắc freshness:** OB snapshot > 3 giây → stale → fallback config tĩnh.
-
----
-
-## 5. Open Concerns — Rủi Ro Chưa Có Biện Pháp
-
-### 5.1 Trap — Verify Wall Tại Runtime
-
-Code hiện tại không verify wall vẫn tồn tại sau khi Trap fire. Chưa có cơ chế cancel Trap nếu wall biến mất.
-
-### 5.2 Trap — Skip Dựa Trên Imbalance Ratio
-
-Bảng skip conditions đề cập Imbalance filter nhưng chưa implement trong code.
-
-### 5.3 Position Size Trap vs Reversion
-
-Đề xuất Trap nên có size nhỏ hơn Reversion vì rủi ro cao hơn. Hiện tại code dùng cùng margin × leverage cho cả hai.
-
----
-
-## Tài Liệu Liên Quan
-
-| Tài liệu | Nội dung |
-|-----------|---------|
-| [Cycle Recorder Design](analyze.md) | Proposed design cho persistence layer (chưa implement) |
-| [depth.md](depth.md) | Phần đã implement: Slippage IOC, Wall Detection, ATR, Trailing |
-| [trap_flow.md](trap_flow.md) | Logic Trap đã implement |
+- pre-settlement movement exists by FR bucket,
+- confirmation avoids late entries,
+- force-close prevents Reversion conflict,
+- funding transfer impact is known if holding through settle is considered.

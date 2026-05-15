@@ -11,9 +11,9 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeWait handles cycle.armed → sleep until T-2s → publish WaitComplete.
+// subscribeWait handles funding.reversion.armed → sleep until T-2s → publish wait_complete.
 func (o *CycleOrchestrator) subscribeWait(ctx context.Context, settle time.Time) {
-	o.consumeTopic(ctx, events.TopicArmed, func(_ *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionArmed, func(_ *message.Message) {
 		o.handleWait(ctx, settle)
 	})
 }
@@ -21,15 +21,16 @@ func (o *CycleOrchestrator) subscribeWait(ctx context.Context, settle time.Time)
 func (o *CycleOrchestrator) handleWait(ctx context.Context, settle time.Time) {
 	o.waitUntil(ctx, settle.Add(-2*time.Second))
 
-	o.publishOrLog(events.TopicWaitComplete, events.WaitCompleteEvent{
+	o.publishOrLog(events.TopicReversionWaitComplete, events.WaitCompleteEvent{
+		Flow:   events.FlowReversion,
 		Symbol: o.cfg.Symbol,
 		Settle: settle,
 	})
 }
 
-// subscribeRecheck handles cycle.wait.complete → verify FR → publish Confirmed or Abort.
+// subscribeRecheck handles funding.reversion.wait_complete → verify FR → publish confirmed or abort.
 func (o *CycleOrchestrator) subscribeRecheck(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicWaitComplete, func(_ *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionWaitComplete, func(_ *message.Message) {
 		o.handleRecheck(ctx)
 	})
 }
@@ -66,7 +67,8 @@ func (o *CycleOrchestrator) handleRecheck(ctx context.Context) {
 	// Capture recheck FR for cycle record.
 	o.recorder.FRAtRecheck = td.FundingRate
 
-	o.publishOrLog(events.TopicConfirmed, events.ConfirmedEvent{
+	o.publishOrLog(events.TopicReversionConfirmed, events.ConfirmedEvent{
+		Flow:        events.FlowReversion,
 		Symbol:      c.Symbol,
 		FundingRate: td.FundingRate,
 		Side:        c.Side,

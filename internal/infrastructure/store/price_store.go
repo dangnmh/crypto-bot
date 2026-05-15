@@ -10,24 +10,44 @@ import (
 
 // PriceStore manages real-time price updates from WebSocket streams.
 type PriceStore struct {
-	prices map[string]*PriceData
-	mu     sync.RWMutex
-	logger *slog.Logger
+	prices      map[string]*PriceData
+	subscribers map[string]map[chan *PriceData]struct{}
+	mu          sync.RWMutex
+	logger      *slog.Logger
 }
 
 // NewPriceStore creates a new PriceStore.
 func NewPriceStore() *PriceStore {
 	return &PriceStore{
-		prices: make(map[string]*PriceData),
-		logger: slog.Default().With("component", "price_store"),
+		prices:      make(map[string]*PriceData),
+		subscribers: make(map[string]map[chan *PriceData]struct{}),
+		logger:      slog.Default().With("component", "price_store"),
 	}
 }
 
 // UpdatePrice writes a price update for a symbol (called by WS client).
 func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
+	if data.Symbol == "" {
+		data.Symbol = symbol
+	}
+	if data.UpdatedAt.IsZero() {
+		data.UpdatedAt = time.Now()
+	}
+
 	s.mu.Lock()
 	s.prices[symbol] = data
+	subs := make([]chan *PriceData, 0, len(s.subscribers[symbol]))
+	for ch := range s.subscribers[symbol] {
+		subs = append(subs, ch)
+	}
 	s.mu.Unlock()
+
+	for _, ch := range subs {
+		select {
+		case ch <- data:
+		default:
+		}
+	}
 
 	s.logger.Debug("store.UpdatePrice",
 		"symbol", symbol,
@@ -78,4 +98,35 @@ func (s *PriceStore) PriceAge(symbol string) time.Duration {
 		return time.Hour * 24 * 365
 	}
 	return time.Since(pd.UpdatedAt)
+}
+
+// SubscribePrice returns a non-blocking stream of future price updates for one symbol.
+// The channel is closed when ctx is cancelled.
+func (s *PriceStore) SubscribePrice(ctx context.Context, symbol string, buffer int) <-chan *PriceData {
+	if buffer < 0 {
+		buffer = 0
+	}
+	ch := make(chan *PriceData, buffer)
+
+	s.mu.Lock()
+	if s.subscribers[symbol] == nil {
+		s.subscribers[symbol] = make(map[chan *PriceData]struct{})
+	}
+	s.subscribers[symbol][ch] = struct{}{}
+	s.mu.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		s.mu.Lock()
+		if subs := s.subscribers[symbol]; subs != nil {
+			delete(subs, ch)
+			if len(subs) == 0 {
+				delete(s.subscribers, symbol)
+			}
+		}
+		s.mu.Unlock()
+		close(ch)
+	}()
+
+	return ch
 }

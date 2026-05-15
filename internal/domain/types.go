@@ -2,6 +2,13 @@
 // This package MUST NOT import from infrastructure/ or any bot-specific package.
 package domain
 
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 // ──────────────────────────────────────────────────────────────────────
 // Side — trade direction
 // ──────────────────────────────────────────────────────────────────────.
@@ -10,11 +17,32 @@ package domain
 type Side int
 
 const (
+	SideUnknown    Side = 0
 	SideOpenLong   Side = 1
 	SideCloseShort Side = 2
 	SideOpenShort  Side = 3
 	SideCloseLong  Side = 4
 )
+
+const (
+	sideLabelUnknown    = "UNKNOWN"
+	sideLabelLong       = "LONG"
+	sideLabelOpenLong   = "OPEN_LONG"
+	sideLabelCloseShort = "CLOSE_SHORT"
+	sideLabelShort      = "SHORT"
+	sideLabelOpenShort  = "OPEN_SHORT"
+	sideLabelCloseLong  = "CLOSE_LONG"
+)
+
+var sideByString = map[string]Side{
+	sideLabelUnknown:    SideUnknown,
+	sideLabelLong:       SideOpenLong,
+	sideLabelOpenLong:   SideOpenLong,
+	sideLabelCloseShort: SideCloseShort,
+	sideLabelShort:      SideOpenShort,
+	sideLabelOpenShort:  SideOpenShort,
+	sideLabelCloseLong:  SideCloseLong,
+}
 
 // IsLong returns true if the side opens or closes a long position.
 func (s Side) IsLong() bool {
@@ -48,17 +76,84 @@ func CloseSideFor(openSide Side) Side {
 // String returns a human-readable label for the side.
 func (s Side) String() string {
 	switch s {
+	case SideUnknown:
+		return sideLabelUnknown
 	case SideOpenLong:
-		return "LONG"
+		return sideLabelLong
 	case SideOpenShort:
-		return "SHORT"
+		return sideLabelShort
 	case SideCloseShort:
-		return "CLOSE_SHORT"
+		return sideLabelCloseShort
 	case SideCloseLong:
-		return "CLOSE_LONG"
+		return sideLabelCloseLong
 	default:
-		return "UNKNOWN"
+		return sideLabelUnknown
 	}
+}
+
+// MarshalJSON encodes Side as its enum label instead of its exchange numeric code.
+func (s Side) MarshalJSON() ([]byte, error) {
+	if !s.IsValid() {
+		return nil, fmt.Errorf("invalid side: %d", s)
+	}
+	return json.Marshal(s.String())
+}
+
+// UnmarshalJSON accepts either the enum label (for readable config/events) or
+// the exchange numeric code (for compatibility with older JSON records).
+func (s *Side) UnmarshalJSON(data []byte) error {
+	var label string
+	if err := json.Unmarshal(data, &label); err == nil {
+		side, err := ParseSide(label)
+		if err != nil {
+			return err
+		}
+		*s = side
+		return nil
+	}
+
+	var numeric int
+	if err := json.Unmarshal(data, &numeric); err != nil {
+		return fmt.Errorf("parse side: %w", err)
+	}
+	side := Side(numeric)
+	if !side.IsValid() {
+		return fmt.Errorf("invalid side: %d", numeric)
+	}
+	*s = side
+	return nil
+}
+
+// IsValid returns true when the side is one of the known enum values.
+func (s Side) IsValid() bool {
+	switch s {
+	case SideUnknown, SideOpenLong, SideCloseShort, SideOpenShort, SideCloseLong:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSide converts a side enum label into its numeric value.
+func ParseSide(value string) (Side, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	if normalized == "" {
+		return 0, fmt.Errorf("side is empty")
+	}
+
+	if numeric, err := strconv.Atoi(normalized); err == nil {
+		side := Side(numeric)
+		if side.IsValid() {
+			return side, nil
+		}
+		return 0, fmt.Errorf("invalid side: %d", numeric)
+	}
+
+	side, ok := sideByString[normalized]
+	if !ok {
+		return 0, fmt.Errorf("invalid side: %q", value)
+	}
+	return side, nil
 }
 
 // ──────────────────────────────────────────────────────────────────────

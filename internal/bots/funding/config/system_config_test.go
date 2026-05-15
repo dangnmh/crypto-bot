@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -101,8 +102,59 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 	require.NoError(t, err)
 
 	// validate() should set defaults for zero-valued fields.
-	assert.Greater(t, int64(cfg.Safety.BufferTime), int64(0), "BufferTime should be defaulted")
-	assert.Greater(t, int64(cfg.Safety.HoldDuration), int64(0), "HoldDuration should be defaulted")
-	assert.Greater(t, int64(cfg.Safety.TrapAfterSettle), int64(0), "TrapAfterSettle should be defaulted")
 	assert.Greater(t, int64(cfg.Sync.FundingSync), int64(0), "FundingSync should be defaulted")
+}
+
+func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
+	// Cannot run parallel: sets env vars.
+	t.Setenv("MEXC_API_KEY", "test-key")
+	t.Setenv("MEXC_API_SECRET", "test-secret")
+
+	content := `{
+		"exchange": "mexc",
+		"sync": {},
+		"safety": {},
+		"api": {
+			"future": {"baseURL": "https://test.api.com"},
+			"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+		},
+		"tradingDefaults": {
+			"leverage": 5,
+			"openType": "ISOLATED",
+			"positionMode": "HEDGE"
+		}
+	}`
+	reversionContent := `{
+		"enabled": true,
+		"takeProfitPct": 3,
+		"stopLossPct": 2,
+		"dynamicPricing": {"enabled": true}
+	}`
+	trapContent := `{
+		"enabled": true,
+		"depthPct": 2.5,
+		"takeProfitPct": 1.5,
+		"stopLossPct": 1.5,
+		"trailing": {"enabled": true, "callbackPct": 0.5}
+	}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "system.jsonc")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "trap.jsonc"), []byte(trapContent), 0o600))
+
+	cfg, err := config.LoadSystemConfig(path)
+	require.NoError(t, err)
+
+	var defaults config.TradingDefaults
+	require.NoError(t, json.Unmarshal(cfg.TradingDefaults, &defaults))
+
+	assert.Equal(t, 5, defaults.Leverage)
+	assert.True(t, defaults.FundingReversion.Enabled)
+	assert.Equal(t, 3.0, defaults.FundingReversion.TakeProfitPct)
+	assert.True(t, defaults.FundingReversion.DynamicPricing.Enabled)
+	assert.True(t, defaults.FundingTrap.Enabled)
+	assert.Equal(t, 2.5, defaults.FundingTrap.DepthPct)
+	assert.True(t, defaults.FundingTrap.Trailing.Enabled)
 }

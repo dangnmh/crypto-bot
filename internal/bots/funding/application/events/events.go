@@ -14,44 +14,37 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────────────────.
-// Topic Constants — event chain flow.
+// Topic Constants — flow-scoped event chain.
 // ──────────────────────────────────────────────────────────────────────.
-//
-// Pre-settle chain (sequential):
-//
-//	cycle.start → cycle.candidate.found → cycle.armed → cycle.wait.complete
-//	→ cycle.confirmed → cycle.ioc.fired
-//
-// Post-settle fan-out (concurrent from cycle.ioc.fired):
-//
-//	cycle.ioc.fired  → [FillWatcher, TimeoutGuard, OBMonitor]
-//	cycle.order.filled → TrailingHandler
-//	cycle.trap.fired → FillWatcher (trap)
-//	cycle.position.closed / cycle.timeout → CleanupHandler
 const (
-	// TopicCycleStart starts the pre-settle chain.
-	TopicCycleStart     = "cycle.start"
-	TopicCandidateFound = "cycle.candidate.found"
-	TopicArmed          = "cycle.armed"
-	TopicWaitComplete   = "cycle.wait.complete"
-	TopicConfirmed      = "cycle.confirmed"
+	FlowReversion = "reversion"
+	FlowTrap      = "trap"
 
-	// TopicIOCFired starts the execution phase.
-	TopicIOCFired  = "cycle.ioc.fired"
-	TopicTrapFired = "cycle.trap.fired"
+	TopicScanStart          = "funding.scan.start"
+	TopicScanCandidateFound = "funding.scan.candidate_found"
+	TopicScanAbort          = "funding.scan.abort"
 
-	// TopicOrderFilled starts the post-settle phase.
-	TopicOrderFilled    = "cycle.order.filled"
-	TopicTrailingPlaced = "cycle.trailing.placed"
-	TopicOBWallFound    = "cycle.ob.wall_found"
-	TopicWallOrderFired = "cycle.wall_order.fired"
-	TopicPositionClosed = "cycle.position.closed"
-	TopicCycleTimeout   = "cycle.timeout"
+	TopicReversionCandidate      = "funding.reversion.candidate"
+	TopicReversionArmed          = "funding.reversion.armed"
+	TopicReversionWaitComplete   = "funding.reversion.wait_complete"
+	TopicReversionConfirmed      = "funding.reversion.confirmed"
+	TopicReversionIOCFired       = "funding.reversion.ioc_fired"
+	TopicReversionOrderFilled    = "funding.reversion.order_filled"
+	TopicReversionTrailingPlaced = "funding.reversion.trailing_placed"
+	TopicReversionPositionClosed = "funding.reversion.position_closed"
+	TopicReversionTimeout        = "funding.reversion.timeout"
+	TopicReversionAbort          = "funding.reversion.abort"
+	TopicReversionError          = "funding.reversion.error"
 
-	// TopicCycleDone signals the terminal phase.
-	TopicCycleDone  = "cycle.done"
-	TopicCycleAbort = "cycle.abort"
-	TopicCycleError = "cycle.error"
+	TopicTrapCandidate      = "funding.trap.candidate"
+	TopicTrapOrderPlaced    = "funding.trap.order_placed"
+	TopicTrapOrderFilled    = "funding.trap.order_filled"
+	TopicTrapTrailingPlaced = "funding.trap.trailing_placed"
+	TopicTrapPositionClosed = "funding.trap.position_closed"
+	TopicTrapTimeout        = "funding.trap.timeout"
+	TopicTrapAbort          = "funding.trap.abort"
+	TopicTrapError          = "funding.trap.error"
+	TopicTrapOBWallFound    = "funding.trap.ob_wall_found"
 )
 
 // ──────────────────────────────────────────────────────────────────────.
@@ -66,6 +59,7 @@ type CycleStartEvent struct {
 
 // CandidateFoundEvent is published when FR scan finds a tradeable candidate.
 type CandidateFoundEvent struct {
+	Flow        string      `json:"flow,omitempty"`
 	Symbol      string      `json:"symbol"`
 	FundingRate float64     `json:"funding_rate"`
 	Side        shared.Side `json:"side"`
@@ -75,22 +69,25 @@ type CandidateFoundEvent struct {
 
 // ArmedEvent is published when WS subscriptions are up and IOC params are calculated.
 type ArmedEvent struct {
+	Flow     string    `json:"flow"`
 	Symbol   string    `json:"symbol"`
 	Settle   time.Time `json:"settle"`
-	Volume   float64   `json:"volume"`
-	IOCPrice float64   `json:"ioc_price"`
-	TPPrice  float64   `json:"tp_price"`
-	SLPrice  float64   `json:"sl_price"`
+	Volume   float64   `json:"volume,omitempty"`
+	IOCPrice float64   `json:"ioc_price,omitempty"`
+	TPPrice  float64   `json:"tp_price,omitempty"`
+	SLPrice  float64   `json:"sl_price,omitempty"`
 }
 
 // WaitCompleteEvent signals that the pre-settle wait period has ended.
 type WaitCompleteEvent struct {
+	Flow   string    `json:"flow"`
 	Symbol string    `json:"symbol"`
 	Settle time.Time `json:"settle"`
 }
 
 // ConfirmedEvent is published after recheck passes — ready to fire.
 type ConfirmedEvent struct {
+	Flow        string      `json:"flow"`
 	Symbol      string      `json:"symbol"`
 	FundingRate float64     `json:"funding_rate"`
 	Side        shared.Side `json:"side"`
@@ -99,6 +96,7 @@ type ConfirmedEvent struct {
 
 // IOCFiredEvent is published after the IOC order is submitted.
 type IOCFiredEvent struct {
+	Flow      string      `json:"flow"`
 	Symbol    string      `json:"symbol"`
 	OrderID   string      `json:"order_id"`
 	Side      shared.Side `json:"side"`
@@ -113,6 +111,7 @@ type IOCFiredEvent struct {
 
 // TrapFiredEvent is published after a trap order is placed.
 type TrapFiredEvent struct {
+	Flow      string      `json:"flow"`
 	Symbol    string      `json:"symbol"`
 	OrderID   string      `json:"order_id"`
 	Side      shared.Side `json:"side"`
@@ -127,6 +126,7 @@ type TrapFiredEvent struct {
 
 // OrderFilledEvent is published when an order (IOC or Trap) is filled.
 type OrderFilledEvent struct {
+	Flow         string       `json:"flow"`
 	Symbol       string       `json:"symbol"`
 	OrderID      string       `json:"order_id"`
 	Phase        domain.Phase `json:"phase"` // "ioc" or "trap"
@@ -138,6 +138,7 @@ type OrderFilledEvent struct {
 
 // TrailingPlacedEvent is published after a trailing stop order is placed on MEXC.
 type TrailingPlacedEvent struct {
+	Flow        string       `json:"flow"`
 	Symbol      string       `json:"symbol"`
 	TrackID     string       `json:"track_id"`
 	ActivePrice float64      `json:"active_price"`
@@ -147,6 +148,7 @@ type TrailingPlacedEvent struct {
 
 // OBWallFoundEvent is published when the post-settle OB monitor detects a wall.
 type OBWallFoundEvent struct {
+	Flow      string      `json:"flow"`
 	Symbol    string      `json:"symbol"`
 	WallPrice float64     `json:"wall_price"`
 	WallVol   float64     `json:"wall_vol"`
@@ -155,23 +157,27 @@ type OBWallFoundEvent struct {
 
 // PositionClosedEvent signals that all positions for a symbol have been closed.
 type PositionClosedEvent struct {
+	Flow   string `json:"flow"`
 	Symbol string `json:"symbol"`
 	Reason string `json:"reason"` // "trailing", "tp", "sl", "timeout", "manual"
 }
 
 // CycleTimeoutEvent is published when the safety timeout expires.
 type CycleTimeoutEvent struct {
+	Flow    string        `json:"flow"`
 	Symbol  string        `json:"symbol"`
 	Timeout time.Duration `json:"timeout"`
 }
 
 // CycleDoneEvent signals successful cycle completion.
 type CycleDoneEvent struct {
+	Flow   string `json:"flow"`
 	Symbol string `json:"symbol"`
 }
 
 // CycleAbortEvent signals cycle was aborted (e.g., FR too low, safety check failed).
 type CycleAbortEvent struct {
+	Flow   string       `json:"flow,omitempty"`
 	Symbol string       `json:"symbol"`
 	Reason string       `json:"reason"`
 	Phase  domain.Phase `json:"phase"` // which phase triggered the abort
@@ -179,6 +185,7 @@ type CycleAbortEvent struct {
 
 // CycleErrorEvent signals an unexpected error during the cycle.
 type CycleErrorEvent struct {
+	Flow   string       `json:"flow"`
 	Symbol string       `json:"symbol"`
 	Error  string       `json:"error"`
 	Phase  domain.Phase `json:"phase"`

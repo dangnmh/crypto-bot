@@ -11,6 +11,10 @@ import (
 )
 
 const cycleRecordSchemaVersion = 1
+const (
+	cycleRecordFlowReversion = "reversion"
+	cycleRecordFlowTrap      = "trap"
+)
 
 // ──────────────────────────────────────────────────────────────────────
 // CycleRecordBuilder — accumulates data during a cycle for final persistence.
@@ -162,6 +166,7 @@ func (b *CycleRecordBuilder) Build(
 		Symbol:        symbol,
 		SettleTime:    b.SettleTime,
 		CreatedAt:     now,
+		Flows:         b.flows(),
 		Outcome:       outcome,
 		AbortReason:   b.AbortReason,
 		AbortPhase:    b.AbortPhase,
@@ -174,6 +179,7 @@ func (b *CycleRecordBuilder) Build(
 			SafetyRejectReason: b.SafetyRejectReason,
 		},
 		IOC: IOCSnapshot{
+			Flow:           cycleRecordFlowReversion,
 			IntendedPrice:  b.IOCIntended,
 			FillPrice:      b.IOCFillPrice,
 			FillVolume:     b.IOCFillVol,
@@ -186,6 +192,7 @@ func (b *CycleRecordBuilder) Build(
 			LatencyRTTMs:   b.LatencyRTTMs,
 		},
 		Trap: TrapSnapshot{
+			Flow:      cycleRecordFlowTrap,
 			Enabled:   b.TrapEnabled,
 			Source:    b.TrapSource,
 			Price:     b.TrapPrice,
@@ -216,6 +223,14 @@ func (b *CycleRecordBuilder) Build(
 	}
 
 	return rec
+}
+
+func (b *CycleRecordBuilder) flows() []string {
+	flows := []string{cycleRecordFlowReversion}
+	if b.TrapEnabled || b.TrapOrderID != "" || b.TrapSource != "" || b.TrapFilled {
+		flows = append(flows, cycleRecordFlowTrap)
+	}
+	return flows
 }
 
 func ratioToPercent(v float64) float64 {

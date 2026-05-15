@@ -13,14 +13,14 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeFillWatcher handles cycle.ioc.fired → sets up WS callback for order fills.
+// subscribeFillWatcher handles flow-scoped order placement events → sets up WS callbacks for fills.
 func (o *CycleOrchestrator) subscribeFillWatcher(ctx context.Context) {
 	o.watchIOCFills(ctx)
 	o.watchTrapFills(ctx)
 }
 
 func (o *CycleOrchestrator) watchIOCFills(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicIOCFired, func(msg *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionIOCFired, func(msg *message.Message) {
 		evt, err := unmarshal[events.IOCFiredEvent](msg.Payload)
 		if err != nil {
 			o.deps.Log.Error("🔴 Unmarshal IOCFiredEvent failed", slog.Any("error", err))
@@ -31,7 +31,7 @@ func (o *CycleOrchestrator) watchIOCFills(ctx context.Context) {
 }
 
 func (o *CycleOrchestrator) watchTrapFills(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicTrapFired, func(msg *message.Message) {
+	o.consumeTopic(ctx, events.TopicTrapOrderPlaced, func(msg *message.Message) {
 		evt, err := unmarshal[events.TrapFiredEvent](msg.Payload)
 		if err != nil {
 			o.deps.Log.Error("🔴 Unmarshal TrapFiredEvent failed", slog.Any("error", err))
@@ -77,8 +77,19 @@ func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string
 				b.TrapFillPrice = deal.DealAvgPrice
 			}
 		})
+		if phase == domain.PhaseIOC {
+			o.startExcursionPriceStream(ctx)
+		}
 
-		o.publishOrLog(events.TopicOrderFilled, events.OrderFilledEvent{
+		topic := events.TopicReversionOrderFilled
+		flow := events.FlowReversion
+		if phase == domain.PhaseTrap {
+			topic = events.TopicTrapOrderFilled
+			flow = events.FlowTrap
+		}
+
+		o.publishOrLog(topic, events.OrderFilledEvent{
+			Flow:         flow,
 			Symbol:       o.cfg.Symbol,
 			OrderID:      deal.GetOrderID(),
 			Phase:        phase,
@@ -88,4 +99,31 @@ func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string
 			CloseSide:    closeSide,
 		})
 	})
+}
+
+func (o *CycleOrchestrator) startExcursionPriceStream(ctx context.Context) {
+	if o.deps.PriceStore == nil {
+		return
+	}
+
+	if o.excursionCancel != nil {
+		o.excursionCancel()
+	}
+
+	streamCtx, cancel := context.WithCancel(ctx)
+	o.excursionCancel = cancel
+	updates := o.deps.PriceStore.SubscribePrice(streamCtx, o.cfg.Symbol, 32)
+
+	go func() {
+		for pd := range updates {
+			if pd == nil || pd.LastPrice <= 0 {
+				continue
+			}
+			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+				if b.Excursion != nil {
+					b.Excursion.Update(pd.LastPrice, pd.UpdatedAt)
+				}
+			})
+		}
+	}()
 }

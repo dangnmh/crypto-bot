@@ -15,11 +15,10 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeFireTrap waits until settle time + TrapAfterSettle offset, then places the Trap order.
-// It is completely independent of whether the IOC order was successful or not.
+// subscribeFireTrap waits for a trap candidate, then places the Trap order after settlement.
+// It is completely independent of whether the reversion IOC order was successful or not.
 func (o *CycleOrchestrator) subscribeFireTrap(ctx context.Context, settle time.Time) {
-	o.consumeTopic(ctx, events.TopicConfirmed, func(msg *message.Message) {
-		// TopicConfirmed means the cycle is fully armed and we should schedule our trap.
+	o.consumeTopic(ctx, events.TopicTrapCandidate, func(_ *message.Message) {
 		if !o.cfg.IsHedgeTrapEnabled() {
 			return // Trap is completely disabled
 		}
@@ -30,7 +29,7 @@ func (o *CycleOrchestrator) subscribeFireTrap(ctx context.Context, settle time.T
 
 func (o *CycleOrchestrator) handleFireTrap(ctx context.Context, settle time.Time) {
 	// 1. Wait until settlement time + TrapAfterSettle delay.
-	delay := time.Duration(o.global.System.Safety.TrapAfterSettle)
+	delay := time.Duration(o.cfg.FundingTrap.TrapAfterSettle)
 	if delay <= 0 {
 		delay = 3 * time.Second
 	}
@@ -66,7 +65,8 @@ func (o *CycleOrchestrator) handleFireTrap(ctx context.Context, settle time.Time
 		return
 	}
 
-	o.publishOrLog(events.TopicOBWallFound, events.OBWallFoundEvent{
+	o.publishOrLog(events.TopicTrapOBWallFound, events.OBWallFoundEvent{
+		Flow:      events.FlowTrap,
 		Symbol:    o.cfg.Symbol,
 		WallPrice: wallPrice,
 		WallVol:   0, // wallVol is not rigorously tracked here anymore
@@ -131,7 +131,8 @@ func (o *CycleOrchestrator) fireOBTrap(ctx context.Context, c domain.Candidate, 
 		b.TrapOrderID = orderID
 	})
 
-	o.publishOrLog(events.TopicTrapFired, events.TrapFiredEvent{
+	o.publishOrLog(events.TopicTrapOrderPlaced, events.TrapFiredEvent{
+		Flow:      events.FlowTrap,
 		Symbol:    c.Symbol,
 		OrderID:   orderID,
 		Side:      c.Side,
@@ -167,7 +168,8 @@ func (o *CycleOrchestrator) fireStaticTrap(ctx context.Context) {
 			b.TrapOrderID = res.OrderID
 		})
 
-		o.publishOrLog(events.TopicTrapFired, events.TrapFiredEvent{
+		o.publishOrLog(events.TopicTrapOrderPlaced, events.TrapFiredEvent{
+			Flow:      events.FlowTrap,
 			Symbol:    res.Candidate.Symbol,
 			OrderID:   res.OrderID,
 			Side:      res.Candidate.Side,

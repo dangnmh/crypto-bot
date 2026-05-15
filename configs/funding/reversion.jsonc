@@ -1,0 +1,43 @@
+{
+  // Funding Reversion (Dao chieu sau Funding)
+  "enabled":       true,
+  "takeProfitPct": 3,
+  "stopLossPct":   3,
+  "maxLatency":    "200ms", // Abort if RTT > 200ms
+  "bufferTime":    "10ms",  // Fire at T - (Latency/2 + Buffer)
+
+  "holdDuration":      "30s", // Timeout waiting for fill + trailing activation
+  "postSettleTimeout": "60s", // Force close after this duration
+
+  // Master toggle + slippage + TP/SL multipliers
+  "dynamicPricing": {
+    "enabled": true,
+
+    "slippageMode":     "OB_IMBALANCE",
+    "obBufferPct":      0.7,
+    "obMaxSlippagePct": 1,
+    "obStep":           "",
+    "spreadMultiplier": 3.0,
+
+    "tpFundingMultiplier": 2.0,
+    "tpAtrMultiplier":     0.0,
+
+    "slAtrMultiplier":     1.5,
+    "slFundingMultiplier": 1.0
+  },
+
+  // Trailing Stop (MEXC TrackOrder)
+  "trailing": {
+    "enabled":       true,
+    "activationPct": 1.0,
+    "callbackPct":   0.5,
+
+    "activationMultiplier": 1.5,
+    "minActivation":        0.2,
+    "maxActivation":        3.0,
+
+    "callbackMultiplier":   0.7,
+    "minCallback":          0.3,
+    "maxCallback":          1.5
+  }
+}

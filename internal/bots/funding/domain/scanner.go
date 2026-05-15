@@ -4,6 +4,7 @@ import (
 	"math"
 
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/pkg/types"
 )
 
 // SlippageMode constants for DynamicPricingConfig.SlippageMode.
@@ -52,11 +53,15 @@ type TradeConfig struct {
 
 // FundingReversionConfig holds configuration specific to the reversion strategy.
 type FundingReversionConfig struct {
-	Enabled        bool                 `json:"enabled"`
-	TakeProfitPct  float64              `json:"takeProfitPct"`
-	StopLossPct    float64              `json:"stopLossPct"`
-	DynamicPricing DynamicPricingConfig `json:"dynamicPricing"`
-	Trailing       TrailingConfig       `json:"trailing"`
+	Enabled           bool                 `json:"enabled"`
+	TakeProfitPct     float64              `json:"takeProfitPct"`
+	StopLossPct       float64              `json:"stopLossPct"`
+	MaxLatency        types.Duration       `json:"maxLatency"`
+	BufferTime        types.Duration       `json:"bufferTime"`
+	HoldDuration      types.Duration       `json:"holdDuration"`
+	PostSettleTimeout types.Duration       `json:"postSettleTimeout"`
+	DynamicPricing    DynamicPricingConfig `json:"dynamicPricing"`
+	Trailing          TrailingConfig       `json:"trailing"`
 }
 
 // TrailingConfig holds configuration for the Trailing Stop mechanism.
@@ -77,10 +82,13 @@ type TrailingConfig struct {
 
 // FundingTrapConfig holds all straddle trap configuration in one place.
 type FundingTrapConfig struct {
-	Enabled       bool    `json:"enabled"`
-	DepthPct      float64 `json:"depthPct"`
-	TakeProfitPct float64 `json:"takeProfitPct"`
-	StopLossPct   float64 `json:"stopLossPct"`
+	Enabled           bool           `json:"enabled"`
+	DepthPct          float64        `json:"depthPct"`
+	TakeProfitPct     float64        `json:"takeProfitPct"`
+	StopLossPct       float64        `json:"stopLossPct"`
+	TrapAfterSettle   types.Duration `json:"trapAfterSettle"`
+	HoldDuration      types.Duration `json:"holdDuration"`
+	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
 
 	// Dynamic multipliers (FR-scaled).
 	DepthMultiplier float64 `json:"depthMultiplier"`

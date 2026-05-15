@@ -58,6 +58,8 @@ type CycleOrchestrator struct {
 	candidate domain.Candidate
 	results   []OrderResult
 	recorder  *domain.CycleRecordBuilder
+
+	excursionCancel context.CancelFunc
 }
 
 // withLock executes the given closure while holding the orchestrator's mutex.
@@ -111,7 +113,7 @@ func (o *CycleOrchestrator) Run(ctx context.Context, settle time.Time) {
 	o.setupEventChain(ctx, settle, done)
 
 	// Kick off the chain.
-	if err := o.bus.Publish(events.TopicCycleStart, events.CycleStartEvent{
+	if err := o.bus.Publish(events.TopicScanStart, events.CycleStartEvent{
 		Symbol:     o.cfg.Symbol,
 		SettleTime: settle,
 	}); err != nil {
@@ -130,18 +132,22 @@ func (o *CycleOrchestrator) Run(ctx context.Context, settle time.Time) {
 
 // setupEventChain subscribes handlers to form the event chain.
 func (o *CycleOrchestrator) setupEventChain(ctx context.Context, settle time.Time, done chan struct{}) {
-	// Pre-settle chain (sequential).
+	// Shared scan.
 	o.subscribeScan(ctx)
+
+	// Reversion flow.
 	o.subscribeArm(ctx)
 	o.subscribeWait(ctx, settle)
 	o.subscribeRecheck(ctx)
 	o.subscribeFireIOC(ctx, settle)
+	o.subscribeTimeoutGuard(ctx)
 
-	// Post-settle handlers (concurrent).
+	// Trap flow.
+	o.subscribeFireTrap(ctx, settle)
+
+	// Shared flow observers with flow-scoped topics.
 	o.subscribeFillWatcher(ctx)
 	o.subscribeTrailing(ctx)
-	o.subscribeTimeoutGuard(ctx)
-	o.subscribeFireTrap(ctx, settle)
 
 	// Terminal handlers.
 	o.subscribeCleanup(ctx, done)
@@ -161,7 +167,15 @@ func (o *CycleOrchestrator) publishOrLog(topic string, payload any) {
 }
 
 func (o *CycleOrchestrator) abort(phase domain.Phase, reason string) {
-	o.publishOrLog(events.TopicCycleAbort, events.CycleAbortEvent{
+	if phase == domain.PhaseScan {
+		o.publishOrLog(events.TopicScanAbort, events.CycleAbortEvent{
+			Symbol: o.cfg.Symbol,
+			Reason: reason,
+			Phase:  phase,
+		})
+	}
+	o.publishOrLog(events.TopicReversionAbort, events.CycleAbortEvent{
+		Flow:   events.FlowReversion,
 		Symbol: o.cfg.Symbol,
 		Reason: reason,
 		Phase:  phase,

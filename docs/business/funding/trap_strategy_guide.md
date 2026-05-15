@@ -1,65 +1,47 @@
-# Hướng Dẫn Canh Bẫy (Trap Depth Strategy)
+# Trap Depth Calibration Guide
 
-Tài liệu này dùng để tra cứu nhanh tỷ lệ đặt bẫy `TrapDepthPct` lý tưởng dựa trên độ lớn của Funding Rate (FR) tại thời điểm sắp thu phí. Quy luật vận hành dựa vào mức độ hoảng loạn xả hàng của đám đông sau giờ G (khi đã nhận/trả hụi xong).
+Status: heuristic seed, not production truth.
 
-## Bảng Tra Cứu Tỷ Lệ (Cheat Sheet)
+Use this file only as an initial calibration reference for `fundingTrap.depthPct` and FR-derived depth multipliers. Final config must come from journal data, especially `trap_filled`, `trap_mfe_pct`, `trap_mae_pct`, and `trap_outcome`.
 
-| Khoảng Funding Rate (|FR|) | Mức TrapDepthPct Đề Xuất | Hành Vi Đám Đông (Tâm Lý Thị Trường) | Tần Suất Khớp Lệnh (% Fill) | Lưu Ý Cấu Hình (funding.jsonc) |
-| :--- | :--- | :--- | :--- | :--- |
-| **Dưới 0.3%** | Bỏ qua (Skip) | Không bõ dính răng, phí giao dịch sàn ăn hết. Lực xả gần như không có. | N/A | Nên để `minFundingRate = 0.003` (0.3%) |
-| **0.3% - 0.6%** | `0.015 - 0.025` (1.5% - 2.5%) | Thanh khoản xả từ từ, trader chốt lời nhẹ nhàng. Giật râu nến ngắn gọn. | Cao (80%+) | Set bẫy gắt 5% khu vực này mút mùa không khớp nổi lệnh. |
-| **0.6% - 1.2%** | `0.025 - 0.040` (2.5% - 4.0%) | Bắt đầu có dấu hiệu giẫm đạp chạy trốn (Dump/Pump tương đối mạnh). Râu nến giật sâu. | Trung Bình - Khá (60%+) | Đây là "vùng vàng". Ăn đậm và an toàn. Rủi ro trượt giá trung bình. |
-| **1.2% - 2.0%** | `0.040 - 0.060` (4.0% - 6.0%) | Biến động mạnh, thanh khoản chênh lệch. Trader cháy tài khoản ở thời khắc Settle. | Hơi Hên Xui (40%+) | Bắt đầu cực kỳ hỗn loạn. Bắt ở mốc 5% sẽ chống được rủi ro kẹp đỉnh/đáy. |
-| **2.0% Trở Lên** | `0.060 - 0.100+` (6.0% - 10.0%) | Cực độ Fomo/Fud. Coin xả không phanh, lệnh Market nối đuôi nhau trượt giá vô cực. | Phụ Thuộc Sàn | Biến động siêu nhạy, ăn 8% có thể diễn ra trong 2 giây. Rủi ro Margin cực lớn nếu vốn yếu. |
+## Cheat Sheet
 
----
+| `abs(FR)` bucket | Initial trap depth | Expected fill | Note |
+|---|---:|---|---|
+| `< 0.3%` | skip | n/a | Funding edge likely too small |
+| `0.3% - 0.6%` | `1.5% - 2.5%` | high | Use tighter depth; wick is often short |
+| `0.6% - 1.2%` | `2.5% - 4.0%` | medium/high | Best initial research bucket |
+| `1.2% - 2.0%` | `4.0% - 6.0%` | medium/low | Requires tighter risk control |
+| `> 2.0%` | `6.0% - 10.0%+` | symbol-dependent | High volatility and high failure risk |
 
-## 🎯 Quy Tắc Cốt Lõi (Rule of Thumb)
+Rule of thumb:
 
-1. **Công thức ngầm định:** Độ sâu bẫy (D) thường được gài ở tỷ lệ **`[D = FR x 3] đến [FR x 5]`**
-   * *Ví dụ: FR là `0.4%` -> Đặt bẫy `1.2%` đến `2.0%`.*
-   * *Ngoại lệ: Nếu FR quá nhỏ, bớt tham lam lại kẻo không dính bẫy.*
-2. **Kèo FR cực âm (Khách Long ăn tiền, Cả làng bị Short bẹp ruột):** Mức này giá thường **PUMP** ngược lên (Hồi giá cực nhạy), bắt Trap SHORT ở 3 - 5% rất hời.
-3. **Kèo FR cực dương (Khách Short ăn tiền, Cả làng bị Long cháy):** Mức này giá thường **DUMP** (Sụp xả kinh dị). Bắt Trap LONG ở đáy có thể thả nới lỏng ra xíu để an toàn hơn.
-
-> [!TIP]
-> Hãy copy linh hoạt tỷ lệ rải mìn này vào tệp `funding.jsonc` cho từng Symbol cụ thể dựa theo dữ liệu soi quét trước giờ khớp lệnh khoảng 30 phút.
-
----
-
-## 📊 Dynamic Pricing — Tự Tính Trap Depth Từ FR + ATR
-
-Khi bật `DynamicPricing`, bot tự tính `TrapDepthPct` thay vì dùng giá trị cố định:
-
-```
-TrapDepth% = FR% × TrapDepthMultiplier
-             clamp trong [MinTrapDepth, MaxTrapDepth]
-
-TrapTP%    = FR% × TrapTpMultiplier
-             clamp trong [MinTrapTP, MaxTrapTP]
-
-TrapSL%    = FR% × TrapSlMultiplier
-             clamp trong [MinTrapSL, MaxTrapSL]
+```text
+trapDepthPct ~= abs(FR%) * 3 to abs(FR%) * 5
 ```
 
-**Ví dụ:** FR = 0.8%, TrapDepthMultiplier = 4.0, min = 1.5%, max = 6.0%
-→ TrapDepth = 0.8 × 4.0 = **3.2%** (nằm trong [1.5, 6.0] → giữ nguyên)
+Example: `abs(FR) = 0.8%`, multiplier `4.0` gives `3.2%` trap depth.
 
-> **ATR** (Average True Range) đo biên độ dao động trung bình theo nến 1 phút. Coin biên độ lớn (ATR cao) → TP/SL rộng hơn. Xem giải thích chi tiết tại `depth.md §8.1`.
+## Dynamic Trap Formula
 
----
+```text
+trapDepthPct = clamp(abs(FR%) * depthMultiplier, minDepth, maxDepth)
+trapTPPct    = clamp(abs(FR%) * tpMultiplier, minTP, maxTP)
+trapSLPct    = clamp(abs(FR%) * slMultiplier, minSL, maxSL)
+```
 
-## ⚠️ Cảnh Báo: OB Trước Settle Là "Sổ Lệnh Ma"
+Config percent values are user-facing: `depthPct: 2.5` means 2.5%.
 
-> [!WARNING]
-> Đa số trader đã **close position trước giờ Funding** để né phí. OB trước settle là "skeleton book" — mỏng cả Bid lẫn Ask. Tường (Wall) thấy ở T-2s **có thể biến mất** ở T+0.5s khi giá thực sự dump/pump.
+## Calibration Metrics
 
-**Hệ quả cho Trap:**
-- Wall neo Trap ở T-2s có thể bị rút khi settle → giá rơi qua Trap → kẹt đáy
-- OB chỉ tin cậy cho **slippage IOC** (tức thì), KHÔNG tin cậy cho Trap placement
+| Metric | Interpretation |
+|---|---|
+| `trap_filled=false` often | Depth may be too far or wick absent |
+| `trap_mae_pct` high after fill | Catching continuation, not bounce |
+| `trap_mfe_pct` below TP | TP is too ambitious |
+| `trap_source=ob_monitor` worse than `static_limit` | OB path should be demoted or disabled |
+| losses clustered by symbol | Disable or reduce trap for that symbol |
 
-**Biện pháp:**
-- Trap depth nên dựa vào **FR × multiplier** (thống kê), không phải wall position
-- Nếu có wall detection, chỉ dùng làm **safety cap** (giảm depth nếu wall quá sát)
-- Xem phân tích chi tiết tại `depth.md §3.4`
+## Guardrail
 
+Do not increase Trap size from this guide alone. Require journal proof by symbol and FR bucket. See [journal_analysis.md](journal_analysis.md) and [concern.md](concern.md).

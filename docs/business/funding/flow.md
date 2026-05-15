@@ -1,189 +1,106 @@
-# Funding Reversion Bot — Tổng Quan
+# Funding Bot Flow Overview
 
-**Chiến lược: Funding Reversion + Straddle Trap + Pre-Funding Wave** — Bot kết hợp 3 luồng giao dịch, khai thác hiệu ứng thoát hàng trước và xả hàng sau giờ Funding Settlement.
+File này chỉ mô tả lifecycle tổng và ranh giới giữa ba luồng. Chi tiết nghiệp vụ nằm trong:
 
----
+- [reversion_flow.md](reversion_flow.md)
+- [trap_flow.md](trap_flow.md)
+- [pre_funding_flow.md](pre_funding_flow.md)
 
-## Ba Luồng Giao Dịch
+## Target Architecture
 
-Bot vận hành **3 luồng (flow)** trên cùng một chu kỳ Funding:
+Funding bot có ba flow độc lập. Chúng **chỉ chạy chung tại init scan candidate**. Sau khi scan xong, candidate được publish vào topic riêng tương ứng với từng flow.
 
-| # | Luồng | Timing | Mục đích | Tài liệu chi tiết |
-|---|-------|--------|---------|-------------------|
-| 1 | **Pre-Funding Wave** 📋 | Trước settle (T-15m → T-1m) | Cưỡi sóng thoát hàng do traders close position né fee | [pre_funding_flow.md](pre_funding_flow.md) |
-| 2 | **Reversion** ✅ | Tại settle (T±0) | Bắn IOC đến sàn đúng T±0 (né Fee) → cưỡi sóng snipers xả | [reversion_flow.md](reversion_flow.md) |
-| 3 | **Straddle Trap** ✅ | Sau settle (T+50ms) | Đặt lệnh Limit ngược chiều → bắt râu nến dội lại (wick bounce) | [trap_flow.md](trap_flow.md) |
+```mermaid
+flowchart TD
+    INIT["bot init<br/>config + stores + ws + clock"] --> SCAN["shared candidate scan<br/>funding + symbol filters"]
 
-> ✅ = Đã implement | 📋 = Thiết kế, chưa implement
+    SCAN --> ROUTER["candidate router"]
 
-### Quan Hệ Giữa Ba Luồng
+    ROUTER -->|enabled + eligible| REV["funding.reversion.candidate"]
+    ROUTER -->|enabled + eligible| TRAP["funding.trap.candidate"]
+    ROUTER -->|design only| PRE["funding.prefunding.candidate"]
 
-```
-Pre-Funding:  Ăn sóng THOÁT HÀNG (trước settle, cùng chiều phe nhận phí)
-Reversion:    Ăn sóng CHÍNH      (tại settle, theo chiều FR)
-Trap:         Ăn sóng HỒI        (sau settle, ngược chiều FR)
-
-Timeline:
-T-15m          Pre-Funding subscribe + confirm ──→ Entry (cưỡi sóng thoát hàng)
-T-1m           Pre-Funding EXIT (trước settle, né conflict)
-T-(latency/2)  Bot bắn IOC ─────→ (lệnh bay qua mạng) ─────→ 🎯 Lệnh đến sàn
-T±0            ═══ SETTLE ═══    ← IOC khớp tại đây (né Fee) → 🏄 Cưỡi PUMP/DUMP
-T+50ms         Trap Limit đặt sâu ──→ chờ dội ──→ 🎣 Bắt wick bounce
+    REV --> REVFLOW["Reversion pipeline<br/>arm -> recheck -> IOC -> trailing"]
+    TRAP --> TRAPFLOW["Trap pipeline<br/>delay -> price -> limit -> trailing"]
+    PRE --> PREFLOW["Pre-Funding pipeline<br/>baseline -> confirm -> entry -> pre-settle exit"]
 ```
 
-### Side Logic — Hướng Vào Lệnh
+## Shared Init Scan
 
-| Funding Rate | Phe trả phí | Pre-Funding Side | Reversion Side | Trap Side |
+Shared scan được phép làm các việc sau:
+
+| Step | Output |
+|---|---|
+| Load symbol config | flow toggles, margin, leverage, risk limits |
+| Read funding/ticker snapshot | `funding_rate`, `last_price`, `volume_24h`, `settle_time` |
+| Apply symbol-level eligibility | min FR, settle window, contract availability |
+| Build candidate snapshot | immutable candidate input cho từng flow |
+| Route to flow topics | publish một candidate riêng cho mỗi flow enabled |
+
+Shared scan không được:
+
+- Đặt lệnh.
+- Subscribe flow-specific WS lâu dài.
+- Tính TP/SL/trailing cuối cùng.
+- Quyết định Trap price.
+- Quyết định Pre-Funding entry.
+- Dùng kết quả Reversion để điều khiển Trap, trừ khi có cycle-level risk controller rõ ràng.
+
+## Flow Separation
+
+| Concern | Shared scan | Reversion | Trap | Pre-Funding |
 |---|---|---|---|---|
-| **FR > 0** (dương) | Long trả → Short nhận | **SHORT** (cưỡi dump thoát hàng) | **LONG** (đón pump snipers xả) | **SHORT** (bắt dội) |
-| **FR < 0** (âm) | Short trả → Long nhận | **LONG** (cưỡi pump thoát hàng) | **SHORT** (đón dump snipers xả) | **LONG** (bắt nảy) |
+| Funding direction | Yes | Reads candidate | Reads candidate | Reads candidate |
+| Side mapping | Candidate base | Reversion side | Opposite Reversion side | Opposite Reversion side |
+| Timing | Find settle window | T-2s recheck, T±0 IOC | T+delay limit | T-20m to T-1m |
+| Pricing | No final pricing | IOC + TP/SL | Trap limit + TP/SL | Entry + pre-settle exit |
+| Fill watcher | No | Own watcher | Own watcher | Own watcher |
+| Trailing | No | Own config | Own config | Own config if enabled |
+| Journal | Candidate snapshot only | Reversion fields | Trap fields | Pre-Funding fields |
 
-> [!WARNING]
-> **Pre-Funding và Reversion đi NGƯỢC CHIỀU!** Pre-Funding phải exit trước khi Reversion fire, hoặc cần HEDGE mode.
+## Side Logic
 
-> **Reversion và Trap chạy song song**, không ảnh hưởng lẫn nhau. Reversion thành công hay thất bại, Trap vẫn sẽ quăng lệnh nếu được bật.
+| Funding Rate | Pre-Funding Side | Reversion Side | Trap Side |
+|---|---|---|---|
+| `FR > 0` | SHORT | LONG | SHORT |
+| `FR < 0` | LONG | SHORT | LONG |
 
----
+Pre-Funding đi ngược Reversion và phải exit trước settle nếu không có Hedge mode. Trap đi ngược Reversion và yêu cầu Hedge mode nếu tồn tại đồng thời với Reversion position.
 
-## Kiến Trúc Hệ Thống
+## Event Topic Convention
 
-```mermaid
-flowchart TD
-    A["🚀 Bot Start"] --> B["📖 Load Config"]
-    B --> C["🌐 Init Global Services<br/>(TimeSync + GlobalStore + WS)"]
-    C --> D["🔄 Start Background Syncs"]
-    D --> SPAWN
+Suggested topic namespaces:
 
-    subgraph SPAWN["🧵 Spawn Per-Symbol Workers"]
-        W1["go worker(BTC_USDT)"]
-        W2["go worker(ETH_USDT)"]
-        W3["go worker(SOL_USDT)"]
-        WN["go worker(...)"]
-    end
+| Scope | Topic pattern |
+|---|---|
+| Shared scan | `funding.scan.*` |
+| Reversion | `funding.reversion.*` |
+| Trap | `funding.trap.*` |
+| Pre-Funding | `funding.prefunding.*` |
+| Cycle risk | `funding.risk.*` |
+| Journal | `funding.journal.*` |
 
-    SPAWN --> WAIT["⏳ Wait for shutdown signal"]
+Minimal fan-out:
 
-    style SPAWN fill:#0f3460,stroke:#e94560,color:#fff
+```text
+funding.scan.candidate_found
+  -> funding.reversion.candidate
+  -> funding.trap.candidate
+  -> funding.prefunding.candidate
 ```
 
-**Nguyên tắc:** Mỗi symbol chạy trên **1 goroutine riêng**, hoàn toàn độc lập qua cơ chế Event-Driven (Watermill). Không liên quan gì đến symbol khác.
+Each flow can publish its own downstream events, for example `funding.reversion.ioc_fired` or `funding.trap.order_filled`.
 
----
+## Cycle-Level Risk
 
-## Event Chain — Chuỗi Sự Kiện Tổng Quan
+Flow separation does not remove shared risk. A cycle-level risk controller should eventually enforce:
 
-Thay vì dùng State Machine (FSM), bot dùng **Event-Driven Architecture** qua Watermill. Mỗi handler subscribe 1 topic và publish downstream event.
+| Rule | Why |
+|---|---|
+| `maxCycleNotionalUSDT` | Prevent Reversion + Trap + Pre-Funding from stacking exposure |
+| `maxCycleLossUSDT` | Kill switch when multiple legs go adverse |
+| `trapSizeRatio` | Trap is higher risk and should usually be smaller |
+| pre-settle force-close deadline | Prevent Pre-Funding from colliding with Reversion |
+| critical close failure handling | Avoid unmanaged positions after order/trailing failure |
 
-```mermaid
-flowchart TD
-    START["cycle.start"] --> SCAN["cycle.candidate.found<br/>📍 Scan FR"]
-    SCAN --> ARM["cycle.armed<br/>📍 Subscribe WS + Calc IOC"]
-    ARM --> WAIT2["cycle.wait.complete<br/>📍 Sleep đến T-2s"]
-    WAIT2 --> CONFIRM["cycle.confirmed<br/>📍 Recheck FR lần cuối"]
-
-    CONFIRM --> IOC["cycle.ioc.fired<br/>📍 Bắn IOC"]
-    CONFIRM --> TRAP["cycle.trap.fired<br/>📍 Đặt Trap Limit"]
-
-    IOC --> FILL["cycle.order.filled<br/>📍 IOC khớp"]
-    TRAP --> FILL2["cycle.order.filled<br/>📍 Trap khớp"]
-
-    FILL --> TRAIL["cycle.trailing.placed<br/>📍 Trailing Stop"]
-    FILL2 --> TRAIL2["cycle.trailing.placed<br/>📍 Trailing Stop (Trap)"]
-
-    TRAIL --> DONE["cycle.done ✅"]
-    TRAIL2 --> DONE
-
-    CONFIRM -.->|FR đổi dấu| ABORT["cycle.abort ❌"]
-    IOC -.->|Lỗi gửi lệnh| ABORT
-    FILL -.->|Timeout no fill| ABORT
-
-    style START fill:#0f3460,stroke:#e94560,color:#fff
-    style DONE fill:#005c2a,stroke:#e94560,color:#fff
-    style ABORT fill:#8b0000,stroke:#e94560,color:#fff
-```
-
-### Pre-Settle Chain (Tuần tự — Shared)
-
-Chuỗi `scan → arm → wait → recheck → confirmed` là **chung** cho cả Reversion lẫn Trap. Mọi kiểm tra FR, subscribe WS, tính IOC, safety check đều xảy ra **một lần duy nhất**.
-
-### Post-Settle Fan-Out (Song song — Tách biệt)
-
-Sau khi nhận event `cycle.confirmed`:
-- **Reversion flow**: `fire_ioc → fill_watcher → trailing` (xem [reversion_flow.md](reversion_flow.md))
-- **Trap flow**: `fire_trap → fill_watcher → trailing` (xem [trap_flow.md](trap_flow.md))
-
-### Pre-Funding Flow (Riêng biệt) 📋
-
-Pre-Funding Wave chạy trên **pipeline riêng**, bắt đầu sớm hơn (T-20m) và kết thúc trước settle. Xem [pre_funding_flow.md](pre_funding_flow.md).
-
----
-
-## Cấu Hình
-
-Ba luồng được cấu hình **độc lập** trong `system.jsonc`:
-
-```jsonc
-{
-  "tradingDefaults": {
-    // ── Pre-Funding Wave (trước settle) ── 📋
-    "preFundingWave": {
-      "enabled": false,
-      "minFundingRate": 0.005,
-      "confirmPricePct": 0.003,
-      "confirmVolumeMultiplier": 1.5
-    },
-
-    // ── Reversion (Entry IOC + Trailing) ──
-    "fundingReversion": {
-      "enabled": true,
-      "takeProfitPct": 3,
-      "stopLossPct": 3,
-      "dynamicPricing": { /* ... */ },
-      "trailing": { /* ... */ }
-    },
-
-    // ── Straddle Trap (Limit + Trailing riêng) ──
-    "fundingTrap": {
-      "enabled": true,
-      "depthPct": 2.5,
-      "takeProfitPct": 1.5,
-      "stopLossPct": 1.5,
-      "trailing": { /* ... */ }
-    }
-  }
-}
-```
-
-> Có thể bật/tắt từng luồng **độc lập**.
-
----
-
-## Error Handling
-
-| Trường hợp lỗi | Ảnh hưởng | Hành động |
-| --- | --- | --- |
-| Settle Passed / No Settle | Cả ba luồng | Worker kết thúc, chờ chu kỳ tiếp theo |
-| FR không đủ điều kiện | Cả ba luồng (pre-settle) | `abort` → Bỏ qua chu kỳ |
-| Tính toán IOC thất bại | Reversion | `abort` → Hủy chu kỳ |
-| Lệnh IOC không khớp (No Fill) | Reversion | `abort` → CancelAll |
-| Lệnh Trap không khớp | Trap (không ảnh hưởng Reversion) | Tự hết hạn hoặc CancelAll cuối chu kỳ |
-| Đặt TrackOrder lỗi (Reversion) | Reversion | `close_all` khẩn cấp |
-| Đặt TrackOrder lỗi (Trap) | Trap | `close_all` khẩn cấp |
-| Bot tắt ngang sau TrackOrder | An toàn | Sàn vẫn chốt lời theo TrackOrder |
-| Pre-Funding confirm timeout | Pre-Funding (không ảnh hưởng Reversion/Trap) | Skip — không entry |
-| Pre-Funding SL hit | Pre-Funding | Close position, Reversion/Trap vẫn chạy |
-
----
-
-## Tài Liệu Liên Quan
-
-| Tài liệu | Nội dung |
-|-----------|---------| 
-| [pre_funding_flow.md](pre_funding_flow.md) | Chi tiết luồng Pre-Funding Wave (trước settle) 📋 |
-| [reversion_flow.md](reversion_flow.md) | Chi tiết luồng Reversion (IOC + Trailing) |
-| [trap_flow.md](trap_flow.md) | Chi tiết luồng Straddle Trap (Limit + Trailing) |
-| [price_flow.md](price_flow.md) | Logic tính giá Entry & Volume |
-| [depth.md](depth.md) | Phân tích Orderbook & Wall Detection |
-| [trap_strategy_guide.md](trap_strategy_guide.md) | Bảng tra cứu Trap Depth theo FR |
-| [backlog.md](backlog.md) | Lý thuyết chưa implement & open questions |
-| [analyze.md](analyze.md) | Cycle Recorder design (chưa implement) |
+These controls are not all implemented. Track work in [backlog.md](backlog.md) and risks in [concern.md](concern.md).

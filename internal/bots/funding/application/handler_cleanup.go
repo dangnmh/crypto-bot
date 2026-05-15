@@ -13,17 +13,17 @@ import (
 // subscribeCleanup handles terminal events → unsubscribe WS, signal done.
 func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan struct{}) {
 	// Subscribe to all terminal event types.
-	closedMsgs, err := o.bus.Subscribe(ctx, events.TopicPositionClosed)
+	closedMsgs, err := o.bus.Subscribe(ctx, events.TopicReversionPositionClosed)
 	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicPositionClosed), slog.Any("error", err))
+		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicReversionPositionClosed), slog.Any("error", err))
 	}
-	timeoutMsgs, err := o.bus.Subscribe(ctx, events.TopicCycleTimeout)
+	timeoutMsgs, err := o.bus.Subscribe(ctx, events.TopicReversionTimeout)
 	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicCycleTimeout), slog.Any("error", err))
+		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicReversionTimeout), slog.Any("error", err))
 	}
-	abortMsgs, err := o.bus.Subscribe(ctx, events.TopicCycleAbort)
+	abortMsgs, err := o.bus.Subscribe(ctx, events.TopicReversionAbort)
 	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicCycleAbort), slog.Any("error", err))
+		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicReversionAbort), slog.Any("error", err))
 	}
 
 	cleanup := o.makeCleanupFn(ctx, done)
@@ -56,6 +56,10 @@ func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{
 	return func(reason string) {
 		o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason))
 		o.subs.UnsubscribeAll(ctx)
+		if o.excursionCancel != nil {
+			o.excursionCancel()
+			o.excursionCancel = nil
+		}
 
 		// Capture exit data for cycle record.
 		o.recorder.ExitReason = reason
@@ -101,20 +105,29 @@ func (o *CycleOrchestrator) watchTerminalTopic(
 // This is a passive observer — it does not affect the event chain.
 func (o *CycleOrchestrator) subscribeEventLog(ctx context.Context) {
 	topics := []string{
-		events.TopicCycleStart,
-		events.TopicCandidateFound,
-		events.TopicArmed,
-		events.TopicWaitComplete,
-		events.TopicConfirmed,
-		events.TopicIOCFired,
-		events.TopicTrapFired,
-		events.TopicOrderFilled,
-		events.TopicTrailingPlaced,
-		events.TopicOBWallFound,
-		events.TopicPositionClosed,
-		events.TopicCycleTimeout,
-		events.TopicCycleAbort,
-		events.TopicCycleError,
+		events.TopicScanStart,
+		events.TopicScanCandidateFound,
+		events.TopicScanAbort,
+		events.TopicReversionCandidate,
+		events.TopicReversionArmed,
+		events.TopicReversionWaitComplete,
+		events.TopicReversionConfirmed,
+		events.TopicReversionIOCFired,
+		events.TopicReversionOrderFilled,
+		events.TopicReversionTrailingPlaced,
+		events.TopicReversionPositionClosed,
+		events.TopicReversionTimeout,
+		events.TopicReversionAbort,
+		events.TopicReversionError,
+		events.TopicTrapCandidate,
+		events.TopicTrapOBWallFound,
+		events.TopicTrapOrderPlaced,
+		events.TopicTrapOrderFilled,
+		events.TopicTrapTrailingPlaced,
+		events.TopicTrapPositionClosed,
+		events.TopicTrapTimeout,
+		events.TopicTrapAbort,
+		events.TopicTrapError,
 	}
 
 	for _, topic := range topics {

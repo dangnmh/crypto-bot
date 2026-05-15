@@ -1,5 +1,9 @@
 # Cycle Recorder — Funding Reversion Trade Journal
 
+> Status: design / P0 priority. Implement this before adding new trading strategies or increasing Trap size. The first production milestone should be a minimal append-only JSONL recorder with MFE/MAE; SQLite and Watermill persistence can follow once the record shape is stable.
+>
+> After records exist, use [journal_analysis.md](journal_analysis.md) to convert them into config changes.
+
 ## Goal
 
 Record **every trading cycle** of the Funding Reversion bot into a structured JSONL file so we can later analyze:
@@ -165,6 +169,32 @@ The complete `EventBus.Timeline()` — every event with topic, timestamp, and fu
 
 ## Proposed Changes
 
+### Recommended Delivery Phases
+
+| Phase | Scope | Why |
+|---|---|---|
+| 1 | Append-only JSONL Cycle Recorder | Lowest risk, easy to inspect, matches existing `data/journal/cycles-YYYY-MM-DD.jsonl` workflow |
+| 2 | MFE/MAE sampler during open position | Highest value for TP/SL/trailing tuning |
+| 3 | Query/report scripts or SQLite import | Turns raw records into config decisions |
+| 4 | SQLite native recorder + indexes | Useful after schema stabilizes |
+| 5 | Watermill SQLite event log bridge | Full replay/audit trail after structured records are reliable |
+
+Do not block Phase 1 on Watermill SQLite. The immediate business need is trustworthy cycle-level data, not a perfect persistence architecture.
+
+### Phase 1 Done Criteria
+
+Minimal JSONL recorder is considered done only when:
+
+| Requirement | Acceptance |
+|---|---|
+| Writes all cycle endings | Records `done`, `abort`, `timeout`, and `no_fill` cycles |
+| Does not block trading | Recorder failure logs an error but does not panic the strategy path |
+| Has deterministic schema | Each record has `schema_version` and stable field names |
+| Captures MFE/MAE | Samples from fill until close/timeout for IOC and Trap legs |
+| Captures timing | Includes `fire_timestamp`, `settle_time`, and `settle_offset_ms` |
+| Captures raw context | Includes config snapshot and event timeline or a pointer to raw events |
+| Is test-covered | Unit tests cover record assembly and append failure handling |
+
 ### Component 1: Domain Types
 
 #### [NEW] `internal/bots/funding/domain/cycle_record.go`
@@ -210,6 +240,8 @@ With sub-structs: `DecisionRecord`, `IOCRecord`, `TrapRecord`, `ExitRecord`, `Ma
 
 ### Component 2: Storage Abstraction Layer
 
+> Phase note: keep this abstraction small enough that JSONL and SQLite can both implement it. Avoid schema churn in infrastructure before journal fields are proven useful.
+
 The design uses **two storage layers** following our Clean Architecture conventions:
 
 1. **Domain Interface** (consumer-defined) — `CycleRecorder` lives where it's consumed
@@ -239,6 +271,8 @@ graph TB
 
 #### Two Tables in One SQLite DB
 
+This is the target durable design, not the required first milestone.
+
 | Table              | Purpose                                                                        | Schema                                                                     |
 | ------------------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
 | `cycle_records`    | **Structured analysis** — queryable columns for TP/SL tuning, outcome tracking | Flat columns: `req_id`, `symbol`, `outcome`, `fr_at_scan`, `mfe_pct`, etc. |
@@ -253,7 +287,7 @@ graph TB
 
 #### [NEW] `internal/bots/funding/domain/cycle_recorder.go`
 
-Interface defined in domain (consumer-defined, per [coding conventions](docs/tech/coding_conventions.md) §2.2):
+Interface defined in domain (consumer-defined, per [coding conventions](../../tech/coding_conventions.md) §2.2):
 
 ```go
 // CycleRecorder persists complete cycle audit records for post-analysis.
@@ -370,6 +404,34 @@ CREATE INDEX IF NOT EXISTS idx_symbol  ON cycle_records(symbol);
 CREATE INDEX IF NOT EXISTS idx_outcome ON cycle_records(outcome);
 CREATE INDEX IF NOT EXISTS idx_settle  ON cycle_records(settle_time);
 ```
+
+#### Minimal JSONL Schema for Phase 1
+
+If SQLite is deferred, write one JSON object per completed or aborted cycle:
+
+```json
+{
+  "schema_version": 1,
+  "req_id": "...",
+  "symbol": "STEEM_USDT",
+  "settle_time": "2026-05-12T16:00:00Z",
+  "outcome": "profit",
+  "side": "OPEN_LONG",
+  "fr_at_scan": 0.007,
+  "fr_at_recheck": 0.0068,
+  "fire_timestamp": "2026-05-12T15:59:59.958Z",
+  "settle_offset_ms": -42,
+  "ioc_intended_price": 0.2449,
+  "ioc_fill_price": 0.2450,
+  "ioc_slippage_pct": 0.04,
+  "mfe_pct": 3.2,
+  "mae_pct": 0.7,
+  "exit_reason": "trailing",
+  "raw_json": {}
+}
+```
+
+Keep percent columns in journal as percent values (`3.2` means 3.2%) unless a field name explicitly says `_decimal`.
 
 ---
 
@@ -515,6 +577,8 @@ go get github.com/ThreeDotsLabs/watermill-sqlite/wmsqlitemodernc
 
 This brings in `modernc.org/sqlite` (CGO-free) — same driver used by `watermill-sqlite`. No CGO compilation needed on any platform.
 
+> Dependency note: add this only when implementing SQLite phases. JSONL Phase 1 should not require new dependencies.
+
 ---
 
 ## Output Example
@@ -570,14 +634,14 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
     "funding_trap": {"enabled": true, "depth_pct": 0.025}
   },
   "timeline": [
-    {"time": "...", "topic": "cycle.start", "payload": {...}},
-    {"time": "...", "topic": "cycle.candidate.found", "payload": {...}},
-    {"time": "...", "topic": "cycle.armed", "payload": {...}},
-    {"time": "...", "topic": "cycle.confirmed", "payload": {...}},
-    {"time": "...", "topic": "cycle.ioc.fired", "payload": {...}},
-    {"time": "...", "topic": "cycle.order.filled", "payload": {...}},
-    {"time": "...", "topic": "cycle.trailing.placed", "payload": {...}},
-    {"time": "...", "topic": "cycle.position.closed", "payload": {...}}
+    {"time": "...", "topic": "funding.scan.candidate_found", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.candidate", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.armed", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.confirmed", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.ioc_fired", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.order_filled", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.trailing_placed", "payload": {...}},
+    {"time": "...", "topic": "funding.reversion.position_closed", "payload": {...}}
   ]
 }
 ```
@@ -602,6 +666,8 @@ With this data, you can query across all cycle records to answer:
 | **Does OB trap beat static trap?**    | Compare fill rate: `trap.source = "ob_monitor"` vs `"static_limit"`             |
 | **Is dynamic pricing better?**        | Compare cycles with dynamic vs static config across same FR ranges              |
 | **Network quality?**                  | Track `ioc.latency_rtt_ms` over time — detect degradation                       |
+
+For daily operating rules and tuning thresholds, see [journal_analysis.md](journal_analysis.md).
 
 ---
 

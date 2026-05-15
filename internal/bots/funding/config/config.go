@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/bots/funding/domain"
+	"crypto-bot/pkg/types"
 
 	"github.com/tailscale/hujson"
 )
@@ -86,6 +88,10 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 	} else if sc.FundingReversion.Enabled {
 		defaultFloat(&sc.FundingReversion.TakeProfitPct, d.FundingReversion.TakeProfitPct)
 		defaultFloat(&sc.FundingReversion.StopLossPct, d.FundingReversion.StopLossPct)
+		defaultDuration(&sc.FundingReversion.MaxLatency, d.FundingReversion.MaxLatency)
+		defaultDuration(&sc.FundingReversion.BufferTime, d.FundingReversion.BufferTime)
+		defaultDuration(&sc.FundingReversion.HoldDuration, d.FundingReversion.HoldDuration)
+		defaultDuration(&sc.FundingReversion.PostSettleTimeout, d.FundingReversion.PostSettleTimeout)
 		if !sc.FundingReversion.DynamicPricing.Enabled && d.FundingReversion.DynamicPricing.Enabled {
 			sc.FundingReversion.DynamicPricing = d.FundingReversion.DynamicPricing
 		}
@@ -100,6 +106,9 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 		defaultFloat(&sc.FundingTrap.DepthPct, d.FundingTrap.DepthPct)
 		defaultFloat(&sc.FundingTrap.TakeProfitPct, d.FundingTrap.TakeProfitPct)
 		defaultFloat(&sc.FundingTrap.StopLossPct, d.FundingTrap.StopLossPct)
+		defaultDuration(&sc.FundingTrap.TrapAfterSettle, d.FundingTrap.TrapAfterSettle)
+		defaultDuration(&sc.FundingTrap.HoldDuration, d.FundingTrap.HoldDuration)
+		defaultDuration(&sc.FundingTrap.PostSettleTimeout, d.FundingTrap.PostSettleTimeout)
 		if !sc.FundingTrap.Trailing.Enabled && d.FundingTrap.Trailing.Enabled {
 			sc.FundingTrap.Trailing = d.FundingTrap.Trailing
 		}
@@ -112,6 +121,11 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 	sc.MinFundingRate /= 100
 
 	if sc.FundingReversion.Enabled {
+		defaultDuration(&sc.FundingReversion.MaxLatency, types.Duration(200*time.Millisecond))
+		defaultDuration(&sc.FundingReversion.BufferTime, types.Duration(10*time.Millisecond))
+		defaultDuration(&sc.FundingReversion.HoldDuration, types.Duration(30*time.Second))
+		defaultDuration(&sc.FundingReversion.PostSettleTimeout, types.Duration(60*time.Second))
+
 		if sc.FundingReversion.TakeProfitPct <= 0 {
 			sc.FundingReversion.TakeProfitPct = 20
 		}
@@ -130,6 +144,10 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 	}
 
 	if sc.FundingTrap.Enabled {
+		defaultDuration(&sc.FundingTrap.TrapAfterSettle, types.Duration(50*time.Millisecond))
+		defaultDuration(&sc.FundingTrap.HoldDuration, types.Duration(30*time.Second))
+		defaultDuration(&sc.FundingTrap.PostSettleTimeout, types.Duration(60*time.Second))
+
 		if sc.FundingTrap.DepthPct <= 0 {
 			sc.FundingTrap.DepthPct = 5
 		}
@@ -205,6 +223,12 @@ func defaultFloat(target *float64, fallback float64) {
 }
 
 func defaultInt(target *int, fallback int) {
+	if *target == 0 {
+		*target = fallback
+	}
+}
+
+func defaultDuration(target *types.Duration, fallback types.Duration) {
 	if *target == 0 {
 		*target = fallback
 	}

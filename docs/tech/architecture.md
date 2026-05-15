@@ -1,6 +1,6 @@
 # Crypto-Bot Architecture
 
-> Last updated: 2026-05-12 — Reflects post-refactoring state (Config decoupling, Engine optimizations, and Coverage improvements).
+> Last updated: 2026-05-15 — Reflects the current internal/bots/funding implementation, WS lifecycle hardening, and journal dependency cleanup.
 
 ## 1. Overview
 
@@ -23,17 +23,16 @@ The `crypto-bot` is a **multi-strategy automated trading system** built using **
 ```mermaid
 graph TB
     subgraph "CMD Layer"
-        FR["cmd/funding_reversion"]
-        PJ["cmd/penny_jumper"]
+        FR["cmd/funding"]
     end
 
     subgraph "Bot Layer (internal/bots/)"
-        subgraph "Funding Reversion"
+        subgraph "Funding"
             FRA["application/"]
             FRD["domain/"]
             FRC["config/"]
         end
-        subgraph "Penny Jumper"
+        subgraph "Future Bot"
             PJA["application/"]
             PJD["domain/"]
             PJC["config/"]
@@ -98,12 +97,12 @@ cmd/ → bots/ → domain/ ← infrastructure/
 ```
 crypto-bot/
 ├── cmd/                           # Entrypoints (one per bot)
-│   ├── funding_reversion/main.go
-│   └── penny_jumper/main.go
+│   ├── funding/main.go
+│   └── future_bot/main.go
 │
 ├── configs/                       # JSONC configuration files
 │   ├── system.jsonc               #   Engine config (API URLs, sync intervals, keys)
-│   └── funding_reversion/
+│   └── funding/
 │       └── funding.jsonc          #   Per-symbol trading parameters
 │
 ├── internal/
@@ -113,11 +112,11 @@ crypto-bot/
 │   │   └── types_test.go          #   100% coverage
 │   │
 │   ├── bots/                      # 🟡 STRATEGY LAYER (one dir per strategy)
-│   │   ├── funding_reversion/
+│   │   ├── funding/
 │   │   │   ├── application/       #   Sniper, Worker, FSM, Handlers, Opener, Trailing
 │   │   │   ├── domain/            #   Candidate, Pricing, Slippage, Scanner, Safety, Scorer
 │   │   │   └── config/            #   SymbolConfig, TradingDefaults, loader
-│   │   └── penny_jumper/
+│   │   └── future_bot/
 │   │       ├── application/       #   PennyJumper, Pipeline, SubscribeManager, WorkflowManager
 │   │       ├── domain/            #   Events (DepthUpdated, WallDetected, WallScored)
 │   │       └── config/            #   Config (minVolume24h, wall thresholds)
@@ -276,7 +275,7 @@ if apiErr, ok := exchange.IsAPIError(err); ok {
 
 ## 6. Trading Strategies
 
-### 6.1 Funding Reversion
+### 6.1 Funding
 
 **Goal**: Exploit funding rate mispricings by entering positions against the crowd before settlement, then exiting as the market reverts.
 
@@ -306,7 +305,7 @@ graph LR
 | `Opener` | `opener.go` | Executes IOC snipe + hedge trap orders |
 | `Trailing` | `trailing.go` | Background trailing stop tracker |
 
-### 6.2 Penny Jumper
+### 6.2 Future Bot
 
 **Goal**: Front-run large resting orders (walls) on low-liquidity pairs by placing orders one tick ahead.
 
@@ -493,8 +492,8 @@ defer shutdown(ctx)
 | `pkg/decmath` | **96.6%** | Edge cases (0.1+0.2=0.3), benchmarks |
 | `observability` | **92.8%** | Metrics, health, correlation ID |
 | `exchange` | **96.2%** | Structured error types |
-| `funding_reversion/config` | **94.7%** | Default copy + struct merging |
-| `funding_reversion/domain` | **83.4%** | Pricing, safety, scanner, scorer |
+| `funding/config` | **94.7%** | Default copy + struct merging |
+| `funding/domain` | **83.4%** | Pricing, safety, scanner, scorer |
 | `infrastructure/app` | **86.6%** | EventBus, EngineBuilder, lifecycle |
 | `store` | **97.7%** | Depth, kline stores |
 | `infrastructure/journal` | **92.6%** | Trade journaling |
@@ -509,7 +508,7 @@ defer shutdown(ctx)
 
 | # | Improvement | Why | Where | Effort |
 |---|-------------|-----|-------|--------|
-| 1 | **Wire Penny Jumper order execution** | `runWorkflow()` has 4 `TODO` stubs: place order, cancel on timeout, cancel on wall disappear, cancel on volume drop. Currently logs `[STUB]` instead of placing real orders. | [workflow_manager.go:194-241](file:///e:/projects/crypto-bot/internal/bots/penny_jumper/application/workflow_manager.go#L194-L241) | M |
+| 1 | **Wire Future Bot order execution** | `runWorkflow()` has 4 `TODO` stubs: place order, cancel on timeout, cancel on wall disappear, cancel on volume drop. Currently logs `[STUB]` instead of placing real orders. | [workflow_manager.go:194-241](file:///e:/projects/crypto-bot/internal/bots/future_bot/application/workflow_manager.go#L194-L241) | M |
 | 2 | **WS reconnect with subscription replay** | WS disconnect loses all subscription state. Pool should track active topics and replay `Subscribe*()` calls on reconnect. Critical for long-running sessions. | `pkg/ws/pool.go`, `ws_adapter.go` | L |
 | 3 | **Wire `OrderJournal` + `PnLTracker` into bots** | Both are implemented and tested (`journal/` package, 76.6% coverage) but neither bot calls `Record()` or `RecordEntry()`. No trade history is captured. | `sniper.go`, `penny.go`, `journal/` | S |
 
@@ -518,7 +517,7 @@ defer shutdown(ctx)
 | # | Improvement | Why | Where | Effort |
 |---|-------------|-----|-------|--------|
 | 4 | **`context.Context` propagation in WS adapter** | 6 methods in `ws_adapter.go` use `context.Background()` instead of propagating the caller's context. Prevents cancellation of WS subscribe/unsubscribe during shutdown. | [ws_adapter.go:43-125](file:///e:/projects/crypto-bot/internal/infrastructure/exchange/mexc/ws_adapter.go#L43-L125) | S |
-| 5 | **Replace `float64` with `decimal` in Penny Jumper domain** | `Wall.Price`, `Wall.Volume`, `WallHistory`, `Scorer` all use `float64`. Funding Reversion uses `pkg/decmath` for financial precision, but Penny Jumper does not. Risk of floating-point drift in price comparisons (e.g., `prev.Price == newWall.Price`). | `penny_jumper/domain/wall.go`, `scorer.go`, `wall_history.go` | M |
+| 5 | **Replace `float64` with `decimal` in Future Bot domain** | `Wall.Price`, `Wall.Volume`, `WallHistory`, `Scorer` all use `float64`. Funding uses `pkg/decmath` for financial precision, but Future Bot does not. Risk of floating-point drift in price comparisons (e.g., `prev.Price == newWall.Price`). | `future_bot/domain/wall.go`, `scorer.go`, `wall_history.go` | M |
 
 ### 🟢 Nice to Have — Features & Scale
 

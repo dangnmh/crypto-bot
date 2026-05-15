@@ -3,18 +3,18 @@
   // API — Kết nối MEXC Exchange
   // ══════════════════════════════════════════════════════════════
   "api": {
-    "future":    { "baseURL": "https://api.mexc.com" },
-    "websocket": { "wsURL": "wss://contract.mexc.com/edge" }
+    "future": { "baseURL": "https://api.mexc.com" },
+    "websocket": { "wsURL": "wss://contract.mexc.com/edge" },
   },
 
   // ══════════════════════════════════════════════════════════════
   // Sync — Tần suất đồng bộ dữ liệu
   // ══════════════════════════════════════════════════════════════
   "sync": {
-    "time":     "60s",   // Đồng bộ đồng hồ local ↔ server (cho fire chính xác tại T-Nms)
-    "ticker":   "300s",  // Refresh bảng giá tổng quan qua REST (WS bổ sung real-time)
+    "time": "60s", // Đồng bộ đồng hồ local ↔ server (cho fire chính xác tại T-Nms)
+    "ticker": "300s", // Refresh bảng giá tổng quan qua REST (WS bổ sung real-time)
     "contract": "3600s", // Refresh thông số hợp đồng (PriceUnit, MinVol, Fee — hiếm đổi)
-    "funding":  "10s"    // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
+    "funding": "10s", // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -22,23 +22,16 @@
   // ══════════════════════════════════════════════════════════════
   "logging": {
     "level": "debug",
-    "ws":    { "ticker": true, "order": true, "position": true },
-    "http":  true
+    "ws": { "ticker": true, "order": true, "position": true },
+    "http": true,
   },
 
   // ══════════════════════════════════════════════════════════════
   // Safety — Ngưỡng bảo vệ hệ thống
   // ══════════════════════════════════════════════════════════════
   "safety": {
-    "maxCapitalPctPerSymbol": 10,   // Tối đa 10% tổng vốn cho 1 symbol
-    "maxImpactRatio":         1,    // Reject nếu position > 1% volume 24h
-
-    "maxLatency":        "200ms",   // Abort nếu RTT > 200ms
-    "bufferTime":        "10ms",    // Bắn tại T - (Latency/2 + Buffer)
-
-    "trapAfterSettle":   "50ms",    // Chờ peak hình thành → ném bẫy
-    "holdDuration":      "30s",     // Timeout chờ fill + trailing kích hoạt
-    "postSettleTimeout": "60s"      // Force close nếu quá thời gian
+    "maxCapitalPctPerSymbol": 10, // Tối đa 10% tổng vốn cho 1 symbol
+    "maxImpactRatio": 1 // Reject nếu position > 1% volume 24h
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -46,7 +39,7 @@
   // ══════════════════════════════════════════════════════════════
   "journal": {
     "enabled": true,
-    "dir": "data/journal"                // Output: data/journal/cycles-YYYY-MM-DD.jsonl
+    "dir": "data/journal", // Output: data/journal/cycles-YYYY-MM-DD.jsonl
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -54,83 +47,17 @@
   // Mỗi field có thể override per-symbol trong funding.jsonc
   // ══════════════════════════════════════════════════════════════
   "tradingDefaults": {
-
     // ── 1. Entry Filter ──────────────────────────────────────────
-    "minFundingRate":      0.3,       // FR tối thiểu (%). < 0.3% → phí ăn hết lời → skip
-    "maxPriceDiffPercent": 0.8,       // Slippage tĩnh fallback (%)
+    "minFundingRate": 0.3, // FR tối thiểu (%). < 0.3% → phí ăn hết lời → skip
+    "maxPriceDiffPercent": 0.8, // Slippage tĩnh fallback (%)
 
     // ── 2. Position ──────────────────────────────────────────────
-    "leverage":     5,
-    "openType":     "ISOLATED",       // ISOLATED (an toàn) | CROSS (rủi ro cao)
-    "positionMode": "HEDGE",          // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
+    "leverage": 5,
+    "openType": "ISOLATED", // ISOLATED (an toàn) | CROSS (rủi ro cao)
+    "positionMode": "HEDGE", // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
 
-    // ── 3. Funding Reversion (Đảo chiều sau Funding) ─────────────
-    "fundingReversion": {
-      "enabled":       true,
-      "takeProfitPct": 3,
-      "stopLossPct":   3,
-
-      // Master toggle + slippage + TP/SL multipliers
-      "dynamicPricing": {
-        "enabled": true,
-
-        "slippageMode":     "OB_IMBALANCE",
-        "obBufferPct":      0.7,
-        "obMaxSlippagePct": 1,
-        "obStep":           "",
-        "spreadMultiplier": 3.0,
-
-        "tpFundingMultiplier": 2.0,
-        "tpAtrMultiplier":     0.0,
-
-        "slAtrMultiplier":     1.5,
-        "slFundingMultiplier": 1.0
-      },
-
-      // Trailing Stop (MEXC TrackOrder)
-      "trailing": {
-        "enabled":       true,
-        "activationPct": 1.0,
-        "callbackPct":   0.5,
-
-        "activationMultiplier": 1.5,
-        "minActivation":        0.2,
-        "maxActivation":        3.0,
-
-        "callbackMultiplier":   0.7,
-        "minCallback":          0.3,
-        "maxCallback":          1.5
-      }
-    },
-
-    // ── 4. Straddle Trap (Gọng Kìm / Catch the Dump) ─────────────
-    // Static fallback + FR-dynamic multipliers + dedicated trailing
-    // Yêu cầu: positionMode = HEDGE
-    "fundingTrap": {
-      "enabled":       true,
-      "depthPct":      2.5,           // Fallback: sâu 2.5% dưới/trên peak
-      "takeProfitPct": 1.5,           // Fallback: chốt lời khi bounce 1.5%
-      "stopLossPct":   1.5,           // Fallback: cắt lỗ nếu giá đi tiếp 1.5%
-
-      // FR-Dynamic: clamp(|FR%| × multiplier, min, max)
-      "depthMultiplier": 4.0,         // FR=0.7% → 0.7×4 = 2.8%
-      "minDepth":        1.5,
-      "maxDepth":        6.0,
-
-      "tpMultiplier":    2.5,         // FR=0.7% → 0.7×2.5 = 1.75%
-      "minTP":           1.0,
-      "maxTP":           5.0,
-
-      "slMultiplier":    2.0,         // FR=0.7% → 0.7×2 = 1.4%
-      "minSL":           1.0,
-      "maxSL":           4.0,
-
-      // Trailing riêng cho Trap (râu nến nảy nhanh → bật ngay)
-      "trailing": {
-        "enabled":       true,
-        "activationPct": 0,           // Bật ngay khi fill
-        "callbackPct":   0.5          // Tụt 0.5% từ đỉnh → chốt
-      }
-    }
-  }
+    // Strategy defaults live in sibling files:
+    // - reversion.jsonc -> tradingDefaults.fundingReversion
+    // - trap.jsonc      -> tradingDefaults.fundingTrap
+  },
 }

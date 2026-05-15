@@ -15,9 +15,17 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeTrailing handles cycle.order.filled → places TrackOrder (trailing stop) on MEXC.
+// subscribeTrailing handles flow-scoped order_filled events → places TrackOrder on MEXC.
 func (o *CycleOrchestrator) subscribeTrailing(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicOrderFilled, func(msg *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionOrderFilled, func(msg *message.Message) {
+		evt, err := unmarshal[events.OrderFilledEvent](msg.Payload)
+		if err != nil {
+			o.deps.Log.Error("🔴 Unmarshal OrderFilledEvent failed", slog.Any("error", err))
+			return
+		}
+		o.handleTrailing(ctx, evt)
+	})
+	o.consumeTopic(ctx, events.TopicTrapOrderFilled, func(msg *message.Message) {
 		evt, err := unmarshal[events.OrderFilledEvent](msg.Payload)
 		if err != nil {
 			o.deps.Log.Error("🔴 Unmarshal OrderFilledEvent failed", slog.Any("error", err))
@@ -85,7 +93,14 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 		o.deps.Log.Error("🔴 TrackOrder failed - fallback close", slog.Any("error", err), slog.Any("phase", evt.Phase))
 		_ = o.deps.Client.CloseAllPositions(reqCtx, evt.Symbol)
 
-		o.publishOrLog(events.TopicPositionClosed, events.PositionClosedEvent{
+		topic := events.TopicReversionPositionClosed
+		flow := events.FlowReversion
+		if evt.Phase == domain.PhaseTrap {
+			topic = events.TopicTrapPositionClosed
+			flow = events.FlowTrap
+		}
+		o.publishOrLog(topic, events.PositionClosedEvent{
+			Flow:   flow,
 			Symbol: evt.Symbol,
 			Reason: "trailing_failed_fallback",
 		})
@@ -101,7 +116,14 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 		b.TrailingCallbackPct = trailCfg.CallbackPct
 	})
 
-	o.publishOrLog(events.TopicTrailingPlaced, events.TrailingPlacedEvent{
+	topic := events.TopicReversionTrailingPlaced
+	flow := events.FlowReversion
+	if evt.Phase == domain.PhaseTrap {
+		topic = events.TopicTrapTrailingPlaced
+		flow = events.FlowTrap
+	}
+	o.publishOrLog(topic, events.TrailingPlacedEvent{
+		Flow:        flow,
 		Symbol:      evt.Symbol,
 		TrackID:     trackID,
 		ActivePrice: activePrice,

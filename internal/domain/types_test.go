@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"crypto-bot/internal/domain"
@@ -23,6 +24,7 @@ func TestSide_String(t *testing.T) {
 		{"open short", domain.SideOpenShort, "SHORT"},
 		{"close short", domain.SideCloseShort, "CLOSE_SHORT"},
 		{"close long", domain.SideCloseLong, "CLOSE_LONG"},
+		{"zero", domain.SideUnknown, "UNKNOWN"},
 		{"unknown", domain.Side(99), "UNKNOWN"},
 	}
 	for _, tt := range tests {
@@ -88,6 +90,72 @@ func TestCloseSideFor(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, domain.CloseSideFor(tt.open))
+		})
+	}
+}
+
+func TestSide_MarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	type payload struct {
+		Side domain.Side `json:"side"`
+	}
+
+	data, err := json.Marshal(payload{Side: domain.SideOpenLong})
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"side":"LONG"}`, string(data))
+}
+
+func TestSide_MarshalJSON_Invalid(t *testing.T) {
+	t.Parallel()
+
+	_, err := json.Marshal(domain.Side(99))
+	assert.Error(t, err)
+}
+
+func TestSide_UnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		json string
+		want domain.Side
+	}{
+		{"long label", `"LONG"`, domain.SideOpenLong},
+		{"open long alias", `"OPEN_LONG"`, domain.SideOpenLong},
+		{"short label", `"SHORT"`, domain.SideOpenShort},
+		{"open short alias", `"OPEN_SHORT"`, domain.SideOpenShort},
+		{"close short label", `"CLOSE_SHORT"`, domain.SideCloseShort},
+		{"close long label", `"CLOSE_LONG"`, domain.SideCloseLong},
+		{"case insensitive", `"close_long"`, domain.SideCloseLong},
+		{"unknown label", `"UNKNOWN"`, domain.SideUnknown},
+		{"zero", `0`, domain.SideUnknown},
+		{"number", `3`, domain.SideOpenShort},
+		{"numeric string", `"4"`, domain.SideCloseLong},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got domain.Side
+			err := json.Unmarshal([]byte(tt.json), &got)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestSide_UnmarshalJSON_Invalid(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{`"BAD"`, `99`, `""`, `{}`}
+	for _, raw := range tests {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+
+			var got domain.Side
+			err := json.Unmarshal([]byte(raw), &got)
+			assert.Error(t, err)
 		})
 	}
 }

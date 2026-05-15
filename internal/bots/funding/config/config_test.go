@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
+	"crypto-bot/pkg/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,9 +120,22 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 		OpenType:            "ISOLATED",
 		PositionMode:        "HEDGE",
 		FundingReversion: domain.FundingReversionConfig{
-			Enabled:       true,
-			TakeProfitPct: 15,
-			StopLossPct:   3,
+			Enabled:           true,
+			TakeProfitPct:     15,
+			StopLossPct:       3,
+			MaxLatency:        types.Duration(200 * time.Millisecond),
+			BufferTime:        types.Duration(10 * time.Millisecond),
+			HoldDuration:      types.Duration(30 * time.Second),
+			PostSettleTimeout: types.Duration(60 * time.Second),
+		},
+		FundingTrap: domain.FundingTrapConfig{
+			Enabled:           true,
+			DepthPct:          2.5,
+			TakeProfitPct:     1.5,
+			StopLossPct:       1.5,
+			TrapAfterSettle:   types.Duration(50 * time.Millisecond),
+			HoldDuration:      types.Duration(30 * time.Second),
+			PostSettleTimeout: types.Duration(60 * time.Second),
 		},
 	})
 
@@ -135,6 +150,13 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.InDelta(t, 0.002, sc.MaxPriceDiffPercent, 1e-9, "0.2% -> 0.002")
 	assert.InDelta(t, 0.15, sc.FundingReversion.TakeProfitPct, 1e-9, "15% -> 0.15")
 	assert.InDelta(t, 0.03, sc.FundingReversion.StopLossPct, 1e-9, "3% -> 0.03")
+	assert.Equal(t, types.Duration(200*time.Millisecond), sc.FundingReversion.MaxLatency)
+	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.BufferTime)
+	assert.Equal(t, types.Duration(30*time.Second), sc.FundingReversion.HoldDuration)
+	assert.Equal(t, types.Duration(60*time.Second), sc.FundingReversion.PostSettleTimeout)
+	assert.Equal(t, types.Duration(50*time.Millisecond), sc.FundingTrap.TrapAfterSettle)
+	assert.Equal(t, types.Duration(30*time.Second), sc.FundingTrap.HoldDuration)
+	assert.Equal(t, types.Duration(60*time.Second), sc.FundingTrap.PostSettleTimeout)
 }
 
 func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {

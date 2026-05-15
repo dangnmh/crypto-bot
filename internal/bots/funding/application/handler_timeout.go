@@ -10,10 +10,10 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeTimeoutGuard handles cycle.ioc.fired → starts safety timer.
+// subscribeTimeoutGuard handles funding.reversion.ioc_fired → starts safety timer.
 // If the timer expires before a PositionClosed event, it force-closes all positions.
 func (o *CycleOrchestrator) subscribeTimeoutGuard(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicIOCFired, func(msg *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionIOCFired, func(msg *message.Message) {
 		evt, err := unmarshal[events.IOCFiredEvent](msg.Payload)
 		if err != nil {
 			o.deps.Log.Error("🔴 Unmarshal IOCFiredEvent failed", slog.Any("error", err))
@@ -24,7 +24,7 @@ func (o *CycleOrchestrator) subscribeTimeoutGuard(ctx context.Context) {
 }
 
 func (o *CycleOrchestrator) handleTimeout(ctx context.Context, symbol string) {
-	timeout := time.Duration(o.global.System.Safety.PostSettleTimeout)
+	timeout := time.Duration(o.cfg.FundingReversion.PostSettleTimeout)
 	if timeout <= 0 {
 		timeout = 60 * time.Second // Fallback default
 	}
@@ -44,7 +44,8 @@ func (o *CycleOrchestrator) handleTimeout(ctx context.Context, symbol string) {
 		o.deps.Log.Error("🔴 Force close failed", slog.Any("error", err))
 	}
 
-	o.publishOrLog(events.TopicCycleTimeout, events.CycleTimeoutEvent{
+	o.publishOrLog(events.TopicReversionTimeout, events.CycleTimeoutEvent{
+		Flow:    events.FlowReversion,
 		Symbol:  symbol,
 		Timeout: timeout,
 	})

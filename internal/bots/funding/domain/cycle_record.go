@@ -20,6 +20,7 @@ type CycleRecord struct {
 	Symbol        string    `json:"symbol"`
 	SettleTime    time.Time `json:"settle_time"`
 	CreatedAt     time.Time `json:"created_at"`
+	Flows         []string  `json:"flows,omitempty"`
 
 	// Outcome
 	Outcome     CycleOutcome `json:"outcome"`
@@ -77,6 +78,7 @@ type DecisionSnapshot struct {
 
 // IOCSnapshot captures IOC order execution details.
 type IOCSnapshot struct {
+	Flow           string    `json:"flow,omitempty"`
 	IntendedPrice  float64   `json:"intended_price,omitempty"`
 	FillPrice      float64   `json:"fill_price,omitempty"`
 	FillVolume     float64   `json:"fill_volume,omitempty"`
@@ -91,6 +93,7 @@ type IOCSnapshot struct {
 
 // TrapSnapshot captures hedge trap order details.
 type TrapSnapshot struct {
+	Flow      string  `json:"flow,omitempty"`
 	Enabled   bool    `json:"enabled"`
 	Source    string  `json:"source,omitempty"` // "ob_monitor" or "static_limit"
 	Price     float64 `json:"price,omitempty"`

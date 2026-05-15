@@ -3,9 +3,9 @@ package store_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/store"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -86,4 +86,67 @@ func TestPriceStore_PriceAge(t *testing.T) {
 	s.UpdatePrice("BTC_USDT", &store.PriceData{UpdatedAt: time.Now()})
 	age = s.PriceAge("BTC_USDT")
 	assert.LessOrEqual(t, age, time.Second)
+}
+
+func TestPriceStore_SubscribePrice(t *testing.T) {
+	t.Parallel()
+
+	s := store.NewPriceStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	btcUpdates := s.SubscribePrice(ctx, "BTC_USDT", 1)
+	ethUpdates := s.SubscribePrice(ctx, "ETH_USDT", 1)
+
+	s.UpdatePrice("BTC_USDT", &store.PriceData{LastPrice: 100})
+
+	got := <-btcUpdates
+	assert.Equal(t, "BTC_USDT", got.Symbol)
+	assert.Equal(t, 100.0, got.LastPrice)
+	assert.False(t, got.UpdatedAt.IsZero())
+
+	select {
+	case got := <-ethUpdates:
+		t.Fatalf("unexpected ETH update: %+v", got)
+	default:
+	}
+}
+
+func TestPriceStore_SubscribePrice_ContextCancelClosesChannel(t *testing.T) {
+	t.Parallel()
+
+	s := store.NewPriceStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	updates := s.SubscribePrice(ctx, "BTC_USDT", 1)
+
+	cancel()
+
+	select {
+	case _, ok := <-updates:
+		assert.False(t, ok)
+	case <-time.After(time.Second):
+		t.Fatal("subscription channel was not closed")
+	}
+}
+
+func TestPriceStore_SubscribePrice_NonBlockingUpdate(t *testing.T) {
+	t.Parallel()
+
+	s := store.NewPriceStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_ = s.SubscribePrice(ctx, "BTC_USDT", 0)
+
+	done := make(chan struct{})
+	go func() {
+		s.UpdatePrice("BTC_USDT", &store.PriceData{LastPrice: 100})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("UpdatePrice blocked on an unbuffered subscriber")
+	}
 }

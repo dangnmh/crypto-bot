@@ -15,9 +15,9 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeScan handles cycle.start → checks FR → publishes CandidateFound or Abort.
+// subscribeScan handles funding.scan.start → checks FR → publishes flow candidates or abort.
 func (o *CycleOrchestrator) subscribeScan(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicCycleStart, func(_ *message.Message) {
+	o.consumeTopic(ctx, events.TopicScanStart, func(_ *message.Message) {
 		o.handleScan(ctx)
 	})
 }
@@ -59,18 +59,30 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 		slog.Float64("fr", o.candidate.FundingRate*100),
 	)
 
-	o.publishOrLog(events.TopicCandidateFound, events.CandidateFoundEvent{
+	scanEvent := events.CandidateFoundEvent{
 		Symbol:      o.candidate.Symbol,
 		FundingRate: o.candidate.FundingRate,
 		Side:        o.candidate.Side,
 		CloseSide:   o.candidate.CloseSide,
 		LastPrice:   o.candidate.LastPrice,
-	})
+	}
+	o.publishOrLog(events.TopicScanCandidateFound, scanEvent)
+
+	reversionEvent := scanEvent
+	reversionEvent.Flow = events.FlowReversion
+	o.publishOrLog(events.TopicReversionCandidate, reversionEvent)
+	if o.cfg.IsHedgeTrapEnabled() {
+		trapEvent := scanEvent
+		trapEvent.Flow = events.FlowTrap
+		trapEvent.Side = o.candidate.Side.Opposite()
+		trapEvent.CloseSide = shared.CloseSideFor(trapEvent.Side)
+		o.publishOrLog(events.TopicTrapCandidate, trapEvent)
+	}
 }
 
-// subscribeArm handles cycle.candidate.found → WS subscribe, calc IOC, safety check.
+// subscribeArm handles funding.reversion.candidate → WS subscribe, calc IOC, safety check.
 func (o *CycleOrchestrator) subscribeArm(ctx context.Context) {
-	o.consumeTopic(ctx, events.TopicCandidateFound, func(_ *message.Message) {
+	o.consumeTopic(ctx, events.TopicReversionCandidate, func(_ *message.Message) {
 		o.handleArm(ctx)
 	})
 }
@@ -167,7 +179,8 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 		slog.Float64("vol", c.Volume),
 	)
 
-	o.publishOrLog(events.TopicArmed, events.ArmedEvent{
+	o.publishOrLog(events.TopicReversionArmed, events.ArmedEvent{
+		Flow:   events.FlowReversion,
 		Symbol: c.Symbol,
 	})
 }

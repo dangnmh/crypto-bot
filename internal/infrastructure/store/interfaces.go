@@ -27,6 +27,7 @@ type PriceReader interface {
 	GetPrice(ctx context.Context, symbol string, maxAge time.Duration) (*PriceData, error)
 	GetBestBidAsk(ctx context.Context, symbol string) (bid, ask float64, err error)
 	PriceAge(symbol string) time.Duration
+	SubscribePrice(ctx context.Context, symbol string, buffer int) <-chan *PriceData
 }
 
 // PriceWriter allows updating real-time price data (used by EventRouter).

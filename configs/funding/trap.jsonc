@@ -1,0 +1,32 @@
+{
+  // Straddle Trap (Gong Kim / Catch the Dump)
+  // Static fallback + FR-dynamic multipliers + dedicated trailing
+  // Requires positionMode = HEDGE
+  "enabled":       true,
+  "depthPct":      2.5,           // Fallback: 2.5% below/above peak
+  "takeProfitPct": 1.5,           // Fallback: take profit when bounce reaches 1.5%
+  "stopLossPct":   1.5,           // Fallback: stop if price continues another 1.5%
+  "trapAfterSettle":   "50ms",    // Wait for post-settle peak before placing trap
+  "holdDuration":      "30s",     // Timeout waiting for fill + trailing activation
+  "postSettleTimeout": "60s",     // Force close after this duration
+
+  // FR-Dynamic: clamp(|FR%| x multiplier, min, max)
+  "depthMultiplier": 4.0,         // FR=0.7% -> 0.7 x 4 = 2.8%
+  "minDepth":        1.5,
+  "maxDepth":        6.0,
+
+  "tpMultiplier":    2.5,         // FR=0.7% -> 0.7 x 2.5 = 1.75%
+  "minTP":           1.0,
+  "maxTP":           5.0,
+
+  "slMultiplier":    2.0,         // FR=0.7% -> 0.7 x 2 = 1.4%
+  "minSL":           1.0,
+  "maxSL":           4.0,
+
+  // Dedicated Trap trailing: activate immediately after fill.
+  "trailing": {
+    "enabled":       true,
+    "activationPct": 0,
+    "callbackPct":   0.5
+  }
+}
