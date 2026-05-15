@@ -68,8 +68,11 @@ Trailing stop is the primary exit. TP submitted with IOC is a server-side safety
 |---|---|
 | trailing closes first | desired path when the move is strong |
 | TP closes first | acceptable safety path when move is short or capped by wall |
-| fallback close | required when TrackOrder placement fails |
+| fallback close | required when TrackOrder placement fails; current emergency path flattens the symbol with `CloseAllPositions(symbol)` |
+| critical close failure | if fallback close fails, record `critical_close_failed`, publish flow error, abort cycle, and do not mark position as closed |
 | timeout/no fill | cycle cleanup, not a strategy win/loss sample |
+
+Current fallback is intentionally conservative: after a fill, if TrackOrder cannot be created, the priority is to remove unmanaged live exposure. Exact-leg close by `close_side + volume` would be cleaner in Hedge mode, but needs a dedicated exchange API and should keep `CloseAllPositions(symbol)` as the final last-resort safety path.
 
 ## Required Journal Fields
 
@@ -80,7 +83,7 @@ Trailing stop is the primary exit. TP submitted with IOC is a server-side safety
 | Timing | `fire_timestamp`, `settle_offset_ms`, `latency_rtt_ms` |
 | Entry | `ioc_intended_price`, `ioc_fill_price`, `ioc_fill_volume`, `ioc_slippage_pct`, `ioc_error` |
 | Risk | `tp_pct_configured`, `sl_pct_configured`, `tp_price_submitted`, `sl_price_submitted` |
-| Trailing | `trailing_enabled`, `trailing_placed`, `trailing_activation_price`, `trailing_callback_pct`, `trailing_error` |
+| Trailing | `trailing_enabled`, `trailing_placed`, `trailing_activation_price`, `trailing_callback_pct`, `trailing_error`, `critical_close_failed` via `abort_reason` |
 | Excursion | `ioc_excursion.mfe_price`, `ioc_excursion.mfe_pct`, `ioc_excursion.mfe_time`, `ioc_excursion.mae_price`, `ioc_excursion.mae_pct`, `ioc_excursion.mae_time` |
 | Outcome | `exit_reason`, `exit_price`, `hold_duration_ms`, `outcome`, `tp_efficiency` |
 

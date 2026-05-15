@@ -7,6 +7,7 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 | Priority | Item | Why | Owner doc |
 |---|---|---|---|
 | P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
+| P2 | Exact-leg fallback close API | Giảm blast radius trong Hedge mode khi TrackOrder fail | [reversion_flow.md](reversion_flow.md) |
 | P2 | Runtime trap wall verification | Giảm rủi ro paper wall trước/cùng lúc đặt Trap | [trap_flow.md](trap_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
@@ -111,6 +112,24 @@ go run ./cmd/funding-journal -dir data/journal -date 2026-05-15 -json
 ```
 
 ## P2 Details
+
+### Exact-Leg Fallback Close API
+
+Status: emergency close guard implemented; exact-leg close remains backlog.
+
+Current safety path:
+
+- If TrackOrder placement fails after a fill, fallback close uses `CloseAllPositions(symbol)` with a fresh uncancelled timeout context.
+- If fallback close succeeds, cycle exits with `trailing_failed_fallback`.
+- If fallback close fails, cycle journal records `critical_close_failed`, emits a flow error, aborts, and does not publish a false `position_closed`.
+
+Future refinement:
+
+```go
+ClosePosition(ctx, symbol, closeSide, volume, positionMode)
+```
+
+Use this to close only the filled leg (`evt.CloseSide`, `evt.DealVol`) in Hedge mode. Keep `CloseAllPositions(symbol)` as the final last-resort fallback if exact close fails or exchange position state is ambiguous.
 
 ### Runtime Trap Wall Verification
 

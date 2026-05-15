@@ -8,7 +8,6 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 |---|---|---|
 | Reversion và Trap có thể cộng exposure cùng cycle | Notional thực tế có thể cao hơn config người dùng nghĩ | Add `trapSizeRatio` và `maxCycleNotionalUSDT` |
 | Missing/partial MFE-MAE làm tuning mù | TP/SL/trailing có thể bị chỉnh theo cảm giác | Implement Cycle Recorder P0 |
-| TrackOrder/close failure có thể để unmanaged position | Rủi ro live trading nghiêm trọng | Journal critical event + fallback close + symbol disable |
 
 ## Medium Severity
 
@@ -26,6 +25,12 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 | Trap depth cheat sheet là heuristic | Dễ overfit hoặc áp dụng sai symbol | Tune theo journal by symbol/FR bucket |
 | Pre-Funding conflict với Reversion | Hai flow ngược chiều nhau | Force close before settle hoặc Hedge mode |
 | Long docs dễ lẫn design với production | Người đọc tưởng chưa làm là đã làm | Mỗi file có status và link backlog/question |
+
+## Resolved / Guarded
+
+| Concern | Status | Current behavior | Remaining refinement |
+|---|---|---|---|
+| TrackOrder/close failure có thể để unmanaged position | Guarded in code | Nếu TrackOrder placement fail, bot gọi fallback `CloseAllPositions(symbol)` bằng context mới không bị cancel. Nếu fallback close cũng fail, journal ghi `critical_close_failed`, publish flow error, và abort cycle thay vì publish `position_closed` giả. | Có thể thêm exact-leg close API để close đúng `close_side + volume`; giữ `CloseAllPositions` làm last-resort fallback. |
 
 ## Current Rule
 

@@ -91,19 +91,7 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 	trackID, err := o.deps.Client.CreateTrackOrder(reqCtx, req)
 	if err != nil {
 		o.deps.Log.Error("🔴 TrackOrder failed - fallback close", slog.Any("error", err), slog.Any("phase", evt.Phase))
-		_ = o.deps.Client.CloseAllPositions(reqCtx, evt.Symbol)
-
-		topic := events.TopicReversionPositionClosed
-		flow := events.FlowReversion
-		if evt.Phase == domain.PhaseTrap {
-			topic = events.TopicTrapPositionClosed
-			flow = events.FlowTrap
-		}
-		o.publishOrLog(topic, events.PositionClosedEvent{
-			Flow:   flow,
-			Symbol: evt.Symbol,
-			Reason: "trailing_failed_fallback",
-		})
+		o.fallbackCloseAfterTrailingFailure(ctx, evt)
 		return
 	}
 
@@ -129,5 +117,52 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 		ActivePrice: activePrice,
 		CallbackPct: trailCfg.CallbackPct,
 		Phase:       evt.Phase,
+	})
+}
+
+func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Context, evt events.OrderFilledEvent) {
+	flow := events.FlowReversion
+	closeTopic := events.TopicReversionPositionClosed
+	errorTopic := events.TopicReversionError
+	if evt.Phase == domain.PhaseTrap {
+		flow = events.FlowTrap
+		closeTopic = events.TopicTrapPositionClosed
+		errorTopic = events.TopicTrapError
+	}
+
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := o.deps.Client.CloseAllPositions(closeCtx, evt.Symbol); err != nil {
+		reason := "critical_close_failed: " + err.Error()
+		o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+			b.AbortReason = reason
+			b.AbortPhase = domain.PhaseTrailing
+		})
+		o.deps.Log.Error("🔴 CRITICAL close failed after TrackOrder failure",
+			slog.Any("error", err),
+			slog.String("symbol", evt.Symbol),
+			slog.String("flow", flow),
+			slog.Any("phase", evt.Phase),
+		)
+		o.publishOrLog(errorTopic, events.CycleErrorEvent{
+			Flow:   flow,
+			Symbol: evt.Symbol,
+			Error:  reason,
+			Phase:  domain.PhaseTrailing,
+		})
+		o.publishOrLog(events.TopicReversionAbort, events.CycleAbortEvent{
+			Flow:   flow,
+			Symbol: evt.Symbol,
+			Reason: reason,
+			Phase:  domain.PhaseTrailing,
+		})
+		return
+	}
+
+	o.publishOrLog(closeTopic, events.PositionClosedEvent{
+		Flow:   flow,
+		Symbol: evt.Symbol,
+		Reason: "trailing_failed_fallback",
 	})
 }
