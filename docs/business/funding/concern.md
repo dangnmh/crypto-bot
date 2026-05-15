@@ -31,6 +31,8 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 | Concern | Status | Current behavior | Remaining refinement |
 |---|---|---|---|
 | TrackOrder/close failure có thể để unmanaged position | Guarded in code | Nếu TrackOrder placement fail, bot gọi fallback `CloseAllPositions(symbol)` bằng context mới không bị cancel. Nếu fallback close cũng fail, journal ghi `critical_close_failed`, publish flow error, và abort cycle thay vì publish `position_closed` giả. | Có thể thêm exact-leg close API để close đúng `close_side + volume`; giữ `CloseAllPositions` làm last-resort fallback. |
+| Timeout force-close failure có thể bị ghi nhầm là timeout an toàn | Guarded in code | Nếu post-settle timeout gọi force close nhưng exchange reject/fail, journal ghi `critical_timeout_close_failed`, publish flow error, và abort cycle thay vì publish `funding.reversion.timeout` giả. | Có thể thêm retry/backoff hoặc symbol-level disable khi `disableSymbolAfterCriticalCloseFailure` được wiring đầy đủ. |
+| Unfilled Trap limit order có thể sống quá wick window | Guarded in code | Sau `funding.trap.order_placed`, bot cancel unfilled Trap order khi `fundingTrap.postSettleTimeout` hết hạn. Nếu cancel order fail, fallback `CancelAllOpenOrders(symbol)`. Nếu vẫn fail, journal ghi `critical_trap_cancel_failed`, publish Trap error, và abort cycle. | Cần dữ liệu journal để tune timeout window theo symbol/FR bucket. |
 
 ## Current Rule
 

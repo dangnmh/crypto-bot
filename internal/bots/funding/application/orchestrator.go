@@ -144,6 +144,7 @@ func (o *CycleOrchestrator) setupEventChain(ctx context.Context, settle time.Tim
 
 	// Trap flow.
 	o.subscribeFireTrap(ctx, settle)
+	o.subscribeTrapOrderTimeoutGuard(ctx)
 
 	// Shared flow observers with flow-scoped topics.
 	o.subscribeFillWatcher(ctx)

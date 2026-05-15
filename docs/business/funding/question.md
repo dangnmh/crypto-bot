@@ -24,7 +24,7 @@ File này chứa câu hỏi mở cần trả lời trước khi đổi design ho
 |---|---|
 | Trap mặc định nên chạy độc lập dù Reversion no-fill không? | Có thể biến Trap thành trade riêng không có hedge context |
 | OB-assisted Trap có thật sự tốt hơn static FR-depth không? | Cần journal so sánh `ob_monitor` vs `static_limit` |
-| Trap timeout nên theo cycle timeout hay riêng theo wick window? | Wick bounce thường ngắn, timeout dài có thể giữ risk vô ích |
+| Trap timeout window nên tune bao nhiêu theo symbol/FR bucket? | Unfilled Trap order đã có timeout/cancel riêng, nhưng wick bounce thường ngắn nên window cần journal calibration |
 
 ## Pre-Funding
 

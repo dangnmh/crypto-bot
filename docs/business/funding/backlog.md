@@ -121,6 +121,7 @@ Current safety path:
 - If TrackOrder placement fails after a fill, fallback close uses `CloseAllPositions(symbol)` with a fresh uncancelled timeout context.
 - If fallback close succeeds, cycle exits with `trailing_failed_fallback`.
 - If fallback close fails, cycle journal records `critical_close_failed`, emits a flow error, aborts, and does not publish a false `position_closed`.
+- If post-settle timeout force-close fails, cycle journal records `critical_timeout_close_failed`, emits a flow error, aborts, and does not publish a false timeout.
 
 Future refinement:
 
@@ -140,6 +141,17 @@ If using OB-assisted Trap:
 - If the wall disappears or cannot be verified, the OB Trap is skipped instead of placing from a stale wall.
 - If the wall moved but another valid wall exists, the Trap price is recalculated from the fresh wall.
 - Journal records `wall_verified`, `wall_age_ms`, `wall_distance_pct`, and `wall_price`.
+
+### Trap Order Timeout / Cancel
+
+Status: implemented for unfilled Trap orders.
+
+Current safety path:
+
+- After `funding.trap.order_placed`, the Trap flow starts an independent timeout from `fundingTrap.postSettleTimeout` with a 60s fallback.
+- If the Trap order is still unfilled when the timer expires, bot calls `CancelOrder(symbol, orderID)`.
+- If single-order cancel fails, bot falls back to `CancelAllOpenOrders(symbol)`.
+- If open-order cancellation fails, journal records `critical_trap_cancel_failed`, emits a Trap error, and aborts the cycle instead of leaving the stale limit order invisible.
 
 ### Imbalance Ratio Filter
 

@@ -28,7 +28,7 @@ flowchart LR
     TRAIL --> DONE["done + journal"]
     VERIFY -.-> SKIP["wall gone<br/>skip + journal"]
     ORDER -.-> ABORT["order error + journal"]
-    FILL -.-> EXPIRE["not filled / cancel / timeout"]
+    ORDER -.-> EXPIRE["not filled<br/>cancel + timeout"]
 ```
 
 ## Phase Contract
@@ -41,6 +41,7 @@ flowchart LR
 | `wall_verify` | For OB-assisted Trap, reload depth immediately before placement | `wall_verified`, `wall_age_ms`, fresh wall price or skip |
 | `sizing` | Apply `sizeRatio` and `maxNotionalUSDT` | Trap notional lower than Reversion |
 | `order` | Place limit/post-only order with TP/SL | order id or error |
+| `order_timeout` | Cancel unfilled Trap order after Trap timeout window | `funding.trap.timeout` or critical cancel error |
 | `fill_watcher` | Track trap fill separately from Reversion | fill price, fill volume |
 | `trailing` | Place trap-specific trailing | activation usually 0, callback from trap config |
 | `journal` | Persist trap leg outcome separately | fill rate, MFE/MAE, source comparison |
@@ -75,7 +76,7 @@ Trap trailing should usually activate immediately because wick bounce can be sho
 |---|---|
 | `activationPct` | `0` or very low |
 | `callbackPct` | small, commonly around `0.5` percent |
-| timeout | independent from Reversion outcome |
+| order timeout | independent from Reversion outcome; unfilled post-only Trap order is canceled when the Trap timeout window expires |
 
 ## Required Journal Fields
 

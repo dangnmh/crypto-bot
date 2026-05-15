@@ -70,7 +70,8 @@ Trailing stop is the primary exit. TP submitted with IOC is a server-side safety
 | TP closes first | acceptable safety path when move is short or capped by wall |
 | fallback close | required when TrackOrder placement fails; current emergency path flattens the symbol with `CloseAllPositions(symbol)` |
 | critical close failure | if fallback close fails, record `critical_close_failed`, publish flow error, abort cycle, and do not mark position as closed |
-| timeout/no fill | cycle cleanup, not a strategy win/loss sample |
+| timeout/no fill | force close after post-settle timeout, then cycle cleanup; not a strategy win/loss sample |
+| critical timeout close failure | if timeout force-close fails, record `critical_timeout_close_failed`, publish flow error, abort cycle, and do not publish a false timeout |
 
 Current fallback is intentionally conservative: after a fill, if TrackOrder cannot be created, the priority is to remove unmanaged live exposure. Exact-leg close by `close_side + volume` would be cleaner in Hedge mode, but needs a dedicated exchange API and should keep `CloseAllPositions(symbol)` as the final last-resort safety path.
 

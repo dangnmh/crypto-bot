@@ -17,6 +17,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/testutil/mocks"
+	"crypto-bot/pkg/types"
 
 	"go.uber.org/mock/gomock"
 )
@@ -60,6 +61,25 @@ func (r *recordingCycleRecorder) last() (domain.CycleRecord, bool) {
 }
 
 func setupOrchestrator(t *testing.T, ctrl *gomock.Controller) (*application.CycleOrchestrator, orchestratorMocks) {
+	cfg := config.SymbolConfig{
+		Symbol:         "BTC_USDT",
+		MinFundingRate: 0.001,
+		FundingReversion: domain.FundingReversionConfig{
+			Trailing: domain.TrailingConfig{Enabled: true},
+		},
+		FundingTrap: domain.FundingTrapConfig{
+			Enabled:  true,
+			Trailing: domain.TrailingConfig{Enabled: true},
+		},
+	}
+	return setupOrchestratorWithConfig(t, ctrl, cfg)
+}
+
+func setupOrchestratorWithConfig(
+	t *testing.T,
+	ctrl *gomock.Controller,
+	cfg config.SymbolConfig,
+) (*application.CycleOrchestrator, orchestratorMocks) {
 	m := orchestratorMocks{
 		tickerStore:   mocks.NewMockTickerReader(ctrl),
 		contractStore: mocks.NewMockContractReader(ctrl),
@@ -75,17 +95,6 @@ func setupOrchestrator(t *testing.T, ctrl *gomock.Controller) (*application.Cycl
 		recorder:      &recordingCycleRecorder{},
 	}
 
-	cfg := config.SymbolConfig{
-		Symbol:         "BTC_USDT",
-		MinFundingRate: 0.001,
-		FundingReversion: domain.FundingReversionConfig{
-			Trailing: domain.TrailingConfig{Enabled: true},
-		},
-		FundingTrap: domain.FundingTrapConfig{
-			Enabled:  true,
-			Trailing: domain.TrailingConfig{Enabled: true},
-		},
-	}
 	global := &config.Config{System: &config.SystemConfig{Safety: config.SafetyConfig{}}}
 
 	deps := application.Deps{
@@ -466,6 +475,184 @@ func TestCycleOrchestrator_CriticalCloseFailureAfterTrailingRejection(t *testing
 	}
 	if sawClosed {
 		t.Fatal("must not publish position_closed when fallback close fails")
+	}
+}
+
+func TestCycleOrchestrator_CriticalCloseFailureAfterTimeout(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	cfg := config.SymbolConfig{
+		Symbol:         "BTC_USDT",
+		MinFundingRate: 0.001,
+		FundingReversion: domain.FundingReversionConfig{
+			PostSettleTimeout: types.Duration(1 * time.Millisecond),
+			Trailing:          domain.TrailingConfig{Enabled: false},
+		},
+		FundingTrap: domain.FundingTrapConfig{
+			Enabled: false,
+		},
+	}
+	o, m := setupOrchestratorWithConfig(t, ctrl, cfg)
+
+	m.tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.005,
+		LastPrice:   50000,
+		BestBid:     49999,
+		BestAsk:     50001,
+	}, nil).AnyTimes()
+	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
+		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
+	}, nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
+	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
+		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
+	}, nil).AnyTimes()
+	m.clock.EXPECT().Until(gomock.Any()).Return(time.Duration(0)).AnyTimes()
+	m.clock.EXPECT().LatencyMs().Return(int64(50)).AnyTimes()
+	m.clock.EXPECT().Now().Return(time.Now()).AnyTimes()
+	m.clock.EXPECT().GetServerTime().Return(time.Now().UnixMilli()).AnyTimes()
+	m.clock.EXPECT().Offset().Return(int64(0)).AnyTimes()
+
+	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ioc_1", nil).AnyTimes()
+	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			callback(exchange.WsOrderDeal{
+				OrderID:      orderID,
+				State:        exchange.OrderStateFilled,
+				DealVol:      1.0,
+				DealAvgPrice: 50000,
+			})
+		}()
+	}).AnyTimes()
+	m.ws.EXPECT().RemoveOrderCallback(gomock.Any()).AnyTimes()
+	m.client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").DoAndReturn(func(ctx context.Context, _ string) error {
+		if ctx.Err() != nil {
+			t.Fatalf("timeout close used a cancelled context: %v", ctx.Err())
+		}
+		return errors.New("close rejected")
+	}).AnyTimes()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	o.Run(ctx, time.Now())
+
+	record, ok := m.recorder.last()
+	if !ok {
+		t.Fatal("expected cycle record")
+	}
+	if record.Outcome != domain.OutcomeAborted {
+		t.Fatalf("expected aborted outcome, got %s", record.Outcome)
+	}
+	if !strings.Contains(record.AbortReason, "critical_timeout_close_failed") {
+		t.Fatalf("expected critical timeout close abort reason, got %q", record.AbortReason)
+	}
+
+	var sawAbort, sawError, sawTimeout bool
+	for _, entry := range record.Timeline {
+		switch entry.Topic {
+		case events.TopicReversionAbort:
+			sawAbort = true
+		case events.TopicReversionError:
+			sawError = true
+		case events.TopicReversionTimeout:
+			sawTimeout = true
+		}
+	}
+	if !sawAbort || !sawError {
+		t.Fatalf("expected critical abort and error events, saw abort=%t error=%t", sawAbort, sawError)
+	}
+	if sawTimeout {
+		t.Fatal("must not publish timeout when force close fails")
+	}
+}
+
+func TestCycleOrchestrator_CancelsUnfilledTrapOrderAfterTimeout(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	cfg := config.SymbolConfig{
+		Symbol:         "BTC_USDT",
+		MinFundingRate: 0.001,
+		FundingReversion: domain.FundingReversionConfig{
+			Trailing: domain.TrailingConfig{Enabled: true},
+		},
+		FundingTrap: domain.FundingTrapConfig{
+			Enabled:           true,
+			DepthPct:          0.01,
+			PostSettleTimeout: types.Duration(1 * time.Millisecond),
+			Trailing:          domain.TrailingConfig{Enabled: true},
+		},
+	}
+	o, m := setupOrchestratorWithConfig(t, ctrl, cfg)
+
+	m.tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.005,
+		LastPrice:   50000,
+		BestBid:     49999,
+		BestAsk:     50001,
+	}, nil).AnyTimes()
+	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
+		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
+	}, nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
+	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
+		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
+	}, nil).AnyTimes()
+	m.clock.EXPECT().Until(gomock.Any()).Return(time.Duration(0)).AnyTimes()
+	m.clock.EXPECT().LatencyMs().Return(int64(50)).AnyTimes()
+	m.clock.EXPECT().Now().Return(time.Now()).AnyTimes()
+	m.clock.EXPECT().GetServerTime().Return(time.Now().UnixMilli()).AnyTimes()
+	m.clock.EXPECT().Offset().Return(int64(0)).AnyTimes()
+
+	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req exchange.SubmitOrderRequest) (string, error) {
+		if strings.HasPrefix(req.ExternalOID, "trp_") {
+			return "trap_1", nil
+		}
+		return "ioc_1", nil
+	}).AnyTimes()
+	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
+		if orderID != "ioc_1" {
+			return
+		}
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			callback(exchange.WsOrderDeal{
+				OrderID:      orderID,
+				State:        exchange.OrderStateFilled,
+				DealVol:      1.0,
+				DealAvgPrice: 50000,
+			})
+		}()
+	}).AnyTimes()
+	m.ws.EXPECT().RemoveOrderCallback(gomock.Any()).AnyTimes()
+	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("track_1", nil).AnyTimes()
+	m.client.EXPECT().CancelOrder(gomock.Any(), "BTC_USDT", "trap_1").Return(nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	o.Run(ctx, time.Now())
+
+	record, ok := m.recorder.last()
+	if !ok {
+		t.Fatal("expected cycle record")
+	}
+
+	var sawTrapTimeout bool
+	for _, entry := range record.Timeline {
+		if entry.Topic == events.TopicTrapTimeout {
+			sawTrapTimeout = true
+			break
+		}
+	}
+	if !sawTrapTimeout {
+		t.Fatal("expected trap timeout after canceling unfilled trap order")
+	}
+	if record.Trap.Filled {
+		t.Fatal("trap should remain unfilled")
 	}
 }
 
