@@ -84,7 +84,7 @@ Trap must be measured separately from Reversion.
 | Entry | `trap_price`, `trap_order_id`, `trap_filled`, `trap_fill_price`, `trap_fill_volume`, `trap_error` |
 | Risk | `trap_tp_pct`, `trap_sl_pct`, `trap_tp_price`, `trap_sl_price` |
 | Trailing | `trap_trailing_enabled`, `trap_trailing_placed`, `trap_callback_pct`, `trap_trailing_error` |
-| Excursion | `trap_mfe_pct`, `trap_mae_pct`, `trap_hold_duration_ms` |
+| Excursion | `trap.excursion.mfe_pct`, `trap.excursion.mae_pct`, `trap_hold_duration_ms` |
 | Outcome | `trap_exit_reason`, `trap_exit_price`, `trap_outcome` |
 
 ## Known Concerns

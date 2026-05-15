@@ -57,7 +57,12 @@ type CycleRecordBuilder struct {
 	TrapPrice     float64
 	TrapFilled    bool
 	TrapFillPrice float64
+	TrapFillVol   float64
 	TrapOrderID   string
+	TrapTPPct     float64
+	TrapSLPct     float64
+	TrapTPPrice   float64
+	TrapSLPrice   float64
 
 	// Exit
 	ExitReason string
@@ -80,7 +85,9 @@ type CycleRecordBuilder struct {
 	Snapshots []MarketSnapshot
 
 	// MFE/MAE tracking
-	Excursion *ExcursionTracker
+	Excursion     *ExcursionTracker // legacy alias for IOCExcursion
+	IOCExcursion  *ExcursionTracker
+	TrapExcursion *ExcursionTracker
 }
 
 // NewCycleRecordBuilder creates a fresh builder for a new cycle.
@@ -149,14 +156,23 @@ func (b *CycleRecordBuilder) Build(
 		holdDurationMs = b.ExitTime.Sub(b.FireTimestamp).Milliseconds()
 	}
 
-	// Build excursion data if tracker was active.
-	var excursion ExcursionSnapshot
-	if b.Excursion != nil {
-		excursion = b.Excursion.Snapshot(
+	// Build leg-level excursion data if trackers were active.
+	var iocExcursion ExcursionSnapshot
+	if b.IOCExcursion != nil {
+		iocExcursion = b.IOCExcursion.Snapshot(
 			b.Side,
 			b.IOCFillPrice,
 			tpPctConfigured,
 			slPctConfigured,
+		)
+	}
+	var trapExcursion ExcursionSnapshot
+	if b.TrapExcursion != nil {
+		trapExcursion = b.TrapExcursion.Snapshot(
+			b.TrapSide(),
+			b.TrapFillPrice,
+			b.TrapTPPct,
+			b.TrapSLPct,
 		)
 	}
 
@@ -190,15 +206,22 @@ func (b *CycleRecordBuilder) Build(
 			FireTimestamp:  b.FireTimestamp,
 			SettleOffsetMs: settleOffsetMs,
 			LatencyRTTMs:   b.LatencyRTTMs,
+			Excursion:      iocExcursion,
 		},
 		Trap: TrapSnapshot{
-			Flow:      cycleRecordFlowTrap,
-			Enabled:   b.TrapEnabled,
-			Source:    b.TrapSource,
-			Price:     b.TrapPrice,
-			Filled:    b.TrapFilled,
-			FillPrice: b.TrapFillPrice,
-			OrderID:   b.TrapOrderID,
+			Flow:             cycleRecordFlowTrap,
+			Enabled:          b.TrapEnabled,
+			Source:           b.TrapSource,
+			Price:            b.TrapPrice,
+			Filled:           b.TrapFilled,
+			FillPrice:        b.TrapFillPrice,
+			FillVolume:       b.TrapFillVol,
+			OrderID:          b.TrapOrderID,
+			TPPctConfigured:  ratioToPercent(b.TrapTPPct),
+			SLPctConfigured:  ratioToPercent(b.TrapSLPct),
+			TPPriceSubmitted: b.TrapTPPrice,
+			SLPriceSubmitted: b.TrapSLPrice,
+			Excursion:        trapExcursion,
 		},
 		Exit: ExitSnapshot{
 			Reason:                b.ExitReason,
@@ -217,9 +240,11 @@ func (b *CycleRecordBuilder) Build(
 			StaticSLPct:           ratioToPercent(b.StaticSLPct),
 			ATRValue:              b.ATRValue,
 		},
-		Excursion: excursion,
-		Config:    cfgJSON,
-		Timeline:  timeline,
+		Excursion:     iocExcursion,
+		IOCExcursion:  iocExcursion,
+		TrapExcursion: trapExcursion,
+		Config:        cfgJSON,
+		Timeline:      timeline,
 	}
 
 	return rec
@@ -231,6 +256,17 @@ func (b *CycleRecordBuilder) flows() []string {
 		flows = append(flows, cycleRecordFlowTrap)
 	}
 	return flows
+}
+
+func (b *CycleRecordBuilder) TrapSide() shared.Side {
+	switch b.Side {
+	case shared.SideOpenLong:
+		return shared.SideOpenShort
+	case shared.SideOpenShort:
+		return shared.SideOpenLong
+	default:
+		return 0
+	}
 }
 
 func ratioToPercent(v float64) float64 {

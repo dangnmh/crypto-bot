@@ -50,12 +50,20 @@ func TestBuildAggregatesDailyMetrics(t *testing.T) {
 				Enabled: true,
 				Filled:  true,
 				Source:  "static_limit",
+				Excursion: domain.ExcursionSnapshot{
+					MFEPct: 2,
+					MAEPct: 3,
+				},
 			},
 			Exit: domain.ExitSnapshot{
 				TPPctConfigured: 3,
 				SLPctConfigured: 2,
 			},
 			Excursion: domain.ExcursionSnapshot{
+				MFEPct: 4,
+				MAEPct: 1,
+			},
+			IOCExcursion: domain.ExcursionSnapshot{
 				MFEPct: 4,
 				MAEPct: 1,
 			},
@@ -93,6 +101,12 @@ func TestBuildAggregatesDailyMetrics(t *testing.T) {
 	}
 	if report.Trap.FillRatePct != 50 {
 		t.Fatalf("Trap fill rate = %.2f, want 50", report.Trap.FillRatePct)
+	}
+	if report.IOC.AvgMFEPct != 4 {
+		t.Fatalf("IOC avg MFE = %.2f, want 4", report.IOC.AvgMFEPct)
+	}
+	if report.Trap.AvgMFEPct != 2 {
+		t.Fatalf("Trap avg MFE = %.2f, want 2", report.Trap.AvgMFEPct)
 	}
 	if len(report.UnitWarnings) == 0 {
 		t.Fatal("expected unit warning for decimal-like TP")

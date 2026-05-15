@@ -41,6 +41,8 @@ type Report struct {
 type IOCMetrics struct {
 	FillRatePct          float64 `json:"fill_rate_pct"`
 	AvgSlippagePct       float64 `json:"avg_slippage_pct"`
+	AvgMFEPct            float64 `json:"avg_mfe_pct"`
+	AvgMAEPct            float64 `json:"avg_mae_pct"`
 	SettleOffsetAvgMs    float64 `json:"settle_offset_avg_ms"`
 	SettleOffsetMedianMs float64 `json:"settle_offset_median_ms"`
 	SettleOffsetMinMs    int64   `json:"settle_offset_min_ms"`
@@ -51,7 +53,20 @@ type IOCMetrics struct {
 type TrapMetrics struct {
 	EnabledCycles int            `json:"enabled_cycles"`
 	FillRatePct   float64        `json:"fill_rate_pct"`
+	AvgMFEPct     float64        `json:"avg_mfe_pct"`
+	AvgMAEPct     float64        `json:"avg_mae_pct"`
 	BySource      map[string]int `json:"by_source,omitempty"`
+}
+
+type reportAccumulator struct {
+	offsets    []int64
+	slippages  []float64
+	iocMFE     []float64
+	iocMAE     []float64
+	trapMFE    []float64
+	trapMAE    []float64
+	iocFilled  int
+	trapFilled int
 }
 
 // Load reads the selected daily JSONL file and returns matching records.
@@ -109,67 +124,121 @@ func Build(date time.Time, symbol string, records []domain.CycleRecord) Report {
 		},
 	}
 
-	var offsets []int64
-	var slippages []float64
-	iocFilled := 0
-	trapFilled := 0
+	var acc reportAccumulator
 
 	for i := range records {
 		rec := &records[i]
 		r.Cycles++
-		r.Outcomes[string(rec.Outcome)]++
-		if rec.AbortPhase != "" {
-			r.AbortPhases[string(rec.AbortPhase)]++
-		}
-		if rec.AbortReason != "" {
-			r.AbortReasons[rec.AbortReason]++
-		}
-		if rec.IOC.Filled {
-			iocFilled++
-		}
-		if rec.IOC.SlippagePct > 0 {
-			slippages = append(slippages, rec.IOC.SlippagePct)
-		}
-		if rec.IOC.SettleOffsetMs != 0 {
-			offsets = append(offsets, rec.IOC.SettleOffsetMs)
-		}
-		if rec.Trap.Enabled {
-			r.Trap.EnabledCycles++
-			if rec.Trap.Filled {
-				trapFilled++
-			}
-			if rec.Trap.Source != "" {
-				r.Trap.BySource[rec.Trap.Source]++
-			}
-		}
+		r.addOutcome(rec)
+		acc.addIOC(rec)
+		acc.addTrap(rec, &r)
 		r.addUnitWarnings(rec)
 	}
 
-	r.IOC.FillRatePct = pct(iocFilled, r.Cycles)
-	r.IOC.AvgSlippagePct = avgFloat(slippages)
-	r.setTiming(offsets)
-	r.Trap.FillRatePct = pct(trapFilled, r.Trap.EnabledCycles)
+	r.IOC.FillRatePct = pct(acc.iocFilled, r.Cycles)
+	r.IOC.AvgSlippagePct = avgFloat(acc.slippages)
+	r.IOC.AvgMFEPct = avgFloat(acc.iocMFE)
+	r.IOC.AvgMAEPct = avgFloat(acc.iocMAE)
+	r.setTiming(acc.offsets)
+	r.Trap.FillRatePct = pct(acc.trapFilled, r.Trap.EnabledCycles)
+	r.Trap.AvgMFEPct = avgFloat(acc.trapMFE)
+	r.Trap.AvgMAEPct = avgFloat(acc.trapMAE)
 	r.Recommendations = recommendations(r)
 
 	return r
 }
 
+func (r *Report) addOutcome(rec *domain.CycleRecord) {
+	r.Outcomes[string(rec.Outcome)]++
+	if rec.AbortPhase != "" {
+		r.AbortPhases[string(rec.AbortPhase)]++
+	}
+	if rec.AbortReason != "" {
+		r.AbortReasons[rec.AbortReason]++
+	}
+}
+
+func (a *reportAccumulator) addIOC(rec *domain.CycleRecord) {
+	if rec.IOC.Filled {
+		a.iocFilled++
+	}
+	if rec.IOC.SlippagePct > 0 {
+		a.slippages = append(a.slippages, rec.IOC.SlippagePct)
+	}
+	if rec.IOC.SettleOffsetMs != 0 {
+		a.offsets = append(a.offsets, rec.IOC.SettleOffsetMs)
+	}
+
+	excursion := iocExcursionFor(rec)
+	if excursion.MFEPct > 0 {
+		a.iocMFE = append(a.iocMFE, excursion.MFEPct)
+	}
+	if excursion.MAEPct > 0 {
+		a.iocMAE = append(a.iocMAE, excursion.MAEPct)
+	}
+}
+
+func (a *reportAccumulator) addTrap(rec *domain.CycleRecord, r *Report) {
+	if !rec.Trap.Enabled {
+		return
+	}
+
+	r.Trap.EnabledCycles++
+	if rec.Trap.Filled {
+		a.trapFilled++
+		a.addTrapExcursion(rec.Trap.Excursion)
+	}
+	if rec.Trap.Source != "" {
+		r.Trap.BySource[rec.Trap.Source]++
+	}
+}
+
+func (a *reportAccumulator) addTrapExcursion(excursion domain.ExcursionSnapshot) {
+	if excursion.MFEPct > 0 {
+		a.trapMFE = append(a.trapMFE, excursion.MFEPct)
+	}
+	if excursion.MAEPct > 0 {
+		a.trapMAE = append(a.trapMAE, excursion.MAEPct)
+	}
+}
+
+func iocExcursionFor(rec *domain.CycleRecord) domain.ExcursionSnapshot {
+	if rec.IOC.Excursion.MFEPct != 0 || rec.IOC.Excursion.MAEPct != 0 {
+		return rec.IOC.Excursion
+	}
+	if rec.IOCExcursion.MFEPct != 0 || rec.IOCExcursion.MAEPct != 0 {
+		return rec.IOCExcursion
+	}
+	return rec.Excursion
+}
+
 func (r *Report) addUnitWarnings(rec *domain.CycleRecord) {
-	if rec.Exit.TPPctConfigured > 0 && rec.Exit.TPPctConfigured < 0.2 {
-		r.UnitWarnings = append(r.UnitWarnings, fmt.Sprintf("%s TP looks decimal-like: %.6f", rec.ReqID, rec.Exit.TPPctConfigured))
+	checks := []struct {
+		condition bool
+		message   string
+	}{
+		{rec.Exit.TPPctConfigured > 0 && rec.Exit.TPPctConfigured < 0.2,
+			fmt.Sprintf("%s TP looks decimal-like: %.6f", rec.ReqID, rec.Exit.TPPctConfigured)},
+		{rec.Exit.SLPctConfigured > 0 && rec.Exit.SLPctConfigured < 0.2,
+			fmt.Sprintf("%s SL looks decimal-like: %.6f", rec.ReqID, rec.Exit.SLPctConfigured)},
+		{math.Abs(rec.Decision.FRAtScan) > 0.2,
+			fmt.Sprintf("%s funding rate suspicious: %.6f", rec.ReqID, rec.Decision.FRAtScan)},
+		{rec.IOC.SlippagePct > 20,
+			fmt.Sprintf("%s IOC slippage suspicious: %.6f", rec.ReqID, rec.IOC.SlippagePct)},
+		{rec.Outcome != domain.OutcomeAborted && rec.IOC.Filled && isZeroExcursion(iocExcursionFor(rec)),
+			fmt.Sprintf("%s missing MFE/MAE", rec.ReqID)},
+		{rec.Trap.Filled && isZeroExcursion(rec.Trap.Excursion),
+			fmt.Sprintf("%s missing Trap MFE/MAE", rec.ReqID)},
 	}
-	if rec.Exit.SLPctConfigured > 0 && rec.Exit.SLPctConfigured < 0.2 {
-		r.UnitWarnings = append(r.UnitWarnings, fmt.Sprintf("%s SL looks decimal-like: %.6f", rec.ReqID, rec.Exit.SLPctConfigured))
+	for _, check := range checks {
+		if check.condition {
+			r.UnitWarnings = append(r.UnitWarnings, check.message)
+		}
 	}
-	if math.Abs(rec.Decision.FRAtScan) > 0.2 {
-		r.UnitWarnings = append(r.UnitWarnings, fmt.Sprintf("%s funding rate suspicious: %.6f", rec.ReqID, rec.Decision.FRAtScan))
-	}
-	if rec.IOC.SlippagePct > 20 {
-		r.UnitWarnings = append(r.UnitWarnings, fmt.Sprintf("%s IOC slippage suspicious: %.6f", rec.ReqID, rec.IOC.SlippagePct))
-	}
-	if rec.Outcome != domain.OutcomeAborted && rec.IOC.Filled && rec.Excursion.MFEPct == 0 && rec.Excursion.MAEPct == 0 {
-		r.UnitWarnings = append(r.UnitWarnings, fmt.Sprintf("%s missing MFE/MAE", rec.ReqID))
-	}
+}
+
+func isZeroExcursion(excursion domain.ExcursionSnapshot) bool {
+	return excursion.MFEPct == 0 && excursion.MAEPct == 0
 }
 
 func (r *Report) setTiming(offsets []int64) {

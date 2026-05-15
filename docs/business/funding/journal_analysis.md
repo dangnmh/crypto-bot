@@ -147,7 +147,7 @@ A useful daily report should include:
 | Timing | avg/median/min/max `settle_offset_ms` |
 | Execution | IOC fill rate, avg slippage, order errors |
 | Reversion | MFE/MAE, exit reason distribution, TP efficiency |
-| Trap | fill rate, source comparison, Trap PnL/excursion |
+| Trap | fill rate, source comparison, Trap PnL/excursion from `trap.excursion` |
 | Config recommendations | exact config fields to change, with evidence |
 
 Every recommendation should name the evidence window, for example: "last 42 COS_USDT cycles" or "FR bucket 0.6%-1.2% across 18 cycles".

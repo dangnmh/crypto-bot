@@ -71,15 +71,16 @@ func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string
 				b.IOCFillPrice = deal.DealAvgPrice
 				b.IOCFillVol = deal.DealVol
 				// Start MFE/MAE tracking from fill price.
-				b.Excursion = domain.NewExcursionTracker(b.Side, deal.DealAvgPrice)
+				b.IOCExcursion = domain.NewExcursionTracker(side, deal.DealAvgPrice)
+				b.Excursion = b.IOCExcursion
 			} else {
 				b.TrapFilled = true
 				b.TrapFillPrice = deal.DealAvgPrice
+				b.TrapFillVol = deal.DealVol
+				b.TrapExcursion = domain.NewExcursionTracker(side, deal.DealAvgPrice)
 			}
 		})
-		if phase == domain.PhaseIOC {
-			o.startExcursionPriceStream(ctx)
-		}
+		o.startExcursionPriceStream(ctx)
 
 		topic := events.TopicReversionOrderFilled
 		flow := events.FlowReversion
@@ -107,7 +108,7 @@ func (o *CycleOrchestrator) startExcursionPriceStream(ctx context.Context) {
 	}
 
 	if o.excursionCancel != nil {
-		o.excursionCancel()
+		return
 	}
 
 	streamCtx, cancel := context.WithCancel(ctx)
@@ -120,8 +121,12 @@ func (o *CycleOrchestrator) startExcursionPriceStream(ctx context.Context) {
 				continue
 			}
 			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
-				if b.Excursion != nil {
-					b.Excursion.Update(pd.LastPrice, pd.UpdatedAt)
+				if b.IOCExcursion != nil {
+					b.IOCExcursion.Update(pd.LastPrice, pd.UpdatedAt)
+					b.Excursion = b.IOCExcursion
+				}
+				if b.TrapExcursion != nil {
+					b.TrapExcursion.Update(pd.LastPrice, pd.UpdatedAt)
 				}
 			})
 		}

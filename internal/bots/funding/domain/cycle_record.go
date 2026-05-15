@@ -38,7 +38,9 @@ type CycleRecord struct {
 	Exit ExitSnapshot `json:"exit"`
 
 	// MFE/MAE (Maximum Favorable / Adverse Excursion)
-	Excursion ExcursionSnapshot `json:"excursion,omitempty"`
+	Excursion     ExcursionSnapshot `json:"excursion,omitempty"` // legacy alias for ioc_excursion
+	IOCExcursion  ExcursionSnapshot `json:"ioc_excursion,omitempty"`
+	TrapExcursion ExcursionSnapshot `json:"trap_excursion,omitempty"`
 
 	// Config active during this cycle (full JSON for reproducibility)
 	Config json.RawMessage `json:"config"`
@@ -78,28 +80,35 @@ type DecisionSnapshot struct {
 
 // IOCSnapshot captures IOC order execution details.
 type IOCSnapshot struct {
-	Flow           string    `json:"flow,omitempty"`
-	IntendedPrice  float64   `json:"intended_price,omitempty"`
-	FillPrice      float64   `json:"fill_price,omitempty"`
-	FillVolume     float64   `json:"fill_volume,omitempty"`
-	Filled         bool      `json:"filled"`
-	SlippagePct    float64   `json:"slippage_pct,omitempty"`
-	OrderID        string    `json:"order_id,omitempty"`
-	Error          string    `json:"error,omitempty"`
-	FireTimestamp  time.Time `json:"fire_timestamp,omitempty"`
-	SettleOffsetMs int64     `json:"settle_offset_ms,omitempty"`
-	LatencyRTTMs   int64     `json:"latency_rtt_ms,omitempty"`
+	Flow           string            `json:"flow,omitempty"`
+	IntendedPrice  float64           `json:"intended_price,omitempty"`
+	FillPrice      float64           `json:"fill_price,omitempty"`
+	FillVolume     float64           `json:"fill_volume,omitempty"`
+	Filled         bool              `json:"filled"`
+	SlippagePct    float64           `json:"slippage_pct,omitempty"`
+	OrderID        string            `json:"order_id,omitempty"`
+	Error          string            `json:"error,omitempty"`
+	FireTimestamp  time.Time         `json:"fire_timestamp,omitempty"`
+	SettleOffsetMs int64             `json:"settle_offset_ms,omitempty"`
+	LatencyRTTMs   int64             `json:"latency_rtt_ms,omitempty"`
+	Excursion      ExcursionSnapshot `json:"excursion,omitempty"`
 }
 
 // TrapSnapshot captures hedge trap order details.
 type TrapSnapshot struct {
-	Flow      string  `json:"flow,omitempty"`
-	Enabled   bool    `json:"enabled"`
-	Source    string  `json:"source,omitempty"` // "ob_monitor" or "static_limit"
-	Price     float64 `json:"price,omitempty"`
-	Filled    bool    `json:"filled"`
-	FillPrice float64 `json:"fill_price,omitempty"`
-	OrderID   string  `json:"order_id,omitempty"`
+	Flow             string            `json:"flow,omitempty"`
+	Enabled          bool              `json:"enabled"`
+	Source           string            `json:"source,omitempty"` // "ob_monitor" or "static_limit"
+	Price            float64           `json:"price,omitempty"`
+	Filled           bool              `json:"filled"`
+	FillPrice        float64           `json:"fill_price,omitempty"`
+	FillVolume       float64           `json:"fill_volume,omitempty"`
+	OrderID          string            `json:"order_id,omitempty"`
+	TPPctConfigured  float64           `json:"tp_pct_configured,omitempty"`
+	SLPctConfigured  float64           `json:"sl_pct_configured,omitempty"`
+	TPPriceSubmitted float64           `json:"tp_price_submitted,omitempty"`
+	SLPriceSubmitted float64           `json:"sl_price_submitted,omitempty"`
+	Excursion        ExcursionSnapshot `json:"excursion,omitempty"`
 }
 
 // ExitSnapshot captures how and when the position was closed.

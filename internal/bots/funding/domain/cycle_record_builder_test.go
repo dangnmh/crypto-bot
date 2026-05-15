@@ -62,6 +62,9 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	b.TrailingActivated = true
 	b.TrailingActivePrice = 0.2480
 	b.TrailingCallbackPct = 0.005
+	b.IOCExcursion = domain.NewExcursionTracker(shared.SideOpenLong, b.IOCFillPrice)
+	b.IOCExcursion.Update(0.2500, settle.Add(5*time.Second))
+	b.IOCExcursion.Update(0.2440, settle.Add(10*time.Second))
 
 	record := b.Build("STEEM_USDT", 0.03, 0.03, nil, nil)
 
@@ -79,6 +82,8 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	assert.True(t, record.Exit.TrailingActivated)
 	assert.InDelta(t, 0.5, record.Exit.TrailingCallbackPct, 1e-9)
 	assert.Greater(t, record.Exit.HoldDurationMs, int64(0))
+	assert.InDelta(t, record.IOC.Excursion.MFEPct, record.IOCExcursion.MFEPct, 1e-9)
+	assert.InDelta(t, record.Excursion.MFEPct, record.IOCExcursion.MFEPct, 1e-9)
 }
 
 func TestCycleRecordBuilder_BuildTimeoutCycle(t *testing.T) {
@@ -140,12 +145,21 @@ func TestCycleRecordBuilder_TrapData(t *testing.T) {
 	t.Parallel()
 
 	b := domain.NewCycleRecordBuilder("req-7", time.Now())
+	b.Side = shared.SideOpenLong
 	b.TrapEnabled = true
 	b.TrapSource = "ob_monitor"
 	b.TrapPrice = 0.2420
 	b.TrapFilled = true
 	b.TrapFillPrice = 0.2421
+	b.TrapFillVol = 42
 	b.TrapOrderID = "trap-order-1"
+	b.TrapTPPct = 0.015
+	b.TrapSLPct = 0.02
+	b.TrapTPPrice = 0.2457
+	b.TrapSLPrice = 0.2373
+	b.TrapExcursion = domain.NewExcursionTracker(shared.SideOpenShort, b.TrapFillPrice)
+	b.TrapExcursion.Update(0.2380, time.Now())
+	b.TrapExcursion.Update(0.2440, time.Now())
 	b.IOCFilled = true
 	b.ExitReason = "tp"
 
@@ -156,7 +170,14 @@ func TestCycleRecordBuilder_TrapData(t *testing.T) {
 	assert.InDelta(t, 0.2420, record.Trap.Price, 1e-9)
 	assert.True(t, record.Trap.Filled)
 	assert.InDelta(t, 0.2421, record.Trap.FillPrice, 1e-9)
+	assert.InDelta(t, 42.0, record.Trap.FillVolume, 1e-9)
 	assert.Equal(t, "trap-order-1", record.Trap.OrderID)
+	assert.InDelta(t, 1.5, record.Trap.TPPctConfigured, 1e-9)
+	assert.InDelta(t, 2.0, record.Trap.SLPctConfigured, 1e-9)
+	assert.InDelta(t, 0.2457, record.Trap.TPPriceSubmitted, 1e-9)
+	assert.InDelta(t, 0.2373, record.Trap.SLPriceSubmitted, 1e-9)
+	assert.Greater(t, record.Trap.Excursion.MFEPct, 0.0)
+	assert.Greater(t, record.TrapExcursion.MFEPct, 0.0)
 }
 
 //nolint:dupl // similar test setup to TestExcursionTracker_Short

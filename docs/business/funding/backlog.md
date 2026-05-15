@@ -6,7 +6,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 
 | Priority | Item | Why | Owner doc |
 |---|---|---|---|
-| P0 | Minimal Cycle Recorder JSONL with MFE/MAE | Không có dữ liệu thì TP/SL/Trap tuning là cảm tính | [analyze.md](analyze.md) |
 | P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
 | P2 | Runtime trap wall verification | Giảm rủi ro paper wall trước/cùng lúc đặt Trap | [trap_flow.md](trap_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
@@ -15,6 +14,8 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 ## P0 Details
 
 ### Minimal Cycle Recorder JSONL
+
+Status: implemented. JSONL records include schema identity, flow-scoped Reversion/Trap fields, legacy cycle excursion, and explicit `ioc_excursion` / `trap_excursion` so Trap tuning is not hidden by Reversion outcome.
 
 Done criteria:
 

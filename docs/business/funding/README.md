@@ -62,7 +62,6 @@ Khi thêm config mới, nếu user nhập `3` cho 3%, tên field nên kết thú
 
 | Priority | Work | Reason |
 |---|---|---|
-| P0 | Cycle Recorder JSONL với MFE/MAE | Không có dữ liệu thì mọi tuning TP/SL/Trap là cảm tính |
 | P0 | Chuẩn hóa event topics theo 3 flow | Giảm coupling giữa Reversion, Trap, Pre-Funding |
 | P1 | Trap sizing và cycle exposure cap | Trap không nên âm thầm dùng cùng notional với Reversion |
 | P1 | Journal report/query | Biến dữ liệu thành config decision |

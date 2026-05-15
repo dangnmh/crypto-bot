@@ -17,7 +17,6 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 | OB wall quanh settlement là unstable | TP/Trap dựa vào wall có thể vô ích hoặc hại | OB chỉ cap risk, journal `wall_distance_pct` và outcome |
 | Trap chạy độc lập với Reversion outcome | Trap có thể thành trade riêng ngoài thesis ban đầu | Define risk rule: allow/skip when Reversion no-fill |
 | Generic cycle topics dễ làm lẫn flow | Handler Trap/Reversion có thể coupling qua event chung | Split topic namespace by flow |
-| Trap outcome bị che bởi cycle-level PnL | Reversion lời có thể giấu Trap lỗ | Journal leg-level outcome |
 
 ## Low Severity / Watchlist
 

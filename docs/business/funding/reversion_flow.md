@@ -81,7 +81,7 @@ Trailing stop is the primary exit. TP submitted with IOC is a server-side safety
 | Entry | `ioc_intended_price`, `ioc_fill_price`, `ioc_fill_volume`, `ioc_slippage_pct`, `ioc_error` |
 | Risk | `tp_pct_configured`, `sl_pct_configured`, `tp_price_submitted`, `sl_price_submitted` |
 | Trailing | `trailing_enabled`, `trailing_placed`, `trailing_activation_price`, `trailing_callback_pct`, `trailing_error` |
-| Excursion | `mfe_price`, `mfe_pct`, `mfe_time`, `mae_price`, `mae_pct`, `mae_time` |
+| Excursion | `ioc_excursion.mfe_price`, `ioc_excursion.mfe_pct`, `ioc_excursion.mfe_time`, `ioc_excursion.mae_price`, `ioc_excursion.mae_pct`, `ioc_excursion.mae_time` |
 | Outcome | `exit_reason`, `exit_price`, `hold_duration_ms`, `outcome`, `tp_efficiency` |
 
 ## Known Concerns

@@ -139,6 +139,10 @@ func (o *CycleOrchestrator) fireOBTrap(ctx context.Context, c domain.Candidate, 
 		b.TrapSource = trapSourceOBMonitor
 		b.TrapPrice = trapPrice
 		b.TrapOrderID = orderID
+		b.TrapTPPct = c.Config.FundingTrap.TakeProfitPct
+		b.TrapSLPct = c.Config.FundingTrap.StopLossPct
+		b.TrapTPPrice = tpPrice
+		b.TrapSLPrice = slPrice
 	})
 
 	o.publishOrLog(events.TopicTrapOrderPlaced, events.TrapFiredEvent{
@@ -190,6 +194,10 @@ func (o *CycleOrchestrator) fireStaticTrap(ctx context.Context) {
 			b.TrapSource = trapSourceStaticLimit
 			b.TrapPrice = res.Price
 			b.TrapOrderID = res.OrderID
+			b.TrapTPPct = res.Candidate.Config.FundingTrap.TakeProfitPct
+			b.TrapSLPct = res.Candidate.Config.FundingTrap.StopLossPct
+			b.TrapTPPrice = res.TakeProfitPrice
+			b.TrapSLPrice = res.StopLossPrice
 		})
 
 		o.publishOrLog(events.TopicTrapOrderPlaced, events.TrapFiredEvent{
