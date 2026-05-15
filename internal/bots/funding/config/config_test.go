@@ -149,7 +149,7 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.Equal(t, config.OpenType("ISOLATED"), sc.OpenType)
 	assert.Equal(t, config.PositionMode("HEDGE"), sc.PositionMode)
 	assert.InDelta(t, 0.005, sc.MinFundingRate, 1e-9, "0.5% -> 0.005")
-	assert.InDelta(t, 0.002, sc.MaxPriceDiffPercent, 1e-9, "0.2% -> 0.002")
+	assert.InDelta(t, 0.2, sc.MaxPriceDiffPercent, 1e-9, "maxPriceDiffPercent remains percent for slippage math")
 	assert.InDelta(t, 0.15, sc.FundingReversion.TakeProfitPct, 1e-9, "15% -> 0.15")
 	assert.InDelta(t, 0.03, sc.FundingReversion.StopLossPct, 1e-9, "3% -> 0.03")
 	assert.Equal(t, types.Duration(200*time.Millisecond), sc.FundingReversion.MaxLatency)
@@ -193,7 +193,7 @@ func TestLoad_NormalizesPercentages(t *testing.T) {
 	sc := cfg.Symbols[0]
 
 	assert.InDelta(t, 0.003, sc.MinFundingRate, 1e-9, "0.3% -> 0.003")
-	assert.InDelta(t, 0.008, sc.MaxPriceDiffPercent, 1e-9, "0.8% -> 0.008")
+	assert.InDelta(t, 0.8, sc.MaxPriceDiffPercent, 1e-9, "maxPriceDiffPercent remains percent for slippage math")
 	assert.InDelta(t, 0.20, sc.FundingReversion.TakeProfitPct, 1e-9, "20% -> 0.20")
 	assert.InDelta(t, 0.05, sc.FundingReversion.StopLossPct, 1e-9, "5% -> 0.05")
 }
@@ -207,6 +207,29 @@ func TestLoad_DefaultTPSL_WhenZero(t *testing.T) {
 
 	assert.InDelta(t, 0.20, sc.FundingReversion.TakeProfitPct, 1e-9, "default TP 20% -> 0.20")
 	assert.InDelta(t, 0.05, sc.FundingReversion.StopLossPct, 1e-9, "default SL 5% -> 0.05")
+}
+
+func TestLoad_AcceptsDecimalPercentRatiosAtConfigBoundary(t *testing.T) {
+	t.Parallel()
+
+	cfg := loadWith(t, &config.SystemConfig{},
+		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
+		   "minFundingRate": 0.003,
+		   "fundingReversion": {"enabled": true, "takeProfitPct": 0.03, "stopLossPct": 0.02,
+		     "trailing": {"enabled": true, "activationPct": 0.01, "callbackPct": 0.005}},
+		   "fundingTrap": {"enabled": true, "depthPct": 0.025, "takeProfitPct": 0.015, "stopLossPct": 0.015,
+		     "trailing": {"enabled": true, "activationPct": 0, "callbackPct": 0.005}}}]`)
+	sc := cfg.Symbols[0]
+
+	assert.InDelta(t, 0.003, sc.MinFundingRate, 1e-9, "decimal funding threshold preserved")
+	assert.InDelta(t, 0.03, sc.FundingReversion.TakeProfitPct, 1e-9, "decimal TP ratio preserved")
+	assert.InDelta(t, 0.02, sc.FundingReversion.StopLossPct, 1e-9, "decimal SL ratio preserved")
+	assert.InDelta(t, 0.01, sc.FundingReversion.Trailing.ActivationPct, 1e-9, "decimal trailing activation preserved")
+	assert.InDelta(t, 0.005, sc.FundingReversion.Trailing.CallbackPct, 1e-9, "decimal trailing callback preserved")
+	assert.InDelta(t, 0.025, sc.FundingTrap.DepthPct, 1e-9, "decimal trap depth preserved")
+	assert.InDelta(t, 0.015, sc.FundingTrap.TakeProfitPct, 1e-9, "decimal trap TP preserved")
+	assert.InDelta(t, 0.015, sc.FundingTrap.StopLossPct, 1e-9, "decimal trap SL preserved")
+	assert.InDelta(t, 0.005, sc.FundingTrap.Trailing.CallbackPct, 1e-9, "decimal trap trailing callback preserved")
 }
 
 // ──────────────────────────────────────────────────────────────────────

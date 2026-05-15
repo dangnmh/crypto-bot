@@ -118,9 +118,7 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 }
 
 func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
-	sc.MaxPriceDiffPercent /= 100
-
-	sc.MinFundingRate /= 100
+	sc.MinFundingRate = normalizeFundingRateThreshold(sc.MinFundingRate)
 
 	if sc.FundingReversion.Enabled {
 		defaultDuration(&sc.FundingReversion.MaxLatency, types.Duration(200*time.Millisecond))
@@ -134,11 +132,11 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 		if sc.FundingReversion.StopLossPct <= 0 {
 			sc.FundingReversion.StopLossPct = 5
 		}
-		sc.FundingReversion.TakeProfitPct /= 100
-		sc.FundingReversion.StopLossPct /= 100
+		sc.FundingReversion.TakeProfitPct = normalizePercentRatio(sc.FundingReversion.TakeProfitPct)
+		sc.FundingReversion.StopLossPct = normalizePercentRatio(sc.FundingReversion.StopLossPct)
 
-		sc.FundingReversion.Trailing.ActivationPct /= 100
-		sc.FundingReversion.Trailing.CallbackPct /= 100
+		sc.FundingReversion.Trailing.ActivationPct = normalizePercentRatio(sc.FundingReversion.Trailing.ActivationPct)
+		sc.FundingReversion.Trailing.CallbackPct = normalizePercentRatio(sc.FundingReversion.Trailing.CallbackPct)
 
 		if sc.FundingReversion.DynamicPricing.Enabled {
 			setTrailingDynamicDefaults(&sc.FundingReversion.Trailing)
@@ -162,12 +160,12 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 		if sc.FundingTrap.StopLossPct <= 0 {
 			sc.FundingTrap.StopLossPct = 2
 		}
-		sc.FundingTrap.DepthPct /= 100
-		sc.FundingTrap.TakeProfitPct /= 100
-		sc.FundingTrap.StopLossPct /= 100
+		sc.FundingTrap.DepthPct = normalizePercentRatio(sc.FundingTrap.DepthPct)
+		sc.FundingTrap.TakeProfitPct = normalizePercentRatio(sc.FundingTrap.TakeProfitPct)
+		sc.FundingTrap.StopLossPct = normalizePercentRatio(sc.FundingTrap.StopLossPct)
 
-		sc.FundingTrap.Trailing.ActivationPct /= 100
-		sc.FundingTrap.Trailing.CallbackPct /= 100
+		sc.FundingTrap.Trailing.ActivationPct = normalizePercentRatio(sc.FundingTrap.Trailing.ActivationPct)
+		sc.FundingTrap.Trailing.CallbackPct = normalizePercentRatio(sc.FundingTrap.Trailing.CallbackPct)
 
 		if sc.FundingReversion.DynamicPricing.Enabled {
 			setTrapDynamicDefaults(&sc.FundingTrap)
@@ -243,4 +241,28 @@ func defaultStr(target *string, fallback string) {
 	if *target == "" {
 		*target = fallback
 	}
+}
+
+// normalizePercentRatio converts user-facing percent values into internal
+// ratios. Values already in ratio form are preserved for compatibility.
+func normalizePercentRatio(v float64) float64 {
+	if v <= 0 {
+		return v
+	}
+	if v <= 0.2 {
+		return v
+	}
+	return v / 100
+}
+
+// normalizeFundingRateThreshold accepts either 0.3 for 0.3% or 0.003 for
+// 0.3%, then stores the internal exchange-style ratio.
+func normalizeFundingRateThreshold(v float64) float64 {
+	if v <= 0 {
+		return v
+	}
+	if v <= 0.05 {
+		return v
+	}
+	return v / 100
 }

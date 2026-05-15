@@ -65,7 +65,7 @@ The Pre-Funding flow should own:
 
 ## Suggested Config Shape
 
-Percent config fields are user-facing. `takeProfitPct: 1.5` means 1.5%. Funding thresholds may use decimals, for example `minFundingRate: 0.005` means 0.5%.
+Percent config fields are user-facing. `takeProfitPct: 1.5` means 1.5%. Funding thresholds may use either user-facing percent or exchange-style ratios: `minFundingRate: 0.5` and `minFundingRate: 0.005` both mean 0.5%.
 
 ```jsonc
 {

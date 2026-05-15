@@ -8,7 +8,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 |---|---|---|---|
 | P0 | Minimal Cycle Recorder JSONL with MFE/MAE | Không có dữ liệu thì TP/SL/Trap tuning là cảm tính | [analyze.md](analyze.md) |
 | P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
-| P0 | Percent-unit audit | Tránh nhầm `3` với `0.03` | [README.md](README.md) |
 | P2 | Runtime trap wall verification | Giảm rủi ro paper wall trước/cùng lúc đặt Trap | [trap_flow.md](trap_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
@@ -49,12 +48,15 @@ Shared scan can publish to multiple flow candidate topics. Downstream handlers s
 
 ### Percent-Unit Audit
 
+Status: implemented. Config normalization now preserves decimal ratio inputs for `*Pct` fields, accepts both percent and decimal funding thresholds, keeps `maxPriceDiffPercent` in percent units for slippage math, and journal percent outputs remain percent values.
+
 Audit config, docs, code, and journal fields:
 
 | Field type | User-facing | Internal |
 |---|---:|---:|
 | TP/SL/depth/trailing percent | `3` | `0.03` |
-| Funding threshold | Prefer `0.003 (0.3%)` | `0.003` |
+| Funding threshold | `0.3` or `0.003` | `0.003` |
+| Slippage percent | `0.8` | `0.8` percent, not ratio |
 | Journal percent output | `3.0` | avoid mixed schemas |
 
 ## P1 Details

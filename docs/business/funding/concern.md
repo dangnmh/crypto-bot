@@ -8,7 +8,6 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 |---|---|---|
 | Reversion và Trap có thể cộng exposure cùng cycle | Notional thực tế có thể cao hơn config người dùng nghĩ | Add `trapSizeRatio` và `maxCycleNotionalUSDT` |
 | Missing/partial MFE-MAE làm tuning mù | TP/SL/trailing có thể bị chỉnh theo cảm giác | Implement Cycle Recorder P0 |
-| Mixed percent units trong docs/config/journal | Có thể sai 100x ở TP/SL/depth | Percent-unit audit |
 | TrackOrder/close failure có thể để unmanaged position | Rủi ro live trading nghiêm trọng | Journal critical event + fallback close + symbol disable |
 
 ## Medium Severity
@@ -35,5 +34,4 @@ Không tăng size, không enable Pre-Funding, và không aggressive Trap sizing 
 
 1. Cycle Recorder có MFE/MAE.
 2. Journal report tách Reversion và Trap.
-3. Percent-unit audit hoàn tất.
-4. Có cycle-level exposure cap hoặc quyết định explicit chấp nhận risk.
+3. Có cycle-level exposure cap hoặc quyết định explicit chấp nhận risk.

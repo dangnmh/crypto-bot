@@ -50,12 +50,13 @@ Sau bước này, mỗi flow tự quản lifecycle, risk, order, fill watcher, t
 
 | Context | Example | Meaning |
 |---|---:|---|
-| User-facing config percent fields | `3` | 3% |
-| Internal decimal values | `0.03` | 3% |
-| Funding-rate thresholds | `0.003` or `0.3%` | Both mean 0.3%; prefer writing both |
+| User-facing config `*Pct` fields | `3` | 3%, normalized internally to `0.03` |
+| Internal decimal ratio values | `0.03` | 3% |
+| Funding-rate thresholds | `0.3` or `0.003` | Both mean 0.3%; internal value is `0.003` |
+| `maxPriceDiffPercent` | `0.8` | 0.8%; remains percent because slippage formulas use percent |
 | Journal percent columns | `3.0` | 3%, unless the schema says decimal |
 
-Khi thêm config mới, nếu user nhập `3` cho 3%, tên field nên kết thúc bằng `Pct`. Convert sang decimal đúng một lần ở domain boundary.
+Khi thêm config mới, nếu user nhập `3` cho 3%, tên field nên kết thúc bằng `Pct`. Convert sang decimal đúng một lần ở config/domain boundary. Existing loader also preserves decimal ratio inputs (`0.03`) for compatibility, but docs and examples should prefer user-facing percent values.
 
 ## Current Priority
 
@@ -63,7 +64,6 @@ Khi thêm config mới, nếu user nhập `3` cho 3%, tên field nên kết thú
 |---|---|---|
 | P0 | Cycle Recorder JSONL với MFE/MAE | Không có dữ liệu thì mọi tuning TP/SL/Trap là cảm tính |
 | P0 | Chuẩn hóa event topics theo 3 flow | Giảm coupling giữa Reversion, Trap, Pre-Funding |
-| P0 | Percent-unit audit | Tránh lỗi 100x ở TP/SL/depth/funding threshold |
 | P1 | Trap sizing và cycle exposure cap | Trap không nên âm thầm dùng cùng notional với Reversion |
 | P1 | Journal report/query | Biến dữ liệu thành config decision |
 

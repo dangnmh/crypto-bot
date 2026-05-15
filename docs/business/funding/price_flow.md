@@ -6,7 +6,7 @@ Logic này được dùng bởi các flow khi cần tính entry price, volume, T
 
 Mục tiêu của Reversion là tính IOC price và volume sát thời điểm fire. Trap dùng công thức riêng cho limit price, nhưng vẫn chia sẻ unit convention và rounding/snap rules.
 
-> Percent fields shown in config examples are user-facing percent values: `3` means 3%. Internal formulas should convert to decimals (`0.03`) before arithmetic. See [README.md](README.md#percent-unit-convention).
+> Percent fields shown in config examples are user-facing percent values: `3` means 3%. Internal `*Pct` formulas use ratios (`0.03`) after config normalization. `maxPriceDiffPercent` is the exception: it remains percent because slippage calculators work in percent units. See [README.md](README.md#percent-unit-convention).
 
 ```mermaid
 flowchart TD
