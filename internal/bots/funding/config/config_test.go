@@ -130,6 +130,8 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 		},
 		FundingTrap: domain.FundingTrapConfig{
 			Enabled:           true,
+			SizeRatio:         0.25,
+			MaxNotionalUSDT:   250,
 			DepthPct:          2.5,
 			TakeProfitPct:     1.5,
 			StopLossPct:       1.5,
@@ -154,6 +156,8 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.BufferTime)
 	assert.Equal(t, types.Duration(30*time.Second), sc.FundingReversion.HoldDuration)
 	assert.Equal(t, types.Duration(60*time.Second), sc.FundingReversion.PostSettleTimeout)
+	assert.InDelta(t, 0.25, sc.FundingTrap.SizeRatio, 1e-9)
+	assert.InDelta(t, 250, sc.FundingTrap.MaxNotionalUSDT, 1e-9)
 	assert.Equal(t, types.Duration(50*time.Millisecond), sc.FundingTrap.TrapAfterSettle)
 	assert.Equal(t, types.Duration(30*time.Second), sc.FundingTrap.HoldDuration)
 	assert.Equal(t, types.Duration(60*time.Second), sc.FundingTrap.PostSettleTimeout)
@@ -248,6 +252,7 @@ func TestLoad_TrapDefaults_WhenEnabled(t *testing.T) {
 	sc := cfg.Symbols[0]
 
 	assert.True(t, sc.IsHedgeTrapEnabled())
+	assert.InDelta(t, 0.5, sc.FundingTrap.SizeRatio, 1e-9, "default trap size ratio")
 	assert.InDelta(t, 0.05, sc.FundingTrap.DepthPct, 1e-9, "default 5% -> 0.05")
 	assert.InDelta(t, 0.02, sc.FundingTrap.TakeProfitPct, 1e-9, "default 2% -> 0.02")
 	assert.InDelta(t, 0.02, sc.FundingTrap.StopLossPct, 1e-9, "default 2% -> 0.02")

@@ -31,7 +31,10 @@
   // ══════════════════════════════════════════════════════════════
   "safety": {
     "maxCapitalPctPerSymbol": 10, // Tối đa 10% tổng vốn cho 1 symbol
-    "maxImpactRatio": 1 // Reject nếu position > 1% volume 24h
+    "maxImpactRatio": 1, // Reject nếu position > 1% volume 24h
+    "maxCycleNotionalUSDT": 30000, // Tổng Reversion + Trap notional tối đa trong cùng symbol + settle
+    "maxCycleLossUSDT": 150, // Ước tính loss tối đa theo SL của các leg trong cycle
+    "disableSymbolAfterCriticalCloseFailure": true
   },
 
   // ══════════════════════════════════════════════════════════════

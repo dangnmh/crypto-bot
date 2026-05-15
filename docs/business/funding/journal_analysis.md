@@ -132,6 +132,13 @@ Example from current journal data: `abort_phase=fire_ioc` with MEXC error `The p
 
 ## Report Outputs
 
+Current CLI:
+
+```bash
+go run ./cmd/funding-journal -dir data/journal -date YYYY-MM-DD
+go run ./cmd/funding-journal -dir data/journal -date YYYY-MM-DD -symbol BTC_USDT -json
+```
+
 A useful daily report should include:
 
 | Section | Minimum content |

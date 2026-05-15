@@ -90,6 +90,14 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 	o.waitUntil(ctx, settle.Add(-fireOffset))
 
 	fireTime := time.Now()
+	if err := o.cycleRiskAllowsReversion(c); err != nil {
+		o.deps.Log.Warn("🔴 Cycle risk blocked IOC", slog.Any("error", err))
+		o.recorder.SafetyPassed = false
+		o.recorder.SafetyRejectReason = err.Error()
+		o.abort(domain.PhaseFire, err.Error())
+		return
+	}
+
 	res := FireIOC(ctx, o.deps.Client, &c, o.deps.Clock, o.deps.Log, ob)
 
 	o.withLock(func() {

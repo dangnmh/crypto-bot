@@ -83,6 +83,8 @@ type TrailingConfig struct {
 // FundingTrapConfig holds all straddle trap configuration in one place.
 type FundingTrapConfig struct {
 	Enabled           bool           `json:"enabled"`
+	SizeRatio         float64        `json:"sizeRatio"`
+	MaxNotionalUSDT   float64        `json:"maxNotionalUSDT"`
 	DepthPct          float64        `json:"depthPct"`
 	TakeProfitPct     float64        `json:"takeProfitPct"`
 	StopLossPct       float64        `json:"stopLossPct"`

@@ -90,6 +90,16 @@ const trapSourceOBMonitor = "ob_monitor"
 const trapSourceStaticLimit = "static_limit"
 
 func (o *CycleOrchestrator) fireOBTrap(ctx context.Context, c domain.Candidate, trapPrice float64) {
+	c.Volume = c.CalculateTrapVolume(trapPrice)
+	if c.Volume <= 0 {
+		o.deps.Log.Warn("🟡 TRAP volume invalid, skipping", slog.String("symbol", c.Symbol))
+		return
+	}
+	if err := o.cycleRiskAllowsTrap(c, c.NotionalForVolume(c.Volume, trapPrice)); err != nil {
+		o.deps.Log.Warn("🟡 Cycle risk blocked Trap", slog.Any("error", err))
+		return
+	}
+
 	tpPrice := c.CalculateTrapTPPrice(trapPrice)
 	slPrice := c.CalculateTrapSLPrice(trapPrice)
 
@@ -153,6 +163,20 @@ func (o *CycleOrchestrator) fireStaticTrap(ctx context.Context) {
 	o.withLock(func() {
 		c = o.candidate
 	})
+
+	trapPrice := c.CalculateTrapPrice()
+	trapVolume := c.CalculateTrapVolume(trapPrice)
+	if trapPrice <= 0 || trapVolume <= 0 {
+		o.deps.Log.Warn("🟡 Static Trap invalid, skipping",
+			slog.Float64("trapPrice", trapPrice),
+			slog.Float64("trapVolume", trapVolume),
+		)
+		return
+	}
+	if err := o.cycleRiskAllowsTrap(c, c.NotionalForVolume(trapVolume, trapPrice)); err != nil {
+		o.deps.Log.Warn("🟡 Cycle risk blocked Trap", slog.Any("error", err))
+		return
+	}
 
 	res := FireLimitTrap(ctx, o.deps.Client, &c, o.deps.Clock, o.deps.Log)
 

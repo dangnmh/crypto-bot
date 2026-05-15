@@ -103,6 +103,8 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 	if !sc.FundingTrap.Enabled && d.FundingTrap.Enabled {
 		sc.FundingTrap = d.FundingTrap
 	} else if sc.FundingTrap.Enabled {
+		defaultFloat(&sc.FundingTrap.SizeRatio, d.FundingTrap.SizeRatio)
+		defaultFloat(&sc.FundingTrap.MaxNotionalUSDT, d.FundingTrap.MaxNotionalUSDT)
 		defaultFloat(&sc.FundingTrap.DepthPct, d.FundingTrap.DepthPct)
 		defaultFloat(&sc.FundingTrap.TakeProfitPct, d.FundingTrap.TakeProfitPct)
 		defaultFloat(&sc.FundingTrap.StopLossPct, d.FundingTrap.StopLossPct)
@@ -144,6 +146,9 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 	}
 
 	if sc.FundingTrap.Enabled {
+		if sc.FundingTrap.SizeRatio <= 0 {
+			sc.FundingTrap.SizeRatio = 0.5
+		}
 		defaultDuration(&sc.FundingTrap.TrapAfterSettle, types.Duration(50*time.Millisecond))
 		defaultDuration(&sc.FundingTrap.HoldDuration, types.Duration(30*time.Second))
 		defaultDuration(&sc.FundingTrap.PostSettleTimeout, types.Duration(60*time.Second))

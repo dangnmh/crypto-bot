@@ -9,9 +9,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 | P0 | Minimal Cycle Recorder JSONL with MFE/MAE | Không có dữ liệu thì TP/SL/Trap tuning là cảm tính | [analyze.md](analyze.md) |
 | P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
 | P0 | Percent-unit audit | Tránh nhầm `3` với `0.03` | [README.md](README.md) |
-| P1 | Trap size ratio | Trap rủi ro hơn Reversion và không nên mặc định cùng size | [trap_flow.md](trap_flow.md) |
-| P1 | Cycle exposure cap | Giới hạn tổng notional/loss của nhiều flow cùng symbol | [flow.md](flow.md) |
-| P1 | Journal daily report/query | Biến JSONL thành quyết định config | [journal_analysis.md](journal_analysis.md) |
 | P2 | Runtime trap wall verification | Giảm rủi ro paper wall trước/cùng lúc đặt Trap | [trap_flow.md](trap_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
@@ -62,7 +59,11 @@ Audit config, docs, code, and journal fields:
 
 ## P1 Details
 
+Status: P1 implementation complete. Trap sizing, cycle exposure caps, and JSONL daily report/query are implemented. Keep this section as implementation notes and tuning rationale.
+
 ### Trap Size Ratio
+
+Status: implemented in config/order sizing. Loaded configs default `fundingTrap.sizeRatio = 0.5`; optional `fundingTrap.maxNotionalUSDT` caps Trap notional before volume conversion.
 
 Proposed config:
 
@@ -79,11 +80,13 @@ Start with 25%-50% of Reversion notional until journal proves stable expectancy.
 
 ### Cycle Exposure Cap
 
+Status: implemented as pre-order risk guard for Reversion and Trap. The guard checks configured notional and estimated SL loss for the combined `symbol + settle_time` cycle before adding a leg.
+
 Proposed config:
 
 ```jsonc
 {
-  "risk": {
+  "safety": {
     "maxCycleNotionalUSDT": 30000,
     "maxCycleLossUSDT": 150,
     "disableSymbolAfterCriticalCloseFailure": true
@@ -92,6 +95,17 @@ Proposed config:
 ```
 
 The risk controller should see all flow legs for the same `symbol + settle_time`.
+
+### Journal Daily Report/Query
+
+Status: implemented as `cmd/funding-journal`.
+
+Example:
+
+```bash
+go run ./cmd/funding-journal -dir data/journal -date 2026-05-15 -symbol BTC_USDT
+go run ./cmd/funding-journal -dir data/journal -date 2026-05-15 -json
+```
 
 ## P2 Details
 

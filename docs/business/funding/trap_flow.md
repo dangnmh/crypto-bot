@@ -36,6 +36,7 @@ flowchart LR
 | `candidate` | Receive shared scan result | FR, symbol, settle time, config snapshot |
 | `delay` | Wait until `settle + trapAfterSettle` | post-settle market window |
 | `pricing` | Choose static FR-depth path or OB-assisted cap | trap price, source, wall distance |
+| `sizing` | Apply `sizeRatio` and `maxNotionalUSDT` | Trap notional lower than Reversion |
 | `order` | Place limit/post-only order with TP/SL | order id or error |
 | `fill_watcher` | Track trap fill separately from Reversion | fill price, fill volume |
 | `trailing` | Place trap-specific trailing | activation usually 0, callback from trap config |

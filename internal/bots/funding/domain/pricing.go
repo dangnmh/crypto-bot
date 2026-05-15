@@ -107,6 +107,70 @@ func (c *Candidate) CalculateVolume() float64 {
 	return vol
 }
 
+// CalculateTrapVolume calculates trap contracts from the dedicated trap sizing
+// controls. If no trap sizing is configured, it preserves the candidate volume
+// for tests and legacy direct domain callers; loaded configs default sizeRatio.
+func (c *Candidate) CalculateTrapVolume(trapPrice float64) float64 {
+	if c.Config.FundingTrap.SizeRatio <= 0 && c.Config.FundingTrap.MaxNotionalUSDT <= 0 {
+		return c.Volume
+	}
+
+	notional := c.TrapTargetNotionalUSDT()
+	if notional <= 0 {
+		return 0
+	}
+
+	return c.CalculateVolumeForNotional(notional, trapPrice)
+}
+
+// CalculateVolumeForNotional converts a USDT notional budget into exchange
+// contract volume using the provided reference price.
+func (c *Candidate) CalculateVolumeForNotional(notional, refPrice float64) float64 {
+	if c.ContractSize <= 0 || refPrice <= 0 || notional <= 0 {
+		return 0
+	}
+
+	denom := decmath.Mul(c.ContractSize, refPrice)
+	vol := decmath.FloorToScale(decmath.Div(notional, denom), c.VolScale)
+	if vol < float64(c.MinVol) {
+		vol = float64(c.MinVol)
+	}
+
+	return vol
+}
+
+// ReversionNotionalUSDT returns the configured IOC notional budget.
+func (c *Candidate) ReversionNotionalUSDT() float64 {
+	return decmath.Mul(c.Config.MarginUSDT, float64(c.Config.Leverage))
+}
+
+// TrapTargetNotionalUSDT returns the configured trap notional budget after
+// applying the trap size ratio and optional absolute cap.
+func (c *Candidate) TrapTargetNotionalUSDT() float64 {
+	base := c.ReversionNotionalUSDT()
+	ratio := c.Config.FundingTrap.SizeRatio
+	if ratio <= 0 {
+		ratio = 1
+	}
+
+	notional := decmath.Mul(base, ratio)
+	if maxNotional := c.Config.FundingTrap.MaxNotionalUSDT; maxNotional > 0 && notional > maxNotional {
+		notional = maxNotional
+	}
+
+	return notional
+}
+
+// NotionalForVolume estimates USDT notional for an exchange contract volume at
+// the provided reference price.
+func (c *Candidate) NotionalForVolume(volume, refPrice float64) float64 {
+	if c.ContractSize <= 0 || volume <= 0 || refPrice <= 0 {
+		return 0
+	}
+
+	return decmath.Mul(decmath.Mul(volume, c.ContractSize), refPrice)
+}
+
 // GetPeakPrice returns the reference extreme price right before firing IOC logic.
 func (c *Candidate) GetPeakPrice() float64 {
 	if c.Side == shared.SideOpenLong {

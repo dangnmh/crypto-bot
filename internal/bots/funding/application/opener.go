@@ -154,13 +154,18 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 	trapCandidate := *candidate
 	trapCandidate.Side = trapSide
 	trapCandidate.CloseSide = trapCloseSide
+	trapCandidate.Volume = trapCandidate.CalculateTrapVolume(trapPrice)
+	if trapCandidate.Volume <= 0 {
+		logger.Warn("🟡 Trap volume invalid, skipping", slog.String("symbol", candidate.Symbol))
+		return OrderResult{Candidate: trapCandidate, Error: fmt.Errorf("trap volume <= 0")}
+	}
 	tpPrice := trapCandidate.CalculateTrapTPPrice(trapPrice)
 	slPrice := trapCandidate.CalculateTrapSLPrice(trapPrice)
 
 	req := exchange.SubmitOrderRequest{
 		Symbol:          candidate.Symbol,
 		Price:           trapPrice,
-		Vol:             candidate.Volume,
+		Vol:             trapCandidate.Volume,
 		Side:            int(trapSide),
 		Type:            exchange.OrderTypeLimit,
 		OpenType:        candidate.Config.ParsedOpenType,
@@ -175,7 +180,7 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		slog.String("symbol", candidate.Symbol),
 		slog.Float64("peakPrice", candidate.GetPeakPrice()),
 		slog.Float64("trapPrice", trapPrice),
-		slog.Float64("vol", candidate.Volume),
+		slog.Float64("vol", trapCandidate.Volume),
 		slog.String("trapSide", trapSide.String()),
 		slog.Float64("takeProfitPrice", tpPrice),
 		slog.Float64("stopLossPrice", slPrice),
@@ -189,7 +194,7 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		Price:           trapPrice,
 		TakeProfitPrice: tpPrice,
 		StopLossPrice:   slPrice,
-		Volume:          candidate.Volume,
+		Volume:          trapCandidate.Volume,
 		Error:           err,
 	}
 	if err != nil {

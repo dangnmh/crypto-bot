@@ -42,8 +42,11 @@ type SyncConfig struct {
 
 // SafetyConfig holds safety metrics specific to funding reversion.
 type SafetyConfig struct {
-	MaxCapitalPctPerSymbol float64 `json:"maxCapitalPctPerSymbol"`
-	MaxImpactRatio         float64 `json:"maxImpactRatio"`
+	MaxCapitalPctPerSymbol                 float64 `json:"maxCapitalPctPerSymbol"`
+	MaxImpactRatio                         float64 `json:"maxImpactRatio"`
+	MaxCycleNotionalUSDT                   float64 `json:"maxCycleNotionalUSDT"`
+	MaxCycleLossUSDT                       float64 `json:"maxCycleLossUSDT"`
+	DisableSymbolAfterCriticalCloseFailure bool    `json:"disableSymbolAfterCriticalCloseFailure"`
 }
 
 // LoadSystemConfig loads the system configuration from the given path.

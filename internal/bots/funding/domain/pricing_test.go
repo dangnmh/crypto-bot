@@ -216,6 +216,48 @@ func TestCalculateVolume(t *testing.T) {
 	}
 }
 
+func TestCalculateTrapVolume_UsesDedicatedSizing(t *testing.T) {
+	t.Parallel()
+
+	c := &domain.Candidate{
+		Config: domain.TradeConfig{
+			MarginUSDT: 100,
+			Leverage:   10,
+			FundingTrap: domain.FundingTrapConfig{
+				SizeRatio:       0.5,
+				MaxNotionalUSDT: 400,
+			},
+		},
+		ContractSpec: domain.ContractSpec{
+			ContractSize: 1,
+			MinVol:       1,
+			VolScale:     0,
+		},
+		TradePlan: domain.TradePlan{Volume: 10},
+	}
+
+	got := c.CalculateTrapVolume(100)
+
+	if !almostEqual(got, 4, 1e-9) {
+		t.Fatalf("trap volume = %.4f, want 4", got)
+	}
+	if notional := c.NotionalForVolume(got, 100); !almostEqual(notional, 400, 1e-9) {
+		t.Fatalf("trap notional = %.4f, want 400", notional)
+	}
+}
+
+func TestCalculateTrapVolume_LegacyFallback(t *testing.T) {
+	t.Parallel()
+
+	c := &domain.Candidate{TradePlan: domain.TradePlan{Volume: 7}}
+
+	got := c.CalculateTrapVolume(100)
+
+	if got != 7 {
+		t.Fatalf("trap volume = %.4f, want legacy candidate volume 7", got)
+	}
+}
+
 func TestRoundToScale(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

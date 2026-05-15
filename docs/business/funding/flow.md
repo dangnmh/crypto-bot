@@ -97,10 +97,10 @@ Flow separation does not remove shared risk. A cycle-level risk controller shoul
 
 | Rule | Why |
 |---|---|
-| `maxCycleNotionalUSDT` | Prevent Reversion + Trap + Pre-Funding from stacking exposure |
-| `maxCycleLossUSDT` | Kill switch when multiple legs go adverse |
-| `trapSizeRatio` | Trap is higher risk and should usually be smaller |
+| `safety.maxCycleNotionalUSDT` | Prevent Reversion + Trap + Pre-Funding from stacking exposure |
+| `safety.maxCycleLossUSDT` | Kill switch when multiple legs go adverse |
+| `fundingTrap.sizeRatio` | Trap is higher risk and should usually be smaller |
 | pre-settle force-close deadline | Prevent Pre-Funding from colliding with Reversion |
 | critical close failure handling | Avoid unmanaged positions after order/trailing failure |
 
-These controls are not all implemented. Track work in [backlog.md](backlog.md) and risks in [concern.md](concern.md).
+Current implementation blocks Reversion if it exceeds cycle caps by itself, and blocks Trap if adding Trap to the same `symbol + settle_time` cycle would exceed notional or estimated SL-loss caps. Pre-Funding remains design-only.
