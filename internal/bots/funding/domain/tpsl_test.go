@@ -691,3 +691,14 @@ func TestCalculateOBTrapPrice(t *testing.T) {
 		})
 	}
 }
+
+func TestTrapWallDistancePct(t *testing.T) {
+	t.Parallel()
+
+	c := domain.Candidate{
+		MarketData: domain.MarketData{LastPrice: 100},
+	}
+
+	assert.InDelta(t, 5.0, c.TrapWallDistancePct(105), 1e-9)
+	assert.Zero(t, c.TrapWallDistancePct(0))
+}

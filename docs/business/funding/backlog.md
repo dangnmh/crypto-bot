@@ -8,7 +8,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 |---|---|---|---|
 | P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
 | P2 | Exact-leg fallback close API | Giảm blast radius trong Hedge mode khi TrackOrder fail | [reversion_flow.md](reversion_flow.md) |
-| P2 | Runtime trap wall verification | Giảm rủi ro paper wall trước/cùng lúc đặt Trap | [trap_flow.md](trap_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
 
@@ -133,11 +132,14 @@ Use this to close only the filled leg (`evt.CloseSide`, `evt.DealVol`) in Hedge 
 
 ### Runtime Trap Wall Verification
 
+Status: implemented for OB-assisted Trap.
+
 If using OB-assisted Trap:
 
-- Verify wall still exists immediately before order placement.
-- Cancel or skip if wall disappears.
-- Record `wall_verified`, `wall_age_ms`, `wall_distance_pct`.
+- The Trap flow reads a fresh orderbook immediately before OB Trap placement.
+- If the wall disappears or cannot be verified, the OB Trap is skipped instead of placing from a stale wall.
+- If the wall moved but another valid wall exists, the Trap price is recalculated from the fresh wall.
+- Journal records `wall_verified`, `wall_age_ms`, `wall_distance_pct`, and `wall_price`.
 
 ### Imbalance Ratio Filter
 

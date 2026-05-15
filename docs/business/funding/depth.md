@@ -79,10 +79,17 @@ Rules:
 
 Trap should primarily use FR-derived depth. OB can adjust/cap placement only when wall quality is acceptable.
 
+Runtime rule:
+
+- OB-assisted Trap must verify the wall with a fresh orderbook immediately before placement.
+- If the wall disappears or cannot be verified, skip the OB-assisted Trap.
+- If a fresh valid wall moved, recalculate Trap price from the fresh wall.
+
 Required journal fields:
 
 - `trap_source`
 - `wall_price`
+- `wall_age_ms`
 - `wall_distance_pct`
 - `wall_verified`
 - `trap_outcome`
@@ -94,6 +101,5 @@ The following ideas are intentionally not specified here as implemented behavior
 - Imbalance Ratio.
 - Dynamic TP/SL expansion based on OB.
 - Multi-snapshot wall persistence protocol.
-- Runtime wall verification.
 
 See [backlog.md](backlog.md) for work items and [concern.md](concern.md) for risk.

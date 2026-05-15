@@ -21,10 +21,12 @@ Trap yêu cầu Hedge mode nếu Reversion cũng có thể mở position cùng c
 flowchart LR
     C["funding.trap.candidate"] --> DELAY["wait<br/>settle + delay"]
     DELAY --> PRICE["calculate trap price"]
-    PRICE --> ORDER["place limit/post-only"]
+    PRICE --> VERIFY["verify wall<br/>fresh OB"]
+    VERIFY --> ORDER["place limit/post-only"]
     ORDER --> FILL["fill watcher"]
     FILL --> TRAIL["trap trailing"]
     TRAIL --> DONE["done + journal"]
+    VERIFY -.-> SKIP["wall gone<br/>skip + journal"]
     ORDER -.-> ABORT["order error + journal"]
     FILL -.-> EXPIRE["not filled / cancel / timeout"]
 ```
@@ -36,6 +38,7 @@ flowchart LR
 | `candidate` | Receive shared scan result | FR, symbol, settle time, config snapshot |
 | `delay` | Wait until `settle + trapAfterSettle` | post-settle market window |
 | `pricing` | Choose static FR-depth path or OB-assisted cap | trap price, source, wall distance |
+| `wall_verify` | For OB-assisted Trap, reload depth immediately before placement | `wall_verified`, `wall_age_ms`, fresh wall price or skip |
 | `sizing` | Apply `sizeRatio` and `maxNotionalUSDT` | Trap notional lower than Reversion |
 | `order` | Place limit/post-only order with TP/SL | order id or error |
 | `fill_watcher` | Track trap fill separately from Reversion | fill price, fill volume |
@@ -62,6 +65,8 @@ OB-assisted path may cap or improve placement near a wall, but OB around settlem
 - `trap_source = static_limit`
 - `trap_source = ob_monitor`
 
+For `ob_monitor`, the wall must be verified on a fresh orderbook immediately before order placement. If the wall disappears or cannot be verified, skip the OB Trap. If a fresh valid wall exists at a different price, recalculate `trap_price` from the fresh wall.
+
 ## Exit Rule
 
 Trap trailing should usually activate immediately because wick bounce can be short-lived.
@@ -79,7 +84,7 @@ Trap must be measured separately from Reversion.
 | Group | Fields |
 |---|---|
 | Identity | `req_id`, `symbol`, `settle_time`, `trap_enabled` |
-| Source | `trap_source`, `trap_depth_pct`, `wall_price`, `wall_distance_pct` |
+| Source | `trap_source`, `trap_depth_pct`, `wall_price`, `wall_verified`, `wall_age_ms`, `wall_distance_pct` |
 | Sizing | `trap_size_ratio`, `trap_notional`, `reversion_notional` |
 | Entry | `trap_price`, `trap_order_id`, `trap_filled`, `trap_fill_price`, `trap_fill_volume`, `trap_error` |
 | Risk | `trap_tp_pct`, `trap_sl_pct`, `trap_tp_price`, `trap_sl_price` |
@@ -92,5 +97,5 @@ Trap must be measured separately from Reversion.
 Before increasing Trap size, resolve or explicitly accept the concerns in [concern.md](concern.md):
 
 - Trap and Reversion may double exposure.
-- OB wall can disappear after settlement.
+- OB wall can still disappear after placement; runtime verification only rejects stale pre-placement walls.
 - Trap outcome can be hidden if journal only reports cycle-level PnL.

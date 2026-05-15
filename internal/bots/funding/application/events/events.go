@@ -148,11 +148,14 @@ type TrailingPlacedEvent struct {
 
 // OBWallFoundEvent is published when the post-settle OB monitor detects a wall.
 type OBWallFoundEvent struct {
-	Flow      string      `json:"flow"`
-	Symbol    string      `json:"symbol"`
-	WallPrice float64     `json:"wall_price"`
-	WallVol   float64     `json:"wall_vol"`
-	Side      shared.Side `json:"side"`
+	Flow            string      `json:"flow"`
+	Symbol          string      `json:"symbol"`
+	WallPrice       float64     `json:"wall_price"`
+	WallVol         float64     `json:"wall_vol"`
+	WallVerified    bool        `json:"wall_verified"`
+	WallAgeMs       int64       `json:"wall_age_ms,omitempty"`
+	WallDistancePct float64     `json:"wall_distance_pct,omitempty"`
+	Side            shared.Side `json:"side"`
 }
 
 // PositionClosedEvent signals that all positions for a symbol have been closed.

@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"math"
+
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/pkg/decmath"
 )
@@ -144,6 +146,22 @@ func (c *Candidate) CalculateOBTrapPrice(wallPrice float64) float64 {
 	}
 	// Trap SHORT: sell slightly lower than the wall.
 	return decmath.Sub(wallPrice, c.PriceUnit)
+}
+
+// TrapWallDistancePct returns the wall distance from the current candidate
+// price context in percent units.
+func (c *Candidate) TrapWallDistancePct(wallPrice float64) float64 {
+	if wallPrice <= 0 {
+		return 0
+	}
+	ref := c.LastPrice
+	if ref <= 0 {
+		ref = c.entryRefPrice()
+	}
+	if ref <= 0 {
+		return 0
+	}
+	return decmath.Mul(decmath.Div(math.Abs(decmath.Sub(wallPrice, ref)), ref), 100.0)
 }
 
 // snapTPBeforeWall places TP 2 ticks before the wall so the order fills

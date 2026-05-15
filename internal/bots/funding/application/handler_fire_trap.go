@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	shared "crypto-bot/internal/domain"
@@ -14,6 +15,13 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
+
+type trapWallVerification struct {
+	price       float64
+	trapPrice   float64
+	ageMs       int64
+	distancePct float64
+}
 
 // subscribeFireTrap waits for a trap candidate, then places the Trap order after settlement.
 // It is completely independent of whether the reversion IOC order was successful or not.
@@ -65,31 +73,80 @@ func (o *CycleOrchestrator) handleFireTrap(ctx context.Context, settle time.Time
 		return
 	}
 
-	o.publishOrLog(events.TopicTrapOBWallFound, events.OBWallFoundEvent{
-		Flow:      events.FlowTrap,
-		Symbol:    o.cfg.Symbol,
-		WallPrice: wallPrice,
-		WallVol:   0, // wallVol is not rigorously tracked here anymore
-		Side:      trapSide,
-	})
+	wallFoundAt := time.Now()
+	verifiedWall, ok := o.verifyTrapWall(ctx, trapCandidate, wallPrice, wallFoundAt)
+	if !ok {
+		o.deps.Log.Warn("🟡 Fire Trap: wall disappeared before placement, skipping OB trap",
+			slog.String("side", trapSide.String()),
+			slog.Float64("initial_wall_price", wallPrice),
+		)
+		return
+	}
 
-	// 4. Calculate Trap Price (1 tick before the wall).
-	trapPrice := trapCandidate.CalculateOBTrapPrice(wallPrice)
+	o.publishOrLog(events.TopicTrapOBWallFound, events.OBWallFoundEvent{
+		Flow:            events.FlowTrap,
+		Symbol:          o.cfg.Symbol,
+		WallPrice:       verifiedWall.price,
+		WallVol:         0, // wallVol is not rigorously tracked here anymore
+		WallVerified:    true,
+		WallAgeMs:       verifiedWall.ageMs,
+		WallDistancePct: verifiedWall.distancePct,
+		Side:            trapSide,
+	})
 
 	o.deps.Log.Info("🧱 OB Monitor: wall found",
 		slog.String("side", trapSide.String()),
-		slog.Float64("wallPrice", wallPrice),
-		slog.Float64("trapPrice", trapPrice),
+		slog.Float64("wallPrice", verifiedWall.price),
+		slog.Float64("trapPrice", verifiedWall.trapPrice),
+		slog.Int64("wallAgeMs", verifiedWall.ageMs),
+		slog.Float64("wallDistancePct", verifiedWall.distancePct),
 	)
 
-	// 5. Fire Trap limit order.
-	o.fireOBTrap(ctx, trapCandidate, trapPrice)
+	o.fireOBTrap(ctx, trapCandidate, verifiedWall)
 }
 
 const trapSourceOBMonitor = "ob_monitor"
 const trapSourceStaticLimit = "static_limit"
 
-func (o *CycleOrchestrator) fireOBTrap(ctx context.Context, c domain.Candidate, trapPrice float64) {
+func (o *CycleOrchestrator) verifyTrapWall(
+	ctx context.Context,
+	c domain.Candidate,
+	initialWallPrice float64,
+	wallFoundAt time.Time,
+) (trapWallVerification, bool) {
+	freshOB, err := o.deps.DepthStore.GetDepth(ctx, c.Symbol)
+	if err != nil || freshOB == nil {
+		o.deps.Log.Warn("🟡 Fire Trap: failed to verify wall", slog.Any("error", err))
+		return trapWallVerification{}, false
+	}
+
+	freshWallPrice := c.FindTrapWallPrice(freshOB)
+	if freshWallPrice <= 0 {
+		return trapWallVerification{}, false
+	}
+
+	if c.PriceUnit > 0 && math.Abs(freshWallPrice-initialWallPrice) > c.PriceUnit {
+		o.deps.Log.Info("🧱 Fire Trap: wall moved during verification",
+			slog.Float64("initial_wall_price", initialWallPrice),
+			slog.Float64("fresh_wall_price", freshWallPrice),
+		)
+	}
+
+	trapPrice := c.CalculateOBTrapPrice(freshWallPrice)
+	if trapPrice <= 0 {
+		return trapWallVerification{}, false
+	}
+
+	return trapWallVerification{
+		price:       freshWallPrice,
+		trapPrice:   trapPrice,
+		ageMs:       time.Since(wallFoundAt).Milliseconds(),
+		distancePct: c.TrapWallDistancePct(freshWallPrice),
+	}, true
+}
+
+func (o *CycleOrchestrator) fireOBTrap(ctx context.Context, c domain.Candidate, wall trapWallVerification) {
+	trapPrice := wall.trapPrice
 	c.Volume = c.CalculateTrapVolume(trapPrice)
 	if c.Volume <= 0 {
 		o.deps.Log.Warn("🟡 TRAP volume invalid, skipping", slog.String("symbol", c.Symbol))
@@ -137,6 +194,10 @@ func (o *CycleOrchestrator) fireOBTrap(ctx context.Context, c domain.Candidate, 
 
 	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
 		b.TrapSource = trapSourceOBMonitor
+		b.TrapWallPrice = wall.price
+		b.TrapWallOK = true
+		b.TrapWallAgeMs = wall.ageMs
+		b.TrapWallDist = wall.distancePct
 		b.TrapPrice = trapPrice
 		b.TrapOrderID = orderID
 		b.TrapTPPct = c.Config.FundingTrap.TakeProfitPct

@@ -54,6 +54,10 @@ type CycleRecordBuilder struct {
 	// Trap
 	TrapEnabled   bool
 	TrapSource    string
+	TrapWallPrice float64
+	TrapWallOK    bool
+	TrapWallAgeMs int64
+	TrapWallDist  float64
 	TrapPrice     float64
 	TrapFilled    bool
 	TrapFillPrice float64
@@ -212,6 +216,10 @@ func (b *CycleRecordBuilder) Build(
 			Flow:             cycleRecordFlowTrap,
 			Enabled:          b.TrapEnabled,
 			Source:           b.TrapSource,
+			WallPrice:        b.TrapWallPrice,
+			WallVerified:     b.TrapWallOK,
+			WallAgeMs:        b.TrapWallAgeMs,
+			WallDistancePct:  b.TrapWallDist,
 			Price:            b.TrapPrice,
 			Filled:           b.TrapFilled,
 			FillPrice:        b.TrapFillPrice,

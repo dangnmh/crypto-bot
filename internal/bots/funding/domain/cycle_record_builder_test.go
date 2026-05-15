@@ -148,6 +148,10 @@ func TestCycleRecordBuilder_TrapData(t *testing.T) {
 	b.Side = shared.SideOpenLong
 	b.TrapEnabled = true
 	b.TrapSource = "ob_monitor"
+	b.TrapWallPrice = 0.2430
+	b.TrapWallOK = true
+	b.TrapWallAgeMs = 12
+	b.TrapWallDist = 0.8
 	b.TrapPrice = 0.2420
 	b.TrapFilled = true
 	b.TrapFillPrice = 0.2421
@@ -167,6 +171,10 @@ func TestCycleRecordBuilder_TrapData(t *testing.T) {
 
 	assert.True(t, record.Trap.Enabled)
 	assert.Equal(t, "ob_monitor", record.Trap.Source)
+	assert.InDelta(t, 0.2430, record.Trap.WallPrice, 1e-9)
+	assert.True(t, record.Trap.WallVerified)
+	assert.Equal(t, int64(12), record.Trap.WallAgeMs)
+	assert.InDelta(t, 0.8, record.Trap.WallDistancePct, 1e-9)
 	assert.InDelta(t, 0.2420, record.Trap.Price, 1e-9)
 	assert.True(t, record.Trap.Filled)
 	assert.InDelta(t, 0.2421, record.Trap.FillPrice, 1e-9)

@@ -99,6 +99,10 @@ type TrapSnapshot struct {
 	Flow             string            `json:"flow,omitempty"`
 	Enabled          bool              `json:"enabled"`
 	Source           string            `json:"source,omitempty"` // "ob_monitor" or "static_limit"
+	WallPrice        float64           `json:"wall_price,omitempty"`
+	WallVerified     bool              `json:"wall_verified,omitempty"`
+	WallAgeMs        int64             `json:"wall_age_ms,omitempty"`
+	WallDistancePct  float64           `json:"wall_distance_pct,omitempty"`
 	Price            float64           `json:"price,omitempty"`
 	Filled           bool              `json:"filled"`
 	FillPrice        float64           `json:"fill_price,omitempty"`
