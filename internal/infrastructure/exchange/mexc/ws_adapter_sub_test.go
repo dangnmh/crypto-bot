@@ -1,6 +1,7 @@
 package mexc_test
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
@@ -73,7 +74,7 @@ func TestWsAdapter_SubscribeTicker(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.SubscribeTicker("BTC_USDT")
+	err := a.SubscribeTicker(context.Background(), "BTC_USDT")
 	assert.NoError(t, err)
 }
 
@@ -84,7 +85,7 @@ func TestWsAdapter_UnsubscribeTicker(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.UnsubscribeTicker("BTC_USDT")
+	err := a.UnsubscribeTicker(context.Background(), "BTC_USDT")
 	assert.NoError(t, err)
 }
 
@@ -95,7 +96,7 @@ func TestWsAdapter_SubscribeKline(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.SubscribeKline("BTC_USDT")
+	err := a.SubscribeKline(context.Background(), "BTC_USDT")
 	assert.NoError(t, err)
 }
 
@@ -106,7 +107,7 @@ func TestWsAdapter_UnsubscribeKline(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.UnsubscribeKline("BTC_USDT")
+	err := a.UnsubscribeKline(context.Background(), "BTC_USDT")
 	assert.NoError(t, err)
 }
 
@@ -117,7 +118,7 @@ func TestWsAdapter_SubscribeDepth_Full(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.SubscribeDepth("BTC_USDT", "")
+	err := a.SubscribeDepth(context.Background(), "BTC_USDT", "")
 	assert.NoError(t, err)
 }
 
@@ -128,7 +129,7 @@ func TestWsAdapter_SubscribeDepth_Step(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.SubscribeDepth("BTC_USDT", "step0")
+	err := a.SubscribeDepth(context.Background(), "BTC_USDT", "step0")
 	assert.NoError(t, err)
 }
 
@@ -139,7 +140,7 @@ func TestWsAdapter_UnsubscribeDepth_Full(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.UnsubscribeDepth("BTC_USDT", "")
+	err := a.UnsubscribeDepth(context.Background(), "BTC_USDT", "")
 	assert.NoError(t, err)
 }
 
@@ -150,7 +151,7 @@ func TestWsAdapter_UnsubscribeDepth_Step(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.UnsubscribeDepth("BTC_USDT", "step0")
+	err := a.UnsubscribeDepth(context.Background(), "BTC_USDT", "step0")
 	assert.NoError(t, err)
 }
 
@@ -161,6 +162,6 @@ func TestWsAdapter_SubscribePersonal(t *testing.T) {
 	defer cleanup()
 	a.SetPool(pool)
 
-	err := a.SubscribePersonal()
+	err := a.SubscribePersonal(context.Background())
 	assert.NoError(t, err)
 }

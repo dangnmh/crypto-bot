@@ -15,11 +15,15 @@ import (
 
 // OrderResult holds the result of an order attempt (IOC or Trap).
 type OrderResult struct {
-	Candidate domain.Candidate
-	Order     *exchange.OrderInfo
-	OrderID   string
-	Filled    bool
-	Error     error
+	Candidate       domain.Candidate
+	Order           *exchange.OrderInfo
+	OrderID         string
+	Price           float64
+	TakeProfitPrice float64
+	StopLossPrice   float64
+	Volume          float64
+	Filled          bool
+	Error           error
 }
 
 // IsSuccess returns true if the order was submitted without error.
@@ -107,13 +111,22 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 	)
 
 	orderID, err := client.CreateOrder(ctx, req)
+	result := OrderResult{
+		Candidate:       *candidate,
+		OrderID:         orderID,
+		Price:           iocPrice,
+		TakeProfitPrice: tpPrice,
+		StopLossPrice:   slPrice,
+		Volume:          candidate.Volume,
+		Error:           err,
+	}
 	if err != nil {
 		logger.Error("🔴 IOC order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
-		return OrderResult{Candidate: *candidate, Error: err}
+		return result
 	}
 
 	logger.Info("📨 IOC submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
-	return OrderResult{Candidate: *candidate, OrderID: orderID}
+	return result
 }
 
 // FireLimitTrap sends a Maker POST-ONLY order to catch the dump.
@@ -141,17 +154,21 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 	trapCandidate := *candidate
 	trapCandidate.Side = trapSide
 	trapCandidate.CloseSide = trapCloseSide
+	tpPrice := trapCandidate.CalculateTrapTPPrice(trapPrice)
+	slPrice := trapCandidate.CalculateTrapSLPrice(trapPrice)
 
 	req := exchange.SubmitOrderRequest{
-		Symbol:       candidate.Symbol,
-		Price:        trapPrice,
-		Vol:          candidate.Volume,
-		Side:         int(trapSide),
-		Type:         exchange.OrderTypeLimit,
-		OpenType:     candidate.Config.ParsedOpenType,
-		PositionMode: candidate.Config.ParsedPositionMode,
-		Leverage:     candidate.Config.Leverage,
-		ExternalOID:  extOID,
+		Symbol:          candidate.Symbol,
+		Price:           trapPrice,
+		Vol:             candidate.Volume,
+		Side:            int(trapSide),
+		Type:            exchange.OrderTypeLimit,
+		OpenType:        candidate.Config.ParsedOpenType,
+		PositionMode:    candidate.Config.ParsedPositionMode,
+		Leverage:        candidate.Config.Leverage,
+		ExternalOID:     extOID,
+		TakeProfitPrice: tpPrice,
+		StopLossPrice:   slPrice,
 	}
 
 	logger.Info("🩤 FIRE TRAP",
@@ -160,15 +177,26 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		slog.Float64("trapPrice", trapPrice),
 		slog.Float64("vol", candidate.Volume),
 		slog.String("trapSide", trapSide.String()),
+		slog.Float64("takeProfitPrice", tpPrice),
+		slog.Float64("stopLossPrice", slPrice),
 		slog.String("extOid", extOID),
 	)
 
 	orderID, err := client.CreateOrder(ctx, req)
+	result := OrderResult{
+		Candidate:       trapCandidate,
+		OrderID:         orderID,
+		Price:           trapPrice,
+		TakeProfitPrice: tpPrice,
+		StopLossPrice:   slPrice,
+		Volume:          candidate.Volume,
+		Error:           err,
+	}
 	if err != nil {
 		logger.Error("🔴 TRAP order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
-		return OrderResult{Candidate: *candidate, Error: err}
+		return result
 	}
 
 	logger.Info("📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
-	return OrderResult{Candidate: trapCandidate, OrderID: orderID}
+	return result
 }

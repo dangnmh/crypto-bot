@@ -24,6 +24,7 @@ func TestCycleRecordBuilder_BuildAbortedCycle(t *testing.T) {
 	record := b.Build("BTC_USDT", 0, 0, nil, nil)
 
 	assert.Equal(t, "req-1", record.ReqID)
+	assert.Equal(t, 1, record.SchemaVersion)
 	assert.Equal(t, "BTC_USDT", record.Symbol)
 	assert.Equal(t, domain.OutcomeAborted, record.Outcome)
 	assert.Equal(t, "FR below threshold", record.AbortReason)
@@ -60,11 +61,12 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	// Trailing.
 	b.TrailingActivated = true
 	b.TrailingActivePrice = 0.2480
-	b.TrailingCallbackPct = 0.5
+	b.TrailingCallbackPct = 0.005
 
 	record := b.Build("STEEM_USDT", 0.03, 0.03, nil, nil)
 
 	assert.Equal(t, domain.OutcomeProfit, record.Outcome)
+	assert.Equal(t, 1, record.SchemaVersion)
 	assert.Equal(t, "STEEM_USDT", record.Symbol)
 	assert.True(t, record.Decision.FRChanged)
 	assert.True(t, record.IOC.Filled)
@@ -72,7 +74,10 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	assert.Equal(t, int64(-42), record.IOC.SettleOffsetMs)
 	assert.Equal(t, int64(28), record.IOC.LatencyRTTMs)
 	assert.Equal(t, "trailing", record.Exit.Reason)
+	assert.InDelta(t, 3.0, record.Exit.TPPctConfigured, 1e-9)
+	assert.InDelta(t, 3.0, record.Exit.SLPctConfigured, 1e-9)
 	assert.True(t, record.Exit.TrailingActivated)
+	assert.InDelta(t, 0.5, record.Exit.TrailingCallbackPct, 1e-9)
 	assert.Greater(t, record.Exit.HoldDurationMs, int64(0))
 }
 
@@ -107,6 +112,28 @@ func TestCycleRecordBuilder_BuildStopLossCycle(t *testing.T) {
 
 	record := b.Build("ETH_USDT", 0, 0, nil, nil)
 	assert.Equal(t, domain.OutcomeLoss, record.Outcome)
+}
+
+func TestCycleRecordBuilder_PercentFieldsAreSerializedAsPercent(t *testing.T) {
+	t.Parallel()
+
+	b := domain.NewCycleRecordBuilder("req-6", time.Now())
+	b.DynamicEnabled = true
+	b.DynamicTPPct = 0.025
+	b.DynamicSLPct = 0.015
+	b.StaticTPPct = 0.03
+	b.StaticSLPct = 0.02
+	b.TrailingCallbackPct = 0.005
+
+	record := b.Build("ETH_USDT", 0.03, 0.01, nil, nil)
+
+	assert.InDelta(t, 3.0, record.Exit.TPPctConfigured, 1e-9)
+	assert.InDelta(t, 1.0, record.Exit.SLPctConfigured, 1e-9)
+	assert.InDelta(t, 2.5, record.Exit.DynamicTPPct, 1e-9)
+	assert.InDelta(t, 1.5, record.Exit.DynamicSLPct, 1e-9)
+	assert.InDelta(t, 3.0, record.Exit.StaticTPPct, 1e-9)
+	assert.InDelta(t, 2.0, record.Exit.StaticSLPct, 1e-9)
+	assert.InDelta(t, 0.5, record.Exit.TrailingCallbackPct, 1e-9)
 }
 
 func TestCycleRecordBuilder_TrapData(t *testing.T) {

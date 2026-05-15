@@ -53,6 +53,27 @@ func TestSide_IsLong(t *testing.T) {
 	}
 }
 
+func TestSide_Opposite(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		give domain.Side
+		want domain.Side
+	}{
+		{"open long", domain.SideOpenLong, domain.SideOpenShort},
+		{"open short", domain.SideOpenShort, domain.SideOpenLong},
+		{"close long", domain.SideCloseLong, domain.SideCloseShort},
+		{"close short", domain.SideCloseShort, domain.SideCloseLong},
+		{"unknown", domain.Side(99), domain.Side(99)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.give.Opposite())
+		})
+	}
+}
+
 func TestCloseSideFor(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

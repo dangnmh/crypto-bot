@@ -34,47 +34,47 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 }
 
 // SubscribeTicker subscribes to ticker push.
-func (a *WsAdapter) SubscribeTicker(symbol string) error {
+func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
 		paramMethod: "sub.ticker",
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
 	topic := symbol + ":" + channelTicker
-	return a.pool.SubscribePublic(context.Background(), topic, msg)
+	return a.pool.SubscribePublic(ctx, topic, msg)
 }
 
 // UnsubscribeTicker unsubscribes from ticker push.
-func (a *WsAdapter) UnsubscribeTicker(symbol string) error {
+func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
 		paramMethod: "unsub.ticker",
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
 	topic := symbol + ":" + channelTicker
-	return a.pool.UnsubscribePublic(context.Background(), topic, msg)
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
 // SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(symbol string) error {
+func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
 		paramMethod: "sub.kline",
 		paramParam:  map[string]string{paramSymbol: symbol, paramInterval: "Min1"},
 	}
 	topic := symbol + ":" + channelKline
-	return a.pool.SubscribePublic(context.Background(), topic, msg)
+	return a.pool.SubscribePublic(ctx, topic, msg)
 }
 
 // UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(symbol string) error {
+func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
 		paramMethod: "unsub.kline",
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
 	topic := symbol + ":" + channelKline
-	return a.pool.UnsubscribePublic(context.Background(), topic, msg)
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
 // SubscribePersonal subscribes to personal order updates.
-func (a *WsAdapter) SubscribePersonal() error {
+func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	msg := map[string]interface{}{
 		paramMethod: "personal.filter",
 		paramParam: map[string]interface{}{
@@ -84,11 +84,11 @@ func (a *WsAdapter) SubscribePersonal() error {
 			},
 		},
 	}
-	return a.pool.SendPrivate(msg)
+	return a.pool.SendPrivate(ctx, msg)
 }
 
 // SubscribeDepth subscribes to orderbook depth.
-func (a *WsAdapter) SubscribeDepth(symbol, step string) error {
+func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	method := "sub.depth.full"
 	param := map[string]interface{}{
 		paramSymbol: symbol,
@@ -103,11 +103,11 @@ func (a *WsAdapter) SubscribeDepth(symbol, step string) error {
 		paramParam:  param,
 	}
 	topic := symbol + ":depth:" + step
-	return a.pool.SubscribePublic(context.Background(), topic, msg)
+	return a.pool.SubscribePublic(ctx, topic, msg)
 }
 
 // UnsubscribeDepth unsubscribes from orderbook depth.
-func (a *WsAdapter) UnsubscribeDepth(symbol, step string) error {
+func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	method := "unsub.depth.full"
 	param := map[string]interface{}{
 		paramSymbol: symbol,
@@ -122,7 +122,7 @@ func (a *WsAdapter) UnsubscribeDepth(symbol, step string) error {
 		paramParam:  param,
 	}
 	topic := symbol + ":depth:" + step
-	return a.pool.UnsubscribePublic(context.Background(), topic, msg)
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
 // GetPingConfig returns the ping payload and interval for MEXC.

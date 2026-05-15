@@ -75,7 +75,7 @@ func setupOrchestrator(t *testing.T, ctrl *gomock.Controller) (*application.Cycl
 		Log:           slog.Default(),
 	}
 
-	m.subscriber.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.depthStore.EXPECT().GetDepth(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	m.client.EXPECT().CloseAllPositions(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("track_1", nil).AnyTimes()
@@ -161,7 +161,7 @@ func TestCycleOrchestrator_RecheckSignFlip(t *testing.T) {
 	}, nil).AnyTimes()
 
 	// Arm Phase
-	m.subscriber.EXPECT().SubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
@@ -176,7 +176,7 @@ func TestCycleOrchestrator_RecheckSignFlip(t *testing.T) {
 	}, nil).Times(1)
 
 	// Abort will be triggered, ensure unsubscribe is called
-	m.subscriber.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -199,7 +199,7 @@ func TestCycleOrchestrator_CreateOrderFails(t *testing.T) {
 	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
 		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
 	}, nil).AnyTimes()
-	m.subscriber.EXPECT().SubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
@@ -212,7 +212,7 @@ func TestCycleOrchestrator_CreateOrderFails(t *testing.T) {
 
 	// FAIL IOC CREATION
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("", errors.New("API error"))
-	m.subscriber.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -235,7 +235,7 @@ func TestCycleOrchestrator_PartialFillIOC(t *testing.T) {
 	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
 		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
 	}, nil).AnyTimes()
-	m.subscriber.EXPECT().SubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
@@ -250,7 +250,7 @@ func TestCycleOrchestrator_PartialFillIOC(t *testing.T) {
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ioc_1", nil).AnyTimes()
 
 	// Partially Filled and Canceled Simulation
-	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
+	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			callback(exchange.WsOrderDeal{
@@ -273,7 +273,7 @@ func TestCycleOrchestrator_PartialFillIOC(t *testing.T) {
 
 	// Because it's partially filled, Trap order should be fired (but for the filled amount).
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("trap_1", nil).AnyTimes()
-	m.subscriber.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -296,7 +296,7 @@ func TestCycleOrchestrator_TrailingTrapRejection(t *testing.T) {
 	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
 		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
 	}, nil).AnyTimes()
-	m.subscriber.EXPECT().SubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
@@ -309,7 +309,7 @@ func TestCycleOrchestrator_TrailingTrapRejection(t *testing.T) {
 	m.depthStore.EXPECT().GetDepth(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ioc_1", nil).AnyTimes()
-	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
+	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			callback(exchange.WsOrderDeal{
@@ -328,7 +328,7 @@ func TestCycleOrchestrator_TrailingTrapRejection(t *testing.T) {
 	// FAIL TRAILING STOP
 	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("", errors.New("API failure tracking")).AnyTimes()
 
-	m.subscriber.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -351,7 +351,7 @@ func TestCycleOrchestrator_OBTrapPath(t *testing.T) {
 	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
 		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
 	}, nil).AnyTimes()
-	m.subscriber.EXPECT().SubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
@@ -369,7 +369,7 @@ func TestCycleOrchestrator_OBTrapPath(t *testing.T) {
 	m.depthStore.EXPECT().GetDepth(gomock.Any(), gomock.Any()).Return(ob, nil).AnyTimes()
 
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ioc_1", nil).AnyTimes()
-	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
+	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			callback(exchange.WsOrderDeal{
@@ -384,7 +384,7 @@ func TestCycleOrchestrator_OBTrapPath(t *testing.T) {
 	m.ws.EXPECT().RemoveOrderCallback(gomock.Any()).AnyTimes()
 
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("trap_1", nil).AnyTimes()
-	m.subscriber.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()

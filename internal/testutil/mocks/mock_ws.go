@@ -10,6 +10,7 @@
 package mocks
 
 import (
+	context "context"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -40,17 +41,17 @@ func (m *MockSubscriber) EXPECT() *MockSubscriberMockRecorder {
 }
 
 // SubscribeDepth mocks base method.
-func (m *MockSubscriber) SubscribeDepth(symbol, step string) error {
+func (m *MockSubscriber) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SubscribeDepth", symbol, step)
+	ret := m.ctrl.Call(m, "SubscribeDepth", ctx, symbol, step)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SubscribeDepth indicates an expected call of SubscribeDepth.
-func (mr *MockSubscriberMockRecorder) SubscribeDepth(symbol, step any) *MockSubscriberSubscribeDepthCall {
+func (mr *MockSubscriberMockRecorder) SubscribeDepth(ctx, symbol, step any) *MockSubscriberSubscribeDepthCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeDepth", reflect.TypeOf((*MockSubscriber)(nil).SubscribeDepth), symbol, step)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeDepth", reflect.TypeOf((*MockSubscriber)(nil).SubscribeDepth), ctx, symbol, step)
 	return &MockSubscriberSubscribeDepthCall{Call: call}
 }
 
@@ -66,29 +67,29 @@ func (c *MockSubscriberSubscribeDepthCall) Return(arg0 error) *MockSubscriberSub
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberSubscribeDepthCall) Do(f func(string, string) error) *MockSubscriberSubscribeDepthCall {
+func (c *MockSubscriberSubscribeDepthCall) Do(f func(context.Context, string, string) error) *MockSubscriberSubscribeDepthCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberSubscribeDepthCall) DoAndReturn(f func(string, string) error) *MockSubscriberSubscribeDepthCall {
+func (c *MockSubscriberSubscribeDepthCall) DoAndReturn(f func(context.Context, string, string) error) *MockSubscriberSubscribeDepthCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // SubscribeKline mocks base method.
-func (m *MockSubscriber) SubscribeKline(symbol string) error {
+func (m *MockSubscriber) SubscribeKline(ctx context.Context, symbol string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SubscribeKline", symbol)
+	ret := m.ctrl.Call(m, "SubscribeKline", ctx, symbol)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SubscribeKline indicates an expected call of SubscribeKline.
-func (mr *MockSubscriberMockRecorder) SubscribeKline(symbol any) *MockSubscriberSubscribeKlineCall {
+func (mr *MockSubscriberMockRecorder) SubscribeKline(ctx, symbol any) *MockSubscriberSubscribeKlineCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeKline", reflect.TypeOf((*MockSubscriber)(nil).SubscribeKline), symbol)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeKline", reflect.TypeOf((*MockSubscriber)(nil).SubscribeKline), ctx, symbol)
 	return &MockSubscriberSubscribeKlineCall{Call: call}
 }
 
@@ -104,29 +105,29 @@ func (c *MockSubscriberSubscribeKlineCall) Return(arg0 error) *MockSubscriberSub
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberSubscribeKlineCall) Do(f func(string) error) *MockSubscriberSubscribeKlineCall {
+func (c *MockSubscriberSubscribeKlineCall) Do(f func(context.Context, string) error) *MockSubscriberSubscribeKlineCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberSubscribeKlineCall) DoAndReturn(f func(string) error) *MockSubscriberSubscribeKlineCall {
+func (c *MockSubscriberSubscribeKlineCall) DoAndReturn(f func(context.Context, string) error) *MockSubscriberSubscribeKlineCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // SubscribePersonal mocks base method.
-func (m *MockSubscriber) SubscribePersonal() error {
+func (m *MockSubscriber) SubscribePersonal(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SubscribePersonal")
+	ret := m.ctrl.Call(m, "SubscribePersonal", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SubscribePersonal indicates an expected call of SubscribePersonal.
-func (mr *MockSubscriberMockRecorder) SubscribePersonal() *MockSubscriberSubscribePersonalCall {
+func (mr *MockSubscriberMockRecorder) SubscribePersonal(ctx any) *MockSubscriberSubscribePersonalCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribePersonal", reflect.TypeOf((*MockSubscriber)(nil).SubscribePersonal))
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribePersonal", reflect.TypeOf((*MockSubscriber)(nil).SubscribePersonal), ctx)
 	return &MockSubscriberSubscribePersonalCall{Call: call}
 }
 
@@ -142,29 +143,29 @@ func (c *MockSubscriberSubscribePersonalCall) Return(arg0 error) *MockSubscriber
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberSubscribePersonalCall) Do(f func() error) *MockSubscriberSubscribePersonalCall {
+func (c *MockSubscriberSubscribePersonalCall) Do(f func(context.Context) error) *MockSubscriberSubscribePersonalCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberSubscribePersonalCall) DoAndReturn(f func() error) *MockSubscriberSubscribePersonalCall {
+func (c *MockSubscriberSubscribePersonalCall) DoAndReturn(f func(context.Context) error) *MockSubscriberSubscribePersonalCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // SubscribeTicker mocks base method.
-func (m *MockSubscriber) SubscribeTicker(symbol string) error {
+func (m *MockSubscriber) SubscribeTicker(ctx context.Context, symbol string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SubscribeTicker", symbol)
+	ret := m.ctrl.Call(m, "SubscribeTicker", ctx, symbol)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SubscribeTicker indicates an expected call of SubscribeTicker.
-func (mr *MockSubscriberMockRecorder) SubscribeTicker(symbol any) *MockSubscriberSubscribeTickerCall {
+func (mr *MockSubscriberMockRecorder) SubscribeTicker(ctx, symbol any) *MockSubscriberSubscribeTickerCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeTicker", reflect.TypeOf((*MockSubscriber)(nil).SubscribeTicker), symbol)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeTicker", reflect.TypeOf((*MockSubscriber)(nil).SubscribeTicker), ctx, symbol)
 	return &MockSubscriberSubscribeTickerCall{Call: call}
 }
 
@@ -180,29 +181,29 @@ func (c *MockSubscriberSubscribeTickerCall) Return(arg0 error) *MockSubscriberSu
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberSubscribeTickerCall) Do(f func(string) error) *MockSubscriberSubscribeTickerCall {
+func (c *MockSubscriberSubscribeTickerCall) Do(f func(context.Context, string) error) *MockSubscriberSubscribeTickerCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberSubscribeTickerCall) DoAndReturn(f func(string) error) *MockSubscriberSubscribeTickerCall {
+func (c *MockSubscriberSubscribeTickerCall) DoAndReturn(f func(context.Context, string) error) *MockSubscriberSubscribeTickerCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // UnsubscribeDepth mocks base method.
-func (m *MockSubscriber) UnsubscribeDepth(symbol, step string) error {
+func (m *MockSubscriber) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnsubscribeDepth", symbol, step)
+	ret := m.ctrl.Call(m, "UnsubscribeDepth", ctx, symbol, step)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnsubscribeDepth indicates an expected call of UnsubscribeDepth.
-func (mr *MockSubscriberMockRecorder) UnsubscribeDepth(symbol, step any) *MockSubscriberUnsubscribeDepthCall {
+func (mr *MockSubscriberMockRecorder) UnsubscribeDepth(ctx, symbol, step any) *MockSubscriberUnsubscribeDepthCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribeDepth", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribeDepth), symbol, step)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribeDepth", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribeDepth), ctx, symbol, step)
 	return &MockSubscriberUnsubscribeDepthCall{Call: call}
 }
 
@@ -218,29 +219,29 @@ func (c *MockSubscriberUnsubscribeDepthCall) Return(arg0 error) *MockSubscriberU
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberUnsubscribeDepthCall) Do(f func(string, string) error) *MockSubscriberUnsubscribeDepthCall {
+func (c *MockSubscriberUnsubscribeDepthCall) Do(f func(context.Context, string, string) error) *MockSubscriberUnsubscribeDepthCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberUnsubscribeDepthCall) DoAndReturn(f func(string, string) error) *MockSubscriberUnsubscribeDepthCall {
+func (c *MockSubscriberUnsubscribeDepthCall) DoAndReturn(f func(context.Context, string, string) error) *MockSubscriberUnsubscribeDepthCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // UnsubscribeKline mocks base method.
-func (m *MockSubscriber) UnsubscribeKline(symbol string) error {
+func (m *MockSubscriber) UnsubscribeKline(ctx context.Context, symbol string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnsubscribeKline", symbol)
+	ret := m.ctrl.Call(m, "UnsubscribeKline", ctx, symbol)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnsubscribeKline indicates an expected call of UnsubscribeKline.
-func (mr *MockSubscriberMockRecorder) UnsubscribeKline(symbol any) *MockSubscriberUnsubscribeKlineCall {
+func (mr *MockSubscriberMockRecorder) UnsubscribeKline(ctx, symbol any) *MockSubscriberUnsubscribeKlineCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribeKline", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribeKline), symbol)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribeKline", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribeKline), ctx, symbol)
 	return &MockSubscriberUnsubscribeKlineCall{Call: call}
 }
 
@@ -256,29 +257,29 @@ func (c *MockSubscriberUnsubscribeKlineCall) Return(arg0 error) *MockSubscriberU
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberUnsubscribeKlineCall) Do(f func(string) error) *MockSubscriberUnsubscribeKlineCall {
+func (c *MockSubscriberUnsubscribeKlineCall) Do(f func(context.Context, string) error) *MockSubscriberUnsubscribeKlineCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberUnsubscribeKlineCall) DoAndReturn(f func(string) error) *MockSubscriberUnsubscribeKlineCall {
+func (c *MockSubscriberUnsubscribeKlineCall) DoAndReturn(f func(context.Context, string) error) *MockSubscriberUnsubscribeKlineCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // UnsubscribeTicker mocks base method.
-func (m *MockSubscriber) UnsubscribeTicker(symbol string) error {
+func (m *MockSubscriber) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnsubscribeTicker", symbol)
+	ret := m.ctrl.Call(m, "UnsubscribeTicker", ctx, symbol)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnsubscribeTicker indicates an expected call of UnsubscribeTicker.
-func (mr *MockSubscriberMockRecorder) UnsubscribeTicker(symbol any) *MockSubscriberUnsubscribeTickerCall {
+func (mr *MockSubscriberMockRecorder) UnsubscribeTicker(ctx, symbol any) *MockSubscriberUnsubscribeTickerCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribeTicker", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribeTicker), symbol)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribeTicker", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribeTicker), ctx, symbol)
 	return &MockSubscriberUnsubscribeTickerCall{Call: call}
 }
 
@@ -294,13 +295,13 @@ func (c *MockSubscriberUnsubscribeTickerCall) Return(arg0 error) *MockSubscriber
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSubscriberUnsubscribeTickerCall) Do(f func(string) error) *MockSubscriberUnsubscribeTickerCall {
+func (c *MockSubscriberUnsubscribeTickerCall) Do(f func(context.Context, string) error) *MockSubscriberUnsubscribeTickerCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSubscriberUnsubscribeTickerCall) DoAndReturn(f func(string) error) *MockSubscriberUnsubscribeTickerCall {
+func (c *MockSubscriberUnsubscribeTickerCall) DoAndReturn(f func(context.Context, string) error) *MockSubscriberUnsubscribeTickerCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

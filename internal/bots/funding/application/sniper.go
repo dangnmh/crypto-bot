@@ -116,7 +116,7 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 	s.stores.WireWS(s.engine.WS, s.engine.Adapter)
 
 	if s.engine.Adapter != nil {
-		if err := s.engine.Adapter.SubscribePersonal(); err != nil {
+		if err := s.engine.Adapter.SubscribePersonal(ctx); err != nil {
 			s.log.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
 		}
 	}
@@ -206,13 +206,35 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 func newCycleRecorder(cfg config.JournalConfig, log *slog.Logger) frdomain.CycleRecorder {
 	if !cfg.Enabled || cfg.Dir == "" {
 		log.Info("📝 Cycle recorder disabled")
-		return &journal.NoopCycleRecorder{}
+		return noopCycleRecorder{}
 	}
 	rec, err := journal.NewJSONLCycleRecorder(cfg.Dir)
 	if err != nil {
 		log.Error("🔴 Failed to create cycle recorder, falling back to noop", slog.Any("error", err))
-		return &journal.NoopCycleRecorder{}
+		return noopCycleRecorder{}
 	}
 	log.Info("📝 Cycle recorder enabled", slog.String("dir", cfg.Dir))
-	return rec
+	return cycleRecorderAdapter{rec: rec}
+}
+
+type cycleRecorderAdapter struct {
+	rec *journal.JSONLCycleRecorder
+}
+
+func (a cycleRecorderAdapter) Record(ctx context.Context, record frdomain.CycleRecord) error {
+	return a.rec.Record(ctx, record)
+}
+
+func (a cycleRecorderAdapter) Close() error {
+	return a.rec.Close()
+}
+
+type noopCycleRecorder struct{}
+
+func (noopCycleRecorder) Record(context.Context, frdomain.CycleRecord) error {
+	return nil
+}
+
+func (noopCycleRecorder) Close() error {
+	return nil
 }

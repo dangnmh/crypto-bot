@@ -26,7 +26,7 @@ func (o *CycleOrchestrator) watchIOCFills(ctx context.Context) {
 			o.deps.Log.Error("🔴 Unmarshal IOCFiredEvent failed", slog.Any("error", err))
 			return
 		}
-		o.setupFillWatcher(evt.OrderID, evt.Side, evt.CloseSide, domain.PhaseIOC)
+		o.setupFillWatcher(ctx, evt.OrderID, evt.Side, evt.CloseSide, domain.PhaseIOC)
 	})
 }
 
@@ -37,16 +37,16 @@ func (o *CycleOrchestrator) watchTrapFills(ctx context.Context) {
 			o.deps.Log.Error("🔴 Unmarshal TrapFiredEvent failed", slog.Any("error", err))
 			return
 		}
-		o.setupFillWatcher(evt.OrderID, evt.Side, evt.CloseSide, domain.PhaseTrap)
+		o.setupFillWatcher(ctx, evt.OrderID, evt.Side, evt.CloseSide, domain.PhaseTrap)
 	})
 }
 
-func (o *CycleOrchestrator) setupFillWatcher(orderID string, side, closeSide shared.Side, phase domain.Phase) {
+func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string, side, closeSide shared.Side, phase domain.Phase) {
 	if orderID == "" {
 		return
 	}
 
-	o.deps.OrderNotifier.OnOrderUpdate(orderID, 5*time.Second, func(deal exchange.WsOrderDeal) {
+	o.deps.OrderNotifier.OnOrderUpdate(ctx, orderID, 5*time.Second, func(deal exchange.WsOrderDeal) {
 		if !exchange.IsTerminalOrderState(deal.State) {
 			return
 		}

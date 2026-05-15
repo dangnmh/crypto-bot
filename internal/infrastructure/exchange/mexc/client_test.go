@@ -93,6 +93,63 @@ func TestClient_GetContractDetails(t *testing.T) {
 	}
 }
 
+func TestClient_GetDepthSnapshot(t *testing.T) {
+	t.Parallel()
+
+	body := map[string]any{
+		"asks":    [][]string{{"101.5", "2"}, {"0", "9"}, {"101.7"}},
+		"bids":    [][]string{{"100.5", "3"}},
+		"version": int64(42),
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/contract/depth/BTC_USDT" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("limit"); got != "20" {
+			t.Fatalf("unexpected limit: %s", got)
+		}
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[map[string]any]{Success: true, Code: 0, Data: body}))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	got, err := client.GetDepthSnapshot(context.Background(), "BTC_USDT", 20)
+	if err != nil {
+		t.Fatalf("GetDepthSnapshot failed: %v", err)
+	}
+	if got.Symbol != "BTC_USDT" || got.Version != 42 || len(got.Asks) != 1 || len(got.Bids) != 1 {
+		t.Fatalf("unexpected orderbook: %+v", got)
+	}
+}
+
+func TestClient_GetDepthCommits(t *testing.T) {
+	t.Parallel()
+
+	commits := []map[string]any{
+		{
+			"version": int64(7),
+			"asks":    [][]string{{"101.5", "2"}},
+			"bids":    [][]string{{"100.5", "3"}},
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/contract/depth_commits/BTC_USDT/1000" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]map[string]any]{Success: true, Code: 0, Data: commits}))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	got, err := client.GetDepthCommits(context.Background(), "BTC_USDT", 0)
+	if err != nil {
+		t.Fatalf("GetDepthCommits failed: %v", err)
+	}
+	if len(got) != 1 || got[0].Version != 7 || len(got[0].Asks) != 1 || len(got[0].Bids) != 1 {
+		t.Fatalf("unexpected commits: %+v", got)
+	}
+}
+
 // ── GetTickers (array) ───────────────────────────────────────────────.
 
 //nolint:dupl // test

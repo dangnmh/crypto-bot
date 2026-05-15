@@ -27,7 +27,8 @@ func main() {
 
 	botCfg, err := botconfig.Load(sysCfg, *botCfgPath)
 	if err != nil {
-		panic("Failed to load bot config: " + err.Error())
+		slog.Error("Failed to load bot config", "error", err)
+		os.Exit(1)
 	}
 
 	// 2. Initialize Telemetry (Removed)

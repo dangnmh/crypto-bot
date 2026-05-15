@@ -1,6 +1,7 @@
 package watcher_test
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestOrderWatcher_OnOrderUpdate_Callback(t *testing.T) {
 	w := watcher.NewOrderWatcher(bus, logger)
 
 	called := make(chan exchange.WsOrderDeal, 1)
-	w.OnOrderUpdate("order_456", 2*time.Second, func(deal exchange.WsOrderDeal) {
+	w.OnOrderUpdate(context.Background(), "order_456", 2*time.Second, func(deal exchange.WsOrderDeal) {
 		called <- deal
 	})
 
@@ -55,7 +56,7 @@ func TestOrderWatcher_OnOrderUpdate_Timeout(t *testing.T) {
 	w := watcher.NewOrderWatcher(bus, logger)
 
 	called := make(chan struct{}, 1)
-	w.OnOrderUpdate("order_timeout", 100*time.Millisecond, func(_ exchange.WsOrderDeal) {
+	w.OnOrderUpdate(context.Background(), "order_timeout", 100*time.Millisecond, func(_ exchange.WsOrderDeal) {
 		called <- struct{}{}
 	})
 

@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
@@ -12,16 +13,16 @@ import (
 // Subscriber handles channel subscription/unsubscription.
 // Satisfied by *Client. Enables mock-based testing of executor.
 type Subscriber interface {
-	SubscribeTicker(symbol string) error
-	UnsubscribeTicker(symbol string) error
+	SubscribeTicker(ctx context.Context, symbol string) error
+	UnsubscribeTicker(ctx context.Context, symbol string) error
 
-	SubscribeKline(symbol string) error
-	UnsubscribeKline(symbol string) error
+	SubscribeKline(ctx context.Context, symbol string) error
+	UnsubscribeKline(ctx context.Context, symbol string) error
 
-	SubscribeDepth(symbol, step string) error
-	UnsubscribeDepth(symbol, step string) error
+	SubscribeDepth(ctx context.Context, symbol, step string) error
+	UnsubscribeDepth(ctx context.Context, symbol, step string) error
 
-	SubscribePersonal() error
+	SubscribePersonal(ctx context.Context) error
 }
 
 // ExchangeAdapter encapsulates all exchange-specific WS logic.

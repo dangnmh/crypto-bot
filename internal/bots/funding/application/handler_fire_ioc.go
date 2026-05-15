@@ -90,7 +90,9 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 	// Capture IOC execution data thread-safely.
 	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
 		b.FireTimestamp = fireTime
-		b.IOCIntended = c.LastPrice
+		b.IOCIntended = res.Price
+		b.TPPriceSubmitted = res.TakeProfitPrice
+		b.SLPriceSubmitted = res.StopLossPrice
 		if res.IsSuccess() {
 			b.IOCOrderID = res.OrderID
 		} else if res.Error != nil {
@@ -104,10 +106,10 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 			OrderID:   res.OrderID,
 			Side:      c.Side,
 			CloseSide: c.CloseSide,
-			Price:     c.LastPrice,
-			Volume:    c.Volume,
-			TPPrice:   c.Config.FundingReversion.TakeProfitPct,
-			SLPrice:   c.Config.FundingReversion.StopLossPct,
+			Price:     res.Price,
+			Volume:    res.Volume,
+			TPPrice:   res.TakeProfitPrice,
+			SLPrice:   res.StopLossPrice,
 			Settle:    settle,
 			Timestamp: fireTime,
 		})

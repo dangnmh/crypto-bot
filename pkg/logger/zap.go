@@ -2,17 +2,74 @@ package logger
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
-
-	"crypto-bot/internal/infrastructure/observability"
 )
+
+type contextKey string
+
+const correlationIDKey contextKey = "correlation_id"
 
 // multiHandler fans out log records to multiple slog handlers.
 type multiHandler struct {
 	handlers []slog.Handler
+}
+
+// TraceHandler wraps an existing slog.Handler and injects req_id from context.
+type TraceHandler struct {
+	inner slog.Handler
+}
+
+// NewTraceHandler wraps an existing slog.Handler with correlation context injection.
+func NewTraceHandler(inner slog.Handler) *TraceHandler {
+	return &TraceHandler{inner: inner}
+}
+
+func (h *TraceHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if reqID := CorrelationID(ctx); reqID != "" {
+		r.AddAttrs(slog.String("req_id", reqID))
+	}
+	return h.inner.Handle(ctx, r)
+}
+
+func (h *TraceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &TraceHandler{inner: h.inner.WithAttrs(attrs)}
+}
+
+func (h *TraceHandler) WithGroup(name string) slog.Handler {
+	return &TraceHandler{inner: h.inner.WithGroup(name)}
+}
+
+// WithCorrelationID creates a new context with a correlation ID attached.
+func WithCorrelationID(ctx context.Context) context.Context {
+	return WithCorrelationIDValue(ctx, generateID())
+}
+
+// WithCorrelationIDValue creates a new context with a specific correlation ID.
+func WithCorrelationIDValue(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, correlationIDKey, id)
+}
+
+// CorrelationID extracts the correlation ID from the context.
+func CorrelationID(ctx context.Context) string {
+	if id, ok := ctx.Value(correlationIDKey).(string); ok {
+		return id
+	}
+	return ""
+}
+
+func generateID() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func (m *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -72,7 +129,7 @@ func InitLogger(level string) func() {
 	opts := &slog.HandlerOptions{Level: slogLevel, AddSource: true}
 	consoleHandler := slog.NewJSONHandler(os.Stdout, opts)
 
-	handlers := []slog.Handler{observability.NewTraceHandler(consoleHandler)}
+	handlers := []slog.Handler{NewTraceHandler(consoleHandler)}
 
 	var file *os.File
 	if err := os.MkdirAll("logs", 0o755); err == nil {
@@ -82,7 +139,7 @@ func InitLogger(level string) func() {
 		)
 		if err == nil {
 			fileHandler := slog.NewJSONHandler(file, opts)
-			handlers = append(handlers, observability.NewTraceHandler(fileHandler))
+			handlers = append(handlers, NewTraceHandler(fileHandler))
 		}
 	}
 

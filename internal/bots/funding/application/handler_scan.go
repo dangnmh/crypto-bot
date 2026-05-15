@@ -82,7 +82,7 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 		o.initKlines(ctx)
 	}
 
-	if err := o.subs.SubscribeAll(); err != nil {
+	if err := o.subs.SubscribeAll(ctx); err != nil {
 		o.deps.Log.Error("🔴 Failed to subscribe WS channels", slog.Any("error", err))
 		o.abort("arm", "WS subscribe failed")
 		return
@@ -91,7 +91,7 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 	o.sleep(ctx, 2*time.Second)
 	if err := o.refreshPrice(ctx, c); err != nil {
 		o.deps.Log.Warn("🟡 Refresh price failed", slog.Any("error", err))
-		o.subs.UnsubscribeAll()
+		o.subs.UnsubscribeAll(ctx)
 		o.abort("arm", "refresh price failed")
 		return
 	}
@@ -110,7 +110,7 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 	ioc, err := c.CalculateIOCPrice(nil)
 	if err != nil {
 		o.deps.Log.Warn("🟡 IOC calc failed", slog.Any("error", err))
-		o.subs.UnsubscribeAll()
+		o.subs.UnsubscribeAll(ctx)
 		o.abort("arm", "IOC calc failed")
 		return
 	}
@@ -133,7 +133,7 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 		o.recorder.SafetyPassed = false
 		o.recorder.SafetyRejectReason = c.SafetyResult.RejectReason
 		o.deps.Log.Warn("🔴 Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
-		o.subs.UnsubscribeAll()
+		o.subs.UnsubscribeAll(ctx)
 		o.abort("arm", c.SafetyResult.RejectReason)
 		return
 	}

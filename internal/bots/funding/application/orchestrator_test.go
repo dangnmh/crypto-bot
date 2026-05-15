@@ -30,7 +30,7 @@ func TestCycleOrchestrator_HappyPath(t *testing.T) {
 		ContractSize: 0.001,
 		TakerFeeRate: 0.0006,
 	}, nil).AnyTimes()
-	m.subscriber.EXPECT().SubscribeTicker("BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
@@ -41,7 +41,7 @@ func TestCycleOrchestrator_HappyPath(t *testing.T) {
 	m.clock.EXPECT().Offset().Return(int64(0)).AnyTimes()
 
 	m.client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ioc_1", nil).AnyTimes()
-	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
+	m.ws.EXPECT().OnOrderUpdate(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, orderID string, duration time.Duration, callback func(exchange.WsOrderDeal)) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			callback(exchange.WsOrderDeal{

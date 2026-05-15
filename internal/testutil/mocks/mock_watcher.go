@@ -10,6 +10,7 @@
 package mocks
 
 import (
+	context "context"
 	exchange "crypto-bot/internal/infrastructure/exchange"
 	reflect "reflect"
 	time "time"
@@ -42,15 +43,15 @@ func (m *MockOrderNotifier) EXPECT() *MockOrderNotifierMockRecorder {
 }
 
 // OnOrderUpdate mocks base method.
-func (m *MockOrderNotifier) OnOrderUpdate(orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
+func (m *MockOrderNotifier) OnOrderUpdate(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnOrderUpdate", orderID, timeout, callback)
+	m.ctrl.Call(m, "OnOrderUpdate", ctx, orderID, timeout, callback)
 }
 
 // OnOrderUpdate indicates an expected call of OnOrderUpdate.
-func (mr *MockOrderNotifierMockRecorder) OnOrderUpdate(orderID, timeout, callback any) *MockOrderNotifierOnOrderUpdateCall {
+func (mr *MockOrderNotifierMockRecorder) OnOrderUpdate(ctx, orderID, timeout, callback any) *MockOrderNotifierOnOrderUpdateCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrderUpdate", reflect.TypeOf((*MockOrderNotifier)(nil).OnOrderUpdate), orderID, timeout, callback)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrderUpdate", reflect.TypeOf((*MockOrderNotifier)(nil).OnOrderUpdate), ctx, orderID, timeout, callback)
 	return &MockOrderNotifierOnOrderUpdateCall{Call: call}
 }
 
@@ -66,13 +67,13 @@ func (c *MockOrderNotifierOnOrderUpdateCall) Return() *MockOrderNotifierOnOrderU
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockOrderNotifierOnOrderUpdateCall) Do(f func(string, time.Duration, func(exchange.WsOrderDeal))) *MockOrderNotifierOnOrderUpdateCall {
+func (c *MockOrderNotifierOnOrderUpdateCall) Do(f func(context.Context, string, time.Duration, func(exchange.WsOrderDeal))) *MockOrderNotifierOnOrderUpdateCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockOrderNotifierOnOrderUpdateCall) DoAndReturn(f func(string, time.Duration, func(exchange.WsOrderDeal))) *MockOrderNotifierOnOrderUpdateCall {
+func (c *MockOrderNotifierOnOrderUpdateCall) DoAndReturn(f func(context.Context, string, time.Duration, func(exchange.WsOrderDeal))) *MockOrderNotifierOnOrderUpdateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
-
-	"crypto-bot/internal/bots/funding/domain"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -27,9 +25,6 @@ type JSONLCycleRecorder struct {
 	date string // current file date (YYYY-MM-DD)
 }
 
-// Compile-time interface compliance check.
-var _ domain.CycleRecorder = (*JSONLCycleRecorder)(nil)
-
 // NewJSONLCycleRecorder creates a new JSONL recorder that writes to the given directory.
 // The directory is created if it doesn't exist.
 func NewJSONLCycleRecorder(dir string) (*JSONLCycleRecorder, error) {
@@ -45,7 +40,7 @@ func NewJSONLCycleRecorder(dir string) (*JSONLCycleRecorder, error) {
 
 // Record serializes the cycle record as a single JSON line and appends it to the file.
 // Rotates to a new file if the date has changed.
-func (r *JSONLCycleRecorder) Record(_ context.Context, rec domain.CycleRecord) error {
+func (r *JSONLCycleRecorder) Record(_ context.Context, rec any) error {
 	data, err := json.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("marshal cycle record: %w", err)
@@ -54,7 +49,7 @@ func (r *JSONLCycleRecorder) Record(_ context.Context, rec domain.CycleRecord) e
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	today := rec.CreatedAt.Format("2006-01-02")
+	today := time.Now().Format("2006-01-02")
 	if today != r.date {
 		if err := r.rotate(); err != nil {
 			return err
@@ -106,11 +101,8 @@ func (r *JSONLCycleRecorder) rotate() error {
 // NoopCycleRecorder is a no-op recorder that discards all records.
 type NoopCycleRecorder struct{}
 
-// Compile-time interface compliance check.
-var _ domain.CycleRecorder = (*NoopCycleRecorder)(nil)
-
 // Record does nothing.
-func (n *NoopCycleRecorder) Record(_ context.Context, _ domain.CycleRecord) error { return nil }
+func (n *NoopCycleRecorder) Record(_ context.Context, _ any) error { return nil }
 
 // Close does nothing.
 func (n *NoopCycleRecorder) Close() error { return nil }

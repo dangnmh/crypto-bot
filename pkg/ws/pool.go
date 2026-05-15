@@ -19,9 +19,17 @@ type Pool struct {
 	publicClients  []*Client
 	clientSubCount []int
 	topicRouting   map[string]int // topic -> public client index
+	subscriptions  map[string]publicSubscription
 
 	handlerMu sync.RWMutex
 	handlers  map[string][]Handler
+}
+
+type publicSubscription struct {
+	topic          string
+	subscribeMsg   interface{}
+	unsubscribeMsg interface{}
+	clientIdx      int
 }
 
 // NewPool creates a new generic WS connection pool.
@@ -37,6 +45,7 @@ func NewPool(wsURL string, maxPairs int, logger *slog.Logger, opts ...ClientOpti
 		logger:        logger,
 		clientOptions: opts,
 		topicRouting:  make(map[string]int),
+		subscriptions: make(map[string]publicSubscription),
 	}
 }
 
@@ -132,7 +141,11 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) int {
 	}
 
 	idx := len(p.publicClients)
-	newClient := NewClient(p.url, p.logger, p.clientOptions...)
+	opts := append([]ClientOption{}, p.clientOptions...)
+	opts = append(opts, WithOnReady(func(c *Client) {
+		p.replayPublicSubscriptions(idx, c)
+	}))
+	newClient := NewClient(p.url, p.logger, opts...)
 	p.attachHandlers(newClient)
 	p.publicClients = append(p.publicClients, newClient)
 	p.clientSubCount = append(p.clientSubCount, 0)
@@ -144,6 +157,23 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) int {
 	return idx
 }
 
+func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
+	p.mu.RLock()
+	subs := make([]publicSubscription, 0, len(p.subscriptions))
+	for _, sub := range p.subscriptions {
+		if sub.clientIdx == idx {
+			subs = append(subs, sub)
+		}
+	}
+	p.mu.RUnlock()
+
+	for _, sub := range subs {
+		if err := client.SendJSON(sub.subscribeMsg); err != nil {
+			p.logger.Warn("🟡 WS subscription replay failed", "topic", sub.topic, "error", err)
+		}
+	}
+}
+
 // SubscribePublic tracks a subscription topic and routes it to an available public client.
 func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg interface{}) error {
 	p.mu.Lock()
@@ -152,10 +182,20 @@ func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg interface{
 		idx = p.getOrCreatePublicClientIdx(ctx)
 		p.topicRouting[topic] = idx
 		p.clientSubCount[idx]++
+		p.subscriptions[topic] = publicSubscription{
+			topic:        topic,
+			subscribeMsg: msg,
+			clientIdx:    idx,
+		}
 	}
 	client := p.publicClients[idx]
 	p.mu.Unlock()
 
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	return client.SendJSON(msg)
 }
 
@@ -170,9 +210,18 @@ func (p *Pool) UnsubscribePublic(ctx context.Context, topic string, msg interfac
 
 	client := p.publicClients[idx]
 	p.clientSubCount[idx]--
+	sub := p.subscriptions[topic]
+	sub.unsubscribeMsg = msg
+	p.subscriptions[topic] = sub
 	delete(p.topicRouting, topic)
+	delete(p.subscriptions, topic)
 	p.mu.Unlock()
 
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	return client.SendJSON(msg)
 }
 
@@ -184,12 +233,17 @@ func (p *Pool) GetPrivateClient() *Client {
 }
 
 // SendPrivate routes a generic JSON payload to the private authenticated client.
-func (p *Pool) SendPrivate(msg interface{}) error {
+func (p *Pool) SendPrivate(ctx context.Context, msg interface{}) error {
 	p.mu.RLock()
 	pc := p.privateClient
 	p.mu.RUnlock()
 
 	if pc != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		return pc.SendJSON(msg)
 	}
 	return nil

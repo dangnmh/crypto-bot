@@ -13,7 +13,7 @@ import (
 
 // OrderNotifier handles order fill callbacks.
 type OrderNotifier interface {
-	OnOrderUpdate(orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal))
+	OnOrderUpdate(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal))
 	RemoveOrderCallback(orderID string)
 }
 
@@ -47,8 +47,8 @@ func (w *OrderWatcher) Publish(deal exchange.WsOrderDeal) {
 
 // OnOrderUpdate registers a callback for a specific order ID (implements OrderNotifier).
 // The callback will be removed automatically after the specified timeout.
-func (w *OrderWatcher) OnOrderUpdate(orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func (w *OrderWatcher) OnOrderUpdate(parent context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
 
 	ch, err := w.broker.Subscribe(ctx, orderID)
 	if err != nil {

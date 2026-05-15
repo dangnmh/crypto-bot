@@ -29,9 +29,11 @@ type Client struct {
 	done          chan struct{}
 	ready         chan struct{}
 	readyOnce     sync.Once
+	closeOnce     sync.Once
 
 	// Hooks
 	onConnected      func(*Client) // Used for custom authentication logic immediately after dial
+	onReady          func(*Client) // Called after each successful connection is ready
 	pingPayload      interface{}   // Payload to send periodically. If nil, no ping is sent.
 	pingPeriod       time.Duration
 	channelExtractor func([]byte) string // Extracts routing key (channel/topic) from raw JSON
@@ -52,6 +54,13 @@ func WithChannelExtractor(extractor func([]byte) string) ClientOption {
 func WithOnConnected(hook func(*Client)) ClientOption {
 	return func(c *Client) {
 		c.onConnected = hook
+	}
+}
+
+// WithOnReady sets a callback fired after each successful connection is ready.
+func WithOnReady(hook func(*Client)) ClientOption {
+	return func(c *Client) {
+		c.onReady = hook
 	}
 }
 
@@ -107,7 +116,9 @@ func (c *Client) Connect(ctx context.Context) {
 		err := c.dial()
 		if err != nil {
 			c.logger.Error("🔴 WebSocket connection failed", "error", err)
-			time.Sleep(2 * time.Second)
+			if !waitContext(ctx, 2*time.Second) {
+				return
+			}
 			continue
 		}
 
@@ -118,12 +129,17 @@ func (c *Client) Connect(ctx context.Context) {
 		}
 
 		c.markReady()
-
-		// Start heartbeat and read loop
-		if c.pingPayload != nil && c.pingPeriod > 0 {
-			go c.heartbeat(ctx)
+		if c.onReady != nil {
+			c.onReady(c)
 		}
-		c.readLoop(ctx)
+
+		connCtx, cancelConn := context.WithCancel(ctx)
+		// Start heartbeat and read loop.
+		if c.pingPayload != nil && c.pingPeriod > 0 {
+			go c.heartbeat(connCtx)
+		}
+		c.readLoop(connCtx)
+		cancelConn()
 
 		// If we get here, connection was lost
 		c.mu.Lock()
@@ -131,7 +147,9 @@ func (c *Client) Connect(ctx context.Context) {
 		c.mu.Unlock()
 
 		c.logger.Warn("🟡 WebSocket disconnected, reconnecting in 2s...")
-		time.Sleep(2 * time.Second)
+		if !waitContext(ctx, 2*time.Second) {
+			return
+		}
 	}
 }
 
@@ -262,13 +280,27 @@ func (c *Client) IsConnected() bool {
 
 // Close closes the WebSocket connection.
 func (c *Client) Close() {
-	close(c.done)
+	c.closeOnce.Do(func() {
+		close(c.done)
+	})
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
 		c.connected = false
+	}
+}
+
+func waitContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

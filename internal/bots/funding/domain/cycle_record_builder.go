@@ -10,6 +10,8 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+const cycleRecordSchemaVersion = 1
+
 // ──────────────────────────────────────────────────────────────────────
 // CycleRecordBuilder — accumulates data during a cycle for final persistence.
 // ──────────────────────────────────────────────────────────────────────.
@@ -155,13 +157,14 @@ func (b *CycleRecordBuilder) Build(
 	}
 
 	rec := CycleRecord{
-		ReqID:       b.ReqID,
-		Symbol:      symbol,
-		SettleTime:  b.SettleTime,
-		CreatedAt:   now,
-		Outcome:     outcome,
-		AbortReason: b.AbortReason,
-		AbortPhase:  b.AbortPhase,
+		SchemaVersion: cycleRecordSchemaVersion,
+		ReqID:         b.ReqID,
+		Symbol:        symbol,
+		SettleTime:    b.SettleTime,
+		CreatedAt:     now,
+		Outcome:       outcome,
+		AbortReason:   b.AbortReason,
+		AbortPhase:    b.AbortPhase,
 		Decision: DecisionSnapshot{
 			FRAtScan:           b.FRAtScan,
 			FRAtRecheck:        b.FRAtRecheck,
@@ -193,18 +196,18 @@ func (b *CycleRecordBuilder) Build(
 		Exit: ExitSnapshot{
 			Reason:                b.ExitReason,
 			HoldDurationMs:        holdDurationMs,
-			TPPctConfigured:       tpPctConfigured,
-			SLPctConfigured:       slPctConfigured,
+			TPPctConfigured:       ratioToPercent(tpPctConfigured),
+			SLPctConfigured:       ratioToPercent(slPctConfigured),
 			TPPriceSubmitted:      b.TPPriceSubmitted,
 			SLPriceSubmitted:      b.SLPriceSubmitted,
 			TrailingActivated:     b.TrailingActivated,
 			TrailingActivePrice:   b.TrailingActivePrice,
-			TrailingCallbackPct:   b.TrailingCallbackPct,
+			TrailingCallbackPct:   ratioToPercent(b.TrailingCallbackPct),
 			DynamicPricingEnabled: b.DynamicEnabled,
-			DynamicTPPct:          b.DynamicTPPct,
-			StaticTPPct:           b.StaticTPPct,
-			DynamicSLPct:          b.DynamicSLPct,
-			StaticSLPct:           b.StaticSLPct,
+			DynamicTPPct:          ratioToPercent(b.DynamicTPPct),
+			StaticTPPct:           ratioToPercent(b.StaticTPPct),
+			DynamicSLPct:          ratioToPercent(b.DynamicSLPct),
+			StaticSLPct:           ratioToPercent(b.StaticSLPct),
 			ATRValue:              b.ATRValue,
 		},
 		Excursion: excursion,
@@ -213,6 +216,13 @@ func (b *CycleRecordBuilder) Build(
 	}
 
 	return rec
+}
+
+func ratioToPercent(v float64) float64 {
+	if v == 0 {
+		return 0
+	}
+	return decmath.Mul(v, 100.0)
 }
 
 // computeOutcome determines the cycle outcome from the accumulated data.

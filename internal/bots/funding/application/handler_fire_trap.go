@@ -163,7 +163,7 @@ func (o *CycleOrchestrator) fireStaticTrap(ctx context.Context) {
 		// Capture trap data for cycle record.
 		o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
 			b.TrapSource = trapSourceStaticLimit
-			b.TrapPrice = res.Candidate.CalculateTrapPrice()
+			b.TrapPrice = res.Price
 			b.TrapOrderID = res.OrderID
 		})
 
@@ -172,8 +172,10 @@ func (o *CycleOrchestrator) fireStaticTrap(ctx context.Context) {
 			OrderID:   res.OrderID,
 			Side:      res.Candidate.Side,
 			CloseSide: res.Candidate.CloseSide,
-			Price:     res.Candidate.CalculateTrapPrice(),
-			Volume:    res.Candidate.Volume,
+			Price:     res.Price,
+			Volume:    res.Volume,
+			TPPrice:   res.TakeProfitPrice,
+			SLPrice:   res.StopLossPrice,
 			Source:    "static_limit",
 			Timestamp: time.Now(),
 		})

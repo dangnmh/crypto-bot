@@ -39,6 +39,62 @@ func wsURL(srv *httptest.Server) string {
 	return "ws" + strings.TrimPrefix(srv.URL, "http")
 }
 
+func TestClient_CloseIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	c := ws.NewClient("ws://127.0.0.1:1", slog.Default())
+	c.Close()
+	c.Close()
+}
+
+func TestPool_ReplaysPublicSubscriptionsOnReconnect(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 2)
+	var connections atomic.Int32
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		connections.Add(1)
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		received <- string(data)
+
+		if connections.Load() == 1 {
+			_ = conn.Close()
+			return
+		}
+
+		<-time.After(200 * time.Millisecond)
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool := ws.NewPool(wsURL(srv), 30, slog.Default())
+	defer pool.Close()
+
+	err := pool.SubscribePublic(ctx, "BTC_USDT:ticker", map[string]string{
+		"method": "sub.ticker",
+	})
+	if err != nil {
+		t.Fatalf("subscribe public: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case msg := <-received:
+			if !strings.Contains(msg, "sub.ticker") {
+				t.Fatalf("unexpected message: %s", msg)
+			}
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for replayed subscription")
+		}
+	}
+}
+
 // ── ws.Client Options ───────────────────────────────────────────────────.
 
 func TestWithChannelExtractor(t *testing.T) {
@@ -501,7 +557,7 @@ func TestPool_GetPrivateClient_Nil(t *testing.T) {
 func TestPool_SendPrivate_NoClient(t *testing.T) {
 	t.Parallel()
 	p := ws.NewPool("ws://fake", 30, nil)
-	err := p.SendPrivate(map[string]string{"test": "msg"})
+	err := p.SendPrivate(context.Background(), map[string]string{"test": "msg"})
 	if err != nil {
 		t.Errorf("expected nil when no private client, got %v", err)
 	}
@@ -661,7 +717,7 @@ func TestPool_SendPrivate_WithClient(t *testing.T) {
 	p.Connect(ctx)
 	p.WaitReady(ctx)
 
-	err := p.SendPrivate(map[string]string{"method": "test"})
+	err := p.SendPrivate(context.Background(), map[string]string{"method": "test"})
 	if err != nil {
 		t.Fatalf("SendPrivate failed: %v", err)
 	}

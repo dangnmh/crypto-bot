@@ -15,10 +15,11 @@ import (
 // It is a value object — immutable after construction.
 type CycleRecord struct {
 	// Identity
-	ReqID      string    `json:"req_id"`
-	Symbol     string    `json:"symbol"`
-	SettleTime time.Time `json:"settle_time"`
-	CreatedAt  time.Time `json:"created_at"`
+	SchemaVersion int       `json:"schema_version"`
+	ReqID         string    `json:"req_id"`
+	Symbol        string    `json:"symbol"`
+	SettleTime    time.Time `json:"settle_time"`
+	CreatedAt     time.Time `json:"created_at"`
 
 	// Outcome
 	Outcome     CycleOutcome `json:"outcome"`

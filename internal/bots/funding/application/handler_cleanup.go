@@ -55,7 +55,7 @@ func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan stru
 func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{}) func(string) {
 	return func(reason string) {
 		o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason))
-		o.subs.UnsubscribeAll()
+		o.subs.UnsubscribeAll(ctx)
 
 		// Capture exit data for cycle record.
 		o.recorder.ExitReason = reason

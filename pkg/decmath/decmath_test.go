@@ -6,7 +6,65 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestDecimalConversions(t *testing.T) {
+	t.Parallel()
+
+	got, err := decmath.FromString("0.123456789123456789")
+	require.NoError(t, err)
+
+	assert.Equal(t, "0.123456789123456789", got.String())
+	assert.Equal(t, 0.12345678912345678, decmath.ToFloat(got))
+	assert.Equal(t, "1.23", decmath.MustFromString("1.23").String())
+}
+
+func TestDecimalTickSnapping(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		price     decmath.Decimal
+		tick      decmath.Decimal
+		wantFloor string
+		wantCeil  string
+	}{
+		{
+			name:      "binary float edge as decimal strings",
+			price:     decmath.MustFromString("100.3001"),
+			tick:      decmath.MustFromString("0.05"),
+			wantFloor: "100.3",
+			wantCeil:  "100.35",
+		},
+		{
+			name:      "tiny crypto tick",
+			price:     decmath.MustFromString("0.004701"),
+			tick:      decmath.MustFromString("0.0001"),
+			wantFloor: "0.0047",
+			wantCeil:  "0.0048",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.wantFloor, decmath.SnapDecimalToTickFloor(tt.price, tt.tick).String())
+			assert.Equal(t, tt.wantCeil, decmath.SnapDecimalToTickCeil(tt.price, tt.tick).String())
+		})
+	}
+}
+
+func TestDecimalPercentConversions(t *testing.T) {
+	t.Parallel()
+
+	ratio := decmath.MustFromString("0.005")
+	pct := decmath.RatioToPercent(ratio)
+
+	assert.Equal(t, "0.5", pct.String())
+	assert.Equal(t, ratio.String(), decmath.PercentToRatio(pct).String())
+}
 
 func TestRoundToScale(t *testing.T) {
 	t.Parallel()

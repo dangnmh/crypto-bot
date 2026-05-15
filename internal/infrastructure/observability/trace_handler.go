@@ -3,6 +3,8 @@ package observability
 import (
 	"context"
 	"log/slog"
+
+	pkglogger "crypto-bot/pkg/logger"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -31,7 +33,7 @@ func (h *TraceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Inject req_id (our correlation ID) if present.
-	if reqID := CorrelationID(ctx); reqID != "" {
+	if reqID := pkglogger.CorrelationID(ctx); reqID != "" {
 		r.AddAttrs(slog.String("req_id", reqID))
 	}
 

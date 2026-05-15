@@ -1,6 +1,7 @@
 package application_test
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"testing"
@@ -17,11 +18,11 @@ func TestSubscriptionManager_SubscribeAll_NoDynamic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker("BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", domain.DynamicPricingConfig{Enabled: false}, slog.Default())
 
-	if err := sm.SubscribeAll(); err != nil {
+	if err := sm.SubscribeAll(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -31,9 +32,9 @@ func TestSubscriptionManager_SubscribeAll_WithOBImbalance(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker("BTC_USDT").Return(nil)
-	ws.EXPECT().SubscribeKline("BTC_USDT").Return(nil)
-	ws.EXPECT().SubscribeDepth("BTC_USDT", "step0").Return(nil)
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeKline(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeDepth(gomock.Any(), "BTC_USDT", "step0").Return(nil)
 
 	dynCfg := domain.DynamicPricingConfig{
 		Enabled:      true,
@@ -42,7 +43,7 @@ func TestSubscriptionManager_SubscribeAll_WithOBImbalance(t *testing.T) {
 	}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	if err := sm.SubscribeAll(); err != nil {
+	if err := sm.SubscribeAll(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -52,8 +53,8 @@ func TestSubscriptionManager_SubscribeAll_SpreadMode(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker("BTC_USDT").Return(nil)
-	ws.EXPECT().SubscribeKline("BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeKline(gomock.Any(), "BTC_USDT").Return(nil)
 	// SubscribeDepth should NOT be called — gomock fails on unexpected calls.
 
 	dynCfg := domain.DynamicPricingConfig{
@@ -62,7 +63,7 @@ func TestSubscriptionManager_SubscribeAll_SpreadMode(t *testing.T) {
 	}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	if err := sm.SubscribeAll(); err != nil {
+	if err := sm.SubscribeAll(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -72,11 +73,11 @@ func TestSubscriptionManager_SubscribeAll_TickerError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker("BTC_USDT").Return(errors.New("ws error"))
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(errors.New("ws error"))
 
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", domain.DynamicPricingConfig{}, slog.Default())
 
-	if err := sm.SubscribeAll(); err == nil {
+	if err := sm.SubscribeAll(context.Background()); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -86,13 +87,13 @@ func TestSubscriptionManager_SubscribeAll_KlineError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker("BTC_USDT").Return(nil)
-	ws.EXPECT().SubscribeKline("BTC_USDT").Return(errors.New("kline error"))
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeKline(gomock.Any(), "BTC_USDT").Return(errors.New("kline error"))
 
 	dynCfg := domain.DynamicPricingConfig{Enabled: true}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	if err := sm.SubscribeAll(); err == nil {
+	if err := sm.SubscribeAll(context.Background()); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -102,9 +103,9 @@ func TestSubscriptionManager_SubscribeAll_DepthError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker("BTC_USDT").Return(nil)
-	ws.EXPECT().SubscribeKline("BTC_USDT").Return(nil)
-	ws.EXPECT().SubscribeDepth("BTC_USDT", "step0").Return(errors.New("depth error"))
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeKline(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().SubscribeDepth(gomock.Any(), "BTC_USDT", "step0").Return(errors.New("depth error"))
 
 	dynCfg := domain.DynamicPricingConfig{
 		Enabled:      true,
@@ -113,7 +114,7 @@ func TestSubscriptionManager_SubscribeAll_DepthError(t *testing.T) {
 	}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	if err := sm.SubscribeAll(); err == nil {
+	if err := sm.SubscribeAll(context.Background()); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -123,9 +124,9 @@ func TestSubscriptionManager_UnsubscribeAll(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().UnsubscribeTicker("BTC_USDT").Return(nil)
-	ws.EXPECT().UnsubscribeKline("BTC_USDT").Return(nil)
-	ws.EXPECT().UnsubscribeDepth("BTC_USDT", "step0").Return(nil)
+	ws.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().UnsubscribeKline(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().UnsubscribeDepth(gomock.Any(), "BTC_USDT", "step0").Return(nil)
 
 	dynCfg := domain.DynamicPricingConfig{
 		Enabled:      true,
@@ -134,7 +135,7 @@ func TestSubscriptionManager_UnsubscribeAll(t *testing.T) {
 	}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	sm.UnsubscribeAll()
+	sm.UnsubscribeAll(context.Background())
 	// gomock verifies all expectations at controller cleanup.
 }
 
@@ -143,7 +144,7 @@ func TestSubscriptionManager_UnsubscribeDepthOnly_OBMode(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().UnsubscribeDepth("BTC_USDT", "step0").Return(nil)
+	ws.EXPECT().UnsubscribeDepth(gomock.Any(), "BTC_USDT", "step0").Return(nil)
 
 	dynCfg := domain.DynamicPricingConfig{
 		Enabled:      true,
@@ -152,7 +153,7 @@ func TestSubscriptionManager_UnsubscribeDepthOnly_OBMode(t *testing.T) {
 	}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	sm.UnsubscribeDepthOnly()
+	sm.UnsubscribeDepthOnly(context.Background())
 }
 
 func TestSubscriptionManager_UnsubscribeDepthOnly_SpreadMode_NoCall(t *testing.T) {
@@ -168,5 +169,5 @@ func TestSubscriptionManager_UnsubscribeDepthOnly_SpreadMode_NoCall(t *testing.T
 	}
 	sm := application.NewSubscriptionManager(ws, "BTC_USDT", dynCfg, slog.Default())
 
-	sm.UnsubscribeDepthOnly()
+	sm.UnsubscribeDepthOnly(context.Background())
 }
