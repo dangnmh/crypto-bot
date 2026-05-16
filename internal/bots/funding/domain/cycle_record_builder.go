@@ -10,7 +10,7 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-const cycleRecordSchemaVersion = 1
+const cycleRecordSchemaVersion = 2
 const (
 	cycleRecordFlowReversion = "reversion"
 	cycleRecordFlowTrap      = "trap"
@@ -35,7 +35,10 @@ type CycleRecordBuilder struct {
 	SafetyPassed           bool
 	SafetyRejectReason     string
 	AbortReason            string
-	AbortPhase             Phase
+	AbortFlow              string
+	AbortTopic             string
+	ErrorFlow              string
+	ErrorTopic             string
 	ImbalanceFilterEnabled bool
 	ImbalanceFilterPassed  bool
 	ImbalanceRatio         float64
@@ -75,6 +78,8 @@ type CycleRecordBuilder struct {
 	// Exit
 	ExitReason string
 	ExitTime   time.Time
+	Timeout    TimeoutSnapshot
+	Cleanup    CleanupSnapshot
 
 	// Trailing
 	TrailingActivated   bool
@@ -113,7 +118,7 @@ func (b *CycleRecordBuilder) Mutate(fn func(*CycleRecordBuilder)) {
 	fn(b)
 }
 
-// AddSnapshot captures market state at a specific phase in a thread-safe manner.
+// AddSnapshot captures market state around a specific event in a thread-safe manner.
 func (b *CycleRecordBuilder) AddSnapshot(snap MarketSnapshot) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -193,7 +198,10 @@ func (b *CycleRecordBuilder) Build(
 		Flows:         b.flows(),
 		Outcome:       outcome,
 		AbortReason:   b.AbortReason,
-		AbortPhase:    b.AbortPhase,
+		AbortFlow:     b.AbortFlow,
+		AbortTopic:    b.AbortTopic,
+		ErrorFlow:     b.ErrorFlow,
+		ErrorTopic:    b.ErrorTopic,
 		Decision: DecisionSnapshot{
 			FRAtScan:               b.FRAtScan,
 			FRAtRecheck:            b.FRAtRecheck,
@@ -256,6 +264,8 @@ func (b *CycleRecordBuilder) Build(
 			StaticSLPct:           ratioToPercent(b.StaticSLPct),
 			ATRValue:              b.ATRValue,
 		},
+		Timeout:       b.timeoutSnapshot(),
+		Cleanup:       b.Cleanup,
 		Excursion:     iocExcursion,
 		IOCExcursion:  iocExcursion,
 		TrapExcursion: trapExcursion,
@@ -264,6 +274,15 @@ func (b *CycleRecordBuilder) Build(
 	}
 
 	return rec
+}
+
+func (b *CycleRecordBuilder) timeoutSnapshot() TimeoutSnapshot {
+	timeout := b.Timeout
+	if timeout.DurationMs == 0 && timeout.Duration > 0 {
+		timeout.DurationMs = timeout.Duration.Milliseconds()
+	}
+	timeout.Duration = 0
+	return timeout
 }
 
 func (b *CycleRecordBuilder) flows() []string {

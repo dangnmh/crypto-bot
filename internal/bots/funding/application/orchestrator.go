@@ -44,8 +44,8 @@ type Deps struct {
 }
 
 // CycleOrchestrator manages one funding reversion cycle using Watermill
-// event-driven architecture. Each phase is a handler that subscribes to
-// an upstream event and publishes a downstream event, forming a chain.
+// event-driven architecture. Each handler subscribes to an upstream event
+// topic and publishes a downstream event, forming a chain.
 type CycleOrchestrator struct {
 	cfg    config.SymbolConfig
 	global *config.Config
@@ -173,19 +173,22 @@ func (o *CycleOrchestrator) publishOrLog(topic string, payload any) {
 	}
 }
 
-func (o *CycleOrchestrator) abort(phase domain.Phase, reason string) {
-	if phase == domain.PhaseScan {
+func (o *CycleOrchestrator) abort(source, reason string) {
+	if source == "scan" {
 		o.publishOrLog(events.TopicScanAbort, events.CycleAbortEvent{
 			Symbol: o.cfg.Symbol,
 			Reason: reason,
-			Phase:  phase,
 		})
 	}
+	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+		b.AbortReason = reason
+		b.AbortFlow = events.FlowReversion
+		b.AbortTopic = events.TopicReversionAbort
+	})
 	o.publishOrLog(events.TopicReversionAbort, events.CycleAbortEvent{
 		Flow:   events.FlowReversion,
 		Symbol: o.cfg.Symbol,
 		Reason: reason,
-		Phase:  phase,
 	})
 }
 

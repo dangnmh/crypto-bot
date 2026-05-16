@@ -26,7 +26,7 @@ func (o *CycleOrchestrator) watchIOCFills(ctx context.Context) {
 			o.deps.Log.Error("🔴 Unmarshal IOCFiredEvent failed", slog.Any("error", err))
 			return
 		}
-		o.setupFillWatcher(ctx, evt.OrderID, evt.Side, evt.CloseSide, domain.PhaseIOC)
+		o.setupFillWatcher(ctx, events.FlowReversion, evt.OrderID, evt.Side, evt.CloseSide)
 	})
 }
 
@@ -37,11 +37,11 @@ func (o *CycleOrchestrator) watchTrapFills(ctx context.Context) {
 			o.deps.Log.Error("🔴 Unmarshal TrapFiredEvent failed", slog.Any("error", err))
 			return
 		}
-		o.setupFillWatcher(ctx, evt.OrderID, evt.Side, evt.CloseSide, domain.PhaseTrap)
+		o.setupFillWatcher(ctx, events.FlowTrap, evt.OrderID, evt.Side, evt.CloseSide)
 	})
 }
 
-func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string, side, closeSide shared.Side, phase domain.Phase) {
+func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, flow, orderID string, side, closeSide shared.Side) {
 	if orderID == "" {
 		return
 	}
@@ -54,19 +54,19 @@ func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string
 		o.deps.OrderNotifier.RemoveOrderCallback(deal.GetOrderID())
 
 		if deal.DealVol <= 0 {
-			o.deps.Log.Warn("🟡 No fill", slog.Any("phase", phase), slog.String("orderID", deal.GetOrderID()))
+			o.deps.Log.Warn("🟡 No fill", slog.String("flow", flow), slog.String("orderID", deal.GetOrderID()))
 			return
 		}
 
 		o.deps.Log.Info("📊 Position opened",
-			slog.Any("phase", phase),
+			slog.String("flow", flow),
 			slog.Float64("entry", deal.DealAvgPrice),
 			slog.Float64("vol", deal.DealVol),
 		)
 
 		// Capture fill data for cycle record.
 		o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
-			if phase == domain.PhaseIOC {
+			if flow == events.FlowReversion {
 				b.IOCFilled = true
 				b.IOCFillPrice = deal.DealAvgPrice
 				b.IOCFillVol = deal.DealVol
@@ -83,17 +83,14 @@ func (o *CycleOrchestrator) setupFillWatcher(ctx context.Context, orderID string
 		o.startExcursionPriceStream(ctx)
 
 		topic := events.TopicReversionOrderFilled
-		flow := events.FlowReversion
-		if phase == domain.PhaseTrap {
+		if flow == events.FlowTrap {
 			topic = events.TopicTrapOrderFilled
-			flow = events.FlowTrap
 		}
 
 		o.publishOrLog(topic, events.OrderFilledEvent{
 			Flow:         flow,
 			Symbol:       o.cfg.Symbol,
 			OrderID:      deal.GetOrderID(),
-			Phase:        phase,
 			DealAvgPrice: deal.DealAvgPrice,
 			DealVol:      deal.DealVol,
 			Side:         side,

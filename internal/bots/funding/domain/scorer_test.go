@@ -87,10 +87,9 @@ func TestScoreAndRank(t *testing.T) {
 		t.Errorf("expected rank 3 to be COIN_B, got %s", ranked[2].Symbol)
 	}
 
-	// Ensure all passed candidates are marked as ARMED
 	for _, c := range ranked {
-		if c.Phase != "ARMED" {
-			t.Errorf("expected candidate %s to be ARMED, got %s", c.Symbol, c.Phase)
+		if c.CoinScore <= 0 {
+			t.Errorf("expected candidate %s to keep positive score", c.Symbol)
 		}
 	}
 }

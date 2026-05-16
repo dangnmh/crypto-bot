@@ -26,7 +26,7 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 			slog.Int64("latency_rtt", latencyMs),
 			slog.Duration("max_latency", maxLatency),
 		)
-		o.abort(domain.PhaseFire, "latency too high")
+		o.abort("fire_ioc", "latency too high")
 		return
 	}
 
@@ -75,7 +75,7 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 	if err == nil {
 		spread := calcSpreadPct(pd.BestBid, pd.BestAsk)
 		o.recorder.AddSnapshot(domain.MarketSnapshot{
-			Phase:     domain.PhaseFire,
+			Topic:     events.TopicReversionConfirmed,
 			LastPrice: pd.LastPrice,
 			BestBid:   pd.BestBid,
 			BestAsk:   pd.BestAsk,
@@ -94,7 +94,7 @@ func (o *CycleOrchestrator) handleFireIOC(ctx context.Context, settle time.Time)
 		o.deps.Log.Warn("🔴 Cycle risk blocked IOC", slog.Any("error", err))
 		o.recorder.SafetyPassed = false
 		o.recorder.SafetyRejectReason = err.Error()
-		o.abort(domain.PhaseFire, err.Error())
+		o.abort("fire_ioc", err.Error())
 		return
 	}
 

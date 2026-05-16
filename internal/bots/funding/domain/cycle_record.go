@@ -25,7 +25,10 @@ type CycleRecord struct {
 	// Outcome
 	Outcome     CycleOutcome `json:"outcome"`
 	AbortReason string       `json:"abort_reason,omitempty"`
-	AbortPhase  Phase        `json:"abort_phase,omitempty"`
+	AbortFlow   string       `json:"abort_flow,omitempty"`
+	AbortTopic  string       `json:"abort_topic,omitempty"`
+	ErrorFlow   string       `json:"error_flow,omitempty"`
+	ErrorTopic  string       `json:"error_topic,omitempty"`
 
 	// Decision
 	Decision DecisionSnapshot `json:"decision"`
@@ -35,7 +38,9 @@ type CycleRecord struct {
 	Trap TrapSnapshot `json:"trap"`
 
 	// Exit
-	Exit ExitSnapshot `json:"exit"`
+	Exit    ExitSnapshot    `json:"exit"`
+	Timeout TimeoutSnapshot `json:"timeout,omitempty"`
+	Cleanup CleanupSnapshot `json:"cleanup,omitempty"`
 
 	// MFE/MAE (Maximum Favorable / Adverse Excursion)
 	Excursion     ExcursionSnapshot `json:"excursion,omitempty"` // legacy alias for ioc_excursion
@@ -65,7 +70,7 @@ const (
 )
 
 // ──────────────────────────────────────────────────────────────────────
-// Snapshot sub-types — one per cycle phase.
+// Snapshot sub-types — one per event lifecycle concern.
 // ──────────────────────────────────────────────────────────────────────.
 
 // DecisionSnapshot captures why we entered (or didn't enter) a trade.
@@ -140,6 +145,30 @@ type ExitSnapshot struct {
 	ATRValue              float64 `json:"atr_value,omitempty"`
 }
 
+// TimeoutSnapshot captures timeout guard behavior for any flow.
+type TimeoutSnapshot struct {
+	Flow                string        `json:"flow,omitempty"`
+	Triggered           bool          `json:"triggered,omitempty"`
+	DurationMs          int64         `json:"duration_ms,omitempty"`
+	StartedAt           time.Time     `json:"started_at,omitempty"`
+	FiredAt             time.Time     `json:"fired_at,omitempty"`
+	ForceCloseAttempted bool          `json:"force_close_attempted,omitempty"`
+	ForceCloseSucceeded bool          `json:"force_close_succeeded,omitempty"`
+	Error               string        `json:"error,omitempty"`
+	Duration            time.Duration `json:"-"`
+}
+
+// CleanupSnapshot captures the terminal event that ended a cycle.
+type CleanupSnapshot struct {
+	TerminalFlow       string    `json:"terminal_flow,omitempty"`
+	TerminalTopic      string    `json:"terminal_topic,omitempty"`
+	Reason             string    `json:"reason,omitempty"`
+	StartedAt          time.Time `json:"started_at,omitempty"`
+	CompletedAt        time.Time `json:"completed_at,omitempty"`
+	Unsubscribed       bool      `json:"unsubscribed,omitempty"`
+	ExcursionFinalized bool      `json:"excursion_finalized,omitempty"`
+}
+
 // ExcursionSnapshot captures MFE/MAE price tracking data.
 // This is the single most valuable data for tuning TP/SL parameters.
 type ExcursionSnapshot struct {
@@ -172,9 +201,9 @@ type TimelineEntry struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-// MarketSnapshot captures market state at a specific phase.
+// MarketSnapshot captures market state around a specific event topic.
 type MarketSnapshot struct {
-	Phase     Phase   `json:"phase"` // "scan", "arm", "fire"
+	Topic     string  `json:"topic"`
 	LastPrice float64 `json:"last_price"`
 	BestBid   float64 `json:"best_bid"`
 	BestAsk   float64 `json:"best_ask"`

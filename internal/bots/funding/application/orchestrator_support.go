@@ -74,7 +74,6 @@ func (o *CycleOrchestrator) buildCandidate(td *store.TickerData) domain.Candidat
 			Volume24:  td.Volume24,
 			Amount24:  td.Amount24,
 		},
-		Phase: domain.PhaseScanning,
 	}
 }
 

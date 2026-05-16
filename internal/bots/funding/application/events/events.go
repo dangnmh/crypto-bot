@@ -1,7 +1,7 @@
 // Package events defines all event types and topic constants for the
 // Funding Reversion bot's event-driven cycle orchestration.
 //
-// Each topic represents a discrete phase transition or significant occurrence
+// Each topic represents a discrete event transition or significant occurrence
 // within a trading cycle. Handlers subscribe to topics and publish downstream
 // events, forming an event chain that replaces the former FSM.
 package events
@@ -9,7 +9,6 @@ package events
 import (
 	"time"
 
-	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 )
 
@@ -126,24 +125,22 @@ type TrapFiredEvent struct {
 
 // OrderFilledEvent is published when an order (IOC or Trap) is filled.
 type OrderFilledEvent struct {
-	Flow         string       `json:"flow"`
-	Symbol       string       `json:"symbol"`
-	OrderID      string       `json:"order_id"`
-	Phase        domain.Phase `json:"phase"` // "ioc" or "trap"
-	DealAvgPrice float64      `json:"deal_avg_price"`
-	DealVol      float64      `json:"deal_vol"`
-	Side         shared.Side  `json:"side"`
-	CloseSide    shared.Side  `json:"close_side"`
+	Flow         string      `json:"flow"`
+	Symbol       string      `json:"symbol"`
+	OrderID      string      `json:"order_id"`
+	DealAvgPrice float64     `json:"deal_avg_price"`
+	DealVol      float64     `json:"deal_vol"`
+	Side         shared.Side `json:"side"`
+	CloseSide    shared.Side `json:"close_side"`
 }
 
 // TrailingPlacedEvent is published after a trailing stop order is placed on MEXC.
 type TrailingPlacedEvent struct {
-	Flow        string       `json:"flow"`
-	Symbol      string       `json:"symbol"`
-	TrackID     string       `json:"track_id"`
-	ActivePrice float64      `json:"active_price"`
-	CallbackPct float64      `json:"callback_pct"`
-	Phase       domain.Phase `json:"phase"` // "ioc" or "trap"
+	Flow        string  `json:"flow"`
+	Symbol      string  `json:"symbol"`
+	TrackID     string  `json:"track_id"`
+	ActivePrice float64 `json:"active_price"`
+	CallbackPct float64 `json:"callback_pct"`
 }
 
 // OBWallFoundEvent is published when the post-settle OB monitor detects a wall.
@@ -180,16 +177,14 @@ type CycleDoneEvent struct {
 
 // CycleAbortEvent signals cycle was aborted (e.g., FR too low, safety check failed).
 type CycleAbortEvent struct {
-	Flow   string       `json:"flow,omitempty"`
-	Symbol string       `json:"symbol"`
-	Reason string       `json:"reason"`
-	Phase  domain.Phase `json:"phase"` // which phase triggered the abort
+	Flow   string `json:"flow,omitempty"`
+	Symbol string `json:"symbol"`
+	Reason string `json:"reason"`
 }
 
 // CycleErrorEvent signals an unexpected error during the cycle.
 type CycleErrorEvent struct {
-	Flow   string       `json:"flow"`
-	Symbol string       `json:"symbol"`
-	Error  string       `json:"error"`
-	Phase  domain.Phase `json:"phase"`
+	Flow   string `json:"flow"`
+	Symbol string `json:"symbol"`
+	Error  string `json:"error"`
 }

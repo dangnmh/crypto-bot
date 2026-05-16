@@ -69,6 +69,38 @@ func hasTimelineTopic(record domain.CycleRecord, topic string) bool {
 	return false
 }
 
+func assertAbortContext(t *testing.T, record domain.CycleRecord, flow, topic string) {
+	t.Helper()
+	if record.AbortFlow != flow || record.AbortTopic != topic {
+		t.Fatalf("expected abort flow=%q topic=%q, got flow=%q topic=%q", flow, topic, record.AbortFlow, record.AbortTopic)
+	}
+}
+
+func assertErrorContext(t *testing.T, record domain.CycleRecord, flow, topic string) {
+	t.Helper()
+	if record.ErrorFlow != flow || record.ErrorTopic != topic {
+		t.Fatalf("expected error flow=%q topic=%q, got flow=%q topic=%q", flow, topic, record.ErrorFlow, record.ErrorTopic)
+	}
+}
+
+func assertTimelineHasTopics(t *testing.T, record domain.CycleRecord, topics ...string) {
+	t.Helper()
+	for _, topic := range topics {
+		if !hasTimelineTopic(record, topic) {
+			t.Fatalf("expected timeline topic %q", topic)
+		}
+	}
+}
+
+func assertTimelineMissingTopics(t *testing.T, record domain.CycleRecord, topics ...string) {
+	t.Helper()
+	for _, topic := range topics {
+		if hasTimelineTopic(record, topic) {
+			t.Fatalf("unexpected timeline topic %q", topic)
+		}
+	}
+}
+
 func setupOrchestrator(t *testing.T, ctrl *gomock.Controller) (*application.CycleOrchestrator, orchestratorMocks) {
 	cfg := config.SymbolConfig{
 		Symbol:         "BTC_USDT",
@@ -92,6 +124,9 @@ func setupOrchestratorWithConfig(
 	ctrl *gomock.Controller,
 	cfg config.SymbolConfig,
 ) (*application.CycleOrchestrator, orchestratorMocks) {
+	if !cfg.FundingReversion.Enabled {
+		cfg.FundingReversion.Enabled = true
+	}
 	m := orchestratorMocks{
 		tickerStore:   mocks.NewMockTickerReader(ctrl),
 		contractStore: mocks.NewMockContractReader(ctrl),
@@ -211,7 +246,7 @@ func TestCycleOrchestrator_RecheckSignFlip(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	o, m := setupOrchestrator(t, ctrl)
 
-	// Scan Phase
+	// Scan event
 	m.tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.005,
@@ -227,16 +262,16 @@ func TestCycleOrchestrator_RecheckSignFlip(t *testing.T) {
 		TakerFeeRate: 0.0006,
 	}, nil).AnyTimes()
 
-	// Arm Phase
+	// Arm event
 	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
 	}, nil).AnyTimes()
 
-	// Wait Phase
+	// Wait event
 	m.clock.EXPECT().Until(gomock.Any()).Return(time.Duration(0)).AnyTimes()
 
-	// Recheck Phase -> Sign flipped from +0.005 to -0.001
+	// Recheck event -> Sign flipped from +0.005 to -0.001
 	m.tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
 		Symbol:      "BTC_USDT",
 		FundingRate: -0.001,
@@ -535,27 +570,10 @@ func TestCycleOrchestrator_CriticalCloseFailureAfterTrailingRejection(t *testing
 	if !strings.Contains(record.AbortReason, "critical_close_failed") {
 		t.Fatalf("expected critical close abort reason, got %q", record.AbortReason)
 	}
-	if record.AbortPhase != domain.PhaseTrailing {
-		t.Fatalf("expected trailing abort phase, got %s", record.AbortPhase)
-	}
-
-	var sawAbort, sawError, sawClosed bool
-	for _, entry := range record.Timeline {
-		switch entry.Topic {
-		case events.TopicReversionAbort:
-			sawAbort = true
-		case events.TopicReversionError:
-			sawError = true
-		case events.TopicReversionPositionClosed:
-			sawClosed = true
-		}
-	}
-	if !sawAbort || !sawError {
-		t.Fatalf("expected critical abort and error events, saw abort=%t error=%t", sawAbort, sawError)
-	}
-	if sawClosed {
-		t.Fatal("must not publish position_closed when fallback close fails")
-	}
+	assertAbortContext(t, record, events.FlowReversion, events.TopicReversionAbort)
+	assertErrorContext(t, record, events.FlowReversion, events.TopicReversionError)
+	assertTimelineHasTopics(t, record, events.TopicReversionAbort, events.TopicReversionError)
+	assertTimelineMissingTopics(t, record, events.TopicReversionPositionClosed)
 }
 
 func TestCycleOrchestrator_TrapTrailingCloseFailureUsesTrapAbortTopic(t *testing.T) {
@@ -799,24 +817,16 @@ func TestCycleOrchestrator_CriticalCloseFailureAfterTimeout(t *testing.T) {
 	if !strings.Contains(record.AbortReason, "critical_timeout_close_failed") {
 		t.Fatalf("expected critical timeout close abort reason, got %q", record.AbortReason)
 	}
-
-	var sawAbort, sawError, sawTimeout bool
-	for _, entry := range record.Timeline {
-		switch entry.Topic {
-		case events.TopicReversionAbort:
-			sawAbort = true
-		case events.TopicReversionError:
-			sawError = true
-		case events.TopicReversionTimeout:
-			sawTimeout = true
-		}
+	assertAbortContext(t, record, events.FlowReversion, events.TopicReversionAbort)
+	assertErrorContext(t, record, events.FlowReversion, events.TopicReversionError)
+	if record.Timeout.Flow != events.FlowReversion || !record.Timeout.Triggered {
+		t.Fatalf("expected triggered reversion timeout snapshot, got %+v", record.Timeout)
 	}
-	if !sawAbort || !sawError {
-		t.Fatalf("expected critical abort and error events, saw abort=%t error=%t", sawAbort, sawError)
+	if !record.Timeout.ForceCloseAttempted || record.Timeout.ForceCloseSucceeded {
+		t.Fatalf("expected failed timeout force-close snapshot, got %+v", record.Timeout)
 	}
-	if sawTimeout {
-		t.Fatal("must not publish timeout when force close fails")
-	}
+	assertTimelineHasTopics(t, record, events.TopicReversionAbort, events.TopicReversionError)
+	assertTimelineMissingTopics(t, record, events.TopicReversionTimeout)
 }
 
 func TestCycleOrchestrator_CancelsUnfilledTrapOrderAfterTimeout(t *testing.T) {
@@ -906,6 +916,12 @@ func TestCycleOrchestrator_CancelsUnfilledTrapOrderAfterTimeout(t *testing.T) {
 	if record.Trap.Filled {
 		t.Fatal("trap should remain unfilled")
 	}
+	if record.Timeout.Flow != events.FlowTrap || !record.Timeout.Triggered {
+		t.Fatalf("expected triggered trap timeout snapshot, got %+v", record.Timeout)
+	}
+	if record.Cleanup.TerminalTopic != events.TopicTrapTimeout || record.Cleanup.TerminalFlow != events.FlowTrap {
+		t.Fatalf("expected trap timeout cleanup, got %+v", record.Cleanup)
+	}
 }
 
 func TestCycleOrchestrator_TrapCancelFailureUsesTrapAbortTopic(t *testing.T) {
@@ -989,12 +1005,13 @@ func TestCycleOrchestrator_TrapCancelFailureUsesTrapAbortTopic(t *testing.T) {
 	if !strings.Contains(record.AbortReason, "critical_trap_cancel_failed") {
 		t.Fatalf("expected critical trap cancel abort reason, got %q", record.AbortReason)
 	}
-	if !hasTimelineTopic(record, events.TopicTrapAbort) || !hasTimelineTopic(record, events.TopicTrapError) {
-		t.Fatal("expected trap abort and trap error topics")
+	assertAbortContext(t, record, events.FlowTrap, events.TopicTrapAbort)
+	assertErrorContext(t, record, events.FlowTrap, events.TopicTrapError)
+	if record.Timeout.Flow != events.FlowTrap || !record.Timeout.Triggered || record.Timeout.Error == "" {
+		t.Fatalf("expected failed trap timeout snapshot, got %+v", record.Timeout)
 	}
-	if hasTimelineTopic(record, events.TopicReversionAbort) {
-		t.Fatal("trap cancel failure must not publish reversion abort")
-	}
+	assertTimelineHasTopics(t, record, events.TopicTrapAbort, events.TopicTrapError)
+	assertTimelineMissingTopics(t, record, events.TopicReversionAbort)
 }
 
 func TestCycleOrchestrator_OBTrapPath(t *testing.T) {
@@ -1106,8 +1123,8 @@ func TestCycleOrchestrator_EventDrivenExcursionAndFlowTopics(t *testing.T) {
 	if !ok {
 		t.Fatal("expected cycle record")
 	}
-	if record.SchemaVersion != 1 {
-		t.Fatalf("schema_version = %d, want 1", record.SchemaVersion)
+	if record.SchemaVersion != 2 {
+		t.Fatalf("schema_version = %d, want 2", record.SchemaVersion)
 	}
 	if record.IOC.Flow != events.FlowReversion {
 		t.Fatalf("ioc flow = %q, want %q", record.IOC.Flow, events.FlowReversion)

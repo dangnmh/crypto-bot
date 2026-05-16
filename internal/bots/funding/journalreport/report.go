@@ -29,7 +29,8 @@ type Report struct {
 	Symbol          string         `json:"symbol,omitempty"`
 	Cycles          int            `json:"cycles"`
 	Outcomes        map[string]int `json:"outcomes"`
-	AbortPhases     map[string]int `json:"abort_phases,omitempty"`
+	AbortTopics     map[string]int `json:"abort_topics,omitempty"`
+	ErrorTopics     map[string]int `json:"error_topics,omitempty"`
 	AbortReasons    map[string]int `json:"abort_reasons,omitempty"`
 	IOC             IOCMetrics     `json:"ioc"`
 	Trap            TrapMetrics    `json:"trap"`
@@ -117,7 +118,8 @@ func Build(date time.Time, symbol string, records []domain.CycleRecord) Report {
 		Date:         date.Format("2006-01-02"),
 		Symbol:       symbol,
 		Outcomes:     make(map[string]int),
-		AbortPhases:  make(map[string]int),
+		AbortTopics:  make(map[string]int),
+		ErrorTopics:  make(map[string]int),
 		AbortReasons: make(map[string]int),
 		Trap: TrapMetrics{
 			BySource: make(map[string]int),
@@ -150,8 +152,11 @@ func Build(date time.Time, symbol string, records []domain.CycleRecord) Report {
 
 func (r *Report) addOutcome(rec *domain.CycleRecord) {
 	r.Outcomes[string(rec.Outcome)]++
-	if rec.AbortPhase != "" {
-		r.AbortPhases[string(rec.AbortPhase)]++
+	if rec.AbortTopic != "" {
+		r.AbortTopics[rec.AbortTopic]++
+	}
+	if rec.ErrorTopic != "" {
+		r.ErrorTopics[rec.ErrorTopic]++
 	}
 	if rec.AbortReason != "" {
 		r.AbortReasons[rec.AbortReason]++

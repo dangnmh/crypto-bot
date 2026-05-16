@@ -41,11 +41,5 @@ func ScoreAndRank(candidates []Candidate) []Candidate {
 		return passed[i].CoinScore > passed[j].CoinScore
 	})
 
-	// Return all passed candidates
-	// Mark selected coins as ARMED
-	for i := range passed {
-		passed[i].Phase = PhaseArmed
-	}
-
 	return passed
 }

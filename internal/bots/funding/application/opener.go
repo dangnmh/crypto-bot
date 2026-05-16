@@ -33,7 +33,6 @@ func (r *OrderResult) IsSuccess() bool {
 
 // FireIOC sends a single IOC order for capturing the peak.
 func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger, ob *shared.OrderBook) OrderResult {
-	candidate.Phase = domain.PhaseFiredIOC
 	extOID := fmt.Sprintf("ioc_%s_%d", candidate.Symbol, time.Now().UnixMilli())
 
 	iocPrice, err := candidate.CalculateIOCPrice(ob)
@@ -131,7 +130,6 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 
 // FireLimitTrap sends a Maker POST-ONLY order to catch the dump.
 func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
-	candidate.Phase = domain.PhaseFiredTrap
 	extOID := fmt.Sprintf("trp_%s_%d", candidate.Symbol, time.Now().UnixMilli())
 
 	// Calculate Trap price cleanly with proper exchange tick/scale snapping.

@@ -42,14 +42,14 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 	})
 
 	var trailCfg domain.TrailingConfig
-	if evt.Phase == domain.PhaseTrap {
+	if evt.Flow == events.FlowTrap {
 		trailCfg = c.Config.FundingTrap.Trailing
 	} else {
 		trailCfg = c.Config.FundingReversion.Trailing
 	}
 
 	if !trailCfg.Enabled {
-		o.deps.Log.Info("⏭️ Trailing disabled, position requires manual close", slog.Any("phase", evt.Phase))
+		o.deps.Log.Info("⏭️ Trailing disabled, position requires manual close", slog.String("flow", evt.Flow))
 		return
 	}
 
@@ -78,7 +78,7 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 	}
 
 	o.deps.Log.Info("🏃 Placing TrackOrder (Trailing)",
-		slog.Any("phase", evt.Phase),
+		slog.String("flow", evt.Flow),
 		slog.Int("side", req.Side),
 		slog.Float64("vol", req.Vol),
 		slog.Float64("activePrice", activePrice),
@@ -90,12 +90,12 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 
 	trackID, err := o.deps.Client.CreateTrackOrder(reqCtx, req)
 	if err != nil {
-		o.deps.Log.Error("🔴 TrackOrder failed - fallback close", slog.Any("error", err), slog.Any("phase", evt.Phase))
+		o.deps.Log.Error("🔴 TrackOrder failed - fallback close", slog.Any("error", err), slog.String("flow", evt.Flow))
 		o.fallbackCloseAfterTrailingFailure(ctx, evt)
 		return
 	}
 
-	o.deps.Log.Info("✅ TrackOrder placed successfully", slog.String("trackID", trackID), slog.Any("phase", evt.Phase))
+	o.deps.Log.Info("✅ TrackOrder placed successfully", slog.String("trackID", trackID), slog.String("flow", evt.Flow))
 
 	// Capture trailing data for cycle record thread-safely.
 	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
@@ -106,7 +106,7 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 
 	topic := events.TopicReversionTrailingPlaced
 	flow := events.FlowReversion
-	if evt.Phase == domain.PhaseTrap {
+	if evt.Flow == events.FlowTrap {
 		topic = events.TopicTrapTrailingPlaced
 		flow = events.FlowTrap
 	}
@@ -116,7 +116,6 @@ func (o *CycleOrchestrator) handleTrailing(ctx context.Context, evt events.Order
 		TrackID:     trackID,
 		ActivePrice: activePrice,
 		CallbackPct: trailCfg.CallbackPct,
-		Phase:       evt.Phase,
 	})
 }
 
@@ -125,7 +124,7 @@ func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Contex
 	closeTopic := events.TopicReversionPositionClosed
 	errorTopic := events.TopicReversionError
 	abortTopic := events.TopicReversionAbort
-	if evt.Phase == domain.PhaseTrap {
+	if evt.Flow == events.FlowTrap {
 		flow = events.FlowTrap
 		closeTopic = events.TopicTrapPositionClosed
 		errorTopic = events.TopicTrapError
@@ -144,7 +143,6 @@ func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Contex
 			slog.Any("error", err),
 			slog.String("symbol", evt.Symbol),
 			slog.String("flow", flow),
-			slog.Any("phase", evt.Phase),
 			slog.Any("closeSide", evt.CloseSide),
 			slog.Float64("vol", evt.DealVol),
 		)
@@ -152,25 +150,25 @@ func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Contex
 			reason := "critical_close_failed: " + allErr.Error()
 			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
 				b.AbortReason = reason
-				b.AbortPhase = domain.PhaseTrailing
+				b.AbortFlow = flow
+				b.AbortTopic = abortTopic
+				b.ErrorFlow = flow
+				b.ErrorTopic = errorTopic
 			})
 			o.deps.Log.Error("🔴 CRITICAL close failed after exact-leg close failure",
 				slog.Any("error", allErr),
 				slog.String("symbol", evt.Symbol),
 				slog.String("flow", flow),
-				slog.Any("phase", evt.Phase),
 			)
 			o.publishOrLog(errorTopic, events.CycleErrorEvent{
 				Flow:   flow,
 				Symbol: evt.Symbol,
 				Error:  reason,
-				Phase:  domain.PhaseTrailing,
 			})
 			o.publishOrLog(abortTopic, events.CycleAbortEvent{
 				Flow:   flow,
 				Symbol: evt.Symbol,
 				Reason: reason,
-				Phase:  domain.PhaseTrailing,
 			})
 			return
 		}

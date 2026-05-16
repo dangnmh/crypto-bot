@@ -47,7 +47,7 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 	o.recorder.Side = o.candidate.Side
 	spread := calcSpreadPct(o.candidate.BestBid, o.candidate.BestAsk)
 	o.recorder.AddSnapshot(domain.MarketSnapshot{
-		Phase:     domain.PhaseScan,
+		Topic:     events.TopicScanCandidateFound,
 		LastPrice: o.candidate.LastPrice,
 		BestBid:   o.candidate.BestBid,
 		BestAsk:   o.candidate.BestAsk,
@@ -68,9 +68,12 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 	}
 	o.publishOrLog(events.TopicScanCandidateFound, scanEvent)
 
-	reversionEvent := scanEvent
-	reversionEvent.Flow = events.FlowReversion
-	o.publishOrLog(events.TopicReversionCandidate, reversionEvent)
+	if o.cfg.FundingReversion.Enabled {
+		reversionEvent := scanEvent
+		reversionEvent.Flow = events.FlowReversion
+		o.publishOrLog(events.TopicReversionCandidate, reversionEvent)
+	}
+
 	if o.cfg.IsHedgeTrapEnabled() {
 		trapEvent := scanEvent
 		trapEvent.Flow = events.FlowTrap
@@ -197,7 +200,7 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 	if err == nil {
 		spread := calcSpreadPct(pd.BestBid, pd.BestAsk)
 		o.recorder.AddSnapshot(domain.MarketSnapshot{
-			Phase:     domain.PhaseArm,
+			Topic:     events.TopicReversionArmed,
 			LastPrice: pd.LastPrice,
 			BestBid:   pd.BestBid,
 			BestAsk:   pd.BestAsk,

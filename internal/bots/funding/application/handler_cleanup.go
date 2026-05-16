@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/events"
+	"crypto-bot/internal/bots/funding/domain"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -31,28 +32,39 @@ func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan stru
 	for _, topic := range closedTopics {
 		o.watchTerminalEvent(ctx, topic, func(msg *message.Message) {
 			evt, parseErr := unmarshal[events.PositionClosedEvent](msg.Payload)
+			flow := terminalFlow(topic)
 			if parseErr == nil {
-				cleanup(evt.Reason)
+				flow = evt.Flow
+				cleanup(topic, flow, evt.Reason)
 			} else {
-				cleanup("position_closed")
+				cleanup(topic, flow, "position_closed")
 			}
 		})
 	}
 
 	for _, topic := range timeoutTopics {
-		o.watchTerminalEvent(ctx, topic, func(_ *message.Message) {
-			cleanup("timeout")
+		o.watchTerminalEvent(ctx, topic, func(msg *message.Message) {
+			flow := terminalFlow(topic)
+			if evt, parseErr := unmarshal[events.CycleTimeoutEvent](msg.Payload); parseErr == nil {
+				flow = evt.Flow
+			}
+			cleanup(topic, flow, "timeout")
 		})
 	}
 
 	for _, topic := range abortTopics {
 		o.watchTerminalEvent(ctx, topic, func(msg *message.Message) {
 			evt, parseErr := unmarshal[events.CycleAbortEvent](msg.Payload)
+			flow := terminalFlow(topic)
 			if parseErr == nil {
-				o.recorder.AbortReason = evt.Reason
-				o.recorder.AbortPhase = evt.Phase
+				flow = evt.Flow
+				o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+					b.AbortReason = evt.Reason
+					b.AbortFlow = flow
+					b.AbortTopic = topic
+				})
 			}
-			cleanup("abort")
+			cleanup(topic, flow, "abort")
 		})
 	}
 }
@@ -71,27 +83,45 @@ func (o *CycleOrchestrator) watchTerminalEvent(
 }
 
 // makeCleanupFn returns a closure that handles cycle cleanup and recording.
-func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{}) func(string) {
+func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{}) func(string, string, string) {
 	var once sync.Once
-	return func(reason string) {
+	return func(topic, flow, reason string) {
 		once.Do(func() {
-			o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason))
+			startedAt := time.Now()
+			o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason), slog.String("topic", topic), slog.String("flow", flow))
 			o.subs.UnsubscribeAll(ctx)
+			unsubscribed := true
 			if o.excursionCancel != nil {
 				o.excursionCancel()
 				o.excursionCancel = nil
 			}
 
 			// Capture exit data for cycle record.
-			o.recorder.ExitReason = reason
-			o.recorder.ExitTime = time.Now()
+			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+				b.ExitReason = reason
+				b.ExitTime = time.Now()
+			})
 
 			// Final MFE/MAE update from latest price.
+			excursionFinalized := false
 			if o.recorder.Excursion != nil {
 				if pd, err := o.deps.PriceStore.GetPrice(ctx, o.cfg.Symbol, 2*time.Second); err == nil {
 					o.recorder.Excursion.Update(pd.LastPrice, time.Now())
+					excursionFinalized = true
 				}
 			}
+			completedAt := time.Now()
+			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+				b.Cleanup = domain.CleanupSnapshot{
+					TerminalFlow:       flow,
+					TerminalTopic:      topic,
+					Reason:             reason,
+					StartedAt:          startedAt,
+					CompletedAt:        completedAt,
+					Unsubscribed:       unsubscribed,
+					ExcursionFinalized: excursionFinalized,
+				}
+			})
 
 			// Signal cycle completion (non-blocking in case already done).
 			select {
@@ -99,6 +129,17 @@ func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{
 			default:
 			}
 		})
+	}
+}
+
+func terminalFlow(topic string) string {
+	switch topic {
+	case events.TopicTrapPositionClosed, events.TopicTrapTimeout, events.TopicTrapAbort:
+		return events.FlowTrap
+	case events.TopicReversionPositionClosed, events.TopicReversionTimeout, events.TopicReversionAbort:
+		return events.FlowReversion
+	default:
+		return ""
 	}
 }
 

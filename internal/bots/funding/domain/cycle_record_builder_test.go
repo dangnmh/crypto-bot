@@ -1,6 +1,8 @@
 package domain_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,16 +21,18 @@ func TestCycleRecordBuilder_BuildAbortedCycle(t *testing.T) {
 	b.FRAtScan = 0.007
 	b.Side = shared.SideOpenLong
 	b.AbortReason = "FR below threshold"
-	b.AbortPhase = domain.PhaseRecheck
+	b.AbortFlow = "reversion"
+	b.AbortTopic = "funding.reversion.abort"
 
 	record := b.Build("BTC_USDT", 0, 0, nil, nil)
 
 	assert.Equal(t, "req-1", record.ReqID)
-	assert.Equal(t, 1, record.SchemaVersion)
+	assert.Equal(t, 2, record.SchemaVersion)
 	assert.Equal(t, "BTC_USDT", record.Symbol)
 	assert.Equal(t, domain.OutcomeAborted, record.Outcome)
 	assert.Equal(t, "FR below threshold", record.AbortReason)
-	assert.Equal(t, domain.PhaseRecheck, record.AbortPhase)
+	assert.Equal(t, "reversion", record.AbortFlow)
+	assert.Equal(t, "funding.reversion.abort", record.AbortTopic)
 	assert.InDelta(t, 0.007, record.Decision.FRAtScan, 1e-9)
 	assert.Equal(t, shared.SideOpenLong, record.Decision.Side)
 }
@@ -39,7 +43,7 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	settle := time.Date(2026, 5, 12, 16, 0, 0, 0, time.UTC)
 	b := domain.NewCycleRecordBuilder("req-2", settle)
 
-	// Decision phase.
+	// Decision data.
 	b.FRAtScan = 0.007
 	b.FRAtRecheck = 0.0068
 	b.Side = shared.SideOpenLong
@@ -69,7 +73,7 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	record := b.Build("STEEM_USDT", 0.03, 0.03, nil, nil)
 
 	assert.Equal(t, domain.OutcomeProfit, record.Outcome)
-	assert.Equal(t, 1, record.SchemaVersion)
+	assert.Equal(t, 2, record.SchemaVersion)
 	assert.Equal(t, "STEEM_USDT", record.Symbol)
 	assert.True(t, record.Decision.FRChanged)
 	assert.True(t, record.IOC.Filled)
@@ -84,6 +88,63 @@ func TestCycleRecordBuilder_BuildFilledCycle(t *testing.T) {
 	assert.Greater(t, record.Exit.HoldDurationMs, int64(0))
 	assert.InDelta(t, record.IOC.Excursion.MFEPct, record.IOCExcursion.MFEPct, 1e-9)
 	assert.InDelta(t, record.Excursion.MFEPct, record.IOCExcursion.MFEPct, 1e-9)
+}
+
+func TestCycleRecordBuilder_BuildsTimeoutAndCleanupSnapshots(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now()
+	firedAt := startedAt.Add(60 * time.Second)
+	completedAt := firedAt.Add(50 * time.Millisecond)
+	b := domain.NewCycleRecordBuilder("req-timeout", startedAt)
+	b.IOCFilled = true
+	b.ExitReason = "timeout"
+	b.Timeout = domain.TimeoutSnapshot{
+		Flow:                "reversion",
+		Triggered:           true,
+		Duration:            60 * time.Second,
+		StartedAt:           startedAt,
+		FiredAt:             firedAt,
+		ForceCloseAttempted: true,
+		ForceCloseSucceeded: true,
+	}
+	b.Cleanup = domain.CleanupSnapshot{
+		TerminalFlow:       "reversion",
+		TerminalTopic:      "funding.reversion.timeout",
+		Reason:             "timeout",
+		StartedAt:          firedAt,
+		CompletedAt:        completedAt,
+		Unsubscribed:       true,
+		ExcursionFinalized: true,
+	}
+
+	record := b.Build("BTC_USDT", 0, 0, nil, nil)
+
+	assert.Equal(t, domain.OutcomeTimeout, record.Outcome)
+	assert.Equal(t, int64(60000), record.Timeout.DurationMs)
+	assert.True(t, record.Timeout.ForceCloseAttempted)
+	assert.True(t, record.Timeout.ForceCloseSucceeded)
+	assert.Equal(t, "funding.reversion.timeout", record.Cleanup.TerminalTopic)
+	assert.Equal(t, "reversion", record.Cleanup.TerminalFlow)
+}
+
+func TestCycleRecordBuilder_JSONDoesNotEmitPhase(t *testing.T) {
+	t.Parallel()
+
+	b := domain.NewCycleRecordBuilder("req-json", time.Now())
+	b.AbortReason = "failed"
+	b.AbortFlow = "reversion"
+	b.AbortTopic = "funding.reversion.abort"
+	record := b.Build("BTC_USDT", 0, 0, nil, nil)
+
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+	jsonText := string(data)
+	if strings.Contains(jsonText, "phase") || strings.Contains(jsonText, "abort_phase") {
+		t.Fatalf("record JSON must not contain phase fields: %s", jsonText)
+	}
 }
 
 func TestCycleRecordBuilder_BuildTimeoutCycle(t *testing.T) {

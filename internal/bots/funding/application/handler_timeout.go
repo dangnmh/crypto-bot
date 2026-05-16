@@ -40,6 +40,13 @@ func (o *CycleOrchestrator) handleTimeout(ctx context.Context, symbol string) {
 	if timeout <= 0 {
 		timeout = 60 * time.Second // Fallback default
 	}
+	startedAt := time.Now()
+	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+		b.Timeout.Flow = events.FlowReversion
+		b.Timeout.Duration = timeout
+		b.Timeout.DurationMs = timeout.Milliseconds()
+		b.Timeout.StartedAt = startedAt
+	})
 
 	o.deps.Log.Info("⏱️ Timeout guard started", slog.Duration("timeout", timeout))
 
@@ -48,6 +55,13 @@ func (o *CycleOrchestrator) handleTimeout(ctx context.Context, symbol string) {
 		return
 	}
 	o.deps.Log.Warn("🔴 TIMEOUT — force closing all positions", slog.Duration("timeout", timeout))
+	firedAt := time.Now()
+	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+		b.Timeout.Flow = events.FlowReversion
+		b.Timeout.Triggered = true
+		b.Timeout.FiredAt = firedAt
+		b.Timeout.ForceCloseAttempted = true
+	})
 
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -56,23 +70,29 @@ func (o *CycleOrchestrator) handleTimeout(ctx context.Context, symbol string) {
 		reason := "critical_timeout_close_failed: " + err.Error()
 		o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
 			b.AbortReason = reason
-			b.AbortPhase = domain.PhaseFire
+			b.AbortFlow = events.FlowReversion
+			b.AbortTopic = events.TopicReversionAbort
+			b.ErrorFlow = events.FlowReversion
+			b.ErrorTopic = events.TopicReversionError
+			b.Timeout.ForceCloseSucceeded = false
+			b.Timeout.Error = err.Error()
 		})
 		o.deps.Log.Error("🔴 CRITICAL force close failed after timeout", slog.Any("error", err))
 		o.publishOrLog(events.TopicReversionError, events.CycleErrorEvent{
 			Flow:   events.FlowReversion,
 			Symbol: symbol,
 			Error:  reason,
-			Phase:  domain.PhaseFire,
 		})
 		o.publishOrLog(events.TopicReversionAbort, events.CycleAbortEvent{
 			Flow:   events.FlowReversion,
 			Symbol: symbol,
 			Reason: reason,
-			Phase:  domain.PhaseFire,
 		})
 		return
 	}
+	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+		b.Timeout.ForceCloseSucceeded = true
+	})
 
 	o.publishOrLog(events.TopicReversionTimeout, events.CycleTimeoutEvent{
 		Flow:    events.FlowReversion,
@@ -86,6 +106,13 @@ func (o *CycleOrchestrator) handleTrapOrderTimeout(ctx context.Context, evt even
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
+	startedAt := time.Now()
+	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+		b.Timeout.Flow = events.FlowTrap
+		b.Timeout.Duration = timeout
+		b.Timeout.DurationMs = timeout.Milliseconds()
+		b.Timeout.StartedAt = startedAt
+	})
 
 	o.deps.Log.Info("⏱️ Trap order timeout guard started",
 		slog.String("orderID", evt.OrderID),
@@ -95,6 +122,12 @@ func (o *CycleOrchestrator) handleTrapOrderTimeout(ctx context.Context, evt even
 	if err := o.deps.Clock.Sleep(ctx, timeout); err != nil {
 		return
 	}
+	firedAt := time.Now()
+	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+		b.Timeout.Flow = events.FlowTrap
+		b.Timeout.Triggered = true
+		b.Timeout.FiredAt = firedAt
+	})
 
 	trapFilled := false
 	o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
@@ -113,19 +146,21 @@ func (o *CycleOrchestrator) handleTrapOrderTimeout(ctx context.Context, evt even
 			reason := "critical_trap_cancel_failed: " + allErr.Error()
 			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
 				b.AbortReason = reason
-				b.AbortPhase = domain.PhaseTrap
+				b.AbortFlow = events.FlowTrap
+				b.AbortTopic = events.TopicTrapAbort
+				b.ErrorFlow = events.FlowTrap
+				b.ErrorTopic = events.TopicTrapError
+				b.Timeout.Error = allErr.Error()
 			})
 			o.publishOrLog(events.TopicTrapError, events.CycleErrorEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Error:  reason,
-				Phase:  domain.PhaseTrap,
 			})
 			o.publishOrLog(events.TopicTrapAbort, events.CycleAbortEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Reason: reason,
-				Phase:  domain.PhaseTrap,
 			})
 			return
 		}

@@ -69,9 +69,11 @@ func TestBuildAggregatesDailyMetrics(t *testing.T) {
 			},
 		},
 		{
-			ReqID:   "b",
-			Symbol:  "BTC_USDT",
-			Outcome: domain.OutcomeNoFill,
+			ReqID:      "b",
+			Symbol:     "BTC_USDT",
+			Outcome:    domain.OutcomeNoFill,
+			AbortTopic: eventsTopicReversionAbort,
+			ErrorTopic: eventsTopicReversionError,
 			IOC: domain.IOCSnapshot{
 				SettleOffsetMs: 100,
 			},
@@ -108,7 +110,18 @@ func TestBuildAggregatesDailyMetrics(t *testing.T) {
 	if report.Trap.AvgMFEPct != 2 {
 		t.Fatalf("Trap avg MFE = %.2f, want 2", report.Trap.AvgMFEPct)
 	}
+	if report.AbortTopics[eventsTopicReversionAbort] != 1 {
+		t.Fatalf("abort topic count = %d, want 1", report.AbortTopics[eventsTopicReversionAbort])
+	}
+	if report.ErrorTopics[eventsTopicReversionError] != 1 {
+		t.Fatalf("error topic count = %d, want 1", report.ErrorTopics[eventsTopicReversionError])
+	}
 	if len(report.UnitWarnings) == 0 {
 		t.Fatal("expected unit warning for decimal-like TP")
 	}
 }
+
+const (
+	eventsTopicReversionAbort = "funding.reversion.abort"
+	eventsTopicReversionError = "funding.reversion.error"
+)

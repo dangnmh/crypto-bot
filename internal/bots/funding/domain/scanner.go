@@ -167,10 +167,6 @@ type Candidate struct {
 	ContractSpec // Enriched from contract details
 	MarketData   // From ticker / WS push
 	TradePlan    // Calculated values
-
-	// Phase is a lightweight status tag for logging/flow control.
-	// Primary FSM state lives in CycleState, not here.
-	Phase Phase // "SCANNING", "ARMED", "FIRED_IOC", "FIRED_TRAP"
 }
 
 // ScanResult holds a scanned ticker for domain processing.
@@ -224,7 +220,6 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 				Volume24:  t.Volume24,
 				Amount24:  t.Amount24,
 			},
-			Phase: PhaseScanning,
 		}
 
 		// ⭐ Side determination — Reversion strategy

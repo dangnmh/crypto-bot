@@ -31,20 +31,20 @@ flowchart LR
     ORDER -.-> EXPIRE["not filled<br/>cancel + timeout"]
 ```
 
-## Phase Contract
+## Event Contract
 
-| Phase | Responsibility | Output |
+Lifecycle state is represented by event topics and `flow`, not by a separate phase field.
+
+| Event | Responsibility | Output |
 |---|---|---|
-| `candidate` | Receive shared scan result | FR, symbol, settle time, config snapshot |
-| `delay` | Wait until `settle + trapAfterSettle` | post-settle market window |
-| `pricing` | Choose static FR-depth path or OB-assisted cap | trap price, source, wall distance |
-| `wall_verify` | For OB-assisted Trap, reload depth immediately before placement | `wall_verified`, `wall_age_ms`, fresh wall price or skip |
-| `sizing` | Apply `sizeRatio` and `maxNotionalUSDT` | Trap notional lower than Reversion |
-| `order` | Place limit/post-only order with TP/SL | order id or error |
-| `order_timeout` | Cancel unfilled Trap order after Trap timeout window | `funding.trap.timeout` or critical cancel error |
-| `fill_watcher` | Track trap fill separately from Reversion | fill price, fill volume |
-| `trailing` | Place trap-specific trailing | activation usually 0, callback from trap config |
-| `journal` | Persist trap leg outcome separately | fill rate, MFE/MAE, source comparison |
+| `funding.trap.candidate` | Receive shared scan result | FR, symbol, settle time, config snapshot |
+| `funding.trap.ob_wall_found` | For OB-assisted Trap, record fresh verified wall | `wall_verified`, `wall_age_ms`, wall price |
+| `funding.trap.order_placed` | Place limit/post-only order with TP/SL | order id, trap price, source |
+| `funding.trap.order_filled` | Track trap fill separately from Reversion | fill price, fill volume, flow=`trap` |
+| `funding.trap.trailing_placed` | Place trap-specific trailing | activation usually 0, callback from trap config |
+| `funding.trap.position_closed` | Successful trailing or fallback close | cleanup trigger |
+| `funding.trap.timeout` | Unfilled Trap order was canceled after timeout window | cleanup trigger |
+| `funding.trap.error` / `funding.trap.abort` | Critical order cancel or close failure | error/abort topic recorded in journal |
 
 ## Pricing Rule
 
@@ -90,8 +90,10 @@ Trap must be measured separately from Reversion.
 | Entry | `trap_price`, `trap_order_id`, `trap_filled`, `trap_fill_price`, `trap_fill_volume`, `trap_error` |
 | Risk | `trap_tp_pct`, `trap_sl_pct`, `trap_tp_price`, `trap_sl_price` |
 | Trailing | `trap_trailing_enabled`, `trap_trailing_placed`, `trap_callback_pct`, `trap_trailing_error` |
+| Timeout | `timeout.flow`, `timeout.triggered`, `timeout.duration_ms`, `timeout.started_at`, `timeout.fired_at`, `timeout.error` |
+| Cleanup | `cleanup.terminal_flow`, `cleanup.terminal_topic`, `cleanup.reason`, `cleanup.started_at`, `cleanup.completed_at` |
 | Excursion | `trap.excursion.mfe_pct`, `trap.excursion.mae_pct`, `trap_hold_duration_ms` |
-| Outcome | `trap_exit_reason`, `trap_exit_price`, `trap_outcome` |
+| Outcome | `trap_exit_reason`, `trap_exit_price`, `trap_outcome`, `abort_flow`, `abort_topic`, `error_flow`, `error_topic` |
 
 ## Known Concerns
 

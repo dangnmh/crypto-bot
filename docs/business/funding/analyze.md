@@ -33,6 +33,8 @@ Record **every trading cycle** of the Funding Reversion bot into a structured JS
 
 ## Data Points to Record Per Cycle
 
+Current journal schema is v2. Lifecycle state is event-topic driven and new records do not write `phase` or `abort_phase` fields.
+
 ### A. Identity & Config (What were we trying to do?)
 
 | Field                      | Source                             | Why                                        |
@@ -54,7 +56,10 @@ Record **every trading cycle** of the Funding Reversion bot into a structured JS
 | `fr_changed`           | computed                              | Did FR drift between scan and recheck? |
 | `side`                 | `candidate.Side`                      | LONG or SHORT                          |
 | `abort_reason`         | `CycleAbortEvent.Reason`              | Why we skipped (if aborted)            |
-| `abort_phase`          | `CycleAbortEvent.Phase`               | At which phase we aborted              |
+| `abort_flow`           | terminal abort event flow             | Which flow aborted                     |
+| `abort_topic`          | terminal abort event topic            | Exact abort topic                      |
+| `error_flow`           | error event flow                      | Which flow emitted an error            |
+| `error_topic`          | error event topic                     | Exact error topic                      |
 | `safety_passed`        | `candidate.SafetyResult.Passed`       | Did safety check pass?                 |
 | `safety_reject_reason` | `candidate.SafetyResult.RejectReason` | Why safety rejected (if it did)        |
 
@@ -77,7 +82,7 @@ Record **every trading cycle** of the Funding Reversion bot into a structured JS
 | `trap_source`        | `TrapFiredEvent.Source`                           | "ob_monitor" or "static_limit"               |
 | `trap_price`         | `TrapFiredEvent.Price`                            | Trap entry price                             |
 | `trap_filled`        | from fill watcher                                 | Did trap fill?                               |
-| `trap_fill_price`    | `OrderFilledEvent.DealAvgPrice` (phase=trap)      | Actual trap fill                             |
+| `trap_fill_price`    | `OrderFilledEvent.DealAvgPrice` where `flow=trap` | Actual trap fill                             |
 
 ### D. Exit & Outcome (What was the result?)
 
@@ -211,7 +216,10 @@ type CycleRecord struct {
     // Outcome
     Outcome     string `json:"outcome"`      // "profit", "loss", "aborted", "timeout", "no_fill"
     AbortReason string `json:"abort_reason"`
-    AbortPhase  string `json:"abort_phase"`
+    AbortFlow   string `json:"abort_flow"`
+    AbortTopic  string `json:"abort_topic"`
+    ErrorFlow   string `json:"error_flow"`
+    ErrorTopic  string `json:"error_topic"`
 
     // Decision
     Decision DecisionRecord `json:"decision"`
@@ -223,7 +231,7 @@ type CycleRecord struct {
     // Exit
     Exit ExitRecord `json:"exit"`
 
-    // Market snapshots at key phases
+    // Market snapshots around key event topics
     Snapshots []MarketSnapshot `json:"snapshots"`
 
     // Config active during this cycle
@@ -348,7 +356,10 @@ CREATE TABLE IF NOT EXISTS cycle_records (
     -- Outcome
     outcome       TEXT NOT NULL,  -- "profit", "loss", "aborted", "timeout", "no_fill"
     abort_reason  TEXT,
-    abort_phase   TEXT,
+    abort_flow    TEXT,
+    abort_topic   TEXT,
+    error_flow    TEXT,
+    error_topic   TEXT,
 
     -- Decision
     fr_at_scan    REAL,
@@ -515,7 +526,7 @@ Each handler gets a one-line addition to capture market state:
 
 Helper methods on `CycleOrchestrator`:
 
-- `addSnapshot(phase string)` — captures current market state
+- `addSnapshot(topic string)` — captures current market state around an event topic
 - `buildCycleRecord(settle, reqID) → CycleRecord` — assembles full record from timeline + snapshots + results
 
 ---
@@ -624,8 +635,8 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
     "trailing_activated": true
   },
   "snapshots": [
-    {"phase": "scan", "last_price": 0.2451, "best_bid": 0.2450, "best_ask": 0.2452, "spread": 0.0002},
-    {"phase": "fire", "last_price": 0.2449, "best_bid": 0.2448, "best_ask": 0.2450, "spread": 0.0002}
+    {"topic": "funding.scan.candidate_found", "last_price": 0.2451, "best_bid": 0.2450, "best_ask": 0.2452, "spread": 0.0002},
+    {"topic": "funding.reversion.confirmed", "last_price": 0.2449, "best_bid": 0.2448, "best_ask": 0.2450, "spread": 0.0002}
   ],
   "config": {
     "leverage": 5,
@@ -656,7 +667,7 @@ With this data, you can query across all cycle records to answer:
 | ------------------------------------- | ------------------------------------------------------------------------------- |
 | **Are we firing on time?**            | Histogram of `ioc.settle_offset_ms` — should cluster near 0ms                   |
 | **Is our FR threshold too low/high?** | Scatter plot: `fr_at_scan` vs `outcome` — find the sweet spot                   |
-| **Does recheck catch bad trades?**    | Count aborted cycles where `abort_phase = "recheck"`                            |
+| **Does recheck catch bad trades?**    | Count aborted cycles with `abort_topic = "funding.reversion.abort"` after `funding.reversion.wait_complete` in timeline |
 | **Is TP too ambitious?**              | `mfe_vs_tp < 0` in most cycles → price never reaches TP, lower it               |
 | **Is TP too conservative?**           | `mfe_vs_tp > 2%` in most cycles → we're leaving money, raise it or use trailing |
 | **Is SL too tight?**                  | `sl_was_touched = true` but `outcome = "profit"` → SL nearly killed a winner    |

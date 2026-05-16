@@ -65,7 +65,7 @@ Run this review after each funding session:
 | Question | Metric | Action |
 |---|---|---|
 | Did IOC fire at the intended time? | `settle_offset_ms` distribution | Adjust latency buffer if consistently early/late |
-| Did IOC fail before fill? | `outcome=aborted`, `abort_phase=fire_ioc`, `ioc.error` | Fix order price/TP/SL validation before tuning strategy |
+| Did IOC fail before fill? | `outcome=aborted`, `abort_topic=funding.reversion.abort`, `ioc.error`, timeline topic before abort | Fix order price/TP/SL validation before tuning strategy |
 | Did slippage exceed model? | `ioc_slippage_pct` | Increase OB buffer or reduce size if systematic |
 | Did trailing capture the move? | `tp_efficiency = actual_exit_pct / mfe_pct` | Tune activation/callback if efficiency is low |
 | Was TP reachable? | `mfe_vs_tp` | Lower TP if MFE is usually below TP |
@@ -119,16 +119,16 @@ If dynamic pricing does not outperform static after enough cycles, freeze dynami
 
 Abort cycles are valuable. Do not filter them out.
 
-| Abort phase | Likely issue | Next action |
+| Abort evidence | Likely issue | Next action |
 |---|---|---|
-| `scan` | FR threshold or symbol filtering | Review opportunity set |
-| `arm` | WS/market data/volume safety | Check subscriptions and contract metadata |
-| `recheck` | FR instability | Keep filter; it may be saving bad trades |
-| `fire_ioc` | Exchange order validation | Inspect intended price, TP, SL, tick/scale snapping |
-| `fill_watcher` | IOC did not fill | Check slippage, timing, and liquidity |
-| `trailing` | TrackOrder failure | Verify fallback close and journal `trailing_failed_fallback` |
+| `abort_topic=funding.scan.abort` | FR threshold or symbol filtering | Review opportunity set |
+| abort after `funding.reversion.candidate` | WS/market data/volume safety | Check subscriptions and contract metadata |
+| abort after `funding.reversion.wait_complete` | FR instability | Keep filter; it may be saving bad trades |
+| abort after `funding.reversion.confirmed` | Exchange order validation | Inspect intended price, TP, SL, tick/scale snapping |
+| no `funding.reversion.order_filled` after IOC | IOC did not fill | Check slippage, timing, and liquidity |
+| `error_topic=funding.reversion.error` after fill | TrackOrder/fallback close failure | Verify fallback close and journal `trailing_failed_fallback` |
 
-Example from current journal data: `abort_phase=fire_ioc` with MEXC error `The price of stop-limit order error` should be treated as an order-construction bug or exchange constraint mismatch before any strategy tuning.
+Example from current journal data: `abort_topic=funding.reversion.abort` after `funding.reversion.confirmed` with MEXC error `The price of stop-limit order error` should be treated as an order-construction bug or exchange constraint mismatch before any strategy tuning.
 
 ## Report Outputs
 

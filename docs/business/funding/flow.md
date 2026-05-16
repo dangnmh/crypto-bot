@@ -69,6 +69,8 @@ Pre-Funding đi ngược Reversion và phải exit trước settle nếu không 
 
 ## Event Topic Convention
 
+Event topics plus `flow` are the canonical lifecycle model. The funding runtime no longer carries a separate `phase` field in event payloads or journal records.
+
 Suggested topic namespaces:
 
 | Scope | Topic pattern |

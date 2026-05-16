@@ -54,6 +54,12 @@ func printText(r journalreport.Report) {
 	fmt.Printf("Funding Journal Report %s\n", scope)
 	fmt.Printf("Cycles: %d\n", r.Cycles)
 	fmt.Printf("Outcomes: %v\n", r.Outcomes)
+	if len(r.AbortTopics) > 0 {
+		fmt.Printf("Abort topics: %v\n", r.AbortTopics)
+	}
+	if len(r.ErrorTopics) > 0 {
+		fmt.Printf("Error topics: %v\n", r.ErrorTopics)
+	}
 	fmt.Printf("IOC: fill %.1f%%, avg slippage %.4f%%, settle median %.0fms (avg %.0fms, min %dms, max %dms)\n",
 		r.IOC.FillRatePct,
 		r.IOC.AvgSlippagePct,
