@@ -395,7 +395,9 @@ func TestCycleOrchestrator_TrailingTrapRejection(t *testing.T) {
 
 	// FAIL TRAILING STOP
 	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("", errors.New("API failure tracking")).AnyTimes()
-	m.client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
+	m.client.EXPECT().
+		ClosePosition(gomock.Any(), "BTC_USDT", shared.SideCloseLong, 1.0, gomock.Any()).
+		Return(nil).AnyTimes()
 
 	m.subscriber.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
@@ -445,6 +447,14 @@ func TestCycleOrchestrator_CriticalCloseFailureAfterTrailingRejection(t *testing
 	m.ws.EXPECT().RemoveOrderCallback(gomock.Any()).AnyTimes()
 
 	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("", errors.New("API failure tracking")).AnyTimes()
+	m.client.EXPECT().
+		ClosePosition(gomock.Any(), "BTC_USDT", shared.SideCloseLong, 1.0, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ string, _ shared.Side, _ float64, _ int) error {
+			if ctx.Err() != nil {
+				t.Fatalf("exact close used a cancelled context: %v", ctx.Err())
+			}
+			return errors.New("exact close rejected")
+		}).AnyTimes()
 	m.client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").DoAndReturn(func(ctx context.Context, _ string) error {
 		if ctx.Err() != nil {
 			t.Fatalf("fallback close used a cancelled context: %v", ctx.Err())
@@ -549,6 +559,9 @@ func TestCycleOrchestrator_TrapTrailingCloseFailureUsesTrapAbortTopic(t *testing
 	}).AnyTimes()
 	m.ws.EXPECT().RemoveOrderCallback(gomock.Any()).AnyTimes()
 	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("", errors.New("API failure tracking"))
+	m.client.EXPECT().
+		ClosePosition(gomock.Any(), "BTC_USDT", shared.SideCloseShort, 1.0, gomock.Any()).
+		Return(errors.New("exact close rejected"))
 	m.client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(errors.New("close rejected"))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -633,7 +646,9 @@ func TestCycleOrchestrator_TrapPositionClosedTerminatesCycle(t *testing.T) {
 	}).AnyTimes()
 	m.ws.EXPECT().RemoveOrderCallback(gomock.Any()).AnyTimes()
 	m.client.EXPECT().CreateTrackOrder(gomock.Any(), gomock.Any()).Return("", errors.New("API failure tracking"))
-	m.client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil)
+	m.client.EXPECT().
+		ClosePosition(gomock.Any(), "BTC_USDT", shared.SideCloseShort, 1.0, gomock.Any()).
+		Return(nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()

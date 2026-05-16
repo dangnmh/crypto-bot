@@ -131,35 +131,49 @@ func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Contex
 		errorTopic = events.TopicTrapError
 		abortTopic = events.TopicTrapAbort
 	}
+	var positionMode int
+	o.withLock(func() {
+		positionMode = o.candidate.Config.ParsedPositionMode
+	})
 
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
-	if err := o.deps.Client.CloseAllPositions(closeCtx, evt.Symbol); err != nil {
-		reason := "critical_close_failed: " + err.Error()
-		o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
-			b.AbortReason = reason
-			b.AbortPhase = domain.PhaseTrailing
-		})
-		o.deps.Log.Error("🔴 CRITICAL close failed after TrackOrder failure",
+	if err := o.deps.Client.ClosePosition(closeCtx, evt.Symbol, evt.CloseSide, evt.DealVol, positionMode); err != nil {
+		o.deps.Log.Error("🔴 Exact-leg close failed - fallback close all",
 			slog.Any("error", err),
 			slog.String("symbol", evt.Symbol),
 			slog.String("flow", flow),
 			slog.Any("phase", evt.Phase),
+			slog.Any("closeSide", evt.CloseSide),
+			slog.Float64("vol", evt.DealVol),
 		)
-		o.publishOrLog(errorTopic, events.CycleErrorEvent{
-			Flow:   flow,
-			Symbol: evt.Symbol,
-			Error:  reason,
-			Phase:  domain.PhaseTrailing,
-		})
-		o.publishOrLog(abortTopic, events.CycleAbortEvent{
-			Flow:   flow,
-			Symbol: evt.Symbol,
-			Reason: reason,
-			Phase:  domain.PhaseTrailing,
-		})
-		return
+		if allErr := o.deps.Client.CloseAllPositions(closeCtx, evt.Symbol); allErr != nil {
+			reason := "critical_close_failed: " + allErr.Error()
+			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+				b.AbortReason = reason
+				b.AbortPhase = domain.PhaseTrailing
+			})
+			o.deps.Log.Error("🔴 CRITICAL close failed after exact-leg close failure",
+				slog.Any("error", allErr),
+				slog.String("symbol", evt.Symbol),
+				slog.String("flow", flow),
+				slog.Any("phase", evt.Phase),
+			)
+			o.publishOrLog(errorTopic, events.CycleErrorEvent{
+				Flow:   flow,
+				Symbol: evt.Symbol,
+				Error:  reason,
+				Phase:  domain.PhaseTrailing,
+			})
+			o.publishOrLog(abortTopic, events.CycleAbortEvent{
+				Flow:   flow,
+				Symbol: evt.Symbol,
+				Reason: reason,
+				Phase:  domain.PhaseTrailing,
+			})
+			return
+		}
 	}
 
 	o.publishOrLog(closeTopic, events.PositionClosedEvent{

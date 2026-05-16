@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
@@ -98,6 +99,24 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		return err
 	}
 	return ParseResponseIgnoreData(body, "close_all_positions")
+}
+
+// ClosePosition closes one position leg using a reduce-only market order.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+	req := exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         int(closeSide),
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: positionMode,
+		ReduceOnly:   true,
+	}
+	body, err := c.PostCtx(ctx, "/api/v1/private/order/create", req)
+	if err != nil {
+		return err
+	}
+	_, err = ParseResponse[exchange.CreateOrderResponse](body, "close_position")
+	return err
 }
 
 // ChangeLeverage changes the leverage for a symbol.

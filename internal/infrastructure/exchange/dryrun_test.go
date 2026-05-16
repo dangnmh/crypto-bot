@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/stretchr/testify/assert"
@@ -13,9 +14,10 @@ import (
 
 // stubClient is a minimal test double for exchange.Client.
 type stubClient struct {
-	createOrderCalled bool
-	cancelOrderCalled bool
-	closeCalled       bool
+	createOrderCalled   bool
+	cancelOrderCalled   bool
+	closePositionCalled bool
+	closeCalled         bool
 }
 
 func (s *stubClient) GetTickers(_ context.Context, _ string) ([]exchange.Ticker, error) {
@@ -59,6 +61,10 @@ func (s *stubClient) GetOpenOrders(_ context.Context, _ string) ([]exchange.Orde
 }
 func (s *stubClient) CloseAllPositions(_ context.Context, _ string) error {
 	s.closeCalled = true
+	return nil
+}
+func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _ float64, _ int) error {
+	s.closePositionCalled = true
 	return nil
 }
 func (s *stubClient) ChangeLeverage(_ context.Context, _ exchange.ChangeLeverageRequest) error {
@@ -107,6 +113,16 @@ func TestDryRunClient_CloseAllPositions_NoRealCall(t *testing.T) {
 	err := dry.CloseAllPositions(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
 	assert.False(t, stub.closeCalled, "real CloseAllPositions should NOT be called in dry-run mode")
+}
+
+func TestDryRunClient_ClosePosition_NoRealCall(t *testing.T) {
+	t.Parallel()
+	stub := &stubClient{}
+	dry := exchange.NewDryRunClient(stub)
+
+	err := dry.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, 1)
+	require.NoError(t, err)
+	assert.False(t, stub.closePositionCalled, "real ClosePosition should NOT be called in dry-run mode")
 }
 
 func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {

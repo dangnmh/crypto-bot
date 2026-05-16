@@ -29,6 +29,7 @@ type OrderExecutor interface {
 	CancelAllOpenOrders(ctx context.Context, symbol string) error
 	GetOrder(ctx context.Context, orderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
+	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
 }

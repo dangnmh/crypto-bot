@@ -233,6 +233,44 @@ func (c *MockClientCloseAllPositionsCall) DoAndReturn(f func(context.Context, st
 	return c
 }
 
+// ClosePosition mocks base method.
+func (m *MockClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClosePosition", ctx, symbol, closeSide, volume, positionMode)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClosePosition indicates an expected call of ClosePosition.
+func (mr *MockClientMockRecorder) ClosePosition(ctx, symbol, closeSide, volume, positionMode any) *MockClientClosePositionCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClosePosition", reflect.TypeOf((*MockClient)(nil).ClosePosition), ctx, symbol, closeSide, volume, positionMode)
+	return &MockClientClosePositionCall{Call: call}
+}
+
+// MockClientClosePositionCall wrap *gomock.Call
+type MockClientClosePositionCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientClosePositionCall) Return(arg0 error) *MockClientClosePositionCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientClosePositionCall) Do(f func(context.Context, string, domain.Side, float64, int) error) *MockClientClosePositionCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientClosePositionCall) DoAndReturn(f func(context.Context, string, domain.Side, float64, int) error) *MockClientClosePositionCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // CreateOrder mocks base method.
 func (m *MockClient) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
 	m.ctrl.T.Helper()

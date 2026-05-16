@@ -6,7 +6,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 
 | Priority | Item | Why | Owner doc |
 |---|---|---|---|
-| P2 | Exact-leg fallback close API | Giảm blast radius trong Hedge mode khi TrackOrder fail | [reversion_flow.md](reversion_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
 
@@ -115,22 +114,15 @@ go run ./cmd/funding-journal -dir data/journal -date 2026-05-15 -json
 
 ### Exact-Leg Fallback Close API
 
-Status: emergency close guard implemented; exact-leg close remains backlog.
+Status: implemented. TrackOrder fallback now tries exact-leg close first, using the filled event's `close_side`, `deal_vol`, and configured `positionMode`. If exact close fails, `CloseAllPositions(symbol)` remains the final last-resort safety path.
 
 Current safety path:
 
-- If TrackOrder placement fails after a fill, fallback close uses `CloseAllPositions(symbol)` with a fresh uncancelled timeout context.
+- If TrackOrder placement fails after a fill, fallback close uses `ClosePosition(symbol, closeSide, volume, positionMode)` with a fresh uncancelled timeout context.
+- If exact close fails, fallback close uses `CloseAllPositions(symbol)` with the same fresh uncancelled timeout context.
 - If fallback close succeeds, cycle exits with `trailing_failed_fallback`.
 - If fallback close fails, cycle journal records `critical_close_failed`, emits a flow error, aborts, and does not publish a false `position_closed`.
 - If post-settle timeout force-close fails, cycle journal records `critical_timeout_close_failed`, emits a flow error, aborts, and does not publish a false timeout.
-
-Future refinement:
-
-```go
-ClosePosition(ctx, symbol, closeSide, volume, positionMode)
-```
-
-Use this to close only the filled leg (`evt.CloseSide`, `evt.DealVol`) in Hedge mode. Keep `CloseAllPositions(symbol)` as the final last-resort fallback if exact close fails or exchange position state is ambiguous.
 
 ### Runtime Trap Wall Verification
 

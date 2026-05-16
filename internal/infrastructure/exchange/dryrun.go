@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"sync/atomic"
 	"time"
+
+	"crypto-bot/internal/domain"
 )
 
 // DryRunClient wraps a real Client and intercepts all write operations
@@ -130,6 +132,16 @@ func (d *DryRunClient) GetOpenOrders(ctx context.Context, symbol string) ([]Orde
 
 func (d *DryRunClient) CloseAllPositions(_ context.Context, symbol string) error {
 	d.log.Warn("🧪 DRY-RUN CloseAllPositions", "symbol", symbol)
+	return nil
+}
+
+func (d *DryRunClient) ClosePosition(_ context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+	d.log.Warn("🧪 DRY-RUN ClosePosition",
+		"symbol", symbol,
+		"side", closeSide,
+		"vol", volume,
+		"positionMode", positionMode,
+	)
 	return nil
 }
 

@@ -235,9 +235,9 @@ type SubmitOrderRequest struct {
 	Price           float64 `json:"price,omitempty"`
 	Vol             float64 `json:"vol"`
 	Leverage        int     `json:"leverage,omitempty"`
-	Side            int     `json:"side"`     // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
-	Type            int     `json:"type"`     // 1=Limit, 2=PostOnly, 3=IOC, 4=FOK, 5=Market
-	OpenType        int     `json:"openType"` // 1=Isolated, 2=Cross
+	Side            int     `json:"side"`               // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
+	Type            int     `json:"type"`               // 1=Limit, 2=PostOnly, 3=IOC, 4=FOK, 5=Market
+	OpenType        int     `json:"openType,omitempty"` // 1=Isolated, 2=Cross
 	ExternalOID     string  `json:"externalOid,omitempty"`
 	PositionID      int64   `json:"positionId,omitempty"`
 	PositionMode    int     `json:"positionMode,omitempty"`    // 1=Hedge, 2=OneWay

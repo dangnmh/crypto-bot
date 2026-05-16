@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -469,6 +470,38 @@ func TestClient_CloseAllPositions(t *testing.T) {
 	err := client.CloseAllPositions(context.Background(), "BTC_USDT")
 	if err != nil {
 		t.Fatalf("CloseAllPositions failed: %v", err)
+	}
+}
+
+//nolint:dupl // test
+func TestClient_ClosePosition(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/private/order/create" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		var req exchange.SubmitOrderRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.Symbol != "BTC_USDT" || req.Side != exchange.SideCloseLong || req.Vol != 1.5 {
+			t.Fatalf("unexpected close request: %+v", req)
+		}
+		if req.Type != exchange.OrderTypeMarket || !req.ReduceOnly || req.PositionMode != 1 {
+			t.Fatalf("unexpected close flags: %+v", req)
+		}
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[exchange.CreateOrderResponse]{
+			Success: true,
+			Code:    0,
+			Data:    exchange.CreateOrderResponse{OrderID: "close_1"},
+		}))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	err := client.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1.5, 1)
+	if err != nil {
+		t.Fatalf("ClosePosition failed: %v", err)
 	}
 }
 
