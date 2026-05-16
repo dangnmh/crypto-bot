@@ -70,12 +70,16 @@ const (
 
 // DecisionSnapshot captures why we entered (or didn't enter) a trade.
 type DecisionSnapshot struct {
-	FRAtScan           float64     `json:"fr_at_scan"`
-	FRAtRecheck        float64     `json:"fr_at_recheck,omitempty"`
-	FRChanged          bool        `json:"fr_changed,omitempty"`
-	Side               shared.Side `json:"side"`
-	SafetyPassed       bool        `json:"safety_passed"`
-	SafetyRejectReason string      `json:"safety_reject_reason,omitempty"`
+	FRAtScan               float64     `json:"fr_at_scan"`
+	FRAtRecheck            float64     `json:"fr_at_recheck,omitempty"`
+	FRChanged              bool        `json:"fr_changed,omitempty"`
+	Side                   shared.Side `json:"side"`
+	SafetyPassed           bool        `json:"safety_passed"`
+	SafetyRejectReason     string      `json:"safety_reject_reason,omitempty"`
+	ImbalanceFilterEnabled bool        `json:"imbalance_filter_enabled,omitempty"`
+	ImbalanceFilterPassed  bool        `json:"imbalance_filter_passed"`
+	ImbalanceRatio         float64     `json:"imbalance_ratio,omitempty"`
+	ImbalanceNearPct       float64     `json:"imbalance_near_pct,omitempty"`
 }
 
 // IOCSnapshot captures IOC order execution details.

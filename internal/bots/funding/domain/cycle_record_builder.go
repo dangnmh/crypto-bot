@@ -29,13 +29,17 @@ type CycleRecordBuilder struct {
 	SettleTime time.Time
 
 	// Decision
-	FRAtScan           float64
-	FRAtRecheck        float64
-	Side               shared.Side
-	SafetyPassed       bool
-	SafetyRejectReason string
-	AbortReason        string
-	AbortPhase         Phase
+	FRAtScan               float64
+	FRAtRecheck            float64
+	Side                   shared.Side
+	SafetyPassed           bool
+	SafetyRejectReason     string
+	AbortReason            string
+	AbortPhase             Phase
+	ImbalanceFilterEnabled bool
+	ImbalanceFilterPassed  bool
+	ImbalanceRatio         float64
+	ImbalanceNearPct       float64
 
 	// IOC execution
 	FireTimestamp time.Time
@@ -191,12 +195,16 @@ func (b *CycleRecordBuilder) Build(
 		AbortReason:   b.AbortReason,
 		AbortPhase:    b.AbortPhase,
 		Decision: DecisionSnapshot{
-			FRAtScan:           b.FRAtScan,
-			FRAtRecheck:        b.FRAtRecheck,
-			FRChanged:          b.FRAtRecheck != 0 && b.FRAtScan != 0 && math.Abs(b.FRAtRecheck-b.FRAtScan) > 1e-9,
-			Side:               b.Side,
-			SafetyPassed:       b.SafetyPassed,
-			SafetyRejectReason: b.SafetyRejectReason,
+			FRAtScan:               b.FRAtScan,
+			FRAtRecheck:            b.FRAtRecheck,
+			FRChanged:              b.FRAtRecheck != 0 && b.FRAtScan != 0 && math.Abs(b.FRAtRecheck-b.FRAtScan) > 1e-9,
+			Side:                   b.Side,
+			SafetyPassed:           b.SafetyPassed,
+			SafetyRejectReason:     b.SafetyRejectReason,
+			ImbalanceFilterEnabled: b.ImbalanceFilterEnabled,
+			ImbalanceFilterPassed:  b.ImbalanceFilterPassed,
+			ImbalanceRatio:         b.ImbalanceRatio,
+			ImbalanceNearPct:       ratioToPercent(b.ImbalanceNearPct),
 		},
 		IOC: IOCSnapshot{
 			Flow:           cycleRecordFlowReversion,

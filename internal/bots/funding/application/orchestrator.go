@@ -81,7 +81,13 @@ func NewCycleOrchestrator(
 		cfg:    cfg,
 		global: global,
 		deps:   deps,
-		subs:   NewSubscriptionManager(deps.WsSub, cfg.Symbol, toTradeConfig(cfg).FundingReversion.DynamicPricing, deps.Log),
+		subs: NewSubscriptionManager(
+			deps.WsSub,
+			cfg.Symbol,
+			toTradeConfig(cfg).FundingReversion.DynamicPricing,
+			toTradeConfig(cfg).FundingReversion.ImbalanceFilter,
+			deps.Log,
+		),
 	}
 }
 

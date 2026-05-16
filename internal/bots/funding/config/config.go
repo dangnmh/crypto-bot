@@ -95,6 +95,9 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 		if !sc.FundingReversion.DynamicPricing.Enabled && d.FundingReversion.DynamicPricing.Enabled {
 			sc.FundingReversion.DynamicPricing = d.FundingReversion.DynamicPricing
 		}
+		if !sc.FundingReversion.ImbalanceFilter.Enabled && d.FundingReversion.ImbalanceFilter.Enabled {
+			sc.FundingReversion.ImbalanceFilter = d.FundingReversion.ImbalanceFilter
+		}
 		if !sc.FundingReversion.Trailing.Enabled && d.FundingReversion.Trailing.Enabled {
 			sc.FundingReversion.Trailing = d.FundingReversion.Trailing
 		}
@@ -140,6 +143,10 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 
 		if sc.FundingReversion.DynamicPricing.Enabled {
 			setTrailingDynamicDefaults(&sc.FundingReversion.Trailing)
+		}
+		if sc.FundingReversion.ImbalanceFilter.Enabled {
+			setImbalanceFilterDefaults(&sc.FundingReversion.ImbalanceFilter)
+			sc.FundingReversion.ImbalanceFilter.NearPct = normalizePercentRatio(sc.FundingReversion.ImbalanceFilter.NearPct)
 		}
 	}
 
@@ -192,6 +199,12 @@ func setTrailingDynamicDefaults(trail *domain.TrailingConfig) {
 	defaultFloat(&trail.CallbackMultiplier, 0.7)
 	defaultFloat(&trail.MinCallback, 0.3)
 	defaultFloat(&trail.MaxCallback, 1.5)
+}
+
+func setImbalanceFilterDefaults(filter *domain.ImbalanceFilterConfig) {
+	defaultFloat(&filter.NearPct, 0.1)
+	defaultFloat(&filter.MinLongRatio, 1.2)
+	defaultFloat(&filter.MaxShortRatio, 0.8)
 }
 
 func (c *Config) defaultSymbolModes(sc *SymbolConfig) {

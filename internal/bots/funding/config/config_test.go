@@ -127,6 +127,12 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 			BufferTime:        types.Duration(10 * time.Millisecond),
 			HoldDuration:      types.Duration(30 * time.Second),
 			PostSettleTimeout: types.Duration(60 * time.Second),
+			ImbalanceFilter: domain.ImbalanceFilterConfig{
+				Enabled:       true,
+				NearPct:       0.3,
+				MinLongRatio:  1.5,
+				MaxShortRatio: 0.7,
+			},
 		},
 		FundingTrap: domain.FundingTrapConfig{
 			Enabled:           true,
@@ -156,6 +162,10 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.BufferTime)
 	assert.Equal(t, types.Duration(30*time.Second), sc.FundingReversion.HoldDuration)
 	assert.Equal(t, types.Duration(60*time.Second), sc.FundingReversion.PostSettleTimeout)
+	assert.True(t, sc.FundingReversion.ImbalanceFilter.Enabled)
+	assert.InDelta(t, 0.003, sc.FundingReversion.ImbalanceFilter.NearPct, 1e-9, "0.3% -> 0.003")
+	assert.InDelta(t, 1.5, sc.FundingReversion.ImbalanceFilter.MinLongRatio, 1e-9)
+	assert.InDelta(t, 0.7, sc.FundingReversion.ImbalanceFilter.MaxShortRatio, 1e-9)
 	assert.InDelta(t, 0.25, sc.FundingTrap.SizeRatio, 1e-9)
 	assert.InDelta(t, 250, sc.FundingTrap.MaxNotionalUSDT, 1e-9)
 	assert.Equal(t, types.Duration(50*time.Millisecond), sc.FundingTrap.TrapAfterSettle)

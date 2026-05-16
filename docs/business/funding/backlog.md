@@ -6,7 +6,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 
 | Priority | Item | Why | Owner doc |
 |---|---|---|---|
-| P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
 
 ## P0 Details
@@ -148,7 +147,9 @@ Current safety path:
 
 ### Imbalance Ratio Filter
 
-Do not use as primary signal. If implemented, use as filter or journal feature:
+Status: implemented as optional secondary Reversion filter and journal feature. It is disabled by default in config because OB imbalance is spoof-prone.
+
+Do not use as primary signal. The implemented filter uses:
 
 ```text
 imbalance_ratio = bid_volume_near_price / ask_volume_near_price
@@ -157,7 +158,11 @@ imbalance_ratio = bid_volume_near_price / ask_volume_near_price
 Guardrails:
 
 - Use near levels only.
-- Require persistence if acting on walls.
+- Enable explicitly with `fundingReversion.imbalanceFilter.enabled`.
+- For LONG Reversion, require `imbalance_ratio >= minLongRatio`.
+- For SHORT Reversion, require `imbalance_ratio <= maxShortRatio`.
+- Journal `imbalance_filter_enabled`, `imbalance_filter_passed`, `imbalance_ratio`, and `imbalance_near_pct`.
+- Require persistence if acting on walls; this filter does not replace the wall protocol.
 - Compare by symbol/liquidity bucket.
 
 ## P3 Details

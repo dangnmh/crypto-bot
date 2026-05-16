@@ -251,6 +251,64 @@ func TestCycleOrchestrator_RecheckSignFlip(t *testing.T) {
 	o.Run(ctx, time.Now())
 }
 
+func TestCycleOrchestrator_ImbalanceFilterRejectsCandidate(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	cfg := config.SymbolConfig{
+		Symbol:         "BTC_USDT",
+		MinFundingRate: 0.001,
+		MarginUSDT:     100,
+		Leverage:       1,
+		FundingReversion: domain.FundingReversionConfig{
+			Enabled: true,
+			ImbalanceFilter: domain.ImbalanceFilterConfig{
+				Enabled:      true,
+				NearPct:      0.001,
+				MinLongRatio: 1.2,
+			},
+		},
+	}
+	o, m := setupOrchestratorWithConfig(t, ctrl, cfg)
+
+	m.tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.005,
+		LastPrice:   50000,
+		BestBid:     49999,
+		BestAsk:     50001,
+	}, nil).AnyTimes()
+	m.contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
+		PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001,
+	}, nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().SubscribeDepth(gomock.Any(), "BTC_USDT", "").Return(nil).AnyTimes()
+	m.subscriber.EXPECT().UnsubscribeDepth(gomock.Any(), "BTC_USDT", "").Return(nil).AnyTimes()
+	m.priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
+		BestBid: 49999, BestAsk: 50001, LastPrice: 50000,
+	}, nil).AnyTimes()
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	o.Run(ctx, time.Now())
+
+	record, ok := m.recorder.last()
+	if !ok {
+		t.Fatal("expected cycle record")
+	}
+	if record.Outcome != domain.OutcomeAborted {
+		t.Fatalf("expected imbalance abort, got %s", record.Outcome)
+	}
+	if !strings.Contains(record.AbortReason, "imbalance ratio") {
+		t.Fatalf("expected imbalance abort reason, got %q", record.AbortReason)
+	}
+	if !record.Decision.ImbalanceFilterEnabled {
+		t.Fatal("expected imbalance filter to be journaled as enabled")
+	}
+	if record.Decision.ImbalanceFilterPassed {
+		t.Fatal("expected failed imbalance filter in journal")
+	}
+}
+
 func TestCycleOrchestrator_CreateOrderFails(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

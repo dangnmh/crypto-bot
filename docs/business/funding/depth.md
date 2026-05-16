@@ -12,7 +12,7 @@ Orderbook is useful for immediate execution decisions. It is weak as a future-pr
 | Spread-based slippage | Implemented | Use spread multiplier as dynamic buffer |
 | TP wall safety cap | Implemented with caution | Wall can reduce TP target, not increase it |
 | Trap OB assistance | Implemented with caution | Use as cap/placement aid, not primary model |
-| Imbalance Ratio | Backlog | Filter only, not primary signal |
+| Imbalance Ratio | Implemented | Optional secondary filter and journal feature only |
 | Multi-snapshot wall protocol | Backlog | Needs persistence and spoofing guards |
 
 ## Core Principle
@@ -94,11 +94,27 @@ Required journal fields:
 - `wall_verified`
 - `trap_outcome`
 
+### Imbalance Ratio
+
+The implemented imbalance ratio is:
+
+```text
+imbalance_ratio = bid_volume_near_price / ask_volume_near_price
+```
+
+Rules:
+
+- Disabled by default.
+- Uses only levels within `imbalanceFilter.nearPct` around the best bid/ask midpoint.
+- LONG Reversion requires `imbalance_ratio >= minLongRatio`.
+- SHORT Reversion requires `imbalance_ratio <= maxShortRatio`.
+- Journal records the ratio and whether the filter passed.
+- It must remain a secondary filter because spoofing is common.
+
 ## Backlog Moved Out
 
 The following ideas are intentionally not specified here as implemented behavior:
 
-- Imbalance Ratio.
 - Dynamic TP/SL expansion based on OB.
 - Multi-snapshot wall persistence protocol.
 

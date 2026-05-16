@@ -53,15 +53,25 @@ type TradeConfig struct {
 
 // FundingReversionConfig holds configuration specific to the reversion strategy.
 type FundingReversionConfig struct {
-	Enabled           bool                 `json:"enabled"`
-	TakeProfitPct     float64              `json:"takeProfitPct"`
-	StopLossPct       float64              `json:"stopLossPct"`
-	MaxLatency        types.Duration       `json:"maxLatency"`
-	BufferTime        types.Duration       `json:"bufferTime"`
-	HoldDuration      types.Duration       `json:"holdDuration"`
-	PostSettleTimeout types.Duration       `json:"postSettleTimeout"`
-	DynamicPricing    DynamicPricingConfig `json:"dynamicPricing"`
-	Trailing          TrailingConfig       `json:"trailing"`
+	Enabled           bool                  `json:"enabled"`
+	TakeProfitPct     float64               `json:"takeProfitPct"`
+	StopLossPct       float64               `json:"stopLossPct"`
+	MaxLatency        types.Duration        `json:"maxLatency"`
+	BufferTime        types.Duration        `json:"bufferTime"`
+	HoldDuration      types.Duration        `json:"holdDuration"`
+	PostSettleTimeout types.Duration        `json:"postSettleTimeout"`
+	DynamicPricing    DynamicPricingConfig  `json:"dynamicPricing"`
+	ImbalanceFilter   ImbalanceFilterConfig `json:"imbalanceFilter"`
+	Trailing          TrailingConfig        `json:"trailing"`
+}
+
+// ImbalanceFilterConfig controls the optional near-book imbalance safety filter.
+// It must remain a secondary filter because orderbook imbalance is spoof-prone.
+type ImbalanceFilterConfig struct {
+	Enabled       bool    `json:"enabled"`
+	NearPct       float64 `json:"nearPct"`
+	MinLongRatio  float64 `json:"minLongRatio"`
+	MaxShortRatio float64 `json:"maxShortRatio"`
 }
 
 // TrailingConfig holds configuration for the Trailing Stop mechanism.
@@ -143,6 +153,7 @@ type TradePlan struct {
 	ExpectedProfit float64       // estimated net profit %
 	ImpactRatio    float64       // position size / 24h volume
 	Slippage       float64       // estimated slippage %
+	ImbalanceRatio float64       // near-book bid volume / ask volume
 	ATR            float64       // Average True Range (Dynamic Pricing)
 	SafetyResult   *SafetyResult // safety evaluation result
 }

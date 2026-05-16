@@ -20,7 +20,7 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 
 | Concern | Impact | Suggested response |
 |---|---|---|
-| Imbalance Ratio dễ bị spoof | False confidence trên altcoin mỏng | Chỉ dùng filter phụ hoặc analysis feature |
+| Imbalance Ratio dễ bị spoof | False confidence trên altcoin mỏng | Implemented as disabled-by-default secondary filter + journal field; không dùng làm primary signal |
 | Trap depth cheat sheet là heuristic | Dễ overfit hoặc áp dụng sai symbol | Tune theo journal by symbol/FR bucket |
 | Pre-Funding conflict với Reversion | Hai flow ngược chiều nhau | Force close before settle hoặc Hedge mode |
 | Long docs dễ lẫn design với production | Người đọc tưởng chưa làm là đã làm | Mỗi file có status và link backlog/question |

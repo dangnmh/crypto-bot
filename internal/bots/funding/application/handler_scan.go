@@ -152,6 +152,39 @@ func (o *CycleOrchestrator) handleArm(ctx context.Context) {
 	o.recorder.SafetyPassed = true
 	o.recorder.TrapEnabled = o.cfg.IsHedgeTrapEnabled()
 
+	if filter := c.Config.FundingReversion.ImbalanceFilter; filter.Enabled {
+		ob, err := o.deps.DepthStore.GetDepth(ctx, o.cfg.Symbol)
+		var result domain.ImbalanceFilterResult
+		if err == nil {
+			result = c.EvaluateImbalanceFilter(ob)
+		} else {
+			result = domain.ImbalanceFilterResult{
+				Enabled:      true,
+				Passed:       false,
+				NearPct:      filter.NearPct,
+				RejectReason: "imbalance ratio unavailable",
+			}
+		}
+		o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+			b.ImbalanceFilterEnabled = result.Enabled
+			b.ImbalanceFilterPassed = result.Passed
+			b.ImbalanceRatio = result.Ratio
+			b.ImbalanceNearPct = result.NearPct
+		})
+		if !result.Passed {
+			o.recorder.SafetyPassed = false
+			o.recorder.SafetyRejectReason = result.RejectReason
+			o.deps.Log.Warn("🔴 Imbalance filter FAIL", slog.String("reason", result.RejectReason))
+			o.subs.UnsubscribeAll(ctx)
+			o.abort("arm", result.RejectReason)
+			return
+		}
+		o.deps.Log.Info("📊 Imbalance filter OK",
+			slog.Float64("ratio", result.Ratio),
+			slog.Float64("near_pct", result.NearPct*100),
+		)
+	}
+
 	// Capture dynamic pricing data for comparison.
 	if c.Config.FundingReversion.DynamicPricing.Enabled {
 		o.recorder.DynamicEnabled = true

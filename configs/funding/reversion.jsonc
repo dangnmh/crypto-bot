@@ -26,6 +26,14 @@
     "slFundingMultiplier": 1.0
   },
 
+  // Optional secondary orderbook filter. Disabled by default because imbalance is spoof-prone.
+  "imbalanceFilter": {
+    "enabled":       false,
+    "nearPct":       0.1,
+    "minLongRatio":  1.2,
+    "maxShortRatio": 0.8
+  },
+
   // Trailing Stop (MEXC TrackOrder)
   "trailing": {
     "enabled":       true,
