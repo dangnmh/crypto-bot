@@ -121,7 +121,7 @@ func (o *CycleOrchestrator) handleTrapOrderTimeout(ctx context.Context, evt even
 				Error:  reason,
 				Phase:  domain.PhaseTrap,
 			})
-			o.publishOrLog(events.TopicReversionAbort, events.CycleAbortEvent{
+			o.publishOrLog(events.TopicTrapAbort, events.CycleAbortEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Reason: reason,

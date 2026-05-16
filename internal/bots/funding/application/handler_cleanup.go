@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/events"
@@ -12,71 +13,92 @@ import (
 
 // subscribeCleanup handles terminal events → unsubscribe WS, signal done.
 func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan struct{}) {
-	// Subscribe to all terminal event types.
-	closedMsgs, err := o.bus.Subscribe(ctx, events.TopicReversionPositionClosed)
-	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicReversionPositionClosed), slog.Any("error", err))
+	closedTopics := []string{
+		events.TopicReversionPositionClosed,
+		events.TopicTrapPositionClosed,
 	}
-	timeoutMsgs, err := o.bus.Subscribe(ctx, events.TopicReversionTimeout)
-	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicReversionTimeout), slog.Any("error", err))
+	timeoutTopics := []string{
+		events.TopicReversionTimeout,
+		events.TopicTrapTimeout,
 	}
-	abortMsgs, err := o.bus.Subscribe(ctx, events.TopicReversionAbort)
-	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", events.TopicReversionAbort), slog.Any("error", err))
+	abortTopics := []string{
+		events.TopicReversionAbort,
+		events.TopicTrapAbort,
 	}
 
 	cleanup := o.makeCleanupFn(ctx, done)
 
-	o.watchTerminalTopic(ctx, closedMsgs, func(msg *message.Message) {
-		evt, parseErr := unmarshal[events.PositionClosedEvent](msg.Payload)
-		if parseErr == nil {
-			cleanup(evt.Reason)
-		} else {
-			cleanup("position_closed")
-		}
-	})
+	for _, topic := range closedTopics {
+		o.watchTerminalEvent(ctx, topic, func(msg *message.Message) {
+			evt, parseErr := unmarshal[events.PositionClosedEvent](msg.Payload)
+			if parseErr == nil {
+				cleanup(evt.Reason)
+			} else {
+				cleanup("position_closed")
+			}
+		})
+	}
 
-	o.watchTerminalTopic(ctx, timeoutMsgs, func(_ *message.Message) {
-		cleanup("timeout")
-	})
+	for _, topic := range timeoutTopics {
+		o.watchTerminalEvent(ctx, topic, func(_ *message.Message) {
+			cleanup("timeout")
+		})
+	}
 
-	o.watchTerminalTopic(ctx, abortMsgs, func(msg *message.Message) {
-		evt, parseErr := unmarshal[events.CycleAbortEvent](msg.Payload)
-		if parseErr == nil {
-			o.recorder.AbortReason = evt.Reason
-			o.recorder.AbortPhase = evt.Phase
-		}
-		cleanup("abort")
-	})
+	for _, topic := range abortTopics {
+		o.watchTerminalEvent(ctx, topic, func(msg *message.Message) {
+			evt, parseErr := unmarshal[events.CycleAbortEvent](msg.Payload)
+			if parseErr == nil {
+				o.recorder.AbortReason = evt.Reason
+				o.recorder.AbortPhase = evt.Phase
+			}
+			cleanup("abort")
+		})
+	}
+}
+
+func (o *CycleOrchestrator) watchTerminalEvent(
+	ctx context.Context,
+	topic string,
+	handler func(*message.Message),
+) {
+	msgs, err := o.bus.Subscribe(ctx, topic)
+	if err != nil {
+		o.deps.Log.Error("subscribe failed", slog.String("topic", topic), slog.Any("error", err))
+		return
+	}
+	o.watchTerminalTopic(ctx, msgs, handler)
 }
 
 // makeCleanupFn returns a closure that handles cycle cleanup and recording.
 func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{}) func(string) {
+	var once sync.Once
 	return func(reason string) {
-		o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason))
-		o.subs.UnsubscribeAll(ctx)
-		if o.excursionCancel != nil {
-			o.excursionCancel()
-			o.excursionCancel = nil
-		}
-
-		// Capture exit data for cycle record.
-		o.recorder.ExitReason = reason
-		o.recorder.ExitTime = time.Now()
-
-		// Final MFE/MAE update from latest price.
-		if o.recorder.Excursion != nil {
-			if pd, err := o.deps.PriceStore.GetPrice(ctx, o.cfg.Symbol, 2*time.Second); err == nil {
-				o.recorder.Excursion.Update(pd.LastPrice, time.Now())
+		once.Do(func() {
+			o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason))
+			o.subs.UnsubscribeAll(ctx)
+			if o.excursionCancel != nil {
+				o.excursionCancel()
+				o.excursionCancel = nil
 			}
-		}
 
-		// Signal cycle completion (non-blocking in case already done).
-		select {
-		case done <- struct{}{}:
-		default:
-		}
+			// Capture exit data for cycle record.
+			o.recorder.ExitReason = reason
+			o.recorder.ExitTime = time.Now()
+
+			// Final MFE/MAE update from latest price.
+			if o.recorder.Excursion != nil {
+				if pd, err := o.deps.PriceStore.GetPrice(ctx, o.cfg.Symbol, 2*time.Second); err == nil {
+					o.recorder.Excursion.Update(pd.LastPrice, time.Now())
+				}
+			}
+
+			// Signal cycle completion (non-blocking in case already done).
+			select {
+			case done <- struct{}{}:
+			default:
+			}
+		})
 	}
 }
 

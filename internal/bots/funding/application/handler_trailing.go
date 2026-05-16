@@ -124,10 +124,12 @@ func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Contex
 	flow := events.FlowReversion
 	closeTopic := events.TopicReversionPositionClosed
 	errorTopic := events.TopicReversionError
+	abortTopic := events.TopicReversionAbort
 	if evt.Phase == domain.PhaseTrap {
 		flow = events.FlowTrap
 		closeTopic = events.TopicTrapPositionClosed
 		errorTopic = events.TopicTrapError
+		abortTopic = events.TopicTrapAbort
 	}
 
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -151,7 +153,7 @@ func (o *CycleOrchestrator) fallbackCloseAfterTrailingFailure(ctx context.Contex
 			Error:  reason,
 			Phase:  domain.PhaseTrailing,
 		})
-		o.publishOrLog(events.TopicReversionAbort, events.CycleAbortEvent{
+		o.publishOrLog(abortTopic, events.CycleAbortEvent{
 			Flow:   flow,
 			Symbol: evt.Symbol,
 			Reason: reason,

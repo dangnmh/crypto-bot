@@ -6,7 +6,6 @@ Backlog chỉ chứa việc chưa làm hoặc chưa đủ dữ liệu để làm
 
 | Priority | Item | Why | Owner doc |
 |---|---|---|---|
-| P0 | Split funding event topics by flow | Reversion/Trap/Pre-Funding chỉ nên share init scan | [flow.md](flow.md) |
 | P2 | Exact-leg fallback close API | Giảm blast radius trong Hedge mode khi TrackOrder fail | [reversion_flow.md](reversion_flow.md) |
 | P2 | Imbalance Ratio filter | Chỉ dùng filter phụ vì spoof-prone | [depth.md](depth.md) |
 | P3 | Pre-Funding Wave implementation | Cần journal chứng minh edge trước | [pre_funding_flow.md](pre_funding_flow.md) |
@@ -29,6 +28,8 @@ Done criteria:
 - Unit tests cover record assembly and append failure.
 
 ### Split Event Topics By Flow
+
+Status: implemented. Shared scan fans out to flow-specific candidate topics, and downstream Reversion/Trap order, fill, trailing, timeout, close, error, and abort events remain in their own namespaces. Trap terminal events no longer route through Reversion abort; cleanup listens to terminal topics for both flows.
 
 Target topic layout:
 

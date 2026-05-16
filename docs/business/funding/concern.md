@@ -15,7 +15,6 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 |---|---|---|
 | OB wall quanh settlement là unstable | TP/Trap dựa vào wall có thể vô ích hoặc hại | OB chỉ cap risk; Trap verifies fresh wall before placement and journals `wall_verified`, `wall_distance_pct`, outcome |
 | Trap chạy độc lập với Reversion outcome | Trap có thể thành trade riêng ngoài thesis ban đầu | Define risk rule: allow/skip when Reversion no-fill |
-| Generic cycle topics dễ làm lẫn flow | Handler Trap/Reversion có thể coupling qua event chung | Split topic namespace by flow |
 
 ## Low Severity / Watchlist
 
@@ -33,6 +32,7 @@ File này ghi các logic đang tồn tại nhưng chưa ổn, dễ gây hiểu n
 | TrackOrder/close failure có thể để unmanaged position | Guarded in code | Nếu TrackOrder placement fail, bot gọi fallback `CloseAllPositions(symbol)` bằng context mới không bị cancel. Nếu fallback close cũng fail, journal ghi `critical_close_failed`, publish flow error, và abort cycle thay vì publish `position_closed` giả. | Có thể thêm exact-leg close API để close đúng `close_side + volume`; giữ `CloseAllPositions` làm last-resort fallback. |
 | Timeout force-close failure có thể bị ghi nhầm là timeout an toàn | Guarded in code | Nếu post-settle timeout gọi force close nhưng exchange reject/fail, journal ghi `critical_timeout_close_failed`, publish flow error, và abort cycle thay vì publish `funding.reversion.timeout` giả. | Có thể thêm retry/backoff hoặc symbol-level disable khi `disableSymbolAfterCriticalCloseFailure` được wiring đầy đủ. |
 | Unfilled Trap limit order có thể sống quá wick window | Guarded in code | Sau `funding.trap.order_placed`, bot cancel unfilled Trap order khi `fundingTrap.postSettleTimeout` hết hạn. Nếu cancel order fail, fallback `CancelAllOpenOrders(symbol)`. Nếu vẫn fail, journal ghi `critical_trap_cancel_failed`, publish Trap error, và abort cycle. | Cần dữ liệu journal để tune timeout window theo symbol/FR bucket. |
+| Generic cycle topics dễ làm lẫn flow | Resolved in code | Shared scan publish `funding.scan.candidate_found`, sau đó fan-out sang `funding.reversion.*` và `funding.trap.*`. Trap timeout/close/error/abort dùng Trap namespace, và cleanup listen terminal topics của cả Reversion lẫn Trap. | Pre-Funding vẫn design-only; khi implement phải giữ namespace `funding.prefunding.*`. |
 
 ## Current Rule
 
