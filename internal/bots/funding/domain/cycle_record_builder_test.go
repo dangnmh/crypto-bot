@@ -147,6 +147,37 @@ func TestCycleRecordBuilder_JSONDoesNotEmitPhase(t *testing.T) {
 	}
 }
 
+func TestCycleRecordBuilder_BuildsMarketSnapshots(t *testing.T) {
+	t.Parallel()
+
+	b := domain.NewCycleRecordBuilder("req-snapshots", time.Now())
+	b.AddSnapshot(domain.MarketSnapshot{
+		Topic:     "funding.scan.candidate_found",
+		LastPrice: 100.5,
+		BestBid:   100.4,
+		BestAsk:   100.6,
+		Spread:    0.2,
+	})
+
+	record := b.Build("BTC_USDT", 0, 0, nil, nil)
+
+	if assert.Len(t, record.Snapshots, 1) {
+		assert.Equal(t, "funding.scan.candidate_found", record.Snapshots[0].Topic)
+		assert.InDelta(t, 100.5, record.Snapshots[0].LastPrice, 1e-9)
+		assert.InDelta(t, 100.4, record.Snapshots[0].BestBid, 1e-9)
+		assert.InDelta(t, 100.6, record.Snapshots[0].BestAsk, 1e-9)
+		assert.InDelta(t, 0.2, record.Snapshots[0].Spread, 1e-9)
+	}
+
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+	if !strings.Contains(string(data), `"snapshots"`) {
+		t.Fatalf("record JSON must contain snapshots: %s", data)
+	}
+}
+
 func TestCycleRecordBuilder_BuildTimeoutCycle(t *testing.T) {
 	t.Parallel()
 

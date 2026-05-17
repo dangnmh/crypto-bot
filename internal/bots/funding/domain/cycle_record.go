@@ -47,6 +47,9 @@ type CycleRecord struct {
 	IOCExcursion  ExcursionSnapshot `json:"ioc_excursion,omitempty"`
 	TrapExcursion ExcursionSnapshot `json:"trap_excursion,omitempty"`
 
+	// Market snapshots captured around scan/arm/fire decision points
+	Snapshots []MarketSnapshot `json:"snapshots,omitempty"`
+
 	// Config active during this cycle (full JSON for reproducibility)
 	Config json.RawMessage `json:"config"`
 
@@ -67,6 +70,29 @@ const (
 	OutcomeAborted CycleOutcome = "aborted"
 	OutcomeTimeout CycleOutcome = "timeout"
 	OutcomeNoFill  CycleOutcome = "no_fill"
+)
+
+// TrapOutcome enumerates terminal or intermediate outcomes for the Trap leg.
+type TrapOutcome string
+
+const (
+	TrapOutcomePlaced  TrapOutcome = "placed"
+	TrapOutcomeFilled  TrapOutcome = "filled"
+	TrapOutcomeClosed  TrapOutcome = "closed"
+	TrapOutcomeTimeout TrapOutcome = "timeout"
+	TrapOutcomeAborted TrapOutcome = "aborted"
+	TrapOutcomeSkipped TrapOutcome = "skipped"
+)
+
+// TrapSkipReason explains why a Trap leg ended before order placement.
+type TrapSkipReason string
+
+const (
+	TrapSkipReasonWallNotVerified  TrapSkipReason = "wall_not_verified"
+	TrapSkipReasonInvalidPrice     TrapSkipReason = "invalid_price"
+	TrapSkipReasonInvalidVolume    TrapSkipReason = "invalid_volume"
+	TrapSkipReasonCycleRiskBlocked TrapSkipReason = "cycle_risk_blocked"
+	TrapSkipReasonOrderFailed      TrapSkipReason = "order_failed"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -107,6 +133,8 @@ type IOCSnapshot struct {
 type TrapSnapshot struct {
 	Flow             string            `json:"flow,omitempty"`
 	Enabled          bool              `json:"enabled"`
+	Outcome          TrapOutcome       `json:"outcome,omitempty"`
+	SkipReason       TrapSkipReason    `json:"skip_reason,omitempty"`
 	Source           string            `json:"source,omitempty"` // "ob_monitor" or "static_limit"
 	WallPrice        float64           `json:"wall_price,omitempty"`
 	WallVerified     bool              `json:"wall_verified,omitempty"`
@@ -117,6 +145,7 @@ type TrapSnapshot struct {
 	FillPrice        float64           `json:"fill_price,omitempty"`
 	FillVolume       float64           `json:"fill_volume,omitempty"`
 	OrderID          string            `json:"order_id,omitempty"`
+	Error            string            `json:"error,omitempty"`
 	TPPctConfigured  float64           `json:"tp_pct_configured,omitempty"`
 	SLPctConfigured  float64           `json:"sl_pct_configured,omitempty"`
 	TPPriceSubmitted float64           `json:"tp_price_submitted,omitempty"`

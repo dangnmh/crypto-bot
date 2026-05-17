@@ -44,6 +44,7 @@ const (
 	TopicTrapAbort          = "funding.trap.abort"
 	TopicTrapError          = "funding.trap.error"
 	TopicTrapOBWallFound    = "funding.trap.ob_wall_found"
+	TopicTrapSkipped        = "funding.trap.skipped"
 )
 
 // ──────────────────────────────────────────────────────────────────────.
@@ -153,6 +154,15 @@ type OBWallFoundEvent struct {
 	WallAgeMs       int64       `json:"wall_age_ms,omitempty"`
 	WallDistancePct float64     `json:"wall_distance_pct,omitempty"`
 	Side            shared.Side `json:"side"`
+}
+
+// TrapSkippedEvent is published when Trap intentionally ends before placing an order.
+type TrapSkippedEvent struct {
+	Flow      string    `json:"flow"`
+	Symbol    string    `json:"symbol"`
+	Reason    string    `json:"reason"`
+	Source    string    `json:"source,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // PositionClosedEvent signals that all positions for a symbol have been closed.

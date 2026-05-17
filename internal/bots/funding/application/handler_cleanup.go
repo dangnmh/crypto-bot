@@ -7,25 +7,17 @@ import (
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/events"
+	"crypto-bot/internal/bots/funding/application/trap"
 	"crypto-bot/internal/bots/funding/domain"
+	shared "crypto-bot/internal/domain"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-// subscribeCleanup handles terminal events → unsubscribe WS, signal done.
 func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan struct{}) {
-	closedTopics := []string{
-		events.TopicReversionPositionClosed,
-		events.TopicTrapPositionClosed,
-	}
-	timeoutTopics := []string{
-		events.TopicReversionTimeout,
-		events.TopicTrapTimeout,
-	}
-	abortTopics := []string{
-		events.TopicReversionAbort,
-		events.TopicTrapAbort,
-	}
+	closedTopics := []string{events.TopicReversionPositionClosed}
+	timeoutTopics := []string{events.TopicReversionTimeout}
+	abortTopics := []string{events.TopicReversionAbort, events.TopicTrapAbort}
 
 	cleanup := o.makeCleanupFn(ctx, done)
 
@@ -58,7 +50,7 @@ func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan stru
 			flow := terminalFlow(topic)
 			if parseErr == nil {
 				flow = evt.Flow
-				o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+				o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
 					b.AbortReason = evt.Reason
 					b.AbortFlow = flow
 					b.AbortTopic = topic
@@ -74,44 +66,38 @@ func (o *CycleOrchestrator) watchTerminalEvent(
 	topic string,
 	handler func(*message.Message),
 ) {
-	msgs, err := o.bus.Subscribe(ctx, topic)
-	if err != nil {
-		o.deps.Log.Error("subscribe failed", slog.String("topic", topic), slog.Any("error", err))
-		return
-	}
-	o.watchTerminalTopic(ctx, msgs, handler)
+	o.rt.Subscribe(ctx, topic, handler)
 }
 
-// makeCleanupFn returns a closure that handles cycle cleanup and recording.
 func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{}) func(string, string, string) {
 	var once sync.Once
 	return func(topic, flow, reason string) {
 		once.Do(func() {
 			startedAt := time.Now()
-			o.deps.Log.Info("🧹 Cleanup", slog.String("reason", reason), slog.String("topic", topic), slog.String("flow", flow))
-			o.subs.UnsubscribeAll(ctx)
-			unsubscribed := true
-			if o.excursionCancel != nil {
-				o.excursionCancel()
-				o.excursionCancel = nil
+			o.rt.Log().Info("🧹 Cleanup", slog.String("reason", reason), slog.String("topic", topic), slog.String("flow", flow))
+			if flow == events.FlowReversion {
+				o.settleOpenTrapBeforeCycleCleanup(ctx)
 			}
+			o.rt.UnsubscribeAll(ctx)
+			unsubscribed := true
+			o.rt.StopExcursionPriceStream()
 
-			// Capture exit data for cycle record.
-			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+			o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
 				b.ExitReason = reason
 				b.ExitTime = time.Now()
+				switch topic {
+				case events.TopicTrapPositionClosed:
+					b.TrapOutcome = domain.TrapOutcomeClosed
+				case events.TopicTrapTimeout:
+					b.TrapOutcome = domain.TrapOutcomeTimeout
+				case events.TopicTrapAbort:
+					b.TrapOutcome = domain.TrapOutcomeAborted
+				}
 			})
 
-			// Final MFE/MAE update from latest price.
-			excursionFinalized := false
-			if o.recorder.Excursion != nil {
-				if pd, err := o.deps.PriceStore.GetPrice(ctx, o.cfg.Symbol, 2*time.Second); err == nil {
-					o.recorder.Excursion.Update(pd.LastPrice, time.Now())
-					excursionFinalized = true
-				}
-			}
+			excursionFinalized := o.rt.FinalizeExcursion(ctx)
 			completedAt := time.Now()
-			o.recorder.Mutate(func(b *domain.CycleRecordBuilder) {
+			o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
 				b.Cleanup = domain.CleanupSnapshot{
 					TerminalFlow:       flow,
 					TerminalTopic:      topic,
@@ -123,13 +109,125 @@ func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{
 				}
 			})
 
-			// Signal cycle completion (non-blocking in case already done).
 			select {
 			case done <- struct{}{}:
 			default:
 			}
 		})
 	}
+}
+
+type trapCleanupAction int
+
+const (
+	trapCleanupNone trapCleanupAction = iota
+	trapCleanupCancelOrder
+	trapCleanupClosePosition
+)
+
+func (o *CycleOrchestrator) settleOpenTrapBeforeCycleCleanup(ctx context.Context) {
+	var action trapCleanupAction
+	var orderID string
+	var fillVol float64
+	var closeSide shared.Side
+	positionMode := o.rt.Config().ParsedPositionMode
+
+	o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
+		if b.TrapOrderID == "" || trap.OutcomeTerminal(b.TrapOutcome) {
+			return
+		}
+		orderID = b.TrapOrderID
+		if b.TrapFilled {
+			action = trapCleanupClosePosition
+			fillVol = b.TrapFillVol
+			closeSide = shared.CloseSideFor(b.TrapSide())
+			b.TrapOutcome = domain.TrapOutcomeClosed
+			return
+		}
+		action = trapCleanupCancelOrder
+		b.TrapOutcome = domain.TrapOutcomeTimeout
+	})
+
+	switch action {
+	case trapCleanupNone:
+		return
+	case trapCleanupCancelOrder:
+		o.cancelOpenTrapOrderForCleanup(ctx, orderID)
+	case trapCleanupClosePosition:
+		o.closeOpenTrapPositionForCleanup(ctx, closeSide, fillVol, positionMode)
+	}
+}
+
+func (o *CycleOrchestrator) cancelOpenTrapOrderForCleanup(ctx context.Context, orderID string) {
+	cfg := o.rt.Config()
+	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := o.rt.Deps().Client.CancelOrder(cancelCtx, cfg.Symbol, orderID); err != nil {
+		o.rt.Log().Error("🔴 Trap cleanup cancel failed - canceling all open orders", slog.Any("error", err))
+		if allErr := o.rt.Deps().Client.CancelAllOpenOrders(cancelCtx, cfg.Symbol); allErr != nil {
+			o.recordTrapCleanupFailure("critical_trap_cancel_failed: " + allErr.Error())
+			o.publishOrLog(events.TopicTrapError, events.CycleErrorEvent{
+				Flow:   events.FlowTrap,
+				Symbol: cfg.Symbol,
+				Error:  "critical_trap_cancel_failed: " + allErr.Error(),
+			})
+			o.publishOrLog(events.TopicTrapAbort, events.CycleAbortEvent{
+				Flow:   events.FlowTrap,
+				Symbol: cfg.Symbol,
+				Reason: "critical_trap_cancel_failed: " + allErr.Error(),
+			})
+			return
+		}
+	}
+
+	o.publishOrLog(events.TopicTrapTimeout, events.CycleTimeoutEvent{
+		Flow:    events.FlowTrap,
+		Symbol:  cfg.Symbol,
+		Timeout: 0,
+	})
+}
+
+func (o *CycleOrchestrator) closeOpenTrapPositionForCleanup(ctx context.Context, closeSide shared.Side, fillVol float64, positionMode int) {
+	cfg := o.rt.Config()
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := o.rt.Deps().Client.ClosePosition(closeCtx, cfg.Symbol, closeSide, fillVol, positionMode); err != nil {
+		o.rt.Log().Error("🔴 Trap cleanup close failed - closing all positions", slog.Any("error", err))
+		if allErr := o.rt.Deps().Client.CloseAllPositions(closeCtx, cfg.Symbol); allErr != nil {
+			o.recordTrapCleanupFailure("critical_trap_close_failed: " + allErr.Error())
+			o.publishOrLog(events.TopicTrapError, events.CycleErrorEvent{
+				Flow:   events.FlowTrap,
+				Symbol: cfg.Symbol,
+				Error:  "critical_trap_close_failed: " + allErr.Error(),
+			})
+			o.publishOrLog(events.TopicTrapAbort, events.CycleAbortEvent{
+				Flow:   events.FlowTrap,
+				Symbol: cfg.Symbol,
+				Reason: "critical_trap_close_failed: " + allErr.Error(),
+			})
+			return
+		}
+	}
+
+	o.publishOrLog(events.TopicTrapPositionClosed, events.PositionClosedEvent{
+		Flow:   events.FlowTrap,
+		Symbol: cfg.Symbol,
+		Reason: "cycle_cleanup",
+	})
+}
+
+func (o *CycleOrchestrator) recordTrapCleanupFailure(reason string) {
+	o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
+		b.AbortReason = reason
+		b.AbortFlow = events.FlowTrap
+		b.AbortTopic = events.TopicTrapAbort
+		b.ErrorFlow = events.FlowTrap
+		b.ErrorTopic = events.TopicTrapError
+		b.TrapOutcome = domain.TrapOutcomeAborted
+		b.TrapError = reason
+	})
 }
 
 func terminalFlow(topic string) string {
@@ -143,29 +241,6 @@ func terminalFlow(topic string) string {
 	}
 }
 
-// watchTerminalTopic spawns a goroutine that waits for one message on the given
-// channel and invokes the handler, or returns on context cancellation.
-func (o *CycleOrchestrator) watchTerminalTopic(
-	ctx context.Context,
-	msgs <-chan *message.Message,
-	handler func(*message.Message),
-) {
-	go func() {
-		select {
-		case <-ctx.Done():
-			return
-		case msg, ok := <-msgs:
-			if !ok {
-				return
-			}
-			msg.Ack()
-			handler(msg)
-		}
-	}()
-}
-
-// subscribeEventLog subscribes to key topics and logs them for audit.
-// This is a passive observer — it does not affect the event chain.
 func (o *CycleOrchestrator) subscribeEventLog(ctx context.Context) {
 	topics := []string{
 		events.TopicScanStart,
@@ -184,6 +259,7 @@ func (o *CycleOrchestrator) subscribeEventLog(ctx context.Context) {
 		events.TopicReversionError,
 		events.TopicTrapCandidate,
 		events.TopicTrapOBWallFound,
+		events.TopicTrapSkipped,
 		events.TopicTrapOrderPlaced,
 		events.TopicTrapOrderFilled,
 		events.TopicTrapTrailingPlaced,
@@ -194,8 +270,8 @@ func (o *CycleOrchestrator) subscribeEventLog(ctx context.Context) {
 	}
 
 	for _, topic := range topics {
-		o.consumeTopic(ctx, topic, func(msg *message.Message) {
-			o.deps.Log.Info("📋 Event", slog.String("topic", topic), slog.String("msg_id", msg.UUID))
+		o.rt.Subscribe(ctx, topic, func(msg *message.Message) {
+			o.rt.Log().Info("📋 Event", slog.String("topic", topic), slog.String("msg_id", msg.UUID))
 		})
 	}
 }

@@ -60,6 +60,8 @@ type CycleRecordBuilder struct {
 
 	// Trap
 	TrapEnabled   bool
+	TrapOutcome   TrapOutcome
+	TrapSkip      TrapSkipReason
 	TrapSource    string
 	TrapWallPrice float64
 	TrapWallOK    bool
@@ -70,6 +72,7 @@ type CycleRecordBuilder struct {
 	TrapFillPrice float64
 	TrapFillVol   float64
 	TrapOrderID   string
+	TrapError     string
 	TrapTPPct     float64
 	TrapSLPct     float64
 	TrapTPPrice   float64
@@ -231,6 +234,8 @@ func (b *CycleRecordBuilder) Build(
 		Trap: TrapSnapshot{
 			Flow:             cycleRecordFlowTrap,
 			Enabled:          b.TrapEnabled,
+			Outcome:          b.TrapOutcome,
+			SkipReason:       b.TrapSkip,
 			Source:           b.TrapSource,
 			WallPrice:        b.TrapWallPrice,
 			WallVerified:     b.TrapWallOK,
@@ -241,6 +246,7 @@ func (b *CycleRecordBuilder) Build(
 			FillPrice:        b.TrapFillPrice,
 			FillVolume:       b.TrapFillVol,
 			OrderID:          b.TrapOrderID,
+			Error:            b.TrapError,
 			TPPctConfigured:  ratioToPercent(b.TrapTPPct),
 			SLPctConfigured:  ratioToPercent(b.TrapSLPct),
 			TPPriceSubmitted: b.TrapTPPrice,
@@ -269,6 +275,7 @@ func (b *CycleRecordBuilder) Build(
 		Excursion:     iocExcursion,
 		IOCExcursion:  iocExcursion,
 		TrapExcursion: trapExcursion,
+		Snapshots:     append([]MarketSnapshot(nil), b.Snapshots...),
 		Config:        cfgJSON,
 		Timeline:      timeline,
 	}
@@ -287,7 +294,7 @@ func (b *CycleRecordBuilder) timeoutSnapshot() TimeoutSnapshot {
 
 func (b *CycleRecordBuilder) flows() []string {
 	flows := []string{cycleRecordFlowReversion}
-	if b.TrapEnabled || b.TrapOrderID != "" || b.TrapSource != "" || b.TrapFilled {
+	if b.TrapEnabled || b.TrapOrderID != "" || b.TrapSource != "" || b.TrapFilled || b.TrapOutcome != "" {
 		flows = append(flows, cycleRecordFlowTrap)
 	}
 	return flows

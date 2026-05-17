@@ -40,7 +40,7 @@ Do not implement this flow until Cycle Recorder/journal analysis can answer:
 | Does it conflict with Reversion? | Exit timestamp, open position state, position mode |
 | Is holding through settle ever worth it? | Actual funding transfer, post-settle reversal, final PnL |
 
-Open design questions are tracked in [question.md](question.md).
+Do not implement this flow until these questions have journal-backed answers.
 
 ## Candidate Requirements
 
@@ -62,6 +62,25 @@ The Pre-Funding flow should own:
 - force-close deadline
 - optional trailing
 - journal fields
+
+When implemented, every Pre-Funding terminal path must follow the same journal rule as Reversion and Trap: skipped, entered-and-closed, timeout, abort, and error states need explicit flow-level fields. Do not rely on cycle-level `outcome` alone.
+
+## Open Questions
+
+| Question | Why it matters |
+|---|---|
+| Entry cần price momentum + volume hay thêm OB shift? | Signal quá ít dễ false breakout, quá nhiều dễ miss trade |
+| Có bao giờ nên hold qua settlement để nhận funding không? | Có thể conflict với Reversion và bị reversal |
+| Position sizing khi Pre-Funding và Reversion cùng enabled là gì? | Tránh stacked exposure |
+| Force-close deadline trước settlement nên là bao nhiêu? | Phải tránh collision với Reversion IOC và Hedge-mode assumptions |
+
+## Known Concerns
+
+| Concern | Current stance |
+|---|---|
+| Pre-Funding and Reversion are opposite directions | Production use requires force close before settle or Hedge mode with explicit cycle exposure control |
+| Holding through settle changes the strategy from wave-riding to funding capture | Treat as a separate decision; measure actual funding transfer, reversal, and final PnL before allowing it |
+| More filters can make the signal look cleaner but miss the move | Require MFE/MAE after confirmation to prove signal quality |
 
 ## Suggested Config Shape
 
@@ -92,4 +111,9 @@ Percent config fields are user-facing. `takeProfitPct: 1.5` means 1.5%. Funding 
 
 ## Backlog
 
-Implementation work belongs in [backlog.md](backlog.md). Keep this document as the flow contract, not a dumping ground for speculative filters.
+Status: design only. Do not add runtime, config, or journal schema fields until journal proves:
+
+- pre-settlement price movement by FR bucket,
+- confirmation quality after entry signal,
+- Reversion conflict handling,
+- funding-transfer impact if holding through settlement is considered.

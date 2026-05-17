@@ -20,20 +20,23 @@ Existing records such as `data/journal/cycles-YYYY-MM-DD.jsonl` already resemble
 
 ```json
 {
+  "schema_version": 2,
   "req_id": "...",
   "symbol": "COS_USDT",
+  "flows": ["reversion", "trap"],
   "outcome": "aborted",
   "decision": {"fr_at_scan": -0.012579, "fr_at_recheck": -0.012082},
-  "ioc": {"intended_price": 0.001726, "filled": false, "settle_offset_ms": -362},
-  "trap": {"enabled": true, "filled": false},
+  "ioc": {"flow": "reversion", "intended_price": 0.001726, "filled": false, "settle_offset_ms": -362},
+  "trap": {"flow": "trap", "enabled": true, "filled": false},
   "exit": {"reason": "abort", "dynamic_pricing_enabled": true},
-  "excursion": {},
+  "ioc_excursion": {},
+  "trap_excursion": {},
   "config": {},
   "timeline": []
 }
 ```
 
-The current format is useful, but analysis must guard against mixed units. Some fields may be decimals (`0.03` = 3%) while dynamic fields may already be percent values (`2.5` = 2.5%). Until the schema is versioned and normalized, every report should run a unit sanity check.
+The current format is useful, but analysis must guard against older mixed-unit records. Current config normalization preserves decimal ratio inputs for `*Pct` fields, accepts both percent and decimal funding thresholds, keeps `maxPriceDiffPercent` in percent units for slippage math, and journal percent outputs remain percent values. Reports should still run a unit sanity check for old JSONL data.
 
 ## Unit Sanity Check
 
@@ -70,7 +73,7 @@ Run this review after each funding session:
 | Did trailing capture the move? | `tp_efficiency = actual_exit_pct / mfe_pct` | Tune activation/callback if efficiency is low |
 | Was TP reachable? | `mfe_vs_tp` | Lower TP if MFE is usually below TP |
 | Was SL too tight? | `mae_vs_sl`, `sl_was_touched` | Widen SL if winners repeatedly exceed configured SL drawdown |
-| Did Trap add value? | `trap_outcome`, `trap_mfe_pct`, `trap_mae_pct` | Reduce/disable Trap if it adds drawdown without positive expectancy |
+| Did Trap add value? | `trap.outcome`, `trap.excursion.mfe_pct`, `trap.excursion.mae_pct` | Reduce/disable Trap if it adds drawdown without positive expectancy |
 
 ## Reversion Tuning Rules
 
@@ -91,11 +94,20 @@ Use at least 30 comparable cycles per symbol or FR bucket before changing config
 
 Analyze Trap separately from Reversion. A profitable Reversion should not hide an unprofitable Trap leg.
 
+Before tuning depth or size, first verify the Trap terminal journal contract:
+
+| Check | Bad sign | Action |
+|---|---|---|
+| Every Trap-enabled cycle has a terminal Trap result | Trap enabled but no closed/timeout/abort/skipped outcome | Fix journal schema/report before tuning |
+| Skip reasons are counted | Many empty Trap records with no reason | Check `trap.skip_reason` and `funding.trap.skipped` |
+| Filled Trap has MFE/MAE | `trap.filled=true` with empty `trap.excursion` | Fix Trap excursion sampler |
+| Trap terminal state is independent from Reversion PnL | Profitable cycle hides Trap loss/abort/skip | Report Trap leg separately |
+
 | Observation | Interpretation | Config response |
 |---|---|---|
-| `trap_filled=false` for most cycles | Trap depth too far or wick absent | Reduce depth multiplier or disable for that FR bucket |
-| `trap_filled=true` but `trap_mae_pct` high | Catching continuation, not bounce | Increase depth, reduce size, or require wall verification |
-| `trap_mfe_pct` below TP | Trap TP too ambitious | Lower Trap TP or rely on immediate trailing |
+| `trap.filled=false` for most cycles | Trap depth too far or wick absent | Reduce depth multiplier or disable for that FR bucket |
+| `trap.filled=true` but `trap.excursion.mae_pct` high | Catching continuation, not bounce | Increase depth, reduce size, or require wall verification |
+| `trap.excursion.mfe_pct` below TP | Trap TP too ambitious | Lower Trap TP or rely on immediate trailing |
 | OB-assisted worse than static | OB wall path is not adding value | Use FR-static path as primary and demote OB to cap only |
 | Trap losses cluster by symbol | Symbol-specific liquidity issue | Disable Trap for that symbol |
 | Trap outcome volatile with same FR bucket | Position size too large for edge certainty | Lower `trapSizeRatio` |
@@ -147,7 +159,18 @@ A useful daily report should include:
 | Timing | avg/median/min/max `settle_offset_ms` |
 | Execution | IOC fill rate, avg slippage, order errors |
 | Reversion | MFE/MAE, exit reason distribution, TP efficiency |
-| Trap | fill rate, source comparison, Trap PnL/excursion from `trap.excursion` |
+| Trap | enabled count, fill rate, source comparison, terminal outcome, skip reason, excursion from `trap.excursion` |
+| FR buckets | same IOC/Trap metrics grouped by `abs(fr_at_scan)` bucket |
 | Config recommendations | exact config fields to change, with evidence |
 
 Every recommendation should name the evidence window, for example: "last 42 COS_USDT cycles" or "FR bucket 0.6%-1.2% across 18 cycles".
+
+## Operating Rules
+
+| Rule | Reason |
+|---|---|
+| Do not increase size from one or two good cycles | Avoid anecdotal tuning |
+| Keep Trap notional at 25%-50% of Reversion until stable positive expectancy | Trap is higher risk and less proven |
+| Compare by symbol and FR bucket | Global averages can hide thin-symbol behavior |
+| Report Trap terminal outcomes even when Reversion is profitable | Cycle-level PnL can hide skipped, aborted, or losing Trap branches |
+| Treat aborts as evidence | They expose validation, timing, liquidity, and FR instability problems |

@@ -69,13 +69,30 @@ func printText(r journalreport.Report) {
 		r.IOC.SettleOffsetMaxMs,
 	)
 	fmt.Printf("IOC excursion: avg MFE %.4f%%, avg MAE %.4f%%\n", r.IOC.AvgMFEPct, r.IOC.AvgMAEPct)
-	fmt.Printf("Trap: enabled %d, fill %.1f%%, avg MFE %.4f%%, avg MAE %.4f%%, by source %v\n",
+	fmt.Printf("Trap: enabled %d, fill %.1f%%, avg MFE %.4f%%, avg MAE %.4f%%, outcomes %v, skips %v, by source %v\n",
 		r.Trap.EnabledCycles,
 		r.Trap.FillRatePct,
 		r.Trap.AvgMFEPct,
 		r.Trap.AvgMAEPct,
+		r.Trap.Outcomes,
+		r.Trap.SkipReasons,
 		r.Trap.BySource,
 	)
+	if len(r.FRBuckets) > 0 {
+		fmt.Println("FR buckets:")
+		for i := range r.FRBuckets {
+			bucket := &r.FRBuckets[i]
+			fmt.Printf("- %s: cycles %d, IOC fill %.1f%%, Trap enabled %d, Trap fill %.1f%%, outcomes %v, by source %v\n",
+				bucket.Bucket,
+				bucket.Cycles,
+				bucket.IOC.FillRatePct,
+				bucket.Trap.EnabledCycles,
+				bucket.Trap.FillRatePct,
+				bucket.Trap.Outcomes,
+				bucket.Trap.BySource,
+			)
+		}
+	}
 	if len(r.UnitWarnings) > 0 {
 		fmt.Println("Unit warnings:")
 		for _, warning := range r.UnitWarnings {

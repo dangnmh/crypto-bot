@@ -1,12 +1,12 @@
-# Cycle Recorder — Funding Reversion Trade Journal
+# Cycle Recorder — Funding Trade Journal
 
-> Status: design / P0 priority. Implement this before adding new trading strategies or increasing Trap size. The first production milestone should be a minimal append-only JSONL recorder with MFE/MAE; SQLite and Watermill persistence can follow once the record shape is stable.
+> Status: JSONL schema v2 implemented. The current production path writes append-only `data/journal/cycles-YYYY-MM-DD.jsonl` records through `JSONLCycleRecorder`, includes flow-scoped Reversion/Trap data, and is queryable through `cmd/funding-journal`.
 >
-> After records exist, use [journal_analysis.md](journal_analysis.md) to convert them into config changes.
+> Use [journal_analysis.md](journal_analysis.md) to convert records into config changes. SQLite and Watermill persistence remain future extensions, not the current recorder contract.
 
 ## Goal
 
-Record **every trading cycle** of the Funding Reversion bot into a structured JSONL file so we can later analyze:
+Record **every trading cycle** of the Funding bot into a structured JSONL file so we can later analyze:
 
 1. **Config accuracy** — Are our TP/SL/Depth percentages optimal or leaving money on the table?
 2. **Timing precision** — Did we fire at the right moment? How much latency vs the settlement?
@@ -16,18 +16,30 @@ Record **every trading cycle** of the Funding Reversion bot into a structured JS
 
 ---
 
-## What Already Exists (Leverage, Don't Rebuild)
+## Current Implementation Summary
+
+| Area | Current state |
+|---|---|
+| Recorder | `internal/infrastructure/journal.JSONLCycleRecorder` writes one JSON object per line |
+| Schema | `schema_version=2` in `internal/bots/funding/domain.CycleRecord` |
+| Wiring | `internal/bots/funding/application/sniper.go` creates a recorder from `journal.enabled` + `journal.dir` |
+| Lifecycle capture | `CycleOrchestrator` builds and persists the record with a deferred `persistCycleRecord()` before the bus closes |
+| Flow separation | `flows`, `ioc.flow=reversion`, `trap.flow=trap`, flow-scoped topics, Trap branch outcomes, and cycle cleanup fields |
+| Excursion | `ioc_excursion`, `trap_excursion`, and legacy `excursion` alias for IOC compatibility |
+| Report | `go run ./cmd/funding-journal -dir data/journal -date YYYY-MM-DD [-symbol SYMBOL] [-json]` |
+
+## Reused Runtime Inputs
 
 | Component                    | What it gives us                                         | Gap                                                 |
 | ---------------------------- | -------------------------------------------------------- | --------------------------------------------------- |
-| `EventBus.Timeline()`        | Full event chain with JSON payloads, timestamps, msg IDs | Lost when cycle ends — not persisted                |
+| `EventBus.Timeline()`        | Full event chain with JSON payloads, timestamps, msg IDs | Persisted inside the cycle record; raw external event store is still future work |
 | `CorrelationID` (`req_id`)   | Links all events in one cycle                            | Already in context — just need to capture it        |
-| `OrderResult` in `opener.go` | IOC/Trap order ID, fill status, error                    | Stored in `o.results` but discarded at end of cycle |
-| `Candidate` struct           | FR, side, price, volume, slippage, ATR, safety result    | Rich data — just need to snapshot it                |
-| `subscribeEventLog()`        | Subscribes to all 15 topics                              | Currently only logs topic name, discards payload    |
+| `OrderResult` in `opener.go` | IOC/Trap order ID, fill status, error                    | Captured into the cycle record when handlers populate the builder |
+| `Candidate` struct           | FR, side, price, volume, slippage, ATR, safety result    | Captured as decision/config/order snapshots         |
+| Event subscriptions          | Flow-scoped topics for Reversion and Trap                | Pre-placement Trap skip state needs stronger journal/report visibility |
 
 > [!NOTE]
-> The `EventBus` already records every event with full JSON payload in memory via `Timeline()`. The core task is simply **persisting this + enriching with market context** before it's garbage collected.
+> The `EventBus` records every event with full JSON payload in memory via `Timeline()`. The implemented recorder persists this timeline inside the JSONL cycle record. Keep full inline `timeline` until real file size, replay, or query needs justify pointer files or SQLite event-log persistence.
 
 ---
 
@@ -81,7 +93,7 @@ Current journal schema is v2. Lifecycle state is event-topic driven and new reco
 | `trap_enabled`       | `o.cfg.IsHedgeTrapEnabled()`                      | Was trap configured?                         |
 | `trap_source`        | `TrapFiredEvent.Source`                           | "ob_monitor" or "static_limit"               |
 | `trap_price`         | `TrapFiredEvent.Price`                            | Trap entry price                             |
-| `trap_filled`        | from fill watcher                                 | Did trap fill?                               |
+| `trap.filled`        | from fill watcher                                 | Did trap fill?                               |
 | `trap_fill_price`    | `OrderFilledEvent.DealAvgPrice` where `flow=trap` | Actual trap fill                             |
 
 ### D. Exit & Outcome (What was the result?)
@@ -158,13 +170,17 @@ Computed after the cycle ends, using MFE/MAE:
 
 ### E. Market Context Snapshots
 
-Capture market state at key decision points to correlate config with market conditions:
+Schema v2 emits top-level `snapshots` entries for key decision points so analysis does not need to reconstruct basic market context from timeline payloads:
 
-| Snapshot         | When              | Fields                                             |
-| ---------------- | ----------------- | -------------------------------------------------- |
-| `market_at_scan` | `handleScan()`    | last_price, best_bid, best_ask, spread, volume_24h |
-| `market_at_arm`  | `handleArm()`     | last_price, best_bid, best_ask, spread, atr        |
-| `market_at_fire` | `handleFireIOC()` | last_price, best_bid, best_ask, spread             |
+| Snapshot topic | When | Fields |
+| --- | --- | --- |
+| `funding.scan.candidate_found` | `handleScan()` | topic, last_price, best_bid, best_ask, spread |
+| `funding.reversion.armed` | `handleArm()` | topic, last_price, best_bid, best_ask, spread |
+| `funding.reversion.confirmed` | `handleFireIOC()` | topic, last_price, best_bid, best_ask, spread |
+
+Deeper raw market context still lives in the event timeline payloads. Add fields to `MarketSnapshot` only if report consumers need them as stable top-level schema.
+
+Open schema question: if future reports still need to inspect timeline payloads for basic market context, promote those fields into top-level `snapshots` rather than adding report-only heuristics.
 
 ### F. Full Event Timeline
 
@@ -176,19 +192,20 @@ The complete `EventBus.Timeline()` — every event with topic, timestamp, and fu
 
 ### Recommended Delivery Phases
 
-| Phase | Scope | Why |
-|---|---|---|
-| 1 | Append-only JSONL Cycle Recorder | Lowest risk, easy to inspect, matches existing `data/journal/cycles-YYYY-MM-DD.jsonl` workflow |
-| 2 | MFE/MAE sampler during open position | Highest value for TP/SL/trailing tuning |
-| 3 | Query/report scripts or SQLite import | Turns raw records into config decisions |
-| 4 | SQLite native recorder + indexes | Useful after schema stabilizes |
-| 5 | Watermill SQLite event log bridge | Full replay/audit trail after structured records are reliable |
+| Phase | Scope | Status | Why |
+|---|---|---|---|
+| 1 | Append-only JSONL Cycle Recorder | Implemented | Lowest risk, easy to inspect, matches `data/journal/cycles-YYYY-MM-DD.jsonl` workflow |
+| 2 | MFE/MAE sampler during open position | Implemented for IOC and Trap fills | Highest value for TP/SL/trailing tuning |
+| 3 | Query/report CLI | Implemented as `cmd/funding-journal` | Turns raw records into operating decisions |
+| 4 | Trap terminal skip journal/report hardening | Implemented | Every Trap ending is visible, including pre-placement skips |
+| 5 | SQLite native recorder + indexes | Future | Useful after JSONL schema and report fields stabilize |
+| 6 | Watermill SQLite event log bridge | Future | Full replay/audit trail after structured records are reliable |
 
-Do not block Phase 1 on Watermill SQLite. The immediate business need is trustworthy cycle-level data, not a perfect persistence architecture.
+Do not block Trap analysis or daily operations on Watermill SQLite. The immediate business need is trustworthy cycle-level JSONL data and report fields that match the implemented schema.
 
-### Phase 1 Done Criteria
+### JSONL Recorder Done Criteria
 
-Minimal JSONL recorder is considered done only when:
+The current JSONL recorder is considered correct only when:
 
 | Requirement | Acceptance |
 |---|---|
@@ -199,62 +216,82 @@ Minimal JSONL recorder is considered done only when:
 | Captures timing | Includes `fire_timestamp`, `settle_time`, and `settle_offset_ms` |
 | Captures raw context | Includes config snapshot and event timeline or a pointer to raw events |
 | Is test-covered | Unit tests cover record assembly and append failure handling |
+| Trap terminal states are visible | Every Trap ending records closed, timeout, aborted, or skipped with a reason |
+
+## Journal Backlog And Watchlist
+
+| Item | Status | Rule |
+|---|---|---|
+| Journal schema/report alignment | Completed | `CycleRecord` schema v2, `cmd/funding-journal`, and docs must describe the same current surface |
+| Raw timeline persistence policy | Decided | Keep full `timeline` inline in each JSONL cycle record until size/replay/query needs justify extra storage |
+| Percent fields in existing journal | Watchlist | Reports must sanity-check older mixed-unit records; production schema should define units explicitly |
+| Top-level market snapshots | Watchlist | Schema v2 emits snapshots; add fields only when report consumers need stable top-level schema |
 
 ### Component 1: Domain Types
 
-#### [NEW] `internal/bots/funding/domain/cycle_record.go`
+#### `internal/bots/funding/domain/cycle_record.go`
 
 Pure value objects — no I/O, no dependencies:
 
 ```go
 type CycleRecord struct {
     // Identity
-    ReqID      string    `json:"req_id"`
-    Symbol     string    `json:"symbol"`
-    SettleTime time.Time `json:"settle_time"`
+    SchemaVersion int       `json:"schema_version"`
+    ReqID         string    `json:"req_id"`
+    Symbol        string    `json:"symbol"`
+    SettleTime    time.Time `json:"settle_time"`
+    CreatedAt     time.Time `json:"created_at"`
+    Flows         []string  `json:"flows,omitempty"`
 
     // Outcome
-    Outcome     string `json:"outcome"`      // "profit", "loss", "aborted", "timeout", "no_fill"
-    AbortReason string `json:"abort_reason"`
-    AbortFlow   string `json:"abort_flow"`
-    AbortTopic  string `json:"abort_topic"`
-    ErrorFlow   string `json:"error_flow"`
-    ErrorTopic  string `json:"error_topic"`
+    Outcome     CycleOutcome `json:"outcome"`
+    AbortReason string       `json:"abort_reason,omitempty"`
+    AbortFlow   string       `json:"abort_flow,omitempty"`
+    AbortTopic  string       `json:"abort_topic,omitempty"`
+    ErrorFlow   string       `json:"error_flow,omitempty"`
+    ErrorTopic  string       `json:"error_topic,omitempty"`
 
     // Decision
-    Decision DecisionRecord `json:"decision"`
+    Decision DecisionSnapshot `json:"decision"`
 
     // Execution
-    IOC  IOCRecord  `json:"ioc"`
-    Trap TrapRecord `json:"trap"`
+    IOC  IOCSnapshot  `json:"ioc"`
+    Trap TrapSnapshot `json:"trap"`
 
     // Exit
-    Exit ExitRecord `json:"exit"`
+    Exit    ExitSnapshot    `json:"exit"`
+    Timeout TimeoutSnapshot `json:"timeout,omitempty"`
+    Cleanup CleanupSnapshot `json:"cleanup,omitempty"`
 
-    // Market snapshots around key event topics
-    Snapshots []MarketSnapshot `json:"snapshots"`
+    // MFE/MAE
+    Excursion     ExcursionSnapshot `json:"excursion,omitempty"` // legacy IOC alias
+    IOCExcursion  ExcursionSnapshot `json:"ioc_excursion,omitempty"`
+    TrapExcursion ExcursionSnapshot `json:"trap_excursion,omitempty"`
+
+    // Market snapshots
+    Snapshots []MarketSnapshot `json:"snapshots,omitempty"`
 
     // Config active during this cycle
-    Config CycleConfigRecord `json:"config"`
+    Config json.RawMessage `json:"config"`
 
     // Full event timeline
     Timeline []TimelineEntry `json:"timeline"`
 }
 ```
 
-With sub-structs: `DecisionRecord`, `IOCRecord`, `TrapRecord`, `ExitRecord`, `MarketSnapshot`, `CycleConfigRecord`, `TimelineEntry`.
+With sub-structs: `DecisionSnapshot`, `IOCSnapshot`, `TrapSnapshot`, `ExitSnapshot`, `TimeoutSnapshot`, `CleanupSnapshot`, `ExcursionSnapshot`, `MarketSnapshot`, and `TimelineEntry`.
 
 ---
 
 ### Component 2: Storage Abstraction Layer
 
-> Phase note: keep this abstraction small enough that JSONL and SQLite can both implement it. Avoid schema churn in infrastructure before journal fields are proven useful.
+Current implementation uses the domain `CycleRecorder` interface and a JSONL infrastructure adapter. Keep this abstraction small enough that JSONL and SQLite can both implement it later. Avoid schema churn in infrastructure before journal fields are proven useful.
 
-The design uses **two storage layers** following our Clean Architecture conventions:
+The future durable design may use **two storage layers** following Clean Architecture conventions:
 
 1. **Domain Interface** (consumer-defined) — `CycleRecorder` lives where it's consumed
-2. **Infrastructure Implementations** — swappable backends (SQLite now, Postgres/NoSQL later)
-3. **Watermill SQLite** — for persistent event log (raw event audit trail)
+2. **Infrastructure Implementations** — current JSONL backend; future SQLite/Postgres/NoSQL backends if needed
+3. **Watermill SQLite** — future persistent event log for raw event audit trail
 
 ```mermaid
 graph TB
@@ -277,9 +314,9 @@ graph TB
     end
 ```
 
-#### Two Tables in One SQLite DB
+#### Future: Two Tables in One SQLite DB
 
-This is the target durable design, not the required first milestone.
+This is a future durable design, not the active recorder contract.
 
 | Table              | Purpose                                                                        | Schema                                                                     |
 | ------------------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
@@ -293,7 +330,7 @@ This is the target durable design, not the required first milestone.
 
 ---
 
-#### [NEW] `internal/bots/funding/domain/cycle_recorder.go`
+#### `internal/bots/funding/domain/cycle_recorder.go`
 
 Interface defined in domain (consumer-defined, per [coding conventions](../../tech/coding_conventions.md) §2.2):
 
@@ -306,9 +343,9 @@ type CycleRecorder interface {
 }
 ```
 
-#### [NEW] `internal/infrastructure/journal/sqlite_recorder.go`
+#### Future: `internal/infrastructure/journal/sqlite_recorder.go`
 
-Primary implementation using `modernc.org/sqlite` (CGO-free, same driver as `watermill-sqlite`):
+Potential SQLite implementation using `modernc.org/sqlite` (CGO-free, same driver as `watermill-sqlite`):
 
 ```go
 // SQLiteCycleRecorder writes cycle records to a SQLite database.
@@ -335,7 +372,16 @@ func (r *SQLiteCycleRecorder) Record(ctx context.Context, rec domain.CycleRecord
 func (r *SQLiteCycleRecorder) Close() error { return r.db.Close() }
 ```
 
-#### [KEEP] `internal/infrastructure/journal/noop_recorder.go`
+#### Current: JSONL And Noop Recorders
+
+Implemented storage lives under `internal/infrastructure/journal`:
+
+- `JSONLCycleRecorder` appends cycle records to `cycles-YYYY-MM-DD.jsonl`.
+- `NoopCycleRecorder` discards records when journaling is disabled or recorder setup fails.
+
+The application layer adapts these to the domain `CycleRecorder` interface.
+
+Future no-op shape:
 
 ```go
 type NoopRecorder struct{}
@@ -343,7 +389,7 @@ func (n *NoopRecorder) Record(_ context.Context, _ domain.CycleRecord) error { r
 func (n *NoopRecorder) Close() error { return nil }
 ```
 
-#### SQLite Schema — `cycle_records`
+#### Future SQLite Schema — `cycle_records`
 
 ```sql
 CREATE TABLE IF NOT EXISTS cycle_records (
@@ -416,13 +462,13 @@ CREATE INDEX IF NOT EXISTS idx_outcome ON cycle_records(outcome);
 CREATE INDEX IF NOT EXISTS idx_settle  ON cycle_records(settle_time);
 ```
 
-#### Minimal JSONL Schema for Phase 1
+#### Current Minimal JSONL Schema
 
-If SQLite is deferred, write one JSON object per completed or aborted cycle:
+The implemented recorder writes one JSON object per completed or aborted cycle:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "req_id": "...",
   "symbol": "STEEM_USDT",
   "settle_time": "2026-05-12T16:00:00Z",
@@ -435,10 +481,10 @@ If SQLite is deferred, write one JSON object per completed or aborted cycle:
   "ioc_intended_price": 0.2449,
   "ioc_fill_price": 0.2450,
   "ioc_slippage_pct": 0.04,
-  "mfe_pct": 3.2,
-  "mae_pct": 0.7,
-  "exit_reason": "trailing",
-  "raw_json": {}
+  "ioc_excursion": {"mfe_pct": 3.2, "mae_pct": 0.7},
+  "trap_excursion": {"mfe_pct": 0.8, "mae_pct": 0.4},
+  "exit": {"reason": "trailing"},
+  "timeline": []
 }
 ```
 
@@ -446,11 +492,11 @@ Keep percent columns in journal as percent values (`3.2` means 3.2%) unless a fi
 
 ---
 
-### Component 3: Persistent Event Log (Watermill SQLite)
+### Future Component: Persistent Event Log (Watermill SQLite)
 
-Inspired by the [Watermill persistent event log example](https://github.com/ThreeDotsLabs/watermill/blob/master/_examples/real-world-examples/persistent-event-log/main.go), but adapted for our architecture:
+This is not required for current JSONL operation. If raw replay/audit requirements exceed inline timeline storage, use a Watermill SQLite bridge inspired by the Watermill persistent event log pattern.
 
-#### [NEW] `internal/infrastructure/journal/event_logger.go`
+#### Future: `internal/infrastructure/journal/event_logger.go`
 
 Uses `watermill-sqlite` to subscribe to the in-memory `EventBus` and persist every event to SQLite automatically:
 
@@ -498,63 +544,51 @@ func NewEventLogger(bus *eventbus.Bus, dbPath string, logger *slog.Logger) (*Eve
 
 ### Component 4: Application — Wire into CycleOrchestrator
 
-#### [MODIFY] `internal/bots/funding/application/orchestrator.go`
+Implemented in `internal/bots/funding/application/orchestrator.go` and `orchestrator_support.go`.
 
-1. Add `CycleRecorder` to `Deps`
-2. Add snapshot collection methods to `CycleOrchestrator`
-3. Build and persist `CycleRecord` at end of `Run()`
+Current behavior:
 
-```diff
- type Deps struct {
-     ...
-+    CycleRecorder domain.CycleRecorder
- }
-```
+- `Deps` includes `CycleRecorder`.
+- `Run()` creates `domain.NewCycleRecordBuilder(reqID, settle)`.
+- `Run()` defers `persistCycleRecord(ctx)`.
+- `persistCycleRecord()` copies `EventBus.Timeline()`, builds the immutable `CycleRecord`, and writes through `CycleRecorder.Record`.
 
-#### [MODIFY] Handlers — Add snapshot capture calls
+#### Handler Capture Points
 
-Each handler gets a one-line addition to capture market state:
+Handlers populate the builder around key lifecycle events:
 
 - `handler_scan.go` → `o.addSnapshot("scan", ...)` after qualification
 - `handler_scan.go` (arm) → `o.addSnapshot("arm", ...)` after dynamic pricing
 - `handler_fire_ioc.go` → `o.addSnapshot("fire", ...)` before firing
 - `handler_fire_ioc.go` → capture `tp_price_submitted`, `sl_price_submitted`
 - `handler_fill_watcher.go` → capture fill prices into orchestrator state
+- `handler_fire_trap.go` → capture Trap source, wall, order, TP/SL
+- `handler_timeout.go` → capture Reversion timeout state and Trap branch timeout outcome
+- `handler_cleanup.go` → capture terminal topic, cleanup reason, exit data, and settle any open Trap order/position before Reversion cleanup persists the cycle
 - `handler_trailing.go` → capture trailing params into orchestrator state
 
-#### [NEW] `internal/bots/funding/application/orchestrator_recorder.go`
+Trap pre-placement skips populate `trap.outcome`, `trap.skip_reason`, and a non-cleanup `funding.trap.skipped` timeline event. Trap close/timeout events are branch terminal events; only Reversion terminal events or critical Trap aborts complete whole-cycle cleanup.
 
-Helper methods on `CycleOrchestrator`:
-
-- `addSnapshot(topic string)` — captures current market state around an event topic
-- `buildCycleRecord(settle, reqID) → CycleRecord` — assembles full record from timeline + snapshots + results
 
 ---
 
 ### Component 5: Configuration
 
-#### [MODIFY] `internal/infrastructure/config/types.go`
+Implemented config shape:
 
-```diff
- type SystemConfig struct {
-     ...
-+    Journal JournalConfig `json:"journal"`
- }
-+
-+type JournalConfig struct {
-+    Enabled bool   `json:"enabled"`
-+    Driver  string `json:"driver"`  // "sqlite" (default), future: "postgres", "noop"
-+    DSN     string `json:"dsn"`     // "data/journal/cycles.db" for SQLite
-+}
+```go
+type JournalConfig struct {
+    Enabled bool   `json:"enabled"`
+    Dir     string `json:"dir"` // e.g. "data/journal"
+}
 ```
 
-#### [MODIFY] `configs/funding/system.jsonc`
+Example in `configs/funding/system.jsonc`:
 
 ```jsonc
 "journal": {
     "enabled": true,
-    "driver": "sqlite",
-    "dsn": "data/journal/cycles.db"
+    "dir": "data/journal"
 }
 ```
 
@@ -562,33 +596,22 @@ Helper methods on `CycleOrchestrator`:
 
 ### Component 6: Wiring in Sniper
 
-#### [MODIFY] `internal/bots/funding/application/sniper.go`
-
-Factory pattern for selecting the backend based on config:
+Implemented wiring in `internal/bots/funding/application/sniper.go`:
 
 ```go
-func newCycleRecorder(cfg config.JournalConfig) (domain.CycleRecorder, error) {
-    if !cfg.Enabled {
-        return &journal.NoopRecorder{}, nil
+func newCycleRecorder(cfg config.JournalConfig, log *slog.Logger) frdomain.CycleRecorder {
+    if !cfg.Enabled || cfg.Dir == "" {
+        return noopCycleRecorder{}
     }
-    switch cfg.Driver {
-    case "sqlite", "":
-        return journal.NewSQLiteCycleRecorder(cfg.DSN)
-    default:
-        return nil, fmt.Errorf("unsupported journal driver: %s", cfg.Driver)
+    rec, err := journal.NewJSONLCycleRecorder(cfg.Dir)
+    if err != nil {
+        return noopCycleRecorder{}
     }
+    return cycleRecorderAdapter{rec: rec}
 }
 ```
 
-#### New Dependencies
-
-```
-go get github.com/ThreeDotsLabs/watermill-sqlite/wmsqlitemodernc
-```
-
-This brings in `modernc.org/sqlite` (CGO-free) — same driver used by `watermill-sqlite`. No CGO compilation needed on any platform.
-
-> Dependency note: add this only when implementing SQLite phases. JSONL Phase 1 should not require new dependencies.
+No new dependency is required for the JSONL recorder. Add `watermill-sqlite`/`modernc.org/sqlite` only when implementing the future SQLite phases.
 
 ---
 
@@ -598,9 +621,12 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
 
 ```json
 {
+  "schema_version": 2,
   "req_id": "f4e3d2c1",
   "symbol": "STEEM_USDT",
   "settle_time": "2026-05-12T16:00:00Z",
+  "created_at": "2026-05-12T16:00:30Z",
+  "flows": ["reversion", "trap"],
   "outcome": "profit",
   "decision": {
     "fr_at_scan": 0.007,
@@ -609,6 +635,7 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
     "safety_passed": true
   },
   "ioc": {
+    "flow": "reversion",
     "intended_price": 0.2449,
     "fill_price": 0.2450,
     "fill_volume": 100,
@@ -616,28 +643,35 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
     "filled": true,
     "fire_timestamp": "2026-05-12T15:59:59.958Z",
     "settle_offset_ms": -42,
-    "latency_rtt_ms": 28
+    "latency_rtt_ms": 28,
+    "excursion": {"mfe_pct": 3.2, "mae_pct": 0.7}
   },
   "trap": {
+    "flow": "trap",
     "enabled": true,
+    "outcome": "closed",
     "source": "ob_monitor",
+    "wall_verified": true,
+    "wall_distance_pct": 2.8,
     "price": 0.2420,
     "filled": true,
-    "fill_price": 0.2421
+    "fill_price": 0.2421,
+    "tp_pct_configured": 1.5,
+    "sl_pct_configured": 0.8,
+    "excursion": {"mfe_pct": 0.8, "mae_pct": 0.4}
   },
   "exit": {
     "reason": "trailing",
     "hold_duration_ms": 25000,
-    "tp_pct_configured": 0.03,
-    "sl_pct_configured": 0.03,
+    "tp_pct_configured": 3.0,
+    "sl_pct_configured": 3.0,
     "tp_price_submitted": 0.2522,
     "sl_price_submitted": 0.2375,
     "trailing_activated": true
   },
-  "snapshots": [
-    {"topic": "funding.scan.candidate_found", "last_price": 0.2451, "best_bid": 0.2450, "best_ask": 0.2452, "spread": 0.0002},
-    {"topic": "funding.reversion.confirmed", "last_price": 0.2449, "best_bid": 0.2448, "best_ask": 0.2450, "spread": 0.0002}
-  ],
+  "ioc_excursion": {"mfe_pct": 3.2, "mae_pct": 0.7},
+  "trap_excursion": {"mfe_pct": 0.8, "mae_pct": 0.4},
+  "cleanup": {"terminal_flow": "reversion", "terminal_topic": "funding.reversion.position_closed"},
   "config": {
     "leverage": 5,
     "margin_usdt": 3,
@@ -686,16 +720,23 @@ For daily operating rules and tuning thresholds, see [journal_analysis.md](journ
 
 ### Automated Tests
 
-- `sqlite_recorder_test.go`: Create DB, insert records, query back, verify schema auto-creation
-- `noop_recorder_test.go`: Verify no-op behavior
-- `orchestrator_recorder_test.go`: `buildCycleRecord()` produces correct struct from mock data
-- `event_logger_test.go`: Verify Watermill bridge persists events to SQLite
+- `cycle_recorder_test.go`: JSONL recorder appends records, creates nested dirs, and handles noop recorder behavior
+- `orchestrator_scenarios_test.go`: cycle record fields are populated across Reversion/Trap close, timeout, abort, and error paths
+- `report_test.go`: journal report decodes JSONL, aggregates IOC/Trap metrics, and flags unit warnings
+- Add P0 tests for pre-placement Trap skip paths: wall not verified, invalid static price/volume, and cycle-risk blocked
 - `make lint` + `make test` pass
 
 ### Manual Verification
 
 - Run bot in dry-run mode against a real settle
-- Open `data/journal/cycles.db` with `sqlite3` CLI and run analysis queries:
+- Run the JSONL report:
+
+```bash
+go run ./cmd/funding-journal -dir data/journal -date YYYY-MM-DD
+go run ./cmd/funding-journal -dir data/journal -date YYYY-MM-DD -symbol BTC_USDT -json
+```
+
+Future SQLite verification, if that phase is implemented:
 
 ```sql
 -- Win rate by symbol

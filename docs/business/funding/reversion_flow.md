@@ -49,6 +49,8 @@ Lifecycle state is represented by event topics and `flow`, not by a separate pha
 | `funding.reversion.timeout` | Timeout force-close succeeded | cleanup trigger |
 | `funding.reversion.error` / `funding.reversion.abort` | Critical failure | error/abort topic recorded in journal |
 
+When a Reversion terminal event starts whole-cycle cleanup, cleanup must first settle any still-open Trap branch: cancel an unfilled Trap order or close a filled Trap position, then persist the cycle journal.
+
 ## Timing Rule
 
 ```text
@@ -83,6 +85,14 @@ Trailing stop is the primary exit. TP submitted with IOC is a server-side safety
 
 Current fallback is intentionally conservative: after a fill, if TrackOrder cannot be created, the priority is to remove unmanaged live exposure. Exact-leg close reduces Hedge-mode blast radius, while `CloseAllPositions(symbol)` remains the final last-resort safety path when exact close fails or exchange state is ambiguous.
 
+## Open Questions
+
+| Question | Why it matters | Current stance |
+|---|---|---|
+| TrackOrder fail thì fallback close ngay hay đặt TP/SL khác? | Ảnh hưởng unmanaged-position risk | Fallback close ngay là behavior hiện tại vì unmanaged live exposure nguy hiểm hơn missed upside |
+| Reversion fire offset nên chỉnh khỏi T+0-oriented timing không? | Fire quá sớm/trễ làm giảm fill quality và MFE | Chỉ chỉnh từ journal evidence: `settle_offset_ms`, fill rate, slippage, MFE/MAE |
+| OB TP-cap staleness có cần cutoff riêng không? | OB trước settle có thể biến mất | Giữ behavior hiện tại; thêm stale cutoff chỉ khi journal chứng minh cần |
+
 ## Required Journal Fields
 
 | Group | Fields |
@@ -100,4 +110,18 @@ Current fallback is intentionally conservative: after a fill, if TrackOrder cann
 
 ## Known Concerns
 
-Do not tune Reversion by anecdote. Current weak points are tracked in [concern.md](concern.md), especially mixed percent units, missing/partial MFE-MAE data, and exchange stop-limit validation failures.
+Do not tune Reversion by anecdote. Use at least 30 comparable cycles per symbol or FR bucket before changing config.
+
+| Concern | Current behavior | Remaining work |
+|---|---|---|
+| TrackOrder/close failure can leave unmanaged position | If TrackOrder placement fails, bot calls exact-leg `ClosePosition(symbol, close_side, deal_vol, positionMode)` with a fresh context; if exact close fails, it falls back to `CloseAllPositions(symbol)`; if all close attempts fail, journal records `critical_close_failed`, publishes flow error, and aborts instead of publishing false `position_closed` | Add bounded retry/backoff, journal retry counts, and enforce `disableSymbolAfterCriticalCloseFailure` end-to-end |
+| Timeout force-close failure can be recorded as safe timeout | If post-settle timeout force-close fails, journal records `critical_timeout_close_failed`, publishes flow error, and aborts instead of publishing false `funding.reversion.timeout` | Add bounded retry/backoff and symbol-level disable wiring |
+| Exchange stop-limit validation can abort after confirmation | Example: MEXC `The price of stop-limit order error` after `funding.reversion.confirmed` | Treat as order-construction or exchange-constraint bug before strategy tuning |
+| Mixed percent units in old records can distort reports | Current config normalization and schema v2 define percent conventions | Keep report unit sanity checks for older JSONL records |
+| Imbalance Ratio can be spoofed | Implemented as disabled-by-default secondary Reversion filter with journal fields | Do not promote it to primary signal without persistence evidence |
+
+## Backlog
+
+| Priority | Item | Acceptance |
+|---|---|---|
+| P1 | Critical close hardening | Close paths use bounded retry/backoff, journal retry count and final disable decision, and document manual runbook action |

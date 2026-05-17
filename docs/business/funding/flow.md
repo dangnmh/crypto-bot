@@ -106,3 +106,42 @@ Flow separation does not remove shared risk. A cycle-level risk controller shoul
 | critical close failure handling | Avoid unmanaged positions after order/trailing failure |
 
 Current implementation blocks Reversion if it exceeds cycle caps by itself, and blocks Trap if adding Trap to the same `symbol + settle_time` cycle would exceed notional or estimated SL-loss caps. Pre-Funding remains design-only.
+
+## Accepted Architecture Decisions
+
+| Decision | Result |
+|---|---|
+| Topic naming | Dùng flow namespace `funding.<flow>.<event>` thay vì generic `cycle.<event>` |
+| Candidate shared scan ownership | Keep shared scan inside the current Sniper/orchestrator path while only Reversion and Trap are active |
+| Cycle risk guard ownership | Keep cycle exposure guard inline for now; do not extract `CycleRiskController` while Pre-Funding remains design-only |
+| Logical key | Use `symbol + settle_time + flow` as the flow-leg key; `req_id` remains the cycle correlation id |
+| Fill watcher separation | Fill watcher is flow-scoped so Trap fill cannot be mixed with Reversion IOC fill |
+| Timeout separation | Reversion no-fill and Trap wick-window timeout are separate branch timers |
+
+## Shared Backlog
+
+| Priority | Item | Owner doc |
+|---|---|---|
+| P1 | Critical close/cancel hardening: bounded retry/backoff, journal retry counts, final symbol-disable decision, and manual intervention runbook | [reversion_flow.md](reversion_flow.md), [trap_flow.md](trap_flow.md) |
+
+## Shared Watchlist
+
+| Concern | Current stance |
+|---|---|
+| Long docs can blur design and production behavior | Every doc must keep a clear `Status` and mark design-only sections explicitly |
+| Stale market data can make pricing unsafe | Add stale-market-data guards for OB/ticker before using older snapshots for order placement |
+| Pre-Funding can collide with Reversion | Keep Pre-Funding design-only until force-close or Hedge-mode exposure rules are proven |
+
+## Terminal Journal Rule
+
+Every enabled flow must leave a journal-visible terminal result. The minimum terminal categories are:
+
+| Flow | Terminal categories |
+|---|---|
+| Reversion | closed, timeout/no-fill, aborted/error |
+| Trap | closed, timeout/unfilled-canceled, aborted/error, skipped before placement |
+| Pre-Funding | skipped, closed before settle, aborted/error; design only |
+
+The cycle-level outcome is not enough for tuning. Reports must keep flow-level terminal state so Reversion profit cannot hide Trap skip/loss/failure.
+
+Trap branch terminal events (`funding.trap.position_closed`, `funding.trap.timeout`, `funding.trap.skipped`) do not end the Reversion cycle by themselves. Whole-cycle cleanup is driven by Reversion terminal events or critical Trap aborts; if Reversion ends while Trap is still open, cleanup must settle Trap first and journal that branch result.

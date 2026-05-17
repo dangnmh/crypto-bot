@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"crypto-bot/internal/bots/funding/config"
-	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/store"
 )
 
@@ -28,21 +26,4 @@ func GetNextSettleTime(ctx context.Context, simulateSettle, symbol string, fundi
 		return time.Time{}, fmt.Errorf("settle time: %w", err)
 	}
 	return st, nil
-}
-
-// toTradeConfig converts a config.SymbolConfig to a domain.TradeConfig.
-// Since config now reuses domain types for DynamicPricing and TrailingConfig,
-// these can be assigned directly without field-by-field copying.
-func toTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
-	return domain.TradeConfig{
-		Symbol:              sc.Symbol,
-		SimulateSettle:      sc.SimulateSettle,
-		MaxPriceDiffPercent: sc.MaxPriceDiffPercent,
-		MarginUSDT:          sc.MarginUSDT,
-		Leverage:            sc.Leverage,
-		FundingReversion:    sc.FundingReversion,
-		FundingTrap:         sc.FundingTrap,
-		ParsedOpenType:      sc.ParsedOpenType,
-		ParsedPositionMode:  sc.ParsedPositionMode,
-	}
 }

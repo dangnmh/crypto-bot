@@ -92,7 +92,7 @@ Required journal fields:
 - `wall_age_ms`
 - `wall_distance_pct`
 - `wall_verified`
-- `trap_outcome`
+- `trap.outcome`
 
 ### Imbalance Ratio
 
@@ -111,11 +111,18 @@ Rules:
 - Journal records the ratio and whether the filter passed.
 - It must remain a secondary filter because spoofing is common.
 
-## Backlog Moved Out
+## Backlog
 
 The following ideas are intentionally not specified here as implemented behavior:
 
 - Dynamic TP/SL expansion based on OB.
 - Multi-snapshot wall persistence protocol.
 
-See [backlog.md](backlog.md) for work items and [concern.md](concern.md) for risk.
+## Open Questions And Concerns
+
+| Item | Current stance |
+|---|---|
+| OB wall quanh settlement là unstable | OB only caps risk or assists placement; it must not override FR/ATR as the primary model |
+| Imbalance Ratio dễ bị spoof | Keep disabled by default, use near levels only, journal ratio/pass state, and compare by symbol/liquidity bucket |
+| Market snapshots may be stale | Add stale-market-data guards before acting on older OB/ticker snapshots |
+| Multi-snapshot wall protocol | Future work; requires persistence and spoofing guards before walls become stronger signals |
