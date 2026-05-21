@@ -34,6 +34,8 @@ type Bus struct {
 func New(logger *slog.Logger) *Bus {
 	wmLogger := watermill.NewSlogLogger(logger)
 	ps := gochannel.NewGoChannel(gochannel.Config{
+		// Watermill fans out cycle events to multiple subscribers; this buffer absorbs
+		// short intra-cycle bursts without blocking order lifecycle handlers.
 		OutputChannelBuffer:            64,
 		Persistent:                     false, // No persistence needed for cycle-scoped bus
 		BlockPublishUntilSubscriberAck: false, // Non-blocking publish for performance
@@ -105,12 +107,5 @@ func (b *Bus) DumpTimeline(logger *slog.Logger) {
 		return
 	}
 
-	logger.Info("📋 Event timeline", "count", len(entries))
-	for i, e := range entries {
-		logger.Info(fmt.Sprintf("  [%d] %s", i+1, e.Topic),
-			"msg_id", e.MsgID,
-			"time", e.Time.Format("15:04:05.000"),
-			"payload_size", len(e.Payload),
-		)
-	}
+	logger.Info("📋 Event timeline", slog.Int("count", len(entries)), slog.Any("events", entries))
 }

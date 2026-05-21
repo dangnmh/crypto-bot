@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.1
+	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/buger/jsonparser v1.2.0
 	github.com/dangnmh/transport v0.0.0-20250317091120-3bd599167d13
 	github.com/gorilla/websocket v1.5.3

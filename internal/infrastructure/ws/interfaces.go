@@ -42,4 +42,7 @@ type ExchangeAdapter interface {
 	ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error)
 	ParseKline(data []byte) (symbol string, k *domain.Kline, err error)
 	ParseOrder(data []byte) (*exchange.WsOrderDeal, error)
+	ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error)
+	ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error)
+	ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error)
 }

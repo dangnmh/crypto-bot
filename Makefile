@@ -28,10 +28,6 @@ build: ## Build all binaries
 build-funding: ## Build the funding bot
 	$(GO) build -o bin/funding-bot ./cmd/funding
 
-.PHONY: build-penny
-build-penny: ## Build the penny jumper bot
-	$(GO) build -o bin/penny-bot ./cmd/penny_jumper
-
 # ── Test ─────────────────────────────────────────────────────────────
 .PHONY: test
 test: ## Run all tests

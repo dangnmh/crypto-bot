@@ -104,7 +104,7 @@ func TestFireIOC_ReturnsSubmittedPrices(t *testing.T) {
 		})
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	result := application.FireIOC(context.Background(), client, &candidate, clock, logger, nil)
+	result := application.FireIOC(context.Background(), client, &candidate, clock, logger)
 
 	require.True(t, result.IsSuccess())
 	assert.InDelta(t, 99.98, result.Price, 1e-9)

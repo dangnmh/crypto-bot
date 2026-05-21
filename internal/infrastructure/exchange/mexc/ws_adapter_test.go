@@ -3,6 +3,8 @@ package mexc_test
 import (
 	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -78,6 +80,8 @@ func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 		{"depth step", `{"channel":"push.depth.step"}`, "depth"},
 		{"kline", `{"channel":"push.kline"}`, "kline"},
 		{"personal order", `{"channel":"push.personal.order"}`, "personal.order"},
+		{"personal order deal", `{"channel":"push.personal.order.deal"}`, "personal.order.deal"},
+		{"personal track order", `{"channel":"push.personal.track.order"}`, "personal.track.order"},
 		{"personal position", `{"channel":"push.personal.position"}`, "personal.position"},
 		{"generic push", `{"channel":"push.something"}`, "something"},
 		{"non-push", `{"channel":"pong"}`, "pong"},
@@ -258,4 +262,70 @@ func TestWsAdapter_ParseOrder_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
+}
+
+func TestWsAdapter_ParseFuturePersonalOrderSpec(t *testing.T) {
+	t.Parallel()
+	a := mexc.NewWsAdapter()
+
+	orderRaw := readFutureWSSpec(t, "order.json")
+	order, err := a.ParseOrder(orderRaw)
+	if err != nil {
+		t.Fatalf("ParseOrder spec failed: %v", err)
+	}
+	if order.GetOrderID() != "123456789" || order.Symbol != "BTC_USDT" || order.RemainVol != 5 {
+		t.Fatalf("unexpected order parse: id=%s symbol=%s remain=%v", order.GetOrderID(), order.Symbol, order.RemainVol)
+	}
+}
+
+func TestWsAdapter_ParseFuturePersonalOrderDealSpec(t *testing.T) {
+	t.Parallel()
+	a := mexc.NewWsAdapter()
+
+	dealRaw := readFutureWSSpec(t, "fill.json")
+	deal, err := a.ParseOrderDeal(dealRaw)
+	if err != nil {
+		t.Fatalf("ParseOrderDeal spec failed: %v", err)
+	}
+	if deal.GetOrderID() != "123456789" || deal.Vol != 10 || deal.Price != 45000.5 {
+		t.Fatalf("unexpected deal parse: id=%s vol=%v price=%v", deal.GetOrderID(), deal.Vol, deal.Price)
+	}
+}
+
+func TestWsAdapter_ParseFuturePersonalTrackOrderSpec(t *testing.T) {
+	t.Parallel()
+	a := mexc.NewWsAdapter()
+
+	trackRaw := readFutureWSSpec(t, "track.json")
+	track, err := a.ParseTrackOrder(trackRaw)
+	if err != nil {
+		t.Fatalf("ParseTrackOrder spec failed: %v", err)
+	}
+	if track.GetID() != "987654321" || track.GetOrderID() != "123456789" || track.BackValue != 0.5 {
+		t.Fatalf("unexpected track parse: id=%s order=%s back=%v", track.GetID(), track.GetOrderID(), track.BackValue)
+	}
+}
+
+func TestWsAdapter_ParseFuturePersonalPositionSpec(t *testing.T) {
+	t.Parallel()
+	a := mexc.NewWsAdapter()
+
+	positionRaw := readFutureWSSpec(t, "position.json")
+	position, err := a.ParsePosition(positionRaw)
+	if err != nil {
+		t.Fatalf("ParsePosition spec failed: %v", err)
+	}
+	if position.PositionID != 123456789 || position.Symbol != "BTC_USDT" || position.HoldVol != 10 {
+		t.Fatalf("unexpected position parse: id=%d symbol=%s hold=%v", position.PositionID, position.Symbol, position.HoldVol)
+	}
+}
+
+func readFutureWSSpec(t *testing.T, name string) []byte {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "..", "specs", "mexc", "ws", "future", "private", name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read spec %s: %v", name, err)
+	}
+	return data
 }

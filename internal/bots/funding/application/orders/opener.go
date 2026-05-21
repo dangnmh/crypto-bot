@@ -30,10 +30,10 @@ func (r *OrderResult) IsSuccess() bool {
 	return r.OrderID != "" && r.Error == nil
 }
 
-func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger, ob *shared.OrderBook) OrderResult {
+func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
 	extOID := fmt.Sprintf("ioc_%s_%d", candidate.Symbol, time.Now().UnixMilli())
 
-	iocPrice, err := candidate.CalculateIOCPrice(ob)
+	iocPrice, err := candidate.CalculateIOCPrice()
 	if err != nil {
 		logger.Error("🔴 IOC calc failed at FireIOC", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
 		return OrderResult{Candidate: *candidate, Error: err}
@@ -42,7 +42,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 	var tpPrice float64
 	maxTPPct := decmath.Mul(candidate.Config.FundingReversion.TakeProfitPct, 100.0)
 	if maxTPPct > 0 {
-		tpPrice = candidate.CalculateTakeProfitPrice(ob, maxTPPct)
+		tpPrice = candidate.CalculateStaticTakeProfitPrice(candidate.GetPeakPrice())
 	}
 
 	slPrice := candidate.CalculateStopLossPrice(candidate.GetPeakPrice())

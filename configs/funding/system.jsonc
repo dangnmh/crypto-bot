@@ -21,8 +21,8 @@
   // Logging
   // ══════════════════════════════════════════════════════════════
   "logging": {
-    "level": "debug",
-    "ws": { "ticker": true, "order": true, "position": true },
+    "level": "info",
+    "ws": { "ticker": false, "order": true, "position": true },
     "http": true,
   },
 

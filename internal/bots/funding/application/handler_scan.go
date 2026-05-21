@@ -9,7 +9,6 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
-	"crypto-bot/internal/bots/funding/domain"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -24,13 +23,13 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 	cfg := o.rt.Config()
 	td, err := o.rt.Deps().TickerStore.GetTicker(ctx, cfg.Symbol)
 	if err != nil {
-		o.rt.Log().Warn("🟡 No ticker", slog.Any("error", err))
+		o.rt.Log().Warn("No ticker", slog.Any("error", err))
 		o.abort("scan", "no ticker data")
 		return
 	}
 
 	if math.Abs(td.FundingRate) < cfg.MinFundingRate {
-		o.rt.Log().Info("😴 FR below threshold", slog.Float64("fr", td.FundingRate*100))
+		o.rt.Log().Info("FR below threshold", slog.Float64("fr", td.FundingRate*100))
 		o.abort("scan", "FR below threshold")
 		return
 	}
@@ -42,44 +41,45 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 	}
 	o.rt.SetCandidate(candidate)
 
-	o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-		b.FRAtScan = td.FundingRate
-		b.Side = candidate.Side
-	})
 	spread := cycle.CalcSpreadPct(candidate.BestBid, candidate.BestAsk)
-	o.rt.Recorder().AddSnapshot(domain.MarketSnapshot{
-		Topic:     events.TopicScanCandidateFound,
-		LastPrice: candidate.LastPrice,
-		BestBid:   candidate.BestBid,
-		BestAsk:   candidate.BestAsk,
-		Spread:    spread,
-	})
-
-	o.rt.Log().Info("🔍 Qualified",
-		slog.String("side", candidate.Side.String()),
-		slog.Float64("fr", candidate.FundingRate*100),
-	)
-
-	scanEvent := events.CandidateFoundEvent{
+	reqID := o.rt.GetReqID()
+	o.rt.RecordAndPublish(reqID, events.TopicScanCandidateFound, events.CandidateFoundEvent{
+		Flow:        events.FlowScan,
 		Symbol:      candidate.Symbol,
 		FundingRate: candidate.FundingRate,
 		Side:        candidate.Side,
 		CloseSide:   candidate.CloseSide,
 		LastPrice:   candidate.LastPrice,
-	}
-	o.publishOrLog(events.TopicScanCandidateFound, scanEvent)
+		BestBid:     candidate.BestBid,
+		BestAsk:     candidate.BestAsk,
+		Vol24h:      candidate.Volume24,
+		SpreadPct:   spread,
+	})
 
-	if cfg.FundingReversion.Enabled {
-		reversionEvent := scanEvent
-		reversionEvent.Flow = events.FlowReversion
-		o.publishOrLog(events.TopicReversionCandidate, reversionEvent)
+	o.rt.Log().Info("Qualified",
+		slog.String("side", candidate.Side.String()),
+		slog.Float64("fr", candidate.FundingRate*100),
+	)
+
+	scanEvent := events.CandidateFoundEvent{
+		Flow:        events.FlowReversion,
+		Symbol:      candidate.Symbol,
+		FundingRate: candidate.FundingRate,
+		Side:        candidate.Side,
+		CloseSide:   candidate.CloseSide,
+		LastPrice:   candidate.LastPrice,
+		BestBid:     candidate.BestBid,
+		BestAsk:     candidate.BestAsk,
+		Vol24h:      candidate.Volume24,
+		SpreadPct:   spread,
 	}
+	o.rt.RecordAndPublish(reqID, events.TopicReversionCandidate, scanEvent)
 
 	if cfg.IsHedgeTrapEnabled() {
 		trapEvent := scanEvent
 		trapEvent.Flow = events.FlowTrap
 		trapEvent.Side = candidate.Side.Opposite()
 		trapEvent.CloseSide = shared.CloseSideFor(trapEvent.Side)
-		o.publishOrLog(events.TopicTrapCandidate, trapEvent)
+		o.rt.RecordAndPublish(reqID, events.TopicTrapCandidate, trapEvent)
 	}
 }

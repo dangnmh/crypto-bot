@@ -20,7 +20,7 @@ flowchart TD
     ROUTER -->|enabled + eligible| TRAP["funding.trap.candidate"]
     ROUTER -->|design only| PRE["funding.prefunding.candidate"]
 
-    REV --> REVFLOW["Reversion pipeline<br/>arm -> recheck -> IOC -> trailing"]
+    REV --> REVFLOW["Reversion pipeline<br/>arm -> recheck -> IOC -> static TP/SL"]
     TRAP --> TRAPFLOW["Trap pipeline<br/>delay -> price -> limit -> trailing"]
     PRE --> PREFLOW["Pre-Funding pipeline<br/>baseline -> confirm -> entry -> pre-settle exit"]
 ```
@@ -41,7 +41,7 @@ Shared scan không được:
 
 - Đặt lệnh.
 - Subscribe flow-specific WS lâu dài.
-- Tính TP/SL/trailing cuối cùng.
+- Tính TP/SL/exit cuối cùng.
 - Quyết định Trap price.
 - Quyết định Pre-Funding entry.
 - Dùng kết quả Reversion để điều khiển Trap, trừ khi có cycle-level risk controller rõ ràng.

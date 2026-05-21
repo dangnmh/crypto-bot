@@ -70,7 +70,8 @@ func (s *TickerStore) GetTicker(_ context.Context, symbol string) (*TickerData, 
 	if !ok {
 		return nil, fmt.Errorf("no ticker data for %s", symbol)
 	}
-	return td, nil
+	snapshot := *td
+	return &snapshot, nil
 }
 
 // GetAllTickers returns all ticker data as a slice.
@@ -80,7 +81,8 @@ func (s *TickerStore) GetAllTickers(_ context.Context) []*TickerData {
 
 	result := make([]*TickerData, 0, len(s.tickers))
 	for _, td := range s.tickers {
-		result = append(result, td)
+		snapshot := *td
+		result = append(result, &snapshot)
 	}
 	return result
 }

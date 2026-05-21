@@ -70,5 +70,6 @@ func (s *ContractStore) GetContract(_ context.Context, symbol string) (*Contract
 	if !ok {
 		return nil, fmt.Errorf("no contract data for %s", symbol)
 	}
-	return cd, nil
+	snapshot := *cd
+	return &snapshot, nil
 }

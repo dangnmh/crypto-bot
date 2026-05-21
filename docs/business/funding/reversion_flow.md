@@ -2,7 +2,7 @@
 
 Status: implemented.
 
-Reversion dùng candidate từ shared scan, sau đó tự chạy pipeline riêng để bắn IOC quanh settlement và đặt trailing stop sau khi fill.
+Reversion dùng candidate từ shared scan, sau đó tự chạy pipeline riêng để bắn IOC quanh settlement với TP/SL tĩnh gắn trực tiếp trên order.
 
 ## Purpose
 
@@ -22,8 +22,7 @@ flowchart LR
     WAIT --> CHECK["recheck FR"]
     CHECK --> IOC["fire IOC<br/>T - latency offset"]
     IOC --> FILL["fill watcher"]
-    FILL --> TRAIL["trailing stop"]
-    TRAIL --> CLOSE["funding.reversion.position_closed"]
+    FILL --> CLOSE["static TP/SL close<br/>funding.reversion.position_closed"]
     FILL -.-> TIMEOUT["funding.reversion.timeout"]
     CHECK -.-> ABORT["funding.reversion.abort"]
     IOC -.-> ABORT
@@ -39,13 +38,12 @@ Lifecycle state is represented by event topics and `flow`, not by a separate pha
 | Event | Responsibility | Output |
 |---|---|---|
 | `funding.reversion.candidate` | Receive immutable scan result | side, FR, settle time, config snapshot |
-| `funding.reversion.armed` | Subscribe ticker/depth, calculate IOC price/volume | `ioc_intended_price`, `volume`, market snapshot |
+| `funding.reversion.armed` | Subscribe ticker, calculate static IOC price/volume | `ioc_intended_price`, `volume`, market snapshot |
 | `funding.reversion.wait_complete` | Finish pre-settle wait | ready for FR recheck |
 | `funding.reversion.confirmed` | Confirm FR did not flip and still passes threshold | confirmed candidate or abort |
-| `funding.reversion.ioc_fired` | Submit IOC with TP/SL safety prices | order id, fire timestamp, settle offset |
+| `funding.reversion.ioc_fired` | Submit IOC with static TP/SL prices | order id, fire timestamp, settle offset |
 | `funding.reversion.order_filled` | Receive exchange fill event | fill price, fill volume, flow=`reversion` |
-| `funding.reversion.trailing_placed` | Place MEXC TrackOrder after fill | trailing activation/callback |
-| `funding.reversion.position_closed` | Successful exit or fallback close | cleanup trigger |
+| `funding.reversion.position_closed` | Static TP/SL close or fallback close | cleanup trigger |
 | `funding.reversion.timeout` | Timeout force-close succeeded | cleanup trigger |
 | `funding.reversion.error` / `funding.reversion.abort` | Critical failure | error/abort topic recorded in journal |
 
@@ -65,33 +63,32 @@ The journal must record `fire_timestamp`, `settle_time`, `settle_offset_ms`, and
 Reversion uses [price_flow.md](price_flow.md):
 
 - Ref price = best ask for LONG, best bid for SHORT.
-- IOC slippage can come from static percent, spread multiplier, or OB sweep.
+- IOC slippage comes from static `maxPriceDiffPercent`.
 - Volume = margin × leverage / contract notional.
-- TP/SL comes from static config or dynamic FR/ATR calculation.
-- OB wall may cap TP, but must not be treated as a predictive signal.
+- TP/SL comes from static `takeProfitPct` and `stopLossPct`.
+- Reversion does not use dynamic pricing, OB sweep, OB wall caps, imbalance filters, or trailing stops.
 
 ## Exit Rule
 
-Trailing stop is the primary exit. TP submitted with IOC is a server-side safety cap.
+Static TP/SL submitted with IOC is the primary exit. Timeout force-close is the safety net.
 
 | Exit path | Meaning |
 |---|---|
-| trailing closes first | desired path when the move is strong |
-| TP closes first | acceptable safety path when move is short or capped by wall |
-| fallback close | required when TrackOrder placement fails; first closes the filled leg with `ClosePosition(symbol, close_side, deal_vol, positionMode)`, then falls back to `CloseAllPositions(symbol)` if exact close fails |
+| TP closes | Desired profit-taking path |
+| SL closes | Expected loss-control path |
+| timeout after fill | Bot closes the filled leg with `ClosePosition(symbol, close_side, deal_vol, positionMode)`, then falls back to `CloseAllPositions(symbol)` if exact close fails |
 | critical close failure | if fallback close fails, record `critical_close_failed`, publish flow error, abort cycle, and do not mark position as closed |
 | timeout/no fill | force close after post-settle timeout; if close succeeds, publish `funding.reversion.timeout` and cleanup; not a strategy win/loss sample |
 | critical timeout close failure | if timeout force-close fails, record `critical_timeout_close_failed`, publish flow error, abort cycle, and do not publish a false timeout |
 
-Current fallback is intentionally conservative: after a fill, if TrackOrder cannot be created, the priority is to remove unmanaged live exposure. Exact-leg close reduces Hedge-mode blast radius, while `CloseAllPositions(symbol)` remains the final last-resort safety path when exact close fails or exchange state is ambiguous.
+Current fallback is intentionally conservative: after a fill, if static TP/SL does not close before timeout, the priority is to remove unmanaged live exposure. Exact-leg close reduces Hedge-mode blast radius, while `CloseAllPositions(symbol)` remains the final last-resort safety path when exact close fails or exchange state is ambiguous.
 
 ## Open Questions
 
 | Question | Why it matters | Current stance |
 |---|---|---|
-| TrackOrder fail thì fallback close ngay hay đặt TP/SL khác? | Ảnh hưởng unmanaged-position risk | Fallback close ngay là behavior hiện tại vì unmanaged live exposure nguy hiểm hơn missed upside |
 | Reversion fire offset nên chỉnh khỏi T+0-oriented timing không? | Fire quá sớm/trễ làm giảm fill quality và MFE | Chỉ chỉnh từ journal evidence: `settle_offset_ms`, fill rate, slippage, MFE/MAE |
-| OB TP-cap staleness có cần cutoff riêng không? | OB trước settle có thể biến mất | Giữ behavior hiện tại; thêm stale cutoff chỉ khi journal chứng minh cần |
+| Static TP nên tune theo gì? | TP quá xa làm missed exits, TP quá gần bỏ lỡ wick | Tune bằng MFE/MAE theo symbol và FR bucket |
 
 ## Required Journal Fields
 
@@ -102,7 +99,6 @@ Current fallback is intentionally conservative: after a fill, if TrackOrder cann
 | Timing | `fire_timestamp`, `settle_offset_ms`, `latency_rtt_ms` |
 | Entry | `ioc_intended_price`, `ioc_fill_price`, `ioc_fill_volume`, `ioc_slippage_pct`, `ioc_error` |
 | Risk | `tp_pct_configured`, `sl_pct_configured`, `tp_price_submitted`, `sl_price_submitted` |
-| Trailing | `trailing_enabled`, `trailing_placed`, `trailing_activation_price`, `trailing_callback_pct`, `trailing_error`, `critical_close_failed` via `abort_reason` |
 | Timeout | `timeout.flow`, `timeout.triggered`, `timeout.duration_ms`, `timeout.started_at`, `timeout.fired_at`, `timeout.force_close_attempted`, `timeout.force_close_succeeded`, `timeout.error` |
 | Cleanup | `cleanup.terminal_flow`, `cleanup.terminal_topic`, `cleanup.reason`, `cleanup.started_at`, `cleanup.completed_at`, `cleanup.unsubscribed`, `cleanup.excursion_finalized` |
 | Excursion | `ioc_excursion.mfe_price`, `ioc_excursion.mfe_pct`, `ioc_excursion.mfe_time`, `ioc_excursion.mae_price`, `ioc_excursion.mae_pct`, `ioc_excursion.mae_time` |
@@ -114,11 +110,10 @@ Do not tune Reversion by anecdote. Use at least 30 comparable cycles per symbol 
 
 | Concern | Current behavior | Remaining work |
 |---|---|---|
-| TrackOrder/close failure can leave unmanaged position | If TrackOrder placement fails, bot calls exact-leg `ClosePosition(symbol, close_side, deal_vol, positionMode)` with a fresh context; if exact close fails, it falls back to `CloseAllPositions(symbol)`; if all close attempts fail, journal records `critical_close_failed`, publishes flow error, and aborts instead of publishing false `position_closed` | Add bounded retry/backoff, journal retry counts, and enforce `disableSymbolAfterCriticalCloseFailure` end-to-end |
+| Static TP/SL may not close before timeout | Bot calls exact-leg `ClosePosition(symbol, close_side, deal_vol, positionMode)` with a fresh context; if exact close fails, it falls back to `CloseAllPositions(symbol)`; if all close attempts fail, journal records `critical_close_failed`, publishes flow error, and aborts instead of publishing false `position_closed` | Keep timeout short enough to avoid stale post-settle exposure |
 | Timeout force-close failure can be recorded as safe timeout | If post-settle timeout force-close fails, journal records `critical_timeout_close_failed`, publishes flow error, and aborts instead of publishing false `funding.reversion.timeout` | Add bounded retry/backoff and symbol-level disable wiring |
 | Exchange stop-limit validation can abort after confirmation | Example: MEXC `The price of stop-limit order error` after `funding.reversion.confirmed` | Treat as order-construction or exchange-constraint bug before strategy tuning |
 | Mixed percent units in old records can distort reports | Current config normalization and schema v2 define percent conventions | Keep report unit sanity checks for older JSONL records |
-| Imbalance Ratio can be spoofed | Implemented as disabled-by-default secondary Reversion filter with journal fields | Do not promote it to primary signal without persistence evidence |
 
 ## Backlog
 

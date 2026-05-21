@@ -73,14 +73,16 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
-// SubscribePersonal subscribes to personal order updates.
+// SubscribePersonal subscribes to all private futures channels used by funding flows.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	msg := map[string]interface{}{
 		paramMethod: "personal.filter",
 		paramParam: map[string]interface{}{
 			"filters": []map[string]string{
 				{paramFilter: "order"},
-				{"filter": "position"},
+				{paramFilter: "order.deal"},
+				{paramFilter: "track.order"},
+				{paramFilter: "position"},
 			},
 		},
 	}
@@ -171,6 +173,10 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 				return channelKline
 			case "push.personal.order":
 				return "personal.order"
+			case "push.personal.order.deal":
+				return "personal.order.deal"
+			case "push.personal.track.order":
+				return "personal.track.order"
 			case "push.personal.position":
 				return "personal.position"
 			default:
@@ -340,6 +346,57 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 	}
 
 	return &deal, nil
+}
+
+// ParseOrderDeal parses push.personal.order.deal into execution data.
+func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
+	var msg struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil, err
+	}
+
+	var deal exchange.PersonalOrderDeal
+	if err := json.Unmarshal(msg.Data, &deal); err != nil {
+		return nil, err
+	}
+
+	return &deal, nil
+}
+
+// ParseTrackOrder parses push.personal.track.order into trailing order data.
+func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
+	var msg struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil, err
+	}
+
+	var update exchange.PersonalTrackOrderUpdate
+	if err := json.Unmarshal(msg.Data, &update); err != nil {
+		return nil, err
+	}
+
+	return &update, nil
+}
+
+// ParsePosition parses push.personal.position into position exposure data.
+func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
+	var msg struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil, err
+	}
+
+	var update exchange.PersonalPositionUpdate
+	if err := json.Unmarshal(msg.Data, &update); err != nil {
+		return nil, err
+	}
+
+	return &update, nil
 }
 
 func parseFloatValue(v []byte, dt jsonparser.ValueType) float64 {

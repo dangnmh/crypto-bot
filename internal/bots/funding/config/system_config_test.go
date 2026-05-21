@@ -127,8 +127,7 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	reversionContent := `{
 		"enabled": true,
 		"takeProfitPct": 3,
-		"stopLossPct": 2,
-		"dynamicPricing": {"enabled": true}
+		"stopLossPct": 2
 	}`
 	trapContent := `{
 		"enabled": true,
@@ -153,7 +152,6 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	assert.Equal(t, 5, defaults.Leverage)
 	assert.True(t, defaults.FundingReversion.Enabled)
 	assert.Equal(t, 3.0, defaults.FundingReversion.TakeProfitPct)
-	assert.True(t, defaults.FundingReversion.DynamicPricing.Enabled)
 	assert.True(t, defaults.FundingTrap.Enabled)
 	assert.Equal(t, 2.5, defaults.FundingTrap.DepthPct)
 	assert.True(t, defaults.FundingTrap.Trailing.Enabled)

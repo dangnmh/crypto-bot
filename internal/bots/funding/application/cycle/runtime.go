@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,11 +33,9 @@ type Deps struct {
 	ContractStore store.ContractReader
 	PriceStore    store.PriceReader
 	FundingStore  store.FundingReader
-	KlineStore    store.KlineReadWriter
 	DepthStore    store.DepthReader
 	Clock         shared.Clock
 	Log           *slog.Logger
-	CycleRecorder domain.CycleRecorder
 }
 
 // Runtime owns shared per-cycle state and dependencies used by flow packages.
@@ -50,9 +49,21 @@ type Runtime struct {
 	mu        sync.Mutex
 	candidate domain.Candidate
 	results   []any
-	recorder  *domain.CycleRecordBuilder
+
+	reqID    string
+	settle   time.Time
+	eventSeq int64
+	eventLog []events.JournalEnvelope
+
+	terminal map[string]bool
 
 	excursionCancel context.CancelFunc
+
+	reversionOrderID string
+	reversionFill    *events.OrderFilledEvent
+	trapOrder        *events.TrapFiredEvent
+	trapFill         *events.OrderFilledEvent
+	trapTerminal     bool
 }
 
 func NewRuntime(cfg config.SymbolConfig, global *config.Config, deps Deps) *Runtime {
@@ -63,8 +74,6 @@ func NewRuntime(cfg config.SymbolConfig, global *config.Config, deps Deps) *Runt
 		subs: NewSubscriptionManager(
 			deps.WsSub,
 			cfg.Symbol,
-			ToTradeConfig(cfg).FundingReversion.DynamicPricing,
-			ToTradeConfig(cfg).FundingReversion.ImbalanceFilter,
 			deps.Log,
 		),
 	}
@@ -72,8 +81,25 @@ func NewRuntime(cfg config.SymbolConfig, global *config.Config, deps Deps) *Runt
 
 func (r *Runtime) Begin(reqID string, settle time.Time, log *slog.Logger) {
 	r.deps.Log = log
-	r.recorder = domain.NewCycleRecordBuilder(reqID, settle)
 	r.bus = eventbus.New(log)
+	r.terminal = make(map[string]bool)
+	r.reqID = reqID
+	r.settle = settle
+	r.eventSeq = 0
+	r.eventLog = make([]events.JournalEnvelope, 0, 32)
+	cfgJSON, _ := json.Marshal(ToTradeConfig(r.cfg))
+	r.RecordAndPublish(reqID, events.TopicCycleStarted, events.CycleStartEvent{
+		Symbol:     r.cfg.Symbol,
+		SettleTime: settle,
+		Config:     cfgJSON,
+	})
+}
+
+// GetReqID returns the current request ID.
+func (r *Runtime) GetReqID() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reqID
 }
 
 func (r *Runtime) CloseBus() error {
@@ -105,15 +131,52 @@ func (r *Runtime) Log() *slog.Logger {
 	return r.deps.Log
 }
 
-func (r *Runtime) Recorder() *domain.CycleRecordBuilder {
-	return r.recorder
+func (r *Runtime) JourneyEvents() []events.JournalEnvelope {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]events.JournalEnvelope, len(r.eventLog))
+	for i := range r.eventLog {
+		result[i] = r.eventLog[i]
+		result[i].Payload = append(json.RawMessage(nil), r.eventLog[i].Payload...)
+	}
+	return result
 }
 
-func (r *Runtime) MutateRecorder(fn func(*domain.CycleRecordBuilder)) {
-	if r.recorder == nil {
-		return
+// RecordAndPublish records an event to the event journal and publishes it to the event bus.
+func (r *Runtime) RecordAndPublish(reqID, topic string, payload any) {
+	r.mu.Lock()
+	r.eventSeq++
+	rawPayload, _ := json.Marshal(payload)
+
+	env := events.JournalEnvelope{
+		Seq:        r.eventSeq,
+		Time:       time.Now(),
+		ReqID:      reqID,
+		Symbol:     r.cfg.Symbol,
+		SettleTime: r.settle,
+		Flow:       r.getFlowFromTopic(topic),
+		Topic:      topic,
+		Payload:    rawPayload,
 	}
-	r.recorder.Mutate(fn)
+	r.eventLog = append(r.eventLog, env)
+	r.mu.Unlock()
+
+	if err := r.bus.Publish(topic, payload); err != nil {
+		r.deps.Log.Error("Publish failed", slog.String("topic", topic), slog.Any("error", err))
+	}
+}
+
+func (r *Runtime) getFlowFromTopic(topic string) string {
+	if strings.Contains(topic, "reversion") {
+		return events.FlowReversion
+	}
+	if strings.Contains(topic, "trap") {
+		return events.FlowTrap
+	}
+	if strings.Contains(topic, "scan") {
+		return events.FlowScan
+	}
+	return events.FlowCycle
 }
 
 func (r *Runtime) Subscribe(ctx context.Context, topic string, handler func(*message.Message)) {
@@ -151,19 +214,21 @@ func (r *Runtime) PublishStart(settle time.Time) error {
 	})
 }
 
-func (r *Runtime) Abort(source, reason string) {
+func (r *Runtime) Abort(reqID, source, reason string) {
 	if source == "scan" {
+		r.RecordAndPublish(reqID, events.TopicScanCandidateFound, events.CandidateFoundEvent{
+			Flow:   events.FlowScan,
+			Symbol: r.cfg.Symbol,
+		}) // placeholder for scan rejected
 		r.Publish(events.TopicScanAbort, events.CycleAbortEvent{
 			Symbol: r.cfg.Symbol,
 			Reason: reason,
 		})
 	}
-	r.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-		b.AbortReason = reason
-		b.AbortFlow = events.FlowReversion
-		b.AbortTopic = events.TopicReversionAbort
-	})
-	r.Publish(events.TopicReversionAbort, events.CycleAbortEvent{
+	if !r.TryMarkFlowTerminal(events.FlowReversion) {
+		return
+	}
+	r.RecordAndPublish(reqID, events.TopicReversionAbort, events.CycleAbortEvent{
 		Flow:   events.FlowReversion,
 		Symbol: r.cfg.Symbol,
 		Reason: reason,
@@ -193,6 +258,75 @@ func (r *Runtime) AppendResult(result any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.results = append(r.results, result)
+}
+
+func (r *Runtime) SettleTime() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.settle
+}
+
+func (r *Runtime) MarkReversionOrder(orderID string) {
+	if orderID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reversionOrderID = orderID
+}
+
+func (r *Runtime) MarkReversionFill(evt events.OrderFilledEvent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fill := evt
+	r.reversionFill = &fill
+}
+
+func (r *Runtime) ReversionFill() (events.OrderFilledEvent, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reversionFill == nil {
+		return events.OrderFilledEvent{}, false
+	}
+	return *r.reversionFill, true
+}
+
+func (r *Runtime) MarkTrapOrder(evt events.TrapFiredEvent) {
+	if evt.OrderID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	trapOrder := evt
+	r.trapOrder = &trapOrder
+	r.trapTerminal = false
+}
+
+func (r *Runtime) MarkTrapFill(evt events.OrderFilledEvent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	fill := evt
+	r.trapFill = &fill
+}
+
+func (r *Runtime) MarkTrapTerminal() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.trapTerminal = true
+}
+
+func (r *Runtime) TrapSnapshot() (order events.TrapFiredEvent, hasOrder bool, fill events.OrderFilledEvent, hasFill, terminal bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.trapOrder != nil {
+		order = *r.trapOrder
+		hasOrder = true
+	}
+	if r.trapFill != nil {
+		fill = *r.trapFill
+		hasFill = true
+	}
+	return order, hasOrder, fill, hasFill, r.trapTerminal
 }
 
 func (r *Runtime) SubscribeAll(ctx context.Context) error {
@@ -254,28 +388,12 @@ func (r *Runtime) RefreshPrice(ctx context.Context, c *domain.Candidate) error {
 	return err
 }
 
-func (r *Runtime) InitKlines(ctx context.Context) {
-	klines := r.deps.KlineStore.GetKlines(ctx, r.cfg.Symbol)
-	if len(klines) >= 14 {
-		return
-	}
-	r.deps.Log.Info("📊 Fetching initial 1-minute klines via REST")
-	apiKlines, err := r.deps.Client.GetKlines(ctx, r.cfg.Symbol, exchange.IntervalMin1, 0, 0)
-	if err != nil {
-		r.deps.Log.Warn("🟡 Failed to fetch initial klines", slog.Any("error", err))
-		return
-	}
-	if len(apiKlines) > 20 {
-		apiKlines = apiKlines[len(apiKlines)-20:]
-	}
-	r.deps.KlineStore.InitKlines(r.cfg.Symbol, 20, apiKlines)
-}
-
-func (r *Runtime) WaitUntil(ctx context.Context, target time.Time) {
+func (r *Runtime) WaitUntil(ctx context.Context, target time.Time) bool {
 	if d := r.deps.Clock.Until(target); d > 0 {
 		r.deps.Log.Debug("⏱️ wait", slog.Time("target", target), slog.Duration("wait", d))
-		_ = r.deps.Clock.Sleep(ctx, d)
+		return r.deps.Clock.Sleep(ctx, d) == nil
 	}
+	return ctx.Err() == nil
 }
 
 func (r *Runtime) Sleep(ctx context.Context, d time.Duration) bool {
@@ -283,29 +401,69 @@ func (r *Runtime) Sleep(ctx context.Context, d time.Duration) bool {
 	return err == nil
 }
 
-func (r *Runtime) StartExcursionPriceStream(ctx context.Context) {
+func (r *Runtime) RetryWithBackoff(ctx context.Context, attempts int, fn func() error) (int, error) {
+	return r.RetryWithBackoffOpts(ctx, attempts, 100*time.Millisecond, 5*time.Second, fn)
+}
+
+// RetryWithBackoffOpts performs retry with exponential backoff and jitter.
+// baseDelay: initial delay (e.g., 100ms)
+// maxDelay: cap for exponential backoff (e.g., 5s)
+// Returns (actual_retry_count, error).
+func (r *Runtime) RetryWithBackoffOpts(ctx context.Context, attempts int, baseDelay, maxDelay time.Duration, fn func() error) (int, error) {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var err error
+	delay := baseDelay
+	for i := 1; i <= attempts; i++ {
+		if err = fn(); err == nil {
+			return i, nil
+		}
+		if i == attempts {
+			break
+		}
+		// Add jitter: ±20% of delay to avoid thundering herd
+		jitter := delay * 20 / 100
+		delayWithJitter := delay + time.Duration((float64(delay)-float64(jitter))*0.5+float64(jitter)*0.5)
+		if sleepErr := r.deps.Clock.Sleep(ctx, delayWithJitter); sleepErr != nil {
+			return i, err
+		}
+		// Exponential backoff: double delay each retry, capped at maxDelay
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
+	return attempts, err
+}
+
+func (r *Runtime) StartExcursionPriceStream(ctx context.Context, reqID string) {
 	if r.deps.PriceStore == nil || r.excursionCancel != nil {
 		return
 	}
 
 	streamCtx, cancel := context.WithCancel(ctx)
 	r.excursionCancel = cancel
-	updates := r.deps.PriceStore.SubscribePrice(streamCtx, r.cfg.Symbol, 32)
+	updates := r.deps.PriceStore.SubscribePrice(streamCtx, r.cfg.Symbol)
 
 	go func() {
 		for pd := range updates {
 			if pd == nil || pd.LastPrice <= 0 {
 				continue
 			}
-			r.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-				if b.IOCExcursion != nil {
-					b.IOCExcursion.Update(pd.LastPrice, pd.UpdatedAt)
-					b.Excursion = b.IOCExcursion
-				}
-				if b.TrapExcursion != nil {
-					b.TrapExcursion.Update(pd.LastPrice, pd.UpdatedAt)
-				}
-			})
+			r.mu.Lock()
+			r.eventSeq++
+			env := events.JournalEnvelope{
+				Seq:     r.eventSeq,
+				Time:    pd.UpdatedAt,
+				ReqID:   reqID,
+				Symbol:  r.cfg.Symbol,
+				Flow:    events.FlowCycle,
+				Topic:   events.TopicExcursionPriceObserved,
+				Payload: []byte(fmt.Sprintf(`{"price":%f,"time":%q}`, pd.LastPrice, pd.UpdatedAt.Format(time.RFC3339))),
+			}
+			r.eventLog = append(r.eventLog, env)
+			r.mu.Unlock()
 		}
 	}()
 }
@@ -317,12 +475,167 @@ func (r *Runtime) StopExcursionPriceStream() {
 	}
 }
 
-func (r *Runtime) FinalizeExcursion(ctx context.Context) bool {
-	if r.recorder == nil || r.recorder.Excursion == nil {
+// SubscribeWSOrderEvents subscribes to order lifecycle events from OrderNotifier
+// and records them via RecordAndPublish for event sourcing.
+func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol string) {
+	// Subscribe to position updates
+	r.deps.OrderNotifier.OnPositionUpdate(ctx, symbol, 30*time.Second, func(pos exchange.PersonalPositionUpdate) {
+		r.RecordAndPublish(reqID, events.TopicPositionUpdated, events.WSPositionUpdatedEvent{
+			Symbol:        pos.Symbol,
+			Side:          pos.PositionType,
+			Size:          pos.HoldVol,
+			EntryPrice:    pos.HoldAvgPrice,
+			MarkPrice:     pos.LiquidatePrice,
+			UnrealizedPnL: pos.Realized,
+			Leverage:      pos.Leverage,
+			Timestamp:     time.Now(),
+		})
+	})
+
+	// Subscribe to track order updates
+	r.deps.OrderNotifier.OnTrackOrderUpdate(ctx, "", "", 30*time.Second, func(track exchange.PersonalTrackOrderUpdate) {
+		var orderID string
+		if oid, ok := track.OrderID.(string); ok {
+			orderID = oid
+		}
+		var id string
+		if iid, ok := track.ID.(string); ok {
+			id = iid
+		}
+		r.RecordAndPublish(reqID, events.TopicTrackUpdated, events.WSTrackUpdatedEvent{
+			TrackID:     id,
+			OrderID:     orderID,
+			Symbol:      track.Symbol,
+			ActivePrice: track.ActivePrice,
+			CallbackPct: float64(track.BackValue) / 100.0,
+			Status:      trackStateToString(track.State),
+			Timestamp:   time.Now(),
+		})
+	})
+}
+
+// CalculateFinalPnL computes the total PnL from the event log at cycle end.
+func (r *Runtime) CalculateFinalPnL() events.FinalPnLEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	result := events.FinalPnLEvent{
+		Symbol: r.cfg.Symbol,
+	}
+
+	for i := range r.eventLog {
+		switch r.eventLog[i].Topic {
+		case events.TopicReversionOrderFilled:
+			var fillEvt events.OrderFilledEvent
+			if err := json.Unmarshal(r.eventLog[i].Payload, &fillEvt); err == nil {
+				result.IocPnL += fillEvt.Profit
+				result.TradingFees += fillEvt.Fee
+			}
+		case events.TopicTrapOrderFilled:
+			var fillEvt events.OrderFilledEvent
+			if err := json.Unmarshal(r.eventLog[i].Payload, &fillEvt); err == nil {
+				result.TrapPnL += fillEvt.Profit
+				result.TradingFees += fillEvt.Fee
+			}
+		}
+	}
+
+	result.TotalPnL = result.IocPnL + result.TrapPnL
+	result.NetPnL = result.TotalPnL - result.TradingFees - result.FundingFeePaid
+
+	return result
+}
+
+// PublishFinalPnL calculates and publishes the final PnL event.
+func (r *Runtime) PublishFinalPnL(reqID string) {
+	pnl := r.CalculateFinalPnL()
+	pnl.Journey = r.JourneyEvents()
+	pnl.EventCount = len(pnl.Journey)
+	r.RecordAndPublish(reqID, events.TopicCycleFinalPnL, pnl)
+	r.logFinalPnL(pnl)
+}
+
+func (r *Runtime) logFinalPnL(pnl events.FinalPnLEvent) {
+	raw, err := json.Marshal(pnl)
+	if err != nil {
+		r.deps.Log.Warn("Cycle final PnL journal marshal failed",
+			slog.String("symbol", pnl.Symbol),
+			slog.Any("error", err),
+		)
+		return
+	}
+	r.deps.Log.Info("Cycle final PnL journal",
+		slog.String("symbol", pnl.Symbol),
+		slog.Float64("net_pnl", pnl.NetPnL),
+		slog.Int("event_count", pnl.EventCount),
+		slog.String("payload", string(raw)),
+	)
+}
+
+// trackStateToString converts track order state to string.
+func trackStateToString(state int) string {
+	switch state {
+	case 0:
+		return "active"
+	case 1:
+		return "triggered"
+	case 2:
+		return "cancelled"
+	default:
+		return "unknown"
+	}
+}
+
+func (r *Runtime) TryMarkFlowTerminal(flow string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.terminal == nil {
+		r.terminal = make(map[string]bool)
+	}
+	if r.terminal[flow] {
+		return false
+	}
+	r.terminal[flow] = true
+	return true
+}
+
+func (r *Runtime) IsFlowTerminal(flow string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.terminal != nil && r.terminal[flow]
+}
+
+func (r *Runtime) FinalizeExcursion(ctx context.Context, reqID string) bool {
+	// Check if any order was filled by checking event log
+	r.mu.Lock()
+	var iocFilled, trapFilled bool
+	for i := range r.eventLog {
+		if r.eventLog[i].Topic == events.TopicReversionOrderFilled {
+			iocFilled = true
+		}
+		if r.eventLog[i].Topic == events.TopicTrapOrderFilled {
+			trapFilled = true
+		}
+	}
+	r.mu.Unlock()
+
+	if !iocFilled && !trapFilled {
 		return false
 	}
 	if pd, err := r.deps.PriceStore.GetPrice(ctx, r.cfg.Symbol, 2*time.Second); err == nil {
-		r.recorder.Excursion.Update(pd.LastPrice, time.Now())
+		r.mu.Lock()
+		r.eventSeq++
+		env := events.JournalEnvelope{
+			Seq:     r.eventSeq,
+			Time:    time.Now(),
+			ReqID:   reqID,
+			Symbol:  r.cfg.Symbol,
+			Flow:    events.FlowCycle,
+			Topic:   events.TopicExcursionPriceObserved,
+			Payload: []byte(fmt.Sprintf(`{"price":%f}`, pd.LastPrice)),
+		}
+		r.eventLog = append(r.eventLog, env)
+		r.mu.Unlock()
 		return true
 	}
 	return false
@@ -357,37 +670,6 @@ func (r *Runtime) checkCycleRisk(reversionNotional, trapNotional float64, includ
 	}
 
 	return nil
-}
-
-func (r *Runtime) PersistCycleRecord(ctx context.Context) {
-	if r.recorder == nil || r.deps.CycleRecorder == nil || r.bus == nil {
-		return
-	}
-
-	tl := r.bus.Timeline()
-	entries := make([]domain.TimelineEntry, 0, len(tl))
-	for _, e := range tl {
-		entries = append(entries, domain.TimelineEntry{
-			Time:    e.Time,
-			Topic:   e.Topic,
-			MsgID:   e.MsgID,
-			Payload: e.Payload,
-		})
-	}
-
-	cfgJSON, _ := json.Marshal(ToTradeConfig(r.cfg))
-	record := r.recorder.Build(
-		r.cfg.Symbol,
-		r.cfg.FundingReversion.TakeProfitPct,
-		r.cfg.FundingReversion.StopLossPct,
-		cfgJSON,
-		entries,
-	)
-	if err := r.deps.CycleRecorder.Record(ctx, record); err != nil {
-		r.deps.Log.Error("🔴 Failed to persist cycle record", slog.Any("error", err))
-	} else {
-		r.deps.Log.Info("📝 Cycle record persisted", slog.String("outcome", string(record.Outcome)))
-	}
 }
 
 func CalcSpreadPct(bestBid, bestAsk float64) float64 {

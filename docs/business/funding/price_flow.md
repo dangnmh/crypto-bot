@@ -20,24 +20,10 @@ flowchart TD
     S1 --> S2["Direction = -1<br/>(Chấp nhận bán rẻ hơn)"]
     S2 --> S3["Snap Func = math.Ceil<br/>(Tránh undershoot)"]
     
-    L3 --> DYN_CHECK
-    S3 --> DYN_CHECK
+    L3 --> STATIC_SLIP
+    S3 --> STATIC_SLIP
     
-    DYN_CHECK{"Dynamic Pricing<br/>Enabled?"}
-    
-    DYN_CHECK -- "No (Static)" --> STATIC_SLIP["Static Percent<br/>Slippage = RefPrice * maxDiff%"]
-    
-    DYN_CHECK -- "Yes" --> DYN_MODE{"Slippage Mode"}
-    
-    DYN_MODE -- "SPREAD_MULTIPLIER" --> DYN_SPREAD["Spread Multiplier<br/>diff = max(maxDiff%, Spread% * Multiplier)<br/>Slippage = RefPrice * diff"]
-    
-    DYN_MODE -- "OB_IMBALANCE" --> DYN_OB["Orderbook Sweep<br/>Quét OB tới khi đủ Volume<br/>Slippage = |SweepPrice - RefPrice| + Buffer%"]
-    
-    DYN_OB --> HARD_CAP["Hard Cap (Chống rỗng thanh khoản)<br/>Slippage = min(Slippage, RefPrice * obMaxSlippagePct)"]
-    
-    STATIC_SLIP --> MIN_TICK
-    DYN_SPREAD --> MIN_TICK
-    HARD_CAP --> MIN_TICK
+    STATIC_SLIP["Static Percent<br/>Slippage = RefPrice * maxDiff%"] --> MIN_TICK
     
     MIN_TICK["Bảo vệ Tick Size<br/>Slippage = max(Slippage, 2 * PriceUnit)"] --> CALC_RAW
     
@@ -56,38 +42,17 @@ flowchart TD
 
 ## Logic Tính Take Profit Price
 
-Được thực hiện trong phase `fire_ioc`. Bot tính giá chốt lời tự động dựa trên 2 nguồn: **Dynamic Pricing (FR + ATR)** cho TP chính và **OB wall detection** cho safety cap.
-
-### Dynamic Pricing (TP chính — dựa trên thống kê)
-
-```
-TP% = (|FR%| × TpFundingMultiplier) + (ATR% × TpAtrMultiplier)
-```
-
-Ví dụ: FR = -0.5%, ATR% = 0.3%, TpFundingMul = 2.0, TpAtrMul = 1.5
-→ TP% = (0.5 × 2.0) + (0.3 × 1.5) = **1.45%**
-
-### OB Wall Detection (safety cap — giảm TP nếu có tường chặn)
+Được thực hiện trong phase `fire_ioc`. Reversion dùng TP/SL tĩnh từ config, không dùng dynamic FR/ATR, OB sweep, hoặc OB wall cap.
 
 ```mermaid
 flowchart TD
     START2["Bắt đầu tính TP"] --> ENTRY{"Side?"}
 
-    ENTRY -- "LONG" --> LONG_ENTRY["Entry = BestAsk<br/>Scan: Ask side<br/>maxTP = Entry × (1 + maxTPPct)"]
-    ENTRY -- "SHORT" --> SHORT_ENTRY["Entry = BestBid<br/>Scan: Bid side<br/>maxTP = Entry × (1 - maxTPPct)"]
+    ENTRY -- "LONG" --> LONG_ENTRY["TP = Entry × (1 + takeProfitPct)<br/>SL = Entry × (1 - stopLossPct)"]
+    ENTRY -- "SHORT" --> SHORT_ENTRY["TP = Entry × (1 - takeProfitPct)<br/>SL = Entry × (1 + stopLossPct)"]
 
-    LONG_ENTRY --> SCAN
-    SHORT_ENTRY --> SCAN
-
-    SCAN["Quét OB levels<br/>Tìm level có Vol ≥ 3× avg"] --> WALL{Tìm thấy Wall?}
-
-    WALL -- "Có" --> SNAP["TP = Wall Price ± 2 ticks<br/>(đặt trước tường)"]
-    SNAP --> CLAMP["Clamp: TP ≤ maxTP"]
-
-    WALL -- "Không" --> FALLBACK["TP = maxTP<br/>(fallback FR×mul + ATR)"]
-
-    CLAMP --> TICK["Tick Snap + Scale"]
-    FALLBACK --> TICK
+    LONG_ENTRY --> TICK["Tick Snap + Scale"]
+    SHORT_ENTRY --> TICK
 
     TICK --> SANITY{"TP đúng phía<br/>so với Entry?"}
     SANITY -- "Đúng" --> TP_DONE["TakeProfitPrice"]
@@ -97,7 +62,7 @@ flowchart TD
     style TP_DONE fill:#005c2a,stroke:#e94560,color:#fff
 ```
 
-> Lưu ý: OB trước settle có thể biến mất sau settle. TP từ wall chỉ là safety cap: chỉ giảm TP, không tăng. Xem [depth.md](depth.md).
+FR vẫn dùng để quyết định hướng và bucket phân tích, nhưng không còn trực tiếp tính TP trong runtime Reversion.
 
 ### Required Journal Fields
 
@@ -114,11 +79,12 @@ Price calculation changes are not considered validated until these fields are re
 ### Phối Hợp Đóng Vị Thế
 
 ```
-Fire IOC (có TakeProfitPrice = safety cap)
+Fire IOC (có static TakeProfitPrice + StopLossPrice)
     ↓
-IOC Fill → Đặt Trailing Stop (cưỡi sóng)
+IOC Fill → Exchange TP/SL đóng vị thế hoặc timeout force-close
     ↓
 Ai chạm trước thì đóng:
-  • Trailing đóng trước → ăn đậm (sóng mạnh)
-  • TP trigger đóng trước → safety net (sóng yếu/chạm wall)
+  • TP trigger → chốt lời
+  • SL trigger → cắt lỗ
+  • Timeout → bot force close để tránh giữ stale exposure
 ```

@@ -12,7 +12,7 @@ Record **every trading cycle** of the Funding bot into a structured JSONL file s
 2. **Timing precision** — Did we fire at the right moment? How much latency vs the settlement?
 3. **Funding rate** — Did we actually hold through settlement? Was the FR prediction correct at recheck?
 4. **Fill quality** — Did the IOC fill? Did the trap fill? At what price vs intended?
-5. **Exit quality** — Did we hit TP, SL, trailing, or timeout? Was TP too ambitious or too conservative?
+5. **Exit quality** — Did we hit static TP, SL, or timeout? Was TP too ambitious or too conservative?
 
 ---
 
@@ -35,7 +35,7 @@ Record **every trading cycle** of the Funding bot into a structured JSONL file s
 | `EventBus.Timeline()`        | Full event chain with JSON payloads, timestamps, msg IDs | Persisted inside the cycle record; raw external event store is still future work |
 | `CorrelationID` (`req_id`)   | Links all events in one cycle                            | Already in context — just need to capture it        |
 | `OrderResult` in `opener.go` | IOC/Trap order ID, fill status, error                    | Captured into the cycle record when handlers populate the builder |
-| `Candidate` struct           | FR, side, price, volume, slippage, ATR, safety result    | Captured as decision/config/order snapshots         |
+| `Candidate` struct           | FR, side, price, volume, slippage, safety result         | Captured as decision/config/order snapshots         |
 | Event subscriptions          | Flow-scoped topics for Reversion and Trap                | Pre-placement Trap skip state needs stronger journal/report visibility |
 
 > [!NOTE]
@@ -56,7 +56,7 @@ Current journal schema is v2. Lifecycle state is event-topic driven and new reco
 | `settle_time`              | `settle` param in `Run()`          | Which funding settlement                   |
 | `leverage`                 | `o.cfg.Leverage`                   | Position sizing                            |
 | `margin_usdt`              | `o.cfg.MarginUSDT`                 | Capital deployed                           |
-| `funding_reversion_config` | `o.cfg.FundingReversion`           | TP%, SL%, dynamic pricing, trailing config |
+| `funding_reversion_config` | `o.cfg.FundingReversion`           | Static TP%, SL%, latency, timeout config   |
 | `funding_trap_config`      | `o.cfg.FundingTrap`                | Trap depth%, TP%, SL%, enabled flag        |
 
 ### B. Decision Points (Why did we act?)
@@ -100,22 +100,19 @@ Current journal schema is v2. Lifecycle state is event-topic driven and new reco
 
 | Field                       | Source                                    | Why                                                            |
 | --------------------------- | ----------------------------------------- | -------------------------------------------------------------- |
-| `exit_reason`               | `PositionClosedEvent.Reason`              | "trailing", "tp", "sl", "timeout", "trailing_failed_fallback"  |
+| `exit_reason`               | `PositionClosedEvent.Reason`              | "tp", "sl", "timeout", "timeout_force_close"                   |
 | `exit_timestamp`            | timestamp of PositionClosed/Timeout event | When did we close?                                             |
 | `hold_duration_ms`          | `exit_timestamp - fire_timestamp`         | How long did we hold?                                          |
 | `tp_pct_configured`         | `cfg.FundingReversion.TakeProfitPct`      | What TP% was set                                               |
 | `sl_pct_configured`         | `cfg.FundingReversion.StopLossPct`        | What SL% was set                                               |
 | `tp_price_submitted`        | from `FireIOC` → `req.TakeProfitPrice`    | Actual TP price on exchange                                    |
 | `sl_price_submitted`        | from `FireIOC` → `req.StopLossPrice`      | Actual SL price on exchange                                    |
-| `trailing_activated`        | `TrailingPlacedEvent` exists              | Did trailing stop get placed?                                  |
-| `trailing_activation_price` | `TrailingPlacedEvent.ActivePrice`         | At what price does trailing activate                           |
-| `trailing_callback_pct`     | `TrailingPlacedEvent.CallbackPct`         | Trailing callback %                                            |
 | `outcome`                   | computed                                  | "profit", "loss", "breakeven", "aborted", "timeout", "no_fill" |
 
 ### D2. Post-Settle Price Tracking — MFE / MAE (The Most Important Data for Tuning)
 
 > [!IMPORTANT]
-> This is the **single most valuable addition** for tuning TP/SL/Trailing. Without it, you know the exit price but not whether a better exit was possible.
+> This is the **single most valuable addition** for tuning static TP/SL. Without it, you know the exit price but not whether a better exit was possible.
 
 **MFE** (Maximum Favorable Excursion) = the best price reached in our favor after entry.
 **MAE** (Maximum Adverse Excursion) = the worst price reached against us after entry.
@@ -136,28 +133,11 @@ Current journal schema is v2. Lifecycle state is event-topic driven and new reco
 **What this tells you**:
 
 - TP set to 3% but MFE was only 1.5% → TP is too ambitious, lower it
-- TP set to 3% but MFE was 8% → TP is too conservative, raise it or rely on trailing
+- TP set to 3% but MFE was 8% → TP is too conservative, raise it for that symbol/FR bucket
 - SL set to 3% but MAE was 4% and cycle still ended in profit → SL would have killed a winning trade
 - SL set to 3% but MAE was only 0.5% → SL is fine, room to tighten for less risk
 
-### D3. Dynamic vs Static Comparison (Is Dynamic Pricing Helping?)
-
-When `dynamicPricing.enabled = true`, record **both** the dynamic values AND what the static fallback would have produced:
-
-| Field                         | Source                                                                            | Why                                      |
-| ----------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------- |
-| `dynamic_pricing_enabled`     | `cfg.FundingReversion.DynamicPricing.Enabled`                                     | Was dynamic pricing active?              |
-| `dynamic_tp_pct`              | `candidate.Config.FundingReversion.TakeProfitPct` (after `PrepareDynamicPricing`) | The TP% dynamic pricing calculated       |
-| `static_tp_pct`               | original config before dynamic override                                           | What TP% would have been without dynamic |
-| `dynamic_sl_pct`              | same                                                                              | Dynamic SL%                              |
-| `static_sl_pct`               | same                                                                              | Static SL% fallback                      |
-| `dynamic_trailing_activation` | after dynamic calc                                                                | Dynamic trailing activation              |
-| `static_trailing_activation`  | original config                                                                   | Static trailing activation               |
-| `atr_value`                   | `candidate.ATR`                                                                   | ATR used for dynamic calculations        |
-
-**What this tells you**: Over 100 cycles, compare outcomes of dynamic vs static. If dynamic isn't beating static, something is wrong with the multipliers.
-
-### D4. Hindsight "Ideal" Values (What Config SHOULD Have Been)
+### D3. Hindsight "Ideal" Values (What Config SHOULD Have Been)
 
 Computed after the cycle ends, using MFE/MAE:
 
@@ -195,7 +175,7 @@ The complete `EventBus.Timeline()` — every event with topic, timestamp, and fu
 | Phase | Scope | Status | Why |
 |---|---|---|---|
 | 1 | Append-only JSONL Cycle Recorder | Implemented | Lowest risk, easy to inspect, matches `data/journal/cycles-YYYY-MM-DD.jsonl` workflow |
-| 2 | MFE/MAE sampler during open position | Implemented for IOC and Trap fills | Highest value for TP/SL/trailing tuning |
+| 2 | MFE/MAE sampler during open position | Implemented for IOC and Trap fills | Highest value for static TP/SL tuning |
 | 3 | Query/report CLI | Implemented as `cmd/funding-journal` | Turns raw records into operating decisions |
 | 4 | Trap terminal skip journal/report hardening | Implemented | Every Trap ending is visible, including pre-placement skips |
 | 5 | SQLite native recorder + indexes | Future | Useful after JSONL schema and report fields stabilize |
@@ -437,8 +417,6 @@ CREATE TABLE IF NOT EXISTS cycle_records (
     sl_pct_configured    REAL,
     tp_price_submitted   REAL,
     sl_price_submitted   REAL,
-    trailing_activated   BOOLEAN,
-
     -- MFE / MAE (tuning gold)
     mfe_price     REAL,
     mfe_pct       REAL,
@@ -483,7 +461,7 @@ The implemented recorder writes one JSON object per completed or aborted cycle:
   "ioc_slippage_pct": 0.04,
   "ioc_excursion": {"mfe_pct": 3.2, "mae_pct": 0.7},
   "trap_excursion": {"mfe_pct": 0.8, "mae_pct": 0.4},
-  "exit": {"reason": "trailing"},
+  "exit": {"reason": "tp"},
   "timeline": []
 }
 ```
@@ -558,14 +536,13 @@ Current behavior:
 Handlers populate the builder around key lifecycle events:
 
 - `handler_scan.go` → `o.addSnapshot("scan", ...)` after qualification
-- `handler_scan.go` (arm) → `o.addSnapshot("arm", ...)` after dynamic pricing
+- `handler_scan.go` (arm) → `o.addSnapshot("arm", ...)` after static IOC pricing
 - `handler_fire_ioc.go` → `o.addSnapshot("fire", ...)` before firing
 - `handler_fire_ioc.go` → capture `tp_price_submitted`, `sl_price_submitted`
 - `handler_fill_watcher.go` → capture fill prices into orchestrator state
 - `handler_fire_trap.go` → capture Trap source, wall, order, TP/SL
 - `handler_timeout.go` → capture Reversion timeout state and Trap branch timeout outcome
 - `handler_cleanup.go` → capture terminal topic, cleanup reason, exit data, and settle any open Trap order/position before Reversion cleanup persists the cycle
-- `handler_trailing.go` → capture trailing params into orchestrator state
 
 Trap pre-placement skips populate `trap.outcome`, `trap.skip_reason`, and a non-cleanup `funding.trap.skipped` timeline event. Trap close/timeout events are branch terminal events; only Reversion terminal events or critical Trap aborts complete whole-cycle cleanup.
 
@@ -661,13 +638,12 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
     "excursion": {"mfe_pct": 0.8, "mae_pct": 0.4}
   },
   "exit": {
-    "reason": "trailing",
+    "reason": "tp",
     "hold_duration_ms": 25000,
     "tp_pct_configured": 3.0,
     "sl_pct_configured": 3.0,
     "tp_price_submitted": 0.2522,
-    "sl_price_submitted": 0.2375,
-    "trailing_activated": true
+    "sl_price_submitted": 0.2375
   },
   "ioc_excursion": {"mfe_pct": 3.2, "mae_pct": 0.7},
   "trap_excursion": {"mfe_pct": 0.8, "mae_pct": 0.4},
@@ -675,7 +651,7 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
   "config": {
     "leverage": 5,
     "margin_usdt": 3,
-    "funding_reversion": {"enabled": true, "take_profit_pct": 0.03, "stop_loss_pct": 0.03, "dynamic_pricing": {"enabled": true}},
+    "funding_reversion": {"enabled": true, "take_profit_pct": 0.03, "stop_loss_pct": 0.03},
     "funding_trap": {"enabled": true, "depth_pct": 0.025}
   },
   "timeline": [
@@ -685,7 +661,6 @@ One line in `data/journal/cycles-2026-05-12.jsonl`:
     {"time": "...", "topic": "funding.reversion.confirmed", "payload": {...}},
     {"time": "...", "topic": "funding.reversion.ioc_fired", "payload": {...}},
     {"time": "...", "topic": "funding.reversion.order_filled", "payload": {...}},
-    {"time": "...", "topic": "funding.reversion.trailing_placed", "payload": {...}},
     {"time": "...", "topic": "funding.reversion.position_closed", "payload": {...}}
   ]
 }
@@ -703,13 +678,12 @@ With this data, you can query across all cycle records to answer:
 | **Is our FR threshold too low/high?** | Scatter plot: `fr_at_scan` vs `outcome` — find the sweet spot                   |
 | **Does recheck catch bad trades?**    | Count aborted cycles with `abort_topic = "funding.reversion.abort"` after `funding.reversion.wait_complete` in timeline |
 | **Is TP too ambitious?**              | `mfe_vs_tp < 0` in most cycles → price never reaches TP, lower it               |
-| **Is TP too conservative?**           | `mfe_vs_tp > 2%` in most cycles → we're leaving money, raise it or use trailing |
+| **Is TP too conservative?**           | `mfe_vs_tp > 2%` in most cycles → we're leaving money, raise static TP for that bucket |
 | **Is SL too tight?**                  | `sl_was_touched = true` but `outcome = "profit"` → SL nearly killed a winner    |
 | **Is SL too loose?**                  | `mae_pct` is consistently small → room to tighten SL for less risk              |
 | **How accurate is IOC pricing?**      | Distribution of `ioc.slippage_pct` — should be near 0                           |
 | **Is trap adding value?**             | Compare PnL of cycles with `trap.filled=true` vs `trap.filled=false`            |
 | **Does OB trap beat static trap?**    | Compare fill rate: `trap.source = "ob_monitor"` vs `"static_limit"`             |
-| **Is dynamic pricing better?**        | Compare cycles with dynamic vs static config across same FR ranges              |
 | **Network quality?**                  | Track `ioc.latency_rtt_ms` over time — detect degradation                       |
 
 For daily operating rules and tuning thresholds, see [journal_analysis.md](journal_analysis.md).

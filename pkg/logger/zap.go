@@ -109,7 +109,7 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 }
 
 // InitLogger initializes the global slog logger with console (JSON) + file (JSON) output.
-// All handlers are wrapped with TraceHandler to auto-inject trace_id, span_id, req_id.
+// All handlers are wrapped with TraceHandler to auto-inject req_id.
 // Returns a cleanup function to close the log file.
 func InitLogger(level string) func() {
 	var slogLevel slog.Level

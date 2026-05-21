@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/pkg/types"
 
 	"github.com/tailscale/hujson"
@@ -90,17 +89,7 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 		defaultFloat(&sc.FundingReversion.StopLossPct, d.FundingReversion.StopLossPct)
 		defaultDuration(&sc.FundingReversion.MaxLatency, d.FundingReversion.MaxLatency)
 		defaultDuration(&sc.FundingReversion.BufferTime, d.FundingReversion.BufferTime)
-		defaultDuration(&sc.FundingReversion.HoldDuration, d.FundingReversion.HoldDuration)
 		defaultDuration(&sc.FundingReversion.PostSettleTimeout, d.FundingReversion.PostSettleTimeout)
-		if !sc.FundingReversion.DynamicPricing.Enabled && d.FundingReversion.DynamicPricing.Enabled {
-			sc.FundingReversion.DynamicPricing = d.FundingReversion.DynamicPricing
-		}
-		if !sc.FundingReversion.ImbalanceFilter.Enabled && d.FundingReversion.ImbalanceFilter.Enabled {
-			sc.FundingReversion.ImbalanceFilter = d.FundingReversion.ImbalanceFilter
-		}
-		if !sc.FundingReversion.Trailing.Enabled && d.FundingReversion.Trailing.Enabled {
-			sc.FundingReversion.Trailing = d.FundingReversion.Trailing
-		}
 	}
 
 	if !sc.FundingTrap.Enabled && d.FundingTrap.Enabled {
@@ -112,7 +101,6 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 		defaultFloat(&sc.FundingTrap.TakeProfitPct, d.FundingTrap.TakeProfitPct)
 		defaultFloat(&sc.FundingTrap.StopLossPct, d.FundingTrap.StopLossPct)
 		defaultDuration(&sc.FundingTrap.TrapAfterSettle, d.FundingTrap.TrapAfterSettle)
-		defaultDuration(&sc.FundingTrap.HoldDuration, d.FundingTrap.HoldDuration)
 		defaultDuration(&sc.FundingTrap.PostSettleTimeout, d.FundingTrap.PostSettleTimeout)
 		if !sc.FundingTrap.Trailing.Enabled && d.FundingTrap.Trailing.Enabled {
 			sc.FundingTrap.Trailing = d.FundingTrap.Trailing
@@ -126,7 +114,6 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 	if sc.FundingReversion.Enabled {
 		defaultDuration(&sc.FundingReversion.MaxLatency, types.Duration(200*time.Millisecond))
 		defaultDuration(&sc.FundingReversion.BufferTime, types.Duration(10*time.Millisecond))
-		defaultDuration(&sc.FundingReversion.HoldDuration, types.Duration(30*time.Second))
 		defaultDuration(&sc.FundingReversion.PostSettleTimeout, types.Duration(60*time.Second))
 
 		if sc.FundingReversion.TakeProfitPct <= 0 {
@@ -137,17 +124,6 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 		}
 		sc.FundingReversion.TakeProfitPct = normalizePercentRatio(sc.FundingReversion.TakeProfitPct)
 		sc.FundingReversion.StopLossPct = normalizePercentRatio(sc.FundingReversion.StopLossPct)
-
-		sc.FundingReversion.Trailing.ActivationPct = normalizePercentRatio(sc.FundingReversion.Trailing.ActivationPct)
-		sc.FundingReversion.Trailing.CallbackPct = normalizePercentRatio(sc.FundingReversion.Trailing.CallbackPct)
-
-		if sc.FundingReversion.DynamicPricing.Enabled {
-			setTrailingDynamicDefaults(&sc.FundingReversion.Trailing)
-		}
-		if sc.FundingReversion.ImbalanceFilter.Enabled {
-			setImbalanceFilterDefaults(&sc.FundingReversion.ImbalanceFilter)
-			sc.FundingReversion.ImbalanceFilter.NearPct = normalizePercentRatio(sc.FundingReversion.ImbalanceFilter.NearPct)
-		}
 	}
 
 	if sc.FundingTrap.Enabled {
@@ -155,7 +131,6 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 			sc.FundingTrap.SizeRatio = 0.5
 		}
 		defaultDuration(&sc.FundingTrap.TrapAfterSettle, types.Duration(50*time.Millisecond))
-		defaultDuration(&sc.FundingTrap.HoldDuration, types.Duration(30*time.Second))
 		defaultDuration(&sc.FundingTrap.PostSettleTimeout, types.Duration(60*time.Second))
 
 		if sc.FundingTrap.DepthPct <= 0 {
@@ -173,38 +148,7 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 
 		sc.FundingTrap.Trailing.ActivationPct = normalizePercentRatio(sc.FundingTrap.Trailing.ActivationPct)
 		sc.FundingTrap.Trailing.CallbackPct = normalizePercentRatio(sc.FundingTrap.Trailing.CallbackPct)
-
-		if sc.FundingReversion.DynamicPricing.Enabled {
-			setTrapDynamicDefaults(&sc.FundingTrap)
-		}
 	}
-}
-
-func setTrapDynamicDefaults(trap *domain.FundingTrapConfig) {
-	defaultFloat(&trap.DepthMultiplier, 4.0)
-	defaultFloat(&trap.MinDepth, 1.5)
-	defaultFloat(&trap.MaxDepth, 6.0)
-	defaultFloat(&trap.TpMultiplier, 2.5)
-	defaultFloat(&trap.MinTP, 1.0)
-	defaultFloat(&trap.MaxTP, 5.0)
-	defaultFloat(&trap.SlMultiplier, 2.0)
-	defaultFloat(&trap.MinSL, 1.0)
-	defaultFloat(&trap.MaxSL, 4.0)
-}
-
-func setTrailingDynamicDefaults(trail *domain.TrailingConfig) {
-	defaultFloat(&trail.ActivationMultiplier, 1.5)
-	defaultFloat(&trail.MinActivation, 0.2)
-	defaultFloat(&trail.MaxActivation, 3.0)
-	defaultFloat(&trail.CallbackMultiplier, 0.7)
-	defaultFloat(&trail.MinCallback, 0.3)
-	defaultFloat(&trail.MaxCallback, 1.5)
-}
-
-func setImbalanceFilterDefaults(filter *domain.ImbalanceFilterConfig) {
-	defaultFloat(&filter.NearPct, 0.1)
-	defaultFloat(&filter.MinLongRatio, 1.2)
-	defaultFloat(&filter.MaxShortRatio, 0.8)
 }
 
 func (c *Config) defaultSymbolModes(sc *SymbolConfig) {

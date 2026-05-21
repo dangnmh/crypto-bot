@@ -120,19 +120,11 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 		OpenType:            "ISOLATED",
 		PositionMode:        "HEDGE",
 		FundingReversion: domain.FundingReversionConfig{
-			Enabled:           true,
-			TakeProfitPct:     15,
-			StopLossPct:       3,
-			MaxLatency:        types.Duration(200 * time.Millisecond),
-			BufferTime:        types.Duration(10 * time.Millisecond),
-			HoldDuration:      types.Duration(30 * time.Second),
-			PostSettleTimeout: types.Duration(60 * time.Second),
-			ImbalanceFilter: domain.ImbalanceFilterConfig{
-				Enabled:       true,
-				NearPct:       0.3,
-				MinLongRatio:  1.5,
-				MaxShortRatio: 0.7,
-			},
+			Enabled:       true,
+			TakeProfitPct: 15,
+			StopLossPct:   3,
+			MaxLatency:    types.Duration(200 * time.Millisecond),
+			BufferTime:    types.Duration(10 * time.Millisecond),
 		},
 		FundingTrap: domain.FundingTrapConfig{
 			Enabled:           true,
@@ -142,7 +134,6 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 			TakeProfitPct:     1.5,
 			StopLossPct:       1.5,
 			TrapAfterSettle:   types.Duration(50 * time.Millisecond),
-			HoldDuration:      types.Duration(30 * time.Second),
 			PostSettleTimeout: types.Duration(60 * time.Second),
 		},
 	})
@@ -160,16 +151,9 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.InDelta(t, 0.03, sc.FundingReversion.StopLossPct, 1e-9, "3% -> 0.03")
 	assert.Equal(t, types.Duration(200*time.Millisecond), sc.FundingReversion.MaxLatency)
 	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.BufferTime)
-	assert.Equal(t, types.Duration(30*time.Second), sc.FundingReversion.HoldDuration)
-	assert.Equal(t, types.Duration(60*time.Second), sc.FundingReversion.PostSettleTimeout)
-	assert.True(t, sc.FundingReversion.ImbalanceFilter.Enabled)
-	assert.InDelta(t, 0.003, sc.FundingReversion.ImbalanceFilter.NearPct, 1e-9, "0.3% -> 0.003")
-	assert.InDelta(t, 1.5, sc.FundingReversion.ImbalanceFilter.MinLongRatio, 1e-9)
-	assert.InDelta(t, 0.7, sc.FundingReversion.ImbalanceFilter.MaxShortRatio, 1e-9)
 	assert.InDelta(t, 0.25, sc.FundingTrap.SizeRatio, 1e-9)
 	assert.InDelta(t, 250, sc.FundingTrap.MaxNotionalUSDT, 1e-9)
 	assert.Equal(t, types.Duration(50*time.Millisecond), sc.FundingTrap.TrapAfterSettle)
-	assert.Equal(t, types.Duration(30*time.Second), sc.FundingTrap.HoldDuration)
 	assert.Equal(t, types.Duration(60*time.Second), sc.FundingTrap.PostSettleTimeout)
 }
 
@@ -225,8 +209,7 @@ func TestLoad_AcceptsDecimalPercentRatiosAtConfigBoundary(t *testing.T) {
 	cfg := loadWith(t, &config.SystemConfig{},
 		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
 		   "minFundingRate": 0.003,
-		   "fundingReversion": {"enabled": true, "takeProfitPct": 0.03, "stopLossPct": 0.02,
-		     "trailing": {"enabled": true, "activationPct": 0.01, "callbackPct": 0.005}},
+		   "fundingReversion": {"enabled": true, "takeProfitPct": 0.03, "stopLossPct": 0.02},
 		   "fundingTrap": {"enabled": true, "depthPct": 0.025, "takeProfitPct": 0.015, "stopLossPct": 0.015,
 		     "trailing": {"enabled": true, "activationPct": 0, "callbackPct": 0.005}}}]`)
 	sc := cfg.Symbols[0]
@@ -234,8 +217,6 @@ func TestLoad_AcceptsDecimalPercentRatiosAtConfigBoundary(t *testing.T) {
 	assert.InDelta(t, 0.003, sc.MinFundingRate, 1e-9, "decimal funding threshold preserved")
 	assert.InDelta(t, 0.03, sc.FundingReversion.TakeProfitPct, 1e-9, "decimal TP ratio preserved")
 	assert.InDelta(t, 0.02, sc.FundingReversion.StopLossPct, 1e-9, "decimal SL ratio preserved")
-	assert.InDelta(t, 0.01, sc.FundingReversion.Trailing.ActivationPct, 1e-9, "decimal trailing activation preserved")
-	assert.InDelta(t, 0.005, sc.FundingReversion.Trailing.CallbackPct, 1e-9, "decimal trailing callback preserved")
 	assert.InDelta(t, 0.025, sc.FundingTrap.DepthPct, 1e-9, "decimal trap depth preserved")
 	assert.InDelta(t, 0.015, sc.FundingTrap.TakeProfitPct, 1e-9, "decimal trap TP preserved")
 	assert.InDelta(t, 0.015, sc.FundingTrap.StopLossPct, 1e-9, "decimal trap SL preserved")
@@ -312,97 +293,16 @@ func TestIsHedgeTrapEnabled(t *testing.T) {
 	}
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Dynamic defaults — trap multipliers and trailing multipliers
-// ──────────────────────────────────────────────────────────────────────.
-
-func TestLoad_TrapDynamicDefaults(t *testing.T) {
-	t.Parallel()
-
-	// DynamicPricing enabled + Trap enabled but no multipliers set → should get defaults.
-	sysCfg := sysWithDefaults(config.TradingDefaults{
-		Leverage: 5,
-		FundingReversion: domain.FundingReversionConfig{
-			Enabled:        true,
-			DynamicPricing: domain.DynamicPricingConfig{Enabled: true},
-		},
-		FundingTrap: domain.FundingTrapConfig{Enabled: true, DepthPct: 2.5, TakeProfitPct: 1.5, StopLossPct: 1.5},
-	})
-
-	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "marginUSDT": 100}]`)
-	sc := cfg.Symbols[0]
-
-	assert.Equal(t, 4.0, sc.FundingTrap.DepthMultiplier, "default trap depth multiplier")
-	assert.Equal(t, 1.5, sc.FundingTrap.MinDepth, "default min trap depth")
-	assert.Equal(t, 6.0, sc.FundingTrap.MaxDepth, "default max trap depth")
-	assert.Equal(t, 2.5, sc.FundingTrap.TpMultiplier, "default trap TP multiplier")
-	assert.Equal(t, 2.0, sc.FundingTrap.SlMultiplier, "default trap SL multiplier")
-}
-
-func TestLoad_TrapDynamicDefaults_NoOverride(t *testing.T) {
-	t.Parallel()
-
-	sysCfg := sysWithDefaults(config.TradingDefaults{
-		Leverage: 5,
-		FundingReversion: domain.FundingReversionConfig{
-			Enabled:        true,
-			DynamicPricing: domain.DynamicPricingConfig{Enabled: true},
-		},
-		FundingTrap: domain.FundingTrapConfig{
-			Enabled:         true,
-			DepthPct:        2.5,
-			TakeProfitPct:   1.5,
-			StopLossPct:     1.5,
-			DepthMultiplier: 10.0, // Custom value — should NOT be overridden.
-		},
-	})
-
-	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "marginUSDT": 100}]`)
-	sc := cfg.Symbols[0]
-
-	assert.Equal(t, 10.0, sc.FundingTrap.DepthMultiplier, "should not override existing")
-	assert.Equal(t, 1.5, sc.FundingTrap.MinDepth, "should set missing default")
-}
-
-func TestLoad_TrailingDynamicDefaults(t *testing.T) {
-	t.Parallel()
-
-	sysCfg := sysWithDefaults(config.TradingDefaults{
-		Leverage: 5,
-		FundingReversion: domain.FundingReversionConfig{
-			Enabled:        true,
-			DynamicPricing: domain.DynamicPricingConfig{Enabled: true},
-			Trailing:       domain.TrailingConfig{Enabled: true, ActivationPct: 1.0, CallbackPct: 0.5},
-		},
-	})
-
-	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "marginUSDT": 100}]`)
-	sc := cfg.Symbols[0]
-
-	assert.Equal(t, 1.5, sc.FundingReversion.Trailing.ActivationMultiplier, "default trailing activation multiplier")
-	assert.Equal(t, 0.2, sc.FundingReversion.Trailing.MinActivation, "default min activation")
-	assert.Equal(t, 3.0, sc.FundingReversion.Trailing.MaxActivation, "default max activation")
-	assert.Equal(t, 0.7, sc.FundingReversion.Trailing.CallbackMultiplier, "default trailing callback multiplier")
-	assert.Equal(t, 0.3, sc.FundingReversion.Trailing.MinCallback, "default min callback")
-	assert.Equal(t, 1.5, sc.FundingReversion.Trailing.MaxCallback, "default max callback")
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Trailing normalization
-// ──────────────────────────────────────────────────────────────────────.
-
 func TestLoad_NormalizesTrailingPct(t *testing.T) {
 	t.Parallel()
 
 	cfg := loadWith(t, &config.SystemConfig{},
 		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
-		   "fundingReversion": {"enabled": true, "trailing": {"enabled": true, "activationPct": 2.0, "callbackPct": 1.0}},
+		   "fundingReversion": {"enabled": true},
 		   "fundingTrap": {"enabled": true, "depthPct": 3, "takeProfitPct": 2, "stopLossPct": 2,
 		            "trailing": {"enabled": true, "activationPct": 0, "callbackPct": 0.5}}}]`)
 	sc := cfg.Symbols[0]
 
-	assert.InDelta(t, 0.02, sc.FundingReversion.Trailing.ActivationPct, 1e-9, "2.0% -> 0.02")
-	assert.InDelta(t, 0.01, sc.FundingReversion.Trailing.CallbackPct, 1e-9, "1.0% -> 0.01")
 	assert.InDelta(t, 0.0, sc.FundingTrap.Trailing.ActivationPct, 1e-9, "0% -> 0.0")
 	assert.InDelta(t, 0.005, sc.FundingTrap.Trailing.CallbackPct, 1e-9, "0.5% -> 0.005")
 }

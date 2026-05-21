@@ -71,7 +71,8 @@ func (s *FundingStore) GetFunding(_ context.Context, symbol string) (*FundingDat
 	if !ok {
 		return nil, fmt.Errorf("no funding data for %s", symbol)
 	}
-	return fd, nil
+	snapshot := *fd
+	return &snapshot, nil
 }
 
 // GetSettleTime returns the next funding settlement time for a symbol.

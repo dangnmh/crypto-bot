@@ -50,6 +50,8 @@ func TestClient_CloseIsIdempotent(t *testing.T) {
 func TestPool_ReplaysPublicSubscriptionsOnReconnect(t *testing.T) {
 	t.Parallel()
 
+	// Buffer two messages because this test must observe the original
+	// subscription and the replayed subscription across reconnect.
 	received := make(chan string, 2)
 	var connections atomic.Int32
 
@@ -333,7 +335,7 @@ func TestClient_SetGlobalHandler_ReceivesAll(t *testing.T) {
 
 func TestClient_PongFiltered(t *testing.T) {
 	t.Parallel()
-	globalCalled := make(chan []byte, 2)
+	globalCalled := make(chan []byte, 1)
 
 	srv := startTestWS(t, func(conn *websocket.Conn) {
 		// First send a pong (should be filtered), then a real message.
@@ -374,7 +376,7 @@ func TestClient_EmptyChannelFiltered(t *testing.T) {
 	if true {
 		t.Log("Testing empty channel filtered")
 	}
-	globalCalled := make(chan []byte, 2)
+	globalCalled := make(chan []byte, 1)
 
 	srv := startTestWS(t, func(conn *websocket.Conn) {
 		// First send unknown (empty channel → filtered), then a known message.

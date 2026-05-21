@@ -8,20 +8,20 @@ Orderbook is useful for immediate execution decisions. It is weak as a future-pr
 
 | Use | Status | Rule |
 |---|---|---|
-| IOC slippage estimation | Implemented | Sweep near-side OB at fire time |
-| Spread-based slippage | Implemented | Use spread multiplier as dynamic buffer |
-| TP wall safety cap | Implemented with caution | Wall can reduce TP target, not increase it |
+| IOC slippage estimation | Removed from Reversion | Reversion uses static slippage only |
+| Spread-based slippage | Removed from Reversion | No dynamic spread multiplier in Reversion |
+| TP wall safety cap | Removed from Reversion | Wall does not change Reversion TP |
 | Trap OB assistance | Implemented with caution | Use as cap/placement aid, not primary model |
-| Imbalance Ratio | Implemented | Optional secondary filter and journal feature only |
+| Imbalance Ratio | Removed from Reversion | Not used as a trading gate |
 | Multi-snapshot wall protocol | Backlog | Needs persistence and spoofing guards |
 
 ## Core Principle
 
 ```text
 FR decides direction.
-FR + ATR decide target range.
-Orderbook decides immediate execution safety.
-Trailing stop handles exit.
+Static config decides Reversion TP/SL.
+Orderbook is not used by Reversion.
+Trap may still use fresh wall verification.
 ```
 
 ## Why OB Around Settlement Is Weak
@@ -30,20 +30,20 @@ Before funding settlement, many traders and market makers remove or replace liqu
 
 | Purpose | Reliability | Reason |
 |---|---|---|
-| IOC slippage | High | Uses current liquidity for immediate order execution |
+| IOC slippage | Not used by Reversion | Static `maxPriceDiffPercent` is the current Reversion rule |
 | TP wall prediction | Medium/low | Wall may disappear before TP is reached |
 | Trap placement | Medium/low | Wick and liquidity reset are unstable after settlement |
 | Imbalance signal | Low/medium | Spoofing is common on thin altcoins |
 
-This is why OB should cap risk, not override the statistical FR/ATR model.
+This is why OB should not override the static Reversion TP/SL contract.
 
 ## Altcoin Constraints
 
 | Constraint | Impact |
 |---|---|
 | Low 24h volume | Notional can create meaningful impact |
-| Wide spread | Static slippage is often too naive |
-| Thin levels | OB sweep is more useful than fixed percent |
+| Wide spread | Tune static slippage conservatively or skip the symbol |
+| Thin levels | Static slippage may be insufficient; journal fill quality by symbol |
 | Spoofing | Wall size alone is not reliable |
 | Fast settlement wick | Trap needs separate journal and fast exit |
 
@@ -51,7 +51,7 @@ This is why OB should cap risk, not override the statistical FR/ATR model.
 
 ### IOC Slippage
 
-For Reversion, OB sweep estimates the price required to fill the intended volume.
+Reversion no longer uses OB sweep for IOC slippage. It uses static `maxPriceDiffPercent` plus a minimum two-tick buffer.
 
 Required journal fields:
 
@@ -66,14 +66,7 @@ Required journal fields:
 
 ### TP Wall Safety Cap
 
-TP should primarily come from FR/ATR dynamic pricing. If a wall is detected before the configured TP, TP may be capped before the wall.
-
-Rules:
-
-- A wall may reduce TP.
-- A wall should not increase TP beyond FR/ATR range.
-- A stale OB snapshot should fall back to config/dynamic TP.
-- Journal must record whether wall cap was used.
+Removed from Reversion. Walls around settlement are too unstable to decide Reversion TP. Static TP/SL is the current runtime contract.
 
 ### Trap OB Assistance
 
@@ -96,33 +89,26 @@ Required journal fields:
 
 ### Imbalance Ratio
 
-The implemented imbalance ratio is:
+Not used by Reversion. The old optional imbalance filter was removed from the Reversion runtime because spoofing around settlement makes it weak as a trading gate.
+
+The old ratio was:
 
 ```text
 imbalance_ratio = bid_volume_near_price / ask_volume_near_price
 ```
 
-Rules:
-
-- Disabled by default.
-- Uses only levels within `imbalanceFilter.nearPct` around the best bid/ask midpoint.
-- LONG Reversion requires `imbalance_ratio >= minLongRatio`.
-- SHORT Reversion requires `imbalance_ratio <= maxShortRatio`.
-- Journal records the ratio and whether the filter passed.
-- It must remain a secondary filter because spoofing is common.
-
 ## Backlog
 
 The following ideas are intentionally not specified here as implemented behavior:
 
-- Dynamic TP/SL expansion based on OB.
+- Dynamic TP/SL expansion based on OB remains intentionally out of Reversion.
 - Multi-snapshot wall persistence protocol.
 
 ## Open Questions And Concerns
 
 | Item | Current stance |
 |---|---|
-| OB wall quanh settlement là unstable | OB only caps risk or assists placement; it must not override FR/ATR as the primary model |
-| Imbalance Ratio dễ bị spoof | Keep disabled by default, use near levels only, journal ratio/pass state, and compare by symbol/liquidity bucket |
+| OB wall quanh settlement là unstable | Reversion ignores OB; Trap OB must verify a fresh wall before placement |
+| Imbalance Ratio dễ bị spoof | Removed from Reversion; do not use it as an entry gate |
 | Market snapshots may be stale | Add stale-market-data guards before acting on older OB/ticker snapshots |
 | Multi-snapshot wall protocol | Future work; requires persistence and spoofing guards before walls become stronger signals |

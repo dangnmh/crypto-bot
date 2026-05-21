@@ -1,6 +1,6 @@
 // Package observability provides metrics collection and health check interfaces.
 // This package defines contracts at the domain level — concrete implementations
-// (Prometheus, StatsD, etc.) belong in infrastructure.
+// (HTTP exporters, StatsD, etc.) belong in infrastructure.
 package observability
 
 import (
@@ -15,7 +15,7 @@ import (
 // ──────────────────────────────────────────────────────────────────────.
 
 // MetricsCollector provides a generic interface for recording operational metrics.
-// Implementations can write to Prometheus, StatsD, or a simple in-memory store.
+// Implementations can write to an external exporter, StatsD, or a simple in-memory store.
 type MetricsCollector interface {
 	// Counter increments a named counter by the given value.
 	Counter(name string, value int64, tags map[string]string)

@@ -10,6 +10,9 @@ We strictly follow Clean Architecture. For full architectural details, see [`doc
 
 ## 3. Pre-Commit Quality Gates
 Before suggesting code is complete, ensure it passes the quality gates.
-- `make lint && make test"`
+- `make lint`
+- `make test`
+- `make cover`
+
 
 *When in doubt, refer to [`docs/tech/coding_conventions.md`](docs/tech/coding_conventions.md) and [`docs/tech/testing_conventions.md`](docs/tech/testing_conventions.md) for extended technical documentation and standards.*

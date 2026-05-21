@@ -27,6 +27,9 @@ func NewPriceStore() *PriceStore {
 
 // UpdatePrice writes a price update for a symbol (called by WS client).
 func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
+	if data == nil {
+		return
+	}
 	if data.Symbol == "" {
 		data.Symbol = symbol
 	}
@@ -35,7 +38,8 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 	}
 
 	s.mu.Lock()
-	s.prices[symbol] = data
+	snapshot := *data
+	s.prices[symbol] = &snapshot
 	subs := make([]chan *PriceData, 0, len(s.subscribers[symbol]))
 	for ch := range s.subscribers[symbol] {
 		subs = append(subs, ch)
@@ -43,8 +47,9 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 	s.mu.Unlock()
 
 	for _, ch := range subs {
+		update := snapshot
 		select {
-		case ch <- data:
+		case ch <- &update:
 		default:
 		}
 	}
@@ -69,11 +74,12 @@ func (s *PriceStore) GetPrice(_ context.Context, symbol string, maxAge time.Dura
 	}
 
 	age := time.Since(pd.UpdatedAt)
+	snapshot := *pd
 	if age > maxAge {
-		return pd, fmt.Errorf("price data stale for %s (age: %v)", symbol, age)
+		return &snapshot, fmt.Errorf("price data stale for %s (age: %v)", symbol, age)
 	}
 
-	return pd, nil
+	return &snapshot, nil
 }
 
 // GetBestBidAsk returns the best bid and ask for a symbol.
@@ -102,11 +108,8 @@ func (s *PriceStore) PriceAge(symbol string) time.Duration {
 
 // SubscribePrice returns a non-blocking stream of future price updates for one symbol.
 // The channel is closed when ctx is cancelled.
-func (s *PriceStore) SubscribePrice(ctx context.Context, symbol string, buffer int) <-chan *PriceData {
-	if buffer < 0 {
-		buffer = 0
-	}
-	ch := make(chan *PriceData, buffer)
+func (s *PriceStore) SubscribePrice(ctx context.Context, symbol string) <-chan *PriceData {
+	ch := make(chan *PriceData, 1)
 
 	s.mu.Lock()
 	if s.subscribers[symbol] == nil {

@@ -7,76 +7,14 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-// CalculateTakeProfitPrice computes a dynamic TP based on orderbook wall detection.
-//
-// Algorithm (from depth.md §3):
-//   - LONG: scan Ask side (price will pump through asks) → find wall → TP just before wall
-//   - SHORT: scan Bid side (price will dump through bids) → find wall → TP just before wall
-//   - If no wall found or OB is nil/empty → fallback to maxTPPct from entry price
-//   - Result is always clamped to maxTPPct safety rail
-//
-// Returns 0 if TP cannot be calculated (e.g., invalid inputs).
-func (c *Candidate) CalculateTakeProfitPrice(ob *shared.OrderBook, maxTPPct float64) float64 {
-	if maxTPPct <= 0 || c.PriceUnit <= 0 {
+// CalculateStaticTakeProfitPrice computes the Reversion server-side TP from
+// the configured static TakeProfitPct only. It intentionally ignores orderbook
+// walls because settlement liquidity can disappear before the TP is reached.
+func (c *Candidate) CalculateStaticTakeProfitPrice(entryPrice float64) float64 {
+	if c.Config.FundingReversion.TakeProfitPct <= 0 || entryPrice <= 0 || c.PriceUnit <= 0 {
 		return 0
 	}
-
-	entryPrice := c.entryRefPrice()
-	if entryPrice <= 0 {
-		return 0
-	}
-
-	// Determine which side of the OB to scan and the price boundary.
-	var levels []shared.OrderBookEntry
-	var maxTP float64 // absolute price limit
-
-	switch c.Side {
-	case shared.SideOpenLong:
-		// Price pumps UP → scan asks for walls blocking upside.
-		maxTP = decmath.Mul(entryPrice, decmath.Add(1, maxTPPct/100.0))
-		if ob != nil {
-			levels = ob.Asks
-		}
-	case shared.SideOpenShort:
-		// Price dumps DOWN → scan bids for walls blocking downside.
-		maxTP = decmath.Mul(entryPrice, decmath.Sub(1, maxTPPct/100.0))
-		if ob != nil {
-			levels = ob.Bids
-		}
-	default:
-		return 0
-	}
-
-	wallPrice := c.FindWallPrice(levels, c.Side)
-
-	var rawTP float64
-	if wallPrice > 0 {
-		rawTP = c.snapTPBeforeWall(wallPrice, c.Side)
-		// Clamp: don't exceed maxTP safety rail.
-		rawTP = c.clampTP(rawTP, maxTP, c.Side)
-	} else {
-		// No wall found → use maxTP directly.
-		rawTP = maxTP
-	}
-
-	// Tick-snap: LONG TP is above entry (floor to avoid overshoot),
-	// SHORT TP is below entry (ceil to avoid undershoot).
-	rawTP = c.snapTPToTick(rawTP)
-	rawTP = decmath.RoundToScale(rawTP, c.PriceScale)
-
-	if rawTP <= 0 {
-		return 0
-	}
-
-	// Final sanity: TP must be on the correct side of entry price.
-	if c.Side == shared.SideOpenLong && rawTP <= entryPrice {
-		return 0
-	}
-	if c.Side == shared.SideOpenShort && rawTP >= entryPrice {
-		return 0
-	}
-
-	return rawTP
+	return c.calculateStaticReversionExitPrice(entryPrice, c.Config.FundingReversion.TakeProfitPct, true)
 }
 
 // entryRefPrice returns the reference price used as the "entry" for TP calculation.
@@ -164,43 +102,6 @@ func (c *Candidate) TrapWallDistancePct(wallPrice float64) float64 {
 	return decmath.Mul(decmath.Div(math.Abs(decmath.Sub(wallPrice, ref)), ref), 100.0)
 }
 
-// snapTPBeforeWall places TP 2 ticks before the wall so the order fills
-// before price hits the wall and bounces.
-func (c *Candidate) snapTPBeforeWall(wallPrice float64, side shared.Side) float64 {
-	offset := decmath.Mul(c.PriceUnit, 2) // 2 ticks before wall
-	if side == shared.SideOpenLong {
-		// Wall is above entry → TP below the wall.
-		return decmath.Sub(wallPrice, offset)
-	}
-	// Wall is below entry → TP above the wall.
-	return decmath.Add(wallPrice, offset)
-}
-
-// clampTP ensures TP does not exceed the maxTP safety rail.
-func (c *Candidate) clampTP(tp, maxTP float64, side shared.Side) float64 {
-	if side == shared.SideOpenLong {
-		// LONG: TP is above entry. maxTP is the ceiling.
-		if tp > maxTP {
-			return maxTP
-		}
-	} else {
-		// SHORT: TP is below entry. maxTP is the floor.
-		if tp < maxTP {
-			return maxTP
-		}
-	}
-	return tp
-}
-
-// snapTPToTick aligns TP to the nearest valid tick in the conservative direction.
-// LONG TP (above entry) → floor; SHORT TP (below entry) → ceil.
-func (c *Candidate) snapTPToTick(tp float64) float64 {
-	if c.Side == shared.SideOpenLong {
-		return decmath.SnapToTickFloor(tp, c.PriceUnit)
-	}
-	return decmath.SnapToTickCeil(tp, c.PriceUnit)
-}
-
 // CalculateStopLossPrice computes a server-side SL price relative to entryPrice.
 // LONG: SL below entry (ceil to avoid triggering too early).
 // SHORT: SL above entry (floor to avoid triggering too early).
@@ -210,15 +111,19 @@ func (c *Candidate) CalculateStopLossPrice(entryPrice float64) float64 {
 		return 0
 	}
 
-	var sl float64
-	if c.Side == shared.SideOpenLong {
-		sl = decmath.Mul(entryPrice, decmath.Sub(1, c.Config.FundingReversion.StopLossPct))
-		sl = decmath.SnapToTickCeil(sl, c.PriceUnit)
-	} else {
-		sl = decmath.Mul(entryPrice, decmath.Add(1, c.Config.FundingReversion.StopLossPct))
-		sl = decmath.SnapToTickFloor(sl, c.PriceUnit)
+	return c.calculateStaticReversionExitPrice(entryPrice, c.Config.FundingReversion.StopLossPct, false)
+}
+
+func (c *Candidate) calculateStaticReversionExitPrice(entryPrice, pct float64, favorable bool) float64 {
+	longUp := c.Side == shared.SideOpenLong && favorable
+	shortStop := c.Side == shared.SideOpenShort && !favorable
+	if longUp || shortStop {
+		price := decmath.Mul(entryPrice, decmath.Add(1, pct))
+		return decmath.RoundToScale(decmath.SnapToTickFloor(price, c.PriceUnit), c.PriceScale)
 	}
-	return decmath.RoundToScale(sl, c.PriceScale)
+
+	price := decmath.Mul(entryPrice, decmath.Sub(1, pct))
+	return decmath.RoundToScale(decmath.SnapToTickCeil(price, c.PriceUnit), c.PriceScale)
 }
 
 // CalculateTrapTPPrice computes a server-side Take Profit price for a trap order.

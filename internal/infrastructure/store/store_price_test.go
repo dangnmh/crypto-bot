@@ -31,6 +31,29 @@ func TestPriceStore_UpdateAndGetPrice(t *testing.T) {
 	assert.Equal(t, 65000.0, got.LastPrice)
 }
 
+func TestPriceStore_ReturnsSnapshot(t *testing.T) {
+	t.Parallel()
+
+	s := store.NewPriceStore()
+	ctx := context.Background()
+	input := &store.PriceData{
+		Symbol:    "BTC_USDT",
+		LastPrice: 65000,
+		UpdatedAt: time.Now(),
+	}
+	s.UpdatePrice("BTC_USDT", input)
+
+	input.LastPrice = 1
+	got, err := s.GetPrice(ctx, "BTC_USDT", 5*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, 65000.0, got.LastPrice)
+
+	got.LastPrice = 2
+	gotAgain, err := s.GetPrice(ctx, "BTC_USDT", 5*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, 65000.0, gotAgain.LastPrice)
+}
+
 func TestPriceStore_GetPrice_Missing(t *testing.T) {
 	t.Parallel()
 
@@ -95,8 +118,8 @@ func TestPriceStore_SubscribePrice(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	btcUpdates := s.SubscribePrice(ctx, "BTC_USDT", 1)
-	ethUpdates := s.SubscribePrice(ctx, "ETH_USDT", 1)
+	btcUpdates := s.SubscribePrice(ctx, "BTC_USDT")
+	ethUpdates := s.SubscribePrice(ctx, "ETH_USDT")
 
 	s.UpdatePrice("BTC_USDT", &store.PriceData{LastPrice: 100})
 
@@ -117,7 +140,7 @@ func TestPriceStore_SubscribePrice_ContextCancelClosesChannel(t *testing.T) {
 
 	s := store.NewPriceStore()
 	ctx, cancel := context.WithCancel(context.Background())
-	updates := s.SubscribePrice(ctx, "BTC_USDT", 1)
+	updates := s.SubscribePrice(ctx, "BTC_USDT")
 
 	cancel()
 
@@ -136,7 +159,7 @@ func TestPriceStore_SubscribePrice_NonBlockingUpdate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_ = s.SubscribePrice(ctx, "BTC_USDT", 0)
+	_ = s.SubscribePrice(ctx, "BTC_USDT")
 
 	done := make(chan struct{})
 	go func() {

@@ -2,6 +2,7 @@ package mexc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"crypto-bot/internal/domain"
@@ -43,7 +44,20 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 	if err != nil {
 		return err
 	}
-	return ParseResponseIgnoreData(body, "cancel_orders")
+	results, err := parseCancelOrdersResponse(body)
+	if err != nil {
+		return err
+	}
+	for _, result := range results {
+		if result.ErrorCode != 0 {
+			return &exchange.APIError{
+				Code:    result.ErrorCode,
+				Message: result.ErrorMsg,
+				Path:    "cancel_orders",
+			}
+		}
+	}
+	return nil
 }
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
@@ -59,6 +73,30 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	return c.CancelOrders(ctx, []string{orderID})
+}
+
+type cancelOrderResult struct {
+	OrderID   int64  `json:"orderId"`
+	ErrorCode int    `json:"errorCode"`
+	ErrorMsg  string `json:"errorMsg"`
+}
+
+func parseCancelOrdersResponse(body []byte) ([]cancelOrderResult, error) {
+	var raw APIResponse[json.RawMessage]
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parse cancel_orders response: %w", err)
+	}
+	if !raw.Success {
+		return nil, toAPIError(raw.Code, raw.Message, "cancel_orders")
+	}
+	if len(raw.Data) == 0 || string(raw.Data) == "null" {
+		return nil, nil
+	}
+	var results []cancelOrderResult
+	if err := json.Unmarshal(raw.Data, &results); err != nil {
+		return nil, fmt.Errorf("parse cancel_orders data: %w", err)
+	}
+	return results, nil
 }
 
 // GetOrder queries a single order by ID.

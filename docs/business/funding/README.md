@@ -17,7 +17,7 @@ Tài liệu này là entry point cho business logic của funding bot. Mỗi flo
 | File | Vai trò | Status |
 |---|---|---|
 | [flow.md](flow.md) | Lifecycle chung: init, scan candidate, fan-out sang từng topic flow | Implemented overview |
-| [reversion_flow.md](reversion_flow.md) | Flow Reversion: IOC tại settle, trailing exit | Implemented |
+| [reversion_flow.md](reversion_flow.md) | Flow Reversion: IOC tại settle, static TP/SL exit | Implemented |
 | [trap_flow.md](trap_flow.md) | Flow Straddle Trap: limit sau settle, trailing riêng, branch terminal journal contract | Implemented + terminal hardening |
 | [pre_funding_flow.md](pre_funding_flow.md) | Flow Pre-Funding Wave | Design only |
 | [price_flow.md](price_flow.md) | Pricing/volume shared primitives | Shared primitive |
@@ -47,7 +47,7 @@ Ba flow chỉ dùng chung giai đoạn **init scan candidate**:
 3. Build candidate snapshot có `symbol`, `settle_time`, `funding_rate`, market metadata, và flow eligibility.
 4. Push candidate vào topic riêng của từng flow đã enabled.
 
-Sau bước này, mỗi flow tự quản lifecycle, risk, order, fill watcher, trailing, timeout và journal fields riêng. Whole-cycle cleanup không được nhầm Trap branch terminal với Reversion terminal; khi Reversion cleanup chạy, nó phải settle Trap còn mở trước khi ghi journal.
+Sau bước này, mỗi flow tự quản lifecycle, risk, order, fill watcher, exit, timeout và journal fields riêng. Whole-cycle cleanup không được nhầm Trap branch terminal với Reversion terminal; khi Reversion cleanup chạy, nó phải settle Trap còn mở trước khi ghi journal.
 
 ## Percent Unit Convention
 

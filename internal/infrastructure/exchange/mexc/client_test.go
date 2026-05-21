@@ -3,6 +3,7 @@ package mexc_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -391,6 +392,32 @@ func TestClient_CancelOrder(t *testing.T) {
 	err := client.CancelOrder(context.Background(), "BTC_USDT", "id1")
 	if err != nil {
 		t.Fatalf("CancelOrder failed: %v", err)
+	}
+}
+
+func TestClient_CancelOrderReturnsNestedCancelError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data := json.RawMessage(`[{"orderId":812413197728264320,"errorCode":2041,"errorMsg":"order state cannot be cancelled"}]`)
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[json.RawMessage]{
+			Success: true,
+			Code:    0,
+			Data:    data,
+		}))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	err := client.CancelOrder(context.Background(), "BTC_USDT", "812413197728264320")
+	if err == nil {
+		t.Fatal("expected nested cancel error")
+	}
+	var apiErr *exchange.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+	if apiErr.Code != 2041 {
+		t.Fatalf("expected code 2041, got %d", apiErr.Code)
 	}
 }
 

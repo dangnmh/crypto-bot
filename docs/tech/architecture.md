@@ -1,10 +1,10 @@
 # Crypto-Bot Architecture
 
-> Last updated: 2026-05-15 — Reflects the current internal/bots/funding implementation, WS lifecycle hardening, and journal dependency cleanup.
+> Last updated: 2026-05-20 — Reflects the current funding bot implementation in this repository.
 
 ## 1. Overview
 
-The `crypto-bot` is a **multi-strategy automated trading system** built using **Domain-Driven Design (DDD)** and **Clean Architecture** principles. It connects to cryptocurrency futures exchanges (currently MEXC) via REST and WebSocket APIs to execute low-latency trading strategies.
+The `crypto-bot` is a **strategy-ready automated trading system** built using **Domain-Driven Design (DDD)** and **Clean Architecture** principles. The current repository implements the Funding bot and connects to cryptocurrency futures exchanges (currently MEXC) via REST and WebSocket APIs.
 
 ### Design Goals
 
@@ -12,7 +12,7 @@ The `crypto-bot` is a **multi-strategy automated trading system** built using **
 |------|-----|
 | **Testability** | Domain logic is pure (no I/O). Infrastructure is injectable via interfaces. |
 | **Multi-exchange** | `ExchangeAdapter` interface abstracts all exchange-specific WS/REST logic. |
-| **Multi-bot** | Each strategy is an isolated micro-application sharing the same Engine. |
+| **Multi-bot ready** | Strategies are intended to be isolated micro-applications sharing the same Engine. The current tree includes Funding only. |
 | **Financial precision** | `pkg/decmath` wraps `shopspring/decimal` for all price/volume calculations. |
 | **Observability** | Structured logging (`slog`), correlation IDs, metrics/health interfaces. |
 
@@ -31,11 +31,6 @@ graph TB
             FRA["application/"]
             FRD["domain/"]
             FRC["config/"]
-        end
-        subgraph "Future Bot"
-            PJA["application/"]
-            PJD["domain/"]
-            PJC["config/"]
         end
     end
 
@@ -61,14 +56,10 @@ graph TB
     end
 
     FR --> FRA
-    PJ --> PJA
     FRA --> FRD
     FRA --> APP
     FRA --> EX
-    PJA --> PJD
-    PJA --> APP
     FRD --> DT
-    PJD --> DT
     APP --> EX
     APP --> WS
     APP --> ST
@@ -97,8 +88,7 @@ cmd/ → bots/ → domain/ ← infrastructure/
 ```
 crypto-bot/
 ├── cmd/                           # Entrypoints (one per bot)
-│   ├── funding/main.go
-│   └── future_bot/main.go
+│   └── funding/main.go
 │
 ├── configs/                       # JSONC configuration files
 │   ├── system.jsonc               #   Engine config (API URLs, sync intervals, keys)
@@ -112,14 +102,10 @@ crypto-bot/
 │   │   └── types_test.go          #   100% coverage
 │   │
 │   ├── bots/                      # 🟡 STRATEGY LAYER (one dir per strategy)
-│   │   ├── funding/
-│   │   │   ├── application/       #   Sniper, Worker, FSM, Handlers, Opener, Trailing
-│   │   │   ├── domain/            #   Candidate, Pricing, Slippage, Scanner, Safety, Scorer
-│   │   │   └── config/            #   SymbolConfig, TradingDefaults, loader
-│   │   └── future_bot/
-│   │       ├── application/       #   PennyJumper, Pipeline, SubscribeManager, WorkflowManager
-│   │       ├── domain/            #   Events (DepthUpdated, WallDetected, WallScored)
-│   │       └── config/            #   Config (minVolume24h, wall thresholds)
+│   │   └── funding/
+│   │       ├── application/       #   Sniper, cycle runtime, Reversion, Trap, handlers
+│   │       ├── domain/            #   Candidate, Pricing, Slippage, Scanner, Safety, Scorer
+│   │       └── config/            #   SymbolConfig, TradingDefaults, loader
 │   │
 │   └── infrastructure/            # 🟢 INFRASTRUCTURE LAYER
 │       ├── app/                   #   Engine, EngineBuilder, EventBus, Runner, StoreRegistry
@@ -283,8 +269,8 @@ if apiErr, ok := exchange.IsAPIError(err); ok {
 graph LR
     A["Scanner<br/>Filter by FR"] --> B["Scorer<br/>Rank candidates"]
     B --> C["Worker<br/>Per-symbol FSM"]
-    C --> D["Opener<br/>IOC + Trap"]
-    D --> E["Trailing<br/>Stop tracker"]
+    C --> D["Opener<br/>IOC + static TP/SL"]
+    D --> E["Trap<br/>optional hedge branch"]
 
     style A fill:#e8f5e9
     style B fill:#e3f2fd
@@ -301,45 +287,8 @@ graph LR
 | `Scanner` | `domain/scanner.go` | Filters symbols by funding rate threshold |
 | `Scorer` | `domain/scorer.go` | Ranks candidates by expected profit × liquidity |
 | `Pricing` | `domain/pricing.go` | IOC price, volume, trap price calculations (decimal-safe) |
-| `Slippage` | `domain/slippage.go` | Strategy pattern: Static / Spread / OB-Imbalance |
-| `Opener` | `opener.go` | Executes IOC snipe + hedge trap orders |
-| `Trailing` | `trailing.go` | Background trailing stop tracker |
-
-### 6.2 Future Bot
-
-**Goal**: Front-run large resting orders (walls) on low-liquidity pairs by placing orders one tick ahead.
-
-```mermaid
-graph LR
-    A["SubscribeManager<br/>Filter pairs by 24h vol"] --> B["OB Builder<br/>DepthStore"]
-    B --> C["Wall Detector<br/>Find walls"]
-    C --> D["Wall Scorer<br/>Score + history"]
-    D --> E["Workflow Manager<br/>Per-pair FSM"]
-
-    style A fill:#e8f5e9
-    style B fill:#e3f2fd
-    style C fill:#fff3e0
-    style D fill:#fce4ec
-    style E fill:#f3e5f5
-```
-
-**Event-Driven Pipeline**: Each stage is a `PipelineStage` that subscribes to bus topics:
-```
-DepthUpdated → WallDetector → WallDetected → WallScorer → WallScored → WorkflowManager
-```
-
-**Key Components**:
-| Component | File | Role |
-|-----------|------|------|
-| `PennyJumper` | `penny.go` | Bot entrypoint, wires pipeline |
-| `SubscribeManager` | `subscribe_manager.go` | Dynamic pair management based on 24h volume |
-| `WallDetectorStage` | `detector.go` | Detects significant bid/ask walls |
-| `WallScorerStage` | `scorer.go` | Scores walls by size, persistence, recency |
-| `WorkflowManager` | `workflow_manager.go` | Per-pair FSM execution |
-| `RiskManager` | `risk_manager.go` | Position limits and exposure checks |
-| `OrderQueue` | `order_queue.go` | Rate-limited order submission |
-
----
+| `Opener` | `opener.go` | Executes IOC snipe with static TP/SL and trap orders |
+| `Trap` | `application/trap` | Optional hedge branch with its own close handling |
 
 ## 7. Infrastructure Patterns
 
@@ -364,44 +313,31 @@ volume := decmath.FloorToScale(decmath.Div(notional, denom), volScale)
 trapPrice := decmath.RoundToScale(rawPrice, priceScale)
 ```
 
-### 7.3 Slippage Strategy Pattern
+### 7.3 Reversion Slippage
 
-Three interchangeable algorithms:
-- **Static**: Fixed percentage of reference price
-- **Spread Multiplier**: Dynamic based on bid-ask spread width
-- **OB Imbalance**: Sweeps orderbook to find fill price for target volume
+Reversion uses a static IOC buffer from `maxPriceDiffPercent`, with a two-tick minimum. Dynamic spread, OB imbalance, and Reversion trailing are intentionally not part of the runtime contract.
 
-Selected at runtime via config:
-```go
-func newSlippageCalculator(c *Candidate, dyn DynamicPricingConfig) SlippageCalculator
-```
+### 7.4 Observability — Logging, Metrics Interfaces, Health
 
-### 7.4 Observability — OpenTelemetry + Prometheus
-
-The observability stack uses **OpenTelemetry** for tracing and **Prometheus** for metrics.
-Every log line automatically includes `trace_id`, `span_id`, and `req_id` when running inside a traced context.
+The current observability stack uses structured `slog`, correlation IDs, metrics interfaces, and health aggregation. It does not currently ship an HTTP metrics exporter.
 
 #### Architecture
 
 ```mermaid
 graph LR
-    A["TraceHandler<br/>slog middleware"] -->|injects| B["trace_id + span_id + req_id"]
-    C["OTel TracerProvider"] -->|generates| A
-    D["PrometheusCollector"] -->|exports| E[":9090/metrics"]
-    D -->|implements| F["MetricsCollector interface"]
+    A["TraceHandler<br/>slog middleware"] -->|injects| B["req_id"]
+    C["NoopCollector"] -->|implements| F["MetricsCollector interface"]
+    D["InMemoryCollector"] -->|implements| F
 
     style A fill:#e8f5e9
     style D fill:#e3f2fd
-    style E fill:#fff3e0
 ```
 
 #### Components
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| `InitTelemetry` | `telemetry.go` | Initializes OTel tracer + Prometheus meter + HTTP server |
-| `TraceHandler` | `trace_handler.go` | slog middleware: auto-injects `trace_id`, `span_id`, `req_id` into every log line |
-| `PrometheusCollector` | `prometheus.go` | Implements `MetricsCollector` via OTel → Prometheus |
+| `TraceHandler` | `trace_handler.go` | slog middleware: auto-injects `req_id` into every log line |
 | `NoopCollector` | `observability.go` | Zero-overhead fallback when metrics are disabled |
 | `InMemoryCollector` | `observability.go` | Test/debug inspection |
 | `HealthChecker` | `observability.go` | Component health aggregation |
@@ -409,32 +345,16 @@ graph LR
 
 #### Log Output Example
 
-Every log line inside a traced cycle automatically contains:
+Every log line inside a correlated cycle automatically contains:
 ```json
 {
   "time": "2026-05-06T16:00:00Z",
   "level": "INFO",
   "msg": "━━━ Cycle start ━━━",
-  "trace_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
-  "span_id": "1a2b3c4d5e6f7a8b",
   "req_id": "f4e3d2c1",
   "symbol": "STEEM_USDT",
   "settle": "2026-05-06T16:00:00Z"
 }
-```
-
-#### Prometheus Metrics Endpoint
-
-When `MetricsPort > 0`, an HTTP server exposes:
-- `GET /metrics` — Prometheus scrape endpoint
-- `GET /health` — Simple health check
-
-```go
-tel, shutdown := observability.InitTelemetry(observability.TelemetryConfig{
-    ServiceName: "crypto-bot-funding",
-    MetricsPort: 9090,
-})
-defer shutdown(ctx)
 ```
 
 ### 7.5 WebSocket Pool (`pkg/ws`)
@@ -496,7 +416,6 @@ defer shutdown(ctx)
 | `funding/domain` | **83.4%** | Pricing, safety, scanner, scorer |
 | `infrastructure/app` | **86.6%** | EventBus, EngineBuilder, lifecycle |
 | `store` | **97.7%** | Depth, kline stores |
-| `infrastructure/journal` | **92.6%** | Trade journaling |
 | `exchange/mexc` | **79.2%** | Rest and WS clients |
 | `pkg/ws` | **92.0%** | WebSockets connection pools |
 
@@ -508,16 +427,16 @@ defer shutdown(ctx)
 
 | # | Improvement | Why | Where | Effort |
 |---|-------------|-----|-------|--------|
-| 1 | **Wire Future Bot order execution** | `runWorkflow()` has 4 `TODO` stubs: place order, cancel on timeout, cancel on wall disappear, cancel on volume drop. Currently logs `[STUB]` instead of placing real orders. | [workflow_manager.go:194-241](file:///e:/projects/crypto-bot/internal/bots/future_bot/application/workflow_manager.go#L194-L241) | M |
-| 2 | **WS reconnect with subscription replay** | WS disconnect loses all subscription state. Pool should track active topics and replay `Subscribe*()` calls on reconnect. Critical for long-running sessions. | `pkg/ws/pool.go`, `ws_adapter.go` | L |
-| 3 | **Wire `OrderJournal` + `PnLTracker` into bots** | Both are implemented and tested (`journal/` package, 76.6% coverage) but neither bot calls `Record()` or `RecordEntry()`. No trade history is captured. | `sniper.go`, `penny.go`, `journal/` | S |
+| 1 | **Reversion lifecycle scenario coverage** | The live branch should be protected by blackbox cycle tests for fill, no-fill timeout, trailing failure fallback, and cleanup with open trap state. | `internal/bots/funding/application` | M |
+| 2 | **Decimal-backed domain values** | Domain/store/application financial values still expose `float64`; decimal math is used for calculations, but type-level precision is not enforced. | `internal/domain`, `internal/bots/funding/domain`, `internal/infrastructure/store` | L |
+| 3 | **Deterministic async tests** | Some WS/watcher/runner tests still use sleeps, which makes CI timing-sensitive. | `pkg/ws`, `watcher`, `app` tests | S |
 
 ### 🟡 Medium Priority — Correctness & Reliability
 
 | # | Improvement | Why | Where | Effort |
 |---|-------------|-----|-------|--------|
-| 4 | **`context.Context` propagation in WS adapter** | 6 methods in `ws_adapter.go` use `context.Background()` instead of propagating the caller's context. Prevents cancellation of WS subscribe/unsubscribe during shutdown. | [ws_adapter.go:43-125](file:///e:/projects/crypto-bot/internal/infrastructure/exchange/mexc/ws_adapter.go#L43-L125) | S |
-| 5 | **Replace `float64` with `decimal` in Future Bot domain** | `Wall.Price`, `Wall.Volume`, `WallHistory`, `Scorer` all use `float64`. Funding uses `pkg/decmath` for financial precision, but Future Bot does not. Risk of floating-point drift in price comparisons (e.g., `prev.Price == newWall.Price`). | `future_bot/domain/wall.go`, `scorer.go`, `wall_history.go` | M |
+| 4 | **Metrics exporter** | Metrics interfaces exist, but there is no production exporter in the current tree. | `internal/infrastructure/observability` | M |
+| 5 | **Rate limiter for REST API calls** | MEXC returns 429 but current client has no explicit client-side limiter or backoff policy. | `pkg/httpclient/` or `exchange/mexc/client.go` | M |
 
 ### 🟢 Nice to Have — Features & Scale
 
@@ -525,8 +444,7 @@ defer shutdown(ctx)
 |---|-------------|-----|-------|--------|
 | 6 | **Multi-exchange support** | Add Binance/Bybit adapters. Interface already exists (`ExchangeAdapter`, `exchange.Client`). | New `binance/` package | L |
 | 7 | **Backtesting framework** | Replay historical klines/depth through the same event pipeline. `EventBus` architecture makes this feasible — inject mock adapter that replays recorded data. | New `backtest/` package | XL |
-| 8 | **Dashboard / monitoring UI** | WebSocket-based live dashboard showing active workflows, PnL, wall detections. Prometheus metrics already exposed. | New `cmd/dashboard/` | L |
-| 9 | **Rate limiter for REST API calls** | No explicit rate limiting on `exchange.Client` methods. MEXC returns 429 but current code doesn't backoff gracefully. | `pkg/httpclient/` or `exchange/mexc/client.go` | M |
+| 8 | **Dashboard / monitoring UI** | WebSocket-based live dashboard showing active workflows, PnL, and funding cycle state. | New `cmd/dashboard/` | L |
 
 ---
 
@@ -540,9 +458,7 @@ defer shutdown(ctx)
 | `Runner.RunBot` deterministic shutdown | ✅ Done — `sync.WaitGroup` with 5s timeout, no `time.Sleep` |
 | `Sniper.spawnWorker` → WorkerPool | ⏸️ Deferred — current `errgroup` pattern is clean |
 | Dry-run mode | ✅ Done — `DryRunClient` wraps real client, intercepts writes |
-| Persistent order journal | ✅ Done — `CSVJournal` with daily rotation (not yet wired to bots) |
-| PnL tracker | ✅ Done — `PnLTracker` with per-symbol summaries (not yet wired to bots) |
+| Persistent cycle journal | ⏸️ Deferred — previous journal package is not present in the current tree |
+| PnL tracker | ⏸️ Deferred — current implementation publishes final PnL events only |
 | Merge `TradeConfig`/`SymbolConfig` duplication | ✅ Done — Deep decoupled JSON tree, tests passing |
 | Inject `*slog.Logger` instead of `slog.Default()` | ✅ Done — Engine scope propagates log context automatically |
-
-

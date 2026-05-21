@@ -7,12 +7,6 @@ import (
 	"crypto-bot/pkg/types"
 )
 
-// SlippageMode constants for DynamicPricingConfig.SlippageMode.
-const (
-	SlippageModeOBImbalance     = "OB_IMBALANCE"
-	SlippageModeSpreadMultipler = "SPREAD_MULTIPLIER"
-)
-
 // MarketData holds live market prices from the store/WS.
 type MarketData struct {
 	LastPrice float64
@@ -53,41 +47,19 @@ type TradeConfig struct {
 
 // FundingReversionConfig holds configuration specific to the reversion strategy.
 type FundingReversionConfig struct {
-	Enabled           bool                  `json:"enabled"`
-	TakeProfitPct     float64               `json:"takeProfitPct"`
-	StopLossPct       float64               `json:"stopLossPct"`
-	MaxLatency        types.Duration        `json:"maxLatency"`
-	BufferTime        types.Duration        `json:"bufferTime"`
-	HoldDuration      types.Duration        `json:"holdDuration"`
-	PostSettleTimeout types.Duration        `json:"postSettleTimeout"`
-	DynamicPricing    DynamicPricingConfig  `json:"dynamicPricing"`
-	ImbalanceFilter   ImbalanceFilterConfig `json:"imbalanceFilter"`
-	Trailing          TrailingConfig        `json:"trailing"`
-}
-
-// ImbalanceFilterConfig controls the optional near-book imbalance safety filter.
-// It must remain a secondary filter because orderbook imbalance is spoof-prone.
-type ImbalanceFilterConfig struct {
-	Enabled       bool    `json:"enabled"`
-	NearPct       float64 `json:"nearPct"`
-	MinLongRatio  float64 `json:"minLongRatio"`
-	MaxShortRatio float64 `json:"maxShortRatio"`
+	Enabled           bool           `json:"enabled"`
+	TakeProfitPct     float64        `json:"takeProfitPct"`
+	StopLossPct       float64        `json:"stopLossPct"`
+	MaxLatency        types.Duration `json:"maxLatency"`
+	BufferTime        types.Duration `json:"bufferTime"`
+	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
 }
 
 // TrailingConfig holds configuration for the Trailing Stop mechanism.
-// Static fields are fallbacks; dynamic multipliers override them when DynamicPricing is enabled.
 type TrailingConfig struct {
 	Enabled       bool    `json:"enabled"`
 	ActivationPct float64 `json:"activationPct"`
 	CallbackPct   float64 `json:"callbackPct"`
-
-	// Dynamic multipliers (FR-scaled). Populated from config, applied in PrepareDynamicPricing.
-	ActivationMultiplier float64 `json:"activationMultiplier"`
-	MinActivation        float64 `json:"minActivation"`
-	MaxActivation        float64 `json:"maxActivation"`
-	CallbackMultiplier   float64 `json:"callbackMultiplier"`
-	MinCallback          float64 `json:"minCallback"`
-	MaxCallback          float64 `json:"maxCallback"`
 }
 
 // FundingTrapConfig holds all straddle trap configuration in one place.
@@ -99,36 +71,9 @@ type FundingTrapConfig struct {
 	TakeProfitPct     float64        `json:"takeProfitPct"`
 	StopLossPct       float64        `json:"stopLossPct"`
 	TrapAfterSettle   types.Duration `json:"trapAfterSettle"`
-	HoldDuration      types.Duration `json:"holdDuration"`
 	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
 
-	// Dynamic multipliers (FR-scaled).
-	DepthMultiplier float64 `json:"depthMultiplier"`
-	MinDepth        float64 `json:"minDepth"`
-	MaxDepth        float64 `json:"maxDepth"`
-	TpMultiplier    float64 `json:"tpMultiplier"`
-	MinTP           float64 `json:"minTP"`
-	MaxTP           float64 `json:"maxTP"`
-	SlMultiplier    float64 `json:"slMultiplier"`
-	MinSL           float64 `json:"minSL"`
-	MaxSL           float64 `json:"maxSL"`
-
 	Trailing TrailingConfig `json:"trailing"`
-}
-
-// DynamicPricingConfig holds the master toggle and multipliers for slippage, TP, and SL.
-// Trap and trailing multipliers live in their respective config sections.
-type DynamicPricingConfig struct {
-	Enabled             bool    `json:"enabled"`
-	SlippageMode        string  `json:"slippageMode"`
-	ObBufferPct         float64 `json:"obBufferPct"`
-	ObMaxSlippagePct    float64 `json:"obMaxSlippagePct"`
-	ObStep              string  `json:"obStep"`
-	SpreadMultiplier    float64 `json:"spreadMultiplier"`
-	TpFundingMultiplier float64 `json:"tpFundingMultiplier"`
-	TpAtrMultiplier     float64 `json:"tpAtrMultiplier"`
-	SlAtrMultiplier     float64 `json:"slAtrMultiplier"`
-	SlFundingMultiplier float64 `json:"slFundingMultiplier"`
 }
 
 // IsHedgeTrapEnabled returns true if hedge trap is enabled.
@@ -154,7 +99,6 @@ type TradePlan struct {
 	ImpactRatio    float64       // position size / 24h volume
 	Slippage       float64       // estimated slippage %
 	ImbalanceRatio float64       // near-book bid volume / ask volume
-	ATR            float64       // Average True Range (Dynamic Pricing)
 	SafetyResult   *SafetyResult // safety evaluation result
 }
 

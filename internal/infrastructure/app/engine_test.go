@@ -48,6 +48,15 @@ func (m *mockAdapter) ParseTicker(data []byte) (string, *store.PriceData, error)
 func (m *mockAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) { return "", nil, nil }
 func (m *mockAdapter) ParseKline(data []byte) (string, *domain.Kline, error)     { return "", nil, nil }
 func (m *mockAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error)     { return nil, nil }
+func (m *mockAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
+	return nil, nil
+}
+func (m *mockAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
+	return nil, nil
+}
+func (m *mockAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
+	return nil, nil
+}
 
 type dummyClient struct{ exchange.Client }
 
@@ -58,7 +67,11 @@ func (d *dummyClient) GetContractDetails(_ context.Context) ([]exchange.Contract
 	return nil, nil
 }
 func (d *dummyClient) GetFundingRate(_ context.Context, _ string) (*exchange.FundingRateDetail, error) {
-	return nil, nil
+	return &exchange.FundingRateDetail{
+		Symbol:         "BTC_USDT",
+		FundingRate:    0.01,
+		NextSettleTime: time.Now().Add(time.Hour).UnixMilli(),
+	}, nil
 }
 
 func TestNewEngine_Success(t *testing.T) {
@@ -119,6 +132,34 @@ func TestStoreRegistry_StartStores(t *testing.T) {
 			ContractInterval: types.Duration(time.Second),
 		})
 	})
+}
+
+func TestStoreRegistry_StartStoresWithFunding(t *testing.T) {
+	t.Parallel()
+
+	reg := app.NewStoreRegistry().WithFunding()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	assert.NotPanics(t, func() {
+		reg.StartStores(ctx, &app.Engine{Client: &dummyClient{}}, app.StoreSyncConfig{
+			TickerInterval:   types.Duration(time.Second),
+			ContractInterval: types.Duration(time.Second),
+			FundingInterval:  types.Duration(time.Second),
+			FundingSymbols:   []string{"BTC_USDT"},
+		})
+	})
+}
+
+func TestStoreRegistry_WaitReadyContextCancelled(t *testing.T) {
+	t.Parallel()
+
+	reg := app.NewStoreRegistry()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := reg.WaitReady(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestNewEngine_NilAdapter(t *testing.T) {

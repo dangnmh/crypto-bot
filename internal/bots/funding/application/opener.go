@@ -12,8 +12,8 @@ import (
 
 type OrderResult = orders.OrderResult
 
-func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger, ob *shared.OrderBook) orders.OrderResult {
-	return orders.FireIOC(ctx, client, candidate, ts, logger, ob)
+func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) orders.OrderResult {
+	return orders.FireIOC(ctx, client, candidate, ts, logger)
 }
 
 func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) orders.OrderResult {

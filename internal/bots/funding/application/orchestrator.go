@@ -40,10 +40,9 @@ func (o *CycleOrchestrator) Run(ctx context.Context, settle time.Time) {
 	o.rt.Begin(reqID, settle, log)
 	defer func() { _ = o.rt.CloseBus() }()
 	defer o.rt.DumpTimeline(log)
-	defer o.rt.PersistCycleRecord(ctx)
 
 	done := make(chan struct{})
-	o.setupEventChain(cycleCtx, settle, done)
+	o.setupEventChain(cycleCtx, done)
 
 	if err := o.rt.PublishStart(settle); err != nil {
 		log.Error("🔴 Failed to publish cycle start", slog.Any("error", err))
@@ -59,20 +58,19 @@ func (o *CycleOrchestrator) Run(ctx context.Context, settle time.Time) {
 	cancelCycle()
 }
 
-func (o *CycleOrchestrator) setupEventChain(ctx context.Context, settle time.Time, done chan struct{}) {
+func (o *CycleOrchestrator) setupEventChain(ctx context.Context, done chan struct{}) {
+	reqID := o.rt.GetReqID()
 	o.subscribeScan(ctx)
-	reversion.Register(ctx, o.rt, settle)
-	trap.Register(ctx, o.rt, settle)
+	reversion.Register(ctx, o.rt)
+	trap.Register(ctx, o.rt)
+	o.rt.SubscribeWSOrderEvents(ctx, reqID, o.rt.Config().Symbol)
 	o.subscribeCleanup(ctx, done)
 	o.subscribeEventLog(ctx)
 }
 
-func (o *CycleOrchestrator) publishOrLog(topic string, payload any) {
-	o.rt.Publish(topic, payload)
-}
-
 func (o *CycleOrchestrator) abort(source, reason string) {
-	o.rt.Abort(source, reason)
+	reqID := o.rt.GetReqID()
+	o.rt.Abort(reqID, source, reason)
 }
 
 func unmarshal[T any](data []byte) (T, error) {

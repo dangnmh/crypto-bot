@@ -7,9 +7,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/events"
-	"crypto-bot/internal/bots/funding/application/trap"
-	"crypto-bot/internal/bots/funding/domain"
-	shared "crypto-bot/internal/domain"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -37,10 +34,14 @@ func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan stru
 	for _, topic := range timeoutTopics {
 		o.watchTerminalEvent(ctx, topic, func(msg *message.Message) {
 			flow := terminalFlow(topic)
+			reason := "timeout"
 			if evt, parseErr := unmarshal[events.CycleTimeoutEvent](msg.Payload); parseErr == nil {
 				flow = evt.Flow
+				if evt.Reason != "" {
+					reason = evt.Reason
+				}
 			}
-			cleanup(topic, flow, "timeout")
+			cleanup(topic, flow, reason)
 		})
 	}
 
@@ -50,11 +51,6 @@ func (o *CycleOrchestrator) subscribeCleanup(ctx context.Context, done chan stru
 			flow := terminalFlow(topic)
 			if parseErr == nil {
 				flow = evt.Flow
-				o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-					b.AbortReason = evt.Reason
-					b.AbortFlow = flow
-					b.AbortTopic = topic
-				})
 			}
 			cleanup(topic, flow, "abort")
 		})
@@ -74,7 +70,14 @@ func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{
 	return func(topic, flow, reason string) {
 		once.Do(func() {
 			startedAt := time.Now()
-			o.rt.Log().Info("🧹 Cleanup", slog.String("reason", reason), slog.String("topic", topic), slog.String("flow", flow))
+			o.rt.Log().Info("Cleanup", slog.String("reason", reason), slog.String("topic", topic), slog.String("flow", flow))
+			reqID := o.rt.GetReqID()
+			o.rt.RecordAndPublish(reqID, events.TopicCleanupStarted, events.CleanupStartedEvent{
+				TerminalFlow: flow,
+				TerminalType: topic,
+				Reason:       reason,
+				StartedAt:    startedAt,
+			})
 			if flow == events.FlowReversion {
 				o.settleOpenTrapBeforeCycleCleanup(ctx)
 			}
@@ -82,32 +85,21 @@ func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{
 			unsubscribed := true
 			o.rt.StopExcursionPriceStream()
 
-			o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-				b.ExitReason = reason
-				b.ExitTime = time.Now()
-				switch topic {
-				case events.TopicTrapPositionClosed:
-					b.TrapOutcome = domain.TrapOutcomeClosed
-				case events.TopicTrapTimeout:
-					b.TrapOutcome = domain.TrapOutcomeTimeout
-				case events.TopicTrapAbort:
-					b.TrapOutcome = domain.TrapOutcomeAborted
-				}
-			})
-
-			excursionFinalized := o.rt.FinalizeExcursion(ctx)
+			excursionFinalized := o.rt.FinalizeExcursion(ctx, o.rt.GetReqID())
 			completedAt := time.Now()
-			o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-				b.Cleanup = domain.CleanupSnapshot{
-					TerminalFlow:       flow,
-					TerminalTopic:      topic,
-					Reason:             reason,
-					StartedAt:          startedAt,
-					CompletedAt:        completedAt,
-					Unsubscribed:       unsubscribed,
-					ExcursionFinalized: excursionFinalized,
-				}
+			o.rt.RecordAndPublish(reqID, events.TopicCleanupCompleted, events.CleanupCompletedEvent{
+				TerminalFlow:       flow,
+				TerminalType:       topic,
+				Reason:             reason,
+				StartedAt:          startedAt,
+				CompletedAt:        completedAt,
+				Unsubscribed:       unsubscribed,
+				ExcursionFinalized: excursionFinalized,
 			})
+			o.rt.RecordAndPublish(reqID, events.TopicCycleCompleted, events.CycleCompletedEvent{
+				Reason: reason,
+			})
+			o.rt.PublishFinalPnL(reqID)
 
 			select {
 			case done <- struct{}{}:
@@ -117,116 +109,120 @@ func (o *CycleOrchestrator) makeCleanupFn(ctx context.Context, done chan struct{
 	}
 }
 
-type trapCleanupAction int
-
-const (
-	trapCleanupNone trapCleanupAction = iota
-	trapCleanupCancelOrder
-	trapCleanupClosePosition
-)
+// Manual Intervention Runbook:
+// ========================================
+// When a symbol gets disabled due to critical close failure:
+//
+// 1. Check the cycle logs and event timeline for this symbol/settle_time.
+//
+// 2. Look for these error indicators in the journal:
+//    - abort_reason containing "critical_close_failed"
+//    - abort_reason containing "critical_timeout_close_failed"
+//    - abort_reason containing "critical_trap_cancel_failed"
+//    - abort_reason containing "critical_trap_close_failed"
+//
+// 3. Manual recovery steps:
+//    a) Verify symbol position status on exchange manually
+//    b) If position still open, close it manually via exchange UI/API
+//    c) Remove symbol from in-memory disabled map (restart bot if needed)
+//    d) Investigate root cause: exchange API issue, network timeout, position state mismatch
+//
+// 4. Prevention:
+//    - Increase closeOpTimeout if timeouts are frequent
+//    - Reduce position size if liquidity is insufficient
+//    - Enable Hedge mode to avoid position conflicts
+//    - Monitor latency_rtt_ms in journal - high latency may cause timeouts
 
 func (o *CycleOrchestrator) settleOpenTrapBeforeCycleCleanup(ctx context.Context) {
-	var action trapCleanupAction
-	var orderID string
-	var fillVol float64
-	var closeSide shared.Side
-	positionMode := o.rt.Config().ParsedPositionMode
-
-	o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-		if b.TrapOrderID == "" || trap.OutcomeTerminal(b.TrapOutcome) {
-			return
-		}
-		orderID = b.TrapOrderID
-		if b.TrapFilled {
-			action = trapCleanupClosePosition
-			fillVol = b.TrapFillVol
-			closeSide = shared.CloseSideFor(b.TrapSide())
-			b.TrapOutcome = domain.TrapOutcomeClosed
-			return
-		}
-		action = trapCleanupCancelOrder
-		b.TrapOutcome = domain.TrapOutcomeTimeout
-	})
-
-	switch action {
-	case trapCleanupNone:
+	order, hasOrder, fill, hasFill, terminal := o.rt.TrapSnapshot()
+	if !hasOrder || terminal {
 		return
-	case trapCleanupCancelOrder:
-		o.cancelOpenTrapOrderForCleanup(ctx, orderID)
-	case trapCleanupClosePosition:
-		o.closeOpenTrapPositionForCleanup(ctx, closeSide, fillVol, positionMode)
 	}
-}
 
-func (o *CycleOrchestrator) cancelOpenTrapOrderForCleanup(ctx context.Context, orderID string) {
-	cfg := o.rt.Config()
-	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
-	if err := o.rt.Deps().Client.CancelOrder(cancelCtx, cfg.Symbol, orderID); err != nil {
-		o.rt.Log().Error("🔴 Trap cleanup cancel failed - canceling all open orders", slog.Any("error", err))
-		if allErr := o.rt.Deps().Client.CancelAllOpenOrders(cancelCtx, cfg.Symbol); allErr != nil {
-			o.recordTrapCleanupFailure("critical_trap_cancel_failed: " + allErr.Error())
-			o.publishOrLog(events.TopicTrapError, events.CycleErrorEvent{
-				Flow:   events.FlowTrap,
-				Symbol: cfg.Symbol,
-				Error:  "critical_trap_cancel_failed: " + allErr.Error(),
-			})
-			o.publishOrLog(events.TopicTrapAbort, events.CycleAbortEvent{
-				Flow:   events.FlowTrap,
-				Symbol: cfg.Symbol,
-				Reason: "critical_trap_cancel_failed: " + allErr.Error(),
-			})
+	if !hasFill {
+		o.cancelOpenTrapOrder(cleanupCtx, order)
+		return
+	}
+
+	o.closeFilledTrapPosition(cleanupCtx, fill)
+}
+
+func (o *CycleOrchestrator) cancelOpenTrapOrder(ctx context.Context, order events.TrapFiredEvent) {
+	retries, err := o.rt.RetryWithBackoff(ctx, 3, func() error {
+		return o.rt.Deps().Client.CancelOrder(ctx, order.Symbol, order.OrderID)
+	})
+	if err != nil {
+		o.rt.Log().Error("Trap cleanup cancel failed - canceling all open orders", slog.Any("error", err))
+		allRetries, allErr := o.rt.RetryWithBackoff(ctx, 3, func() error {
+			return o.rt.Deps().Client.CancelAllOpenOrders(ctx, order.Symbol)
+		})
+		retries += allRetries
+		if allErr != nil {
+			o.publishTrapCleanupCritical(order.Symbol, "critical_trap_cancel_failed: "+allErr.Error())
 			return
 		}
 	}
 
-	o.publishOrLog(events.TopicTrapTimeout, events.CycleTimeoutEvent{
-		Flow:    events.FlowTrap,
-		Symbol:  cfg.Symbol,
-		Timeout: 0,
+	o.rt.MarkTrapTerminal()
+	reqID := o.rt.GetReqID()
+	o.rt.RecordAndPublish(reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
+		Flow:            events.FlowTrap,
+		Symbol:          order.Symbol,
+		FiredAt:         time.Now(),
+		CloseRetryCount: retries,
+	})
+	o.rt.RecordAndPublish(reqID, events.TopicTrapTimeout, events.CycleTimeoutEvent{
+		Flow:            events.FlowTrap,
+		Symbol:          order.Symbol,
+		Reason:          "reversion_cleanup_cancel",
+		CloseRetryCount: retries,
 	})
 }
 
-func (o *CycleOrchestrator) closeOpenTrapPositionForCleanup(ctx context.Context, closeSide shared.Side, fillVol float64, positionMode int) {
-	cfg := o.rt.Config()
-	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-
-	if err := o.rt.Deps().Client.ClosePosition(closeCtx, cfg.Symbol, closeSide, fillVol, positionMode); err != nil {
-		o.rt.Log().Error("🔴 Trap cleanup close failed - closing all positions", slog.Any("error", err))
-		if allErr := o.rt.Deps().Client.CloseAllPositions(closeCtx, cfg.Symbol); allErr != nil {
-			o.recordTrapCleanupFailure("critical_trap_close_failed: " + allErr.Error())
-			o.publishOrLog(events.TopicTrapError, events.CycleErrorEvent{
-				Flow:   events.FlowTrap,
-				Symbol: cfg.Symbol,
-				Error:  "critical_trap_close_failed: " + allErr.Error(),
-			})
-			o.publishOrLog(events.TopicTrapAbort, events.CycleAbortEvent{
-				Flow:   events.FlowTrap,
-				Symbol: cfg.Symbol,
-				Reason: "critical_trap_close_failed: " + allErr.Error(),
-			})
+func (o *CycleOrchestrator) closeFilledTrapPosition(ctx context.Context, fill events.OrderFilledEvent) {
+	positionMode := o.rt.CandidateCopy().Config.ParsedPositionMode
+	retries, err := o.rt.RetryWithBackoff(ctx, 3, func() error {
+		return o.rt.Deps().Client.ClosePosition(ctx, fill.Symbol, fill.CloseSide, fill.FillVol, positionMode)
+	})
+	if err != nil {
+		o.rt.Log().Error("Trap cleanup exact close failed - closing all positions", slog.Any("error", err))
+		allRetries, allErr := o.rt.RetryWithBackoff(ctx, 3, func() error {
+			return o.rt.Deps().Client.CloseAllPositions(ctx, fill.Symbol)
+		})
+		retries += allRetries
+		if allErr != nil {
+			o.publishTrapCleanupCritical(fill.Symbol, "critical_trap_close_failed: "+allErr.Error())
 			return
 		}
 	}
 
-	o.publishOrLog(events.TopicTrapPositionClosed, events.PositionClosedEvent{
+	o.rt.MarkTrapTerminal()
+	reqID := o.rt.GetReqID()
+	o.rt.RecordAndPublish(reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
+		Flow:            events.FlowTrap,
+		Symbol:          fill.Symbol,
+		CloseVol:        fill.FillVol,
+		Reason:          "reversion_cleanup_close",
+		Method:          "fallback_close",
+		CloseRetryCount: retries,
+	})
+}
+
+func (o *CycleOrchestrator) publishTrapCleanupCritical(symbol, reason string) {
+	o.rt.MarkTrapTerminal()
+	reqID := o.rt.GetReqID()
+	o.rt.RecordAndPublish(reqID, events.TopicTrapError, events.CycleErrorEvent{
 		Flow:   events.FlowTrap,
-		Symbol: cfg.Symbol,
-		Reason: "cycle_cleanup",
+		Symbol: symbol,
+		Error:  reason,
 	})
-}
-
-func (o *CycleOrchestrator) recordTrapCleanupFailure(reason string) {
-	o.rt.MutateRecorder(func(b *domain.CycleRecordBuilder) {
-		b.AbortReason = reason
-		b.AbortFlow = events.FlowTrap
-		b.AbortTopic = events.TopicTrapAbort
-		b.ErrorFlow = events.FlowTrap
-		b.ErrorTopic = events.TopicTrapError
-		b.TrapOutcome = domain.TrapOutcomeAborted
-		b.TrapError = reason
+	o.rt.RecordAndPublish(reqID, events.TopicTrapAbort, events.CycleAbortEvent{
+		Flow:   events.FlowTrap,
+		Symbol: symbol,
+		Reason: reason,
 	})
 }
 
@@ -252,7 +248,6 @@ func (o *CycleOrchestrator) subscribeEventLog(ctx context.Context) {
 		events.TopicReversionConfirmed,
 		events.TopicReversionIOCFired,
 		events.TopicReversionOrderFilled,
-		events.TopicReversionTrailingPlaced,
 		events.TopicReversionPositionClosed,
 		events.TopicReversionTimeout,
 		events.TopicReversionAbort,
@@ -271,7 +266,7 @@ func (o *CycleOrchestrator) subscribeEventLog(ctx context.Context) {
 
 	for _, topic := range topics {
 		o.rt.Subscribe(ctx, topic, func(msg *message.Message) {
-			o.rt.Log().Info("📋 Event", slog.String("topic", topic), slog.String("msg_id", msg.UUID))
+			o.rt.Log().Info("Event", slog.String("topic", topic), slog.String("msg_id", msg.UUID))
 		})
 	}
 }

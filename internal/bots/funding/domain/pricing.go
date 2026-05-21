@@ -14,7 +14,7 @@ import (
 // SHORT: iocPrice = bestBid - slippage  (sell at lower price, ceil to tick)
 //
 // Prices are rounded to the nearest valid tick (priceUnit) then snapped to PriceScale decimals.
-func (c *Candidate) CalculateIOCPrice(ob *shared.OrderBook) (float64, error) {
+func (c *Candidate) CalculateIOCPrice() (float64, error) {
 	if c.PriceUnit <= 0 {
 		return 0, fmt.Errorf("%w: %f", ErrInvalidPriceUnit, c.PriceUnit)
 	}
@@ -38,7 +38,7 @@ func (c *Candidate) CalculateIOCPrice(ob *shared.OrderBook) (float64, error) {
 		return 0, fmt.Errorf("%w: %f", ErrZeroRefPrice, refPrice)
 	}
 
-	slippage := c.calculateSlippage(ob, refPrice)
+	slippage := c.calculateSlippage(refPrice)
 
 	// Use decimal math for tick-snapping to avoid float64 rounding errors.
 	offsetPrice := decmath.Add(refPrice, decmath.Mul(direction, slippage))
@@ -68,9 +68,8 @@ const wallMultiplier = 3.0
 // minWallLevels is the minimum number of OB levels needed for wall detection.
 const minWallLevels = 3
 
-func (c *Candidate) calculateSlippage(ob *shared.OrderBook, refPrice float64) float64 {
-	calc := newSlippageCalculator(c, c.Config.FundingReversion.DynamicPricing)
-	slippage := calc.Calculate(refPrice, ob)
+func (c *Candidate) calculateSlippage(refPrice float64) float64 {
+	slippage := math.Max(decmath.Mul(refPrice, c.Config.MaxPriceDiffPercent/100.0), decmath.Mul(c.PriceUnit, 2))
 
 	// Ensure minimum tick slippage regardless of strategy
 	if slippage < c.PriceUnit*2 {
@@ -227,63 +226,4 @@ func (c *Candidate) CalculateTrapPrice() float64 {
 	}
 
 	return trapPrice
-}
-
-// PrepareDynamicPricing calculates and overwrites TP/SL, Trap, and Trailing params
-// based on the live Funding Rate and ATR. Should be called after ATR is set.
-func (c *Candidate) PrepareDynamicPricing() {
-	if !c.Config.FundingReversion.DynamicPricing.Enabled {
-		return
-	}
-
-	// Ticker's FundingRate is usually decimal (0.001 = 0.1%). So frPct = c.FundingRate * 100.
-	frPct := math.Abs(c.FundingRate * 100.0)
-
-	atrPct := 0.0
-	if c.LastPrice > 0 && c.ATR > 0 {
-		atrPct = (c.ATR / c.LastPrice) * 100.0
-	}
-
-	dp := c.Config.FundingReversion.DynamicPricing
-
-	// ── TP/SL ──
-	// Values are computed in percentage (e.g. 0.6 = 0.6%), then converted to ratio (÷100)
-	// to match the unit convention of TakeProfitPct/StopLossPct fields.
-	if c.ATR > 0 {
-		tpPct := (frPct * dp.TpFundingMultiplier) + (atrPct * dp.TpAtrMultiplier)
-		slPct := math.Max(frPct*dp.SlFundingMultiplier, atrPct*dp.SlAtrMultiplier)
-
-		if tpPct > 0 {
-			c.Config.FundingReversion.TakeProfitPct = tpPct / 100.0
-		}
-		if slPct > 0 {
-			c.Config.FundingReversion.StopLossPct = slPct / 100.0
-		}
-	}
-
-	// ── FR-Dynamic Trap Parameters ──
-	trap := c.Config.FundingTrap
-	if c.Config.IsHedgeTrapEnabled() && trap.DepthMultiplier > 0 {
-		c.Config.FundingTrap.DepthPct = clampPct(frPct*trap.DepthMultiplier, trap.MinDepth, trap.MaxDepth)
-		c.Config.FundingTrap.TakeProfitPct = clampPct(frPct*trap.TpMultiplier, trap.MinTP, trap.MaxTP)
-		c.Config.FundingTrap.StopLossPct = clampPct(frPct*trap.SlMultiplier, trap.MinSL, trap.MaxSL)
-	}
-
-	// ── FR-Dynamic Trailing Parameters ──
-	trail := c.Config.FundingReversion.Trailing
-	if trail.Enabled && trail.ActivationMultiplier > 0 {
-		c.Config.FundingReversion.Trailing.ActivationPct = clampPct(frPct*trail.ActivationMultiplier, trail.MinActivation, trail.MaxActivation)
-		c.Config.FundingReversion.Trailing.CallbackPct = clampPct(frPct*trail.CallbackMultiplier, trail.MinCallback, trail.MaxCallback)
-	}
-}
-
-// clampPct clamps a percentage value between lo and hi, then converts to ratio (÷100).
-func clampPct(v, lo, hi float64) float64 {
-	if v < lo {
-		v = lo
-	}
-	if v > hi {
-		v = hi
-	}
-	return v / 100.0
 }

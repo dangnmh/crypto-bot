@@ -125,6 +125,27 @@ func TestDryRunClient_ClosePosition_NoRealCall(t *testing.T) {
 	assert.False(t, stub.closePositionCalled, "real ClosePosition should NOT be called in dry-run mode")
 }
 
+func TestDryRunClient_OtherWriteOps_NoRealCall(t *testing.T) {
+	t.Parallel()
+	stub := &stubClient{}
+	dry := exchange.NewDryRunClient(stub)
+
+	trackID, err := dry.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{
+		Symbol:      "BTC_USDT",
+		Side:        1,
+		ActivePrice: 50000,
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, trackID)
+
+	require.NoError(t, dry.CancelOrders(context.Background(), []string{"order_1", "order_2"}))
+	require.NoError(t, dry.CancelAllOpenOrders(context.Background(), "BTC_USDT"))
+	require.NoError(t, dry.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{
+		Symbol:   "BTC_USDT",
+		Leverage: 5,
+	}))
+}
+
 func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {
 	t.Parallel()
 	stub := &stubClient{}
@@ -138,5 +159,32 @@ func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = dry.GetServerTime(context.Background())
+	require.NoError(t, err)
+
+	_, err = dry.GetFundingRate(context.Background(), "BTC_USDT")
+	require.NoError(t, err)
+
+	_, err = dry.GetKlines(context.Background(), "BTC_USDT", "Min1", 1, 2)
+	require.NoError(t, err)
+
+	_, err = dry.GetDepthSnapshot(context.Background(), "BTC_USDT", 20)
+	require.NoError(t, err)
+
+	_, err = dry.GetDepthCommits(context.Background(), "BTC_USDT", 20)
+	require.NoError(t, err)
+
+	_, err = dry.GetAssets(context.Background())
+	require.NoError(t, err)
+
+	_, err = dry.GetAssetByCurrency(context.Background(), "USDT")
+	require.NoError(t, err)
+
+	_, err = dry.GetOpenPositions(context.Background(), "BTC_USDT")
+	require.NoError(t, err)
+
+	_, err = dry.GetOrder(context.Background(), "order_1")
+	require.NoError(t, err)
+
+	_, err = dry.GetOpenOrders(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
 }

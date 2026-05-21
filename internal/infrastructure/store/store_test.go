@@ -33,6 +33,29 @@ func TestDepthStore_UpdateAndGet(t *testing.T) {
 	assert.Equal(t, 101.0, got.Asks[0].Price)
 }
 
+func TestDepthStore_ReturnsSnapshot(t *testing.T) {
+	t.Parallel()
+
+	s := store.NewDepthStore()
+	ctx := context.Background()
+	input := &domain.OrderBook{
+		Symbol: "BTC_USDT",
+		Asks:   []domain.OrderBookEntry{{Price: 101, Volume: 1}},
+		Bids:   []domain.OrderBookEntry{{Price: 100, Volume: 2}},
+	}
+	s.UpdateDepth("BTC_USDT", input)
+
+	input.Asks[0].Price = 1
+	got, err := s.GetDepth(ctx, "BTC_USDT")
+	require.NoError(t, err)
+	assert.Equal(t, 101.0, got.Asks[0].Price)
+
+	got.Asks[0].Price = 2
+	gotAgain, err := s.GetDepth(ctx, "BTC_USDT")
+	require.NoError(t, err)
+	assert.Equal(t, 101.0, gotAgain.Asks[0].Price)
+}
+
 func TestDepthStore_GetDepth_NotFound(t *testing.T) {
 	t.Parallel()
 	s := store.NewDepthStore()

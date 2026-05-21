@@ -25,13 +25,6 @@ type SystemConfig struct {
 	Safety          SafetyConfig    `json:"safety"`
 	Sync            SyncConfig      `json:"sync"`
 	TradingDefaults json.RawMessage `json:"tradingDefaults"`
-	Journal         JournalConfig   `json:"journal"`
-}
-
-// JournalConfig controls the cycle recording system.
-type JournalConfig struct {
-	Enabled bool   `json:"enabled"`
-	Dir     string `json:"dir"` // e.g. "data/journal"
 }
 
 type SyncConfig struct {

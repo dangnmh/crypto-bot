@@ -2,14 +2,13 @@
   // Straddle Trap (Gong Kim / Catch the Dump)
   // Static fallback + FR-dynamic multipliers + dedicated trailing
   // Requires positionMode = HEDGE
-  "enabled":       true,
+  "enabled":       false,
   "sizeRatio":     0.5,           // Trap notional = Reversion notional x 0.5 until journal proves edge
   "maxNotionalUSDT": 10000,       // Absolute Trap notional cap; 0 disables this cap
   "depthPct":      2.5,           // Fallback: 2.5% below/above peak
   "takeProfitPct": 1.5,           // Fallback: take profit when bounce reaches 1.5%
   "stopLossPct":   1.5,           // Fallback: stop if price continues another 1.5%
   "trapAfterSettle":   "50ms",    // Wait for post-settle peak before placing trap
-  "holdDuration":      "30s",     // Timeout waiting for fill + trailing activation
   "postSettleTimeout": "60s",     // Force close after this duration
 
   // FR-Dynamic: clamp(|FR%| x multiplier, min, max)

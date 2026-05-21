@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"crypto-bot/internal/bots/funding/config"
-	frdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/journal"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 
@@ -30,7 +28,7 @@ type CloseResult struct {
 	Profit      float64
 }
 
-// ──────────────────────────────────────────────────────────────────────.
+// ──────────────────────────────────────────────────────────────────────
 // Sniper — top-level orchestrator.
 // ──────────────────────────────────────────────────────────────────────.
 
@@ -44,7 +42,8 @@ type Sniper struct {
 	orderNotifier *watcher.OrderWatcher
 	stores        *app.CentralStore
 	timeSync      shared.Clock
-	cycleRecorder frdomain.CycleRecorder
+	disabled      map[string]string
+	disabledMu    sync.RWMutex
 	log           *slog.Logger
 	bgWg          sync.WaitGroup // tracks background goroutines (§5.2)
 }
@@ -78,7 +77,7 @@ func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engi
 		orderNotifier: orderWatcher,
 		stores:        stores,
 		timeSync:      engine.TimeSync,
-		cycleRecorder: newCycleRecorder(sysCfg.Journal, log),
+		disabled:      make(map[string]string),
 		log:           log,
 	}
 }
@@ -114,6 +113,7 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 
 	// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
 	s.stores.WireWS(s.engine.WS, s.engine.Adapter)
+	s.wirePersonalWS()
 
 	if s.engine.Adapter != nil {
 		if err := s.engine.Adapter.SubscribePersonal(ctx); err != nil {
@@ -123,6 +123,56 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 
 	s.log.Info("🟢 Funding Reversion Background Services Ready")
 	return nil
+}
+
+func (s *Sniper) wirePersonalWS() {
+	if s.engine == nil || s.engine.WS == nil || s.engine.Adapter == nil || s.orderNotifier == nil {
+		return
+	}
+
+	s.engine.WS.On("personal.order", func(data []byte) {
+		order, err := s.engine.Adapter.ParseOrder(data)
+		if err != nil {
+			s.log.Warn("🟡 Failed to parse personal order WS", slog.Any("error", err))
+			return
+		}
+		if order != nil {
+			s.orderNotifier.PublishOrder(*order)
+		}
+	})
+
+	s.engine.WS.On("personal.order.deal", func(data []byte) {
+		deal, err := s.engine.Adapter.ParseOrderDeal(data)
+		if err != nil {
+			s.log.Warn("🟡 Failed to parse personal order deal WS", slog.Any("error", err))
+			return
+		}
+		if deal != nil {
+			s.orderNotifier.PublishDeal(*deal)
+		}
+	})
+
+	s.engine.WS.On("personal.track.order", func(data []byte) {
+		update, err := s.engine.Adapter.ParseTrackOrder(data)
+		if err != nil {
+			s.log.Warn("🟡 Failed to parse personal track order WS", slog.Any("error", err))
+			return
+		}
+		if update != nil {
+			s.orderNotifier.PublishTrackOrder(*update)
+		}
+	})
+
+	s.engine.WS.On("personal.position", func(data []byte) {
+		update, err := s.engine.Adapter.ParsePosition(data)
+		if err != nil {
+			s.log.Warn("🟡 Failed to parse personal position WS", slog.Any("error", err))
+			return
+		}
+		if update != nil {
+			s.orderNotifier.PublishPosition(*update)
+		}
+	})
 }
 
 // Run starts all symbol workers. Blocks until all stop or context is cancelled.
@@ -144,11 +194,6 @@ func (s *Sniper) Run(ctx context.Context) error {
 func (s *Sniper) Stop(_ context.Context) error {
 	s.log.Info("🛑 Sniper explicit stop invoked")
 	s.bgWg.Wait()
-	if s.cycleRecorder != nil {
-		if err := s.cycleRecorder.Close(); err != nil {
-			s.log.Error("🔴 Failed to close cycle recorder", slog.Any("error", err))
-		}
-	}
 	return nil
 }
 
@@ -160,6 +205,11 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 		log := s.log.With("sym", symCfg.Symbol)
 		log.Info("🚀 Worker started")
 		defer log.Info("🛑 Worker stopped")
+
+		if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
+			log.Warn("🔴 Symbol disabled in-memory", slog.String("reason", reason))
+			return nil
+		}
 
 		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, s.stores.Funding())
 		if err != nil {
@@ -190,11 +240,9 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 			ContractStore: s.stores.Contract(),
 			PriceStore:    s.stores.Price(),
 			FundingStore:  s.stores.Funding(),
-			KlineStore:    s.stores.Kline(),
 			DepthStore:    s.stores.Depth(),
 			Clock:         s.timeSync,
 			Log:           log,
-			CycleRecorder: s.cycleRecorder,
 		}
 		orchestrator := NewCycleOrchestrator(symCfg, s.cfg, deps)
 		orchestrator.Run(ctx, settle)
@@ -202,39 +250,9 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 	}
 }
 
-// newCycleRecorder creates the appropriate CycleRecorder based on config.
-func newCycleRecorder(cfg config.JournalConfig, log *slog.Logger) frdomain.CycleRecorder {
-	if !cfg.Enabled || cfg.Dir == "" {
-		log.Info("📝 Cycle recorder disabled")
-		return noopCycleRecorder{}
-	}
-	rec, err := journal.NewJSONLCycleRecorder(cfg.Dir)
-	if err != nil {
-		log.Error("🔴 Failed to create cycle recorder, falling back to noop", slog.Any("error", err))
-		return noopCycleRecorder{}
-	}
-	log.Info("📝 Cycle recorder enabled", slog.String("dir", cfg.Dir))
-	return cycleRecorderAdapter{rec: rec}
-}
-
-type cycleRecorderAdapter struct {
-	rec *journal.JSONLCycleRecorder
-}
-
-func (a cycleRecorderAdapter) Record(ctx context.Context, record frdomain.CycleRecord) error {
-	return a.rec.Record(ctx, record)
-}
-
-func (a cycleRecorderAdapter) Close() error {
-	return a.rec.Close()
-}
-
-type noopCycleRecorder struct{}
-
-func (noopCycleRecorder) Record(context.Context, frdomain.CycleRecord) error {
-	return nil
-}
-
-func (noopCycleRecorder) Close() error {
-	return nil
+func (s *Sniper) disabledReason(symbol string) (string, bool) {
+	s.disabledMu.RLock()
+	defer s.disabledMu.RUnlock()
+	reason, ok := s.disabled[symbol]
+	return reason, ok
 }
