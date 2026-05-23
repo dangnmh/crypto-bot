@@ -71,6 +71,98 @@ func TestWatchStaticCloseDealPublishesTPClose(t *testing.T) {
 	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
 }
 
+func TestSubscribeFillWatcherIgnoresEmptyOrErroredOrder(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newReversionTestRuntime(t, client, notifier)
+
+	subscribeFillWatcher(context.Background(), rt)
+
+	rt.Publish(context.Background(), events.TopicReversionIOCFired, events.IOCFiredEvent{Symbol: "BTC_USDT"})
+	rt.Publish(context.Background(), events.TopicReversionIOCFired, events.IOCFiredEvent{
+		Symbol:  "BTC_USDT",
+		OrderID: "ioc-1",
+		Error:   "rejected",
+	})
+}
+
+func TestSubscribeFillWatcherRegistersOrderCallback(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newReversionTestRuntime(t, client, notifier)
+	registered := make(chan struct{}, 1)
+
+	notifier.EXPECT().
+		OnOrderUpdate(gomock.Any(), "ioc-1", 5*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
+			registered <- struct{}{}
+			callback(exchange.WsOrderDeal{OrderID: "ioc-1", State: 0})
+		})
+
+	subscribeFillWatcher(context.Background(), rt)
+	rt.Publish(context.Background(), events.TopicReversionIOCFired, events.IOCFiredEvent{
+		Symbol:    "BTC_USDT",
+		OrderID:   "ioc-1",
+		Side:      shared.SideOpenLong,
+		CloseSide: shared.SideCloseLong,
+	})
+	require.Eventually(t, func() bool {
+		select {
+		case <-registered:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestSetupFillWatcherPublishesTimeoutWhenTerminalWithoutFill(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newReversionTestRuntime(t, client, notifier)
+
+	notifier.EXPECT().
+		OnOrderUpdate(gomock.Any(), "ioc-empty", 5*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
+			callback(exchange.WsOrderDeal{OrderID: "ioc-empty", State: int(exchange.OrderStateCanceled)})
+		})
+	notifier.EXPECT().RemoveOrderCallback("ioc-empty")
+
+	setupFillWatcher(context.Background(), rt, events.IOCFiredEvent{
+		Symbol:  "BTC_USDT",
+		OrderID: "ioc-empty",
+	})
+
+	timeoutEvt := requireTimeoutEvent(t, rt, events.TopicReversionTimeout)
+	assert.Equal(t, reversionReasonNoFill, timeoutEvt.Reason)
+	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
+}
+
+func TestHandleArmAbortsWhenSubscribeFails(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	ws := mocks.NewMockSubscriber(ctrl)
+	rt := newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{WsSub: ws})
+
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(errors.New("ws down"))
+
+	handleArm(context.Background(), rt)
+
+	abort := requireAbortEvent(t, rt)
+	assert.Equal(t, "WS subscribe failed", abort.Reason)
+}
+
 func TestWatchStaticCloseDealPublishesSLClose(t *testing.T) {
 	t.Parallel()
 

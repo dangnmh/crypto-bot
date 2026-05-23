@@ -55,6 +55,28 @@ func TestTraceHandlerAttrsAndGroups(t *testing.T) {
 	assert.True(t, strings.Contains(buf.String(), "component=test"))
 }
 
+func TestCtxLoggerLevelMethodsAndDefaults(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	base := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ctx := tracectx.WithReqID(context.Background(), "req-1")
+	l := logger.WithCtx(ctx, base)
+
+	l.Debug("debug message")
+	l.Info("info message")
+	l.Warn("warn message")
+	l.Error("error message")
+
+	out := buf.String()
+	assert.Contains(t, out, "debug message")
+	assert.Contains(t, out, "info message")
+	assert.Contains(t, out, "warn message")
+	assert.Contains(t, out, "error message")
+
+	require.NotNil(t, logger.WithCtx(nil, nil))
+}
+
 func TestInitLoggerCreatesLogFileAndCleanup(t *testing.T) {
 	t.Parallel()
 

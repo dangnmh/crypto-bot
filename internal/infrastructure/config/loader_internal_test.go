@@ -88,3 +88,53 @@ func TestHasBitwardenConfig(t *testing.T) {
 
 	assert.True(t, hasBitwardenConfig())
 }
+
+func TestHasBitwardenConfigFalseWhenAnyValueMissing(t *testing.T) {
+	tests := []struct {
+		name    string
+		token   string
+		org     string
+		project string
+	}{
+		{name: "missing token", org: "org", project: "project"},
+		{name: "missing org", token: "token", project: "project"},
+		{name: "missing project", token: "token", org: "org"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BITWARDEN_ACCESS_TOKEN", tt.token)
+			t.Setenv("BITWARDEN_ORGANIZATION_ID", tt.org)
+			t.Setenv("BITWARDEN_PROJECT_NAME", tt.project)
+
+			assert.False(t, hasBitwardenConfig())
+		})
+	}
+}
+
+func TestApplySystemDefaultsKeepsExistingValues(t *testing.T) {
+	t.Parallel()
+
+	cfg := &SystemConfig{
+		Sync: SyncConfig{
+			Time:     types.Duration(time.Second),
+			Ticker:   types.Duration(2 * time.Second),
+			Contract: types.Duration(3 * time.Second),
+		},
+		ExchangeConfig: ExchangeConfig{
+			Mexc: APIConfig{
+				WebSocket: WebSocketConfig{MaxPairsPerWSConn: 9},
+			},
+		},
+		Logging: LoggingConfig{Level: "warn"},
+	}
+
+	applySystemDefaults(cfg)
+
+	assert.Equal(t, types.Duration(time.Second), cfg.Sync.Time)
+	assert.Equal(t, types.Duration(2*time.Second), cfg.Sync.Ticker)
+	assert.Equal(t, types.Duration(3*time.Second), cfg.Sync.Contract)
+	assert.Equal(t, 9, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, "warn", cfg.Logging.Level)
+}

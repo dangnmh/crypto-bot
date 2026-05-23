@@ -58,6 +58,90 @@ func TestCloseTimedOutTrapPositionClosesFilledTrapBeforeCancel(t *testing.T) {
 	assert.True(t, rt.IsFlowTerminal(events.FlowTrap))
 }
 
+func TestSubscribeFillWatcherRegistersOrderCallback(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
+	registered := make(chan struct{}, 1)
+
+	notifier.EXPECT().
+		OnOrderUpdate(gomock.Any(), "trap-1", 5*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
+			registered <- struct{}{}
+			callback(exchange.WsOrderDeal{OrderID: "trap-1", State: 0})
+		})
+
+	subscribeFillWatcher(context.Background(), rt)
+	rt.Publish(context.Background(), events.TopicTrapOrderPlaced, events.TrapFiredEvent{
+		OrderID:   "trap-1",
+		Side:      shared.SideOpenLong,
+		CloseSide: shared.SideCloseShort,
+	})
+	require.Eventually(t, func() bool {
+		select {
+		case <-registered:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestSubscribeFillWatcherIgnoresEmptyOrderID(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
+
+	subscribeFillWatcher(context.Background(), rt)
+	rt.Publish(context.Background(), events.TopicTrapOrderPlaced, events.TrapFiredEvent{})
+}
+
+func TestSetupFillWatcherPublishesTrapFill(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
+
+	notifier.EXPECT().
+		OnOrderUpdate(gomock.Any(), "trap-fill", 5*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
+			callback(exchange.WsOrderDeal{
+				OrderID:      "trap-fill",
+				State:        int(exchange.OrderStateFilled),
+				DealAvgPrice: 101,
+				DealVol:      3,
+			})
+		})
+	notifier.EXPECT().RemoveOrderCallback("trap-fill")
+
+	setupFillWatcher(context.Background(), rt, "trap-fill", shared.SideOpenLong, shared.SideCloseShort)
+
+	fill := requireTrapOrderFilledEvent(t, rt)
+	assert.Equal(t, events.FlowTrap, fill.Flow)
+	assert.Equal(t, "trap-fill", fill.OrderID)
+	assert.Equal(t, 101.0, fill.FillPrice)
+	assert.Equal(t, 3.0, fill.FillVol)
+}
+
+func TestSubscribeFireTrapSkipsDisabledHedgeTrap(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	rt := newTrapTestRuntime(t, client)
+
+	subscribeFireTrap(context.Background(), rt)
+	rt.Publish(context.Background(), events.TopicTrapCandidate, struct{}{})
+}
+
 func TestFireStaticTrapPublishesOrderPlaced(t *testing.T) {
 	t.Parallel()
 

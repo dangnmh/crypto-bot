@@ -213,6 +213,41 @@ func TestSubscribeCleanupHandlesTerminalPublication(t *testing.T) {
 	requireTopic(t, o.rt, events.TopicCleanupCompleted)
 }
 
+func TestSubscribeCleanupHandlesFallbackReasons(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		topic   string
+		payload any
+	}{
+		{name: "invalid position closed", topic: events.TopicReversionPositionClosed, payload: "bad-payload"},
+		{name: "timeout default reason", topic: events.TopicReversionTimeout, payload: events.CycleTimeoutEvent{Flow: events.FlowTrap}},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			ws := mocks.NewMockSubscriber(ctrl)
+			o := newApplicationOrchestrator(t, cycle.Deps{WsSub: ws})
+			ws.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+
+			done := make(chan struct{}, 1)
+			o.subscribeCleanup(context.Background(), done)
+			o.rt.Publish(context.Background(), tt.topic, tt.payload)
+
+			require.Eventually(t, func() bool {
+				return len(done) == 1
+			}, time.Second, 10*time.Millisecond)
+			requireTopic(t, o.rt, events.TopicCleanupStarted)
+			requireTopic(t, o.rt, events.TopicCleanupCompleted)
+		})
+	}
+}
+
 func TestSetupEventChainWiresSubscribers(t *testing.T) {
 	t.Parallel()
 
