@@ -10,8 +10,10 @@ import (
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
+	applogger "crypto-bot/pkg/logger"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -42,6 +44,7 @@ type Sniper struct {
 	orderNotifier *watcher.OrderWatcher
 	stores        *app.CentralStore
 	timeSync      shared.Clock
+	notifier      notifier.Notifier
 	disabled      map[string]string
 	disabledMu    sync.RWMutex
 	log           *slog.Logger
@@ -49,7 +52,7 @@ type Sniper struct {
 }
 
 // NewSniper creates a new Sniper instance.
-func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engine, log *slog.Logger) *Sniper {
+func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engine, n notifier.Notifier, log *slog.Logger) *Sniper {
 	wsSub := engine.Adapter
 	orderWatcher := watcher.NewOrderWatcher(engine.Bus, log.With("component", "order_watcher"))
 
@@ -77,6 +80,7 @@ func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engi
 		orderNotifier: orderWatcher,
 		stores:        stores,
 		timeSync:      engine.TimeSync,
+		notifier:      n,
 		disabled:      make(map[string]string),
 		log:           log,
 	}
@@ -84,6 +88,7 @@ func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engi
 
 // RunAsBackground launches all required sync and connection routines for Funding Reversion.
 func (s *Sniper) RunAsBackground(ctx context.Context) error {
+	log := applogger.WithCtx(ctx, s.log)
 	// 1. WarmUp + TimeSync.
 	s.bgWg.Add(1)
 	go func() {
@@ -113,19 +118,20 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 
 	// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
 	s.stores.WireWS(s.engine.WS, s.engine.Adapter)
-	s.wirePersonalWS()
+	s.wirePersonalWS(ctx)
 
 	if s.engine.Adapter != nil {
 		if err := s.engine.Adapter.SubscribePersonal(ctx); err != nil {
-			s.log.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
+			log.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
 		}
 	}
 
-	s.log.Info("🟢 Funding Reversion Background Services Ready")
+	log.Info("🟢 Funding Reversion Background Services Ready")
 	return nil
 }
 
-func (s *Sniper) wirePersonalWS() {
+func (s *Sniper) wirePersonalWS(ctx context.Context) {
+	log := applogger.WithCtx(ctx, s.log)
 	if s.engine == nil || s.engine.WS == nil || s.engine.Adapter == nil || s.orderNotifier == nil {
 		return
 	}
@@ -133,7 +139,7 @@ func (s *Sniper) wirePersonalWS() {
 	s.engine.WS.On("personal.order", func(data []byte) {
 		order, err := s.engine.Adapter.ParseOrder(data)
 		if err != nil {
-			s.log.Warn("🟡 Failed to parse personal order WS", slog.Any("error", err))
+			log.Warn("🟡 Failed to parse personal order WS", slog.Any("error", err))
 			return
 		}
 		if order != nil {
@@ -144,7 +150,7 @@ func (s *Sniper) wirePersonalWS() {
 	s.engine.WS.On("personal.order.deal", func(data []byte) {
 		deal, err := s.engine.Adapter.ParseOrderDeal(data)
 		if err != nil {
-			s.log.Warn("🟡 Failed to parse personal order deal WS", slog.Any("error", err))
+			log.Warn("🟡 Failed to parse personal order deal WS", slog.Any("error", err))
 			return
 		}
 		if deal != nil {
@@ -155,7 +161,7 @@ func (s *Sniper) wirePersonalWS() {
 	s.engine.WS.On("personal.track.order", func(data []byte) {
 		update, err := s.engine.Adapter.ParseTrackOrder(data)
 		if err != nil {
-			s.log.Warn("🟡 Failed to parse personal track order WS", slog.Any("error", err))
+			log.Warn("🟡 Failed to parse personal track order WS", slog.Any("error", err))
 			return
 		}
 		if update != nil {
@@ -166,7 +172,7 @@ func (s *Sniper) wirePersonalWS() {
 	s.engine.WS.On("personal.position", func(data []byte) {
 		update, err := s.engine.Adapter.ParsePosition(data)
 		if err != nil {
-			s.log.Warn("🟡 Failed to parse personal position WS", slog.Any("error", err))
+			log.Warn("🟡 Failed to parse personal position WS", slog.Any("error", err))
 			return
 		}
 		if update != nil {
@@ -177,7 +183,8 @@ func (s *Sniper) wirePersonalWS() {
 
 // Run starts all symbol workers. Blocks until all stop or context is cancelled.
 func (s *Sniper) Run(ctx context.Context) error {
-	s.log.Info("🚀 Sniper — launching per-symbol workers", slog.Int("symbols", len(s.cfg.Symbols)))
+	log := applogger.WithCtx(ctx, s.log)
+	log.Info("🚀 Sniper — launching per-symbol workers", slog.Int("symbols", len(s.cfg.Symbols)))
 
 	g, workerCtx := errgroup.WithContext(ctx)
 	for i := range s.cfg.Symbols {
@@ -185,15 +192,18 @@ func (s *Sniper) Run(ctx context.Context) error {
 	}
 
 	err := g.Wait()
-	s.log.Info("🛑 All workers stopped")
+	log.Info("🛑 All workers stopped")
 	return err
 }
 
 // Stop implements the app.Bot interface. It executes any explicit teardown.
 // The primary graceful shutdown is handled by the context passed to Run().
-func (s *Sniper) Stop(_ context.Context) error {
-	s.log.Info("🛑 Sniper explicit stop invoked")
+func (s *Sniper) Stop(ctx context.Context) error {
+	applogger.WithCtx(ctx, s.log).Info("🛑 Sniper explicit stop invoked")
 	s.bgWg.Wait()
+	if s.notifier != nil {
+		return s.notifier.Stop()
+	}
 	return nil
 }
 
@@ -202,7 +212,8 @@ func (s *Sniper) Stop(_ context.Context) error {
 // handles all cycle logic directly.
 func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) func() error {
 	return func() error {
-		log := s.log.With("sym", symCfg.Symbol)
+		baseLog := s.log.With("sym", symCfg.Symbol)
+		log := applogger.WithCtx(ctx, baseLog)
 		log.Info("🚀 Worker started")
 		defer log.Info("🛑 Worker stopped")
 
@@ -242,7 +253,8 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 			FundingStore:  s.stores.Funding(),
 			DepthStore:    s.stores.Depth(),
 			Clock:         s.timeSync,
-			Log:           log,
+			Log:           baseLog,
+			Notifier:      s.notifier,
 		}
 		orchestrator := NewCycleOrchestrator(symCfg, s.cfg, deps)
 		orchestrator.Run(ctx, settle)

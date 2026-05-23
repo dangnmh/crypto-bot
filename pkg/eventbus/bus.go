@@ -107,5 +107,7 @@ func (b *Bus) DumpTimeline(logger *slog.Logger) {
 		return
 	}
 
-	logger.Info("📋 Event timeline", slog.Int("count", len(entries)), slog.Any("events", entries))
+	for idx, v := range entries {
+		logger.Info("📋 Event timeline", slog.Int("idx", idx), slog.Any("msg", v))
+	}
 }

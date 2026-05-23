@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	"github.com/gorilla/websocket"
@@ -103,26 +104,27 @@ func (c *Client) SetGlobalHandler(handler Handler) {
 // Connect establishes the WebSocket connection and starts the read loop.
 // Reconnects automatically on disconnect.
 func (c *Client) Connect(ctx context.Context) {
-	c.logger.Debug("📡 Connecting WebSocket...", "url", c.url)
+	log := applogger.WithCtx(ctx, c.logger)
+	log.Debug("📡 Connecting WebSocket...", "url", c.url)
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Debug("📡 WebSocket stopped")
+			log.Debug("📡 WebSocket stopped")
 			return
 		default:
 		}
 
 		err := c.dial()
 		if err != nil {
-			c.logger.Error("🔴 WebSocket connection failed", "error", err)
+			log.Error("🔴 WebSocket connection failed", "error", err)
 			if !waitContext(ctx, 2*time.Second) {
 				return
 			}
 			continue
 		}
 
-		c.logger.Debug("🟢 WebSocket connected")
+		log.Debug("🟢 WebSocket connected")
 
 		if c.onConnected != nil {
 			c.onConnected(c)
@@ -146,7 +148,7 @@ func (c *Client) Connect(ctx context.Context) {
 		c.connected = false
 		c.mu.Unlock()
 
-		c.logger.Warn("🟡 WebSocket disconnected, reconnecting in 2s...")
+		log.Warn("🟡 WebSocket disconnected, reconnecting in 2s...")
 		if !waitContext(ctx, 2*time.Second) {
 			return
 		}
@@ -187,7 +189,7 @@ func (c *Client) heartbeat(ctx context.Context) {
 		if c.conn != nil {
 			err := c.conn.WriteJSON(c.pingPayload)
 			if err != nil {
-				c.logger.Warn("🟡 Heartbeat ping failed", "error", err)
+				applogger.WithCtx(ctx, c.logger).Warn("🟡 Heartbeat ping failed", "error", err)
 			}
 		}
 		c.mu.Unlock()
@@ -214,7 +216,7 @@ func (c *Client) readLoop(ctx context.Context) {
 
 		_, data, err := conn.ReadMessage()
 		if err != nil {
-			c.logger.Warn("🟡 WebSocket read error", "error", err)
+			applogger.WithCtx(ctx, c.logger).Warn("🟡 WebSocket read error", "error", err)
 			return
 		}
 

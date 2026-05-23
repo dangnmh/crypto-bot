@@ -14,8 +14,10 @@ import (
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/testutil/mocks"
+	"crypto-bot/pkg/tracectx"
 	"crypto-bot/pkg/types"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -180,6 +182,40 @@ func TestRuntimeSubscribeReceivesPublishedMessage(t *testing.T) {
 	cancel()
 }
 
+func TestRuntimeNotifiesImportantTradingEvents(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	n := mocks.NewMockNotifier(ctrl)
+	sent := make(chan notifier.Event, 1)
+	n.EXPECT().
+		Send(gomock.Any(), gomock.AssignableToTypeOf(notifier.Event{})).
+		DoAndReturn(func(ctx context.Context, evt notifier.Event) error {
+			require.Equal(t, "req-1", tracectx.CorrelationID(ctx))
+			require.Equal(t, "cycle-1", tracectx.CycleID(ctx))
+			sent <- evt
+			return nil
+		})
+
+	ctx := tracectx.WithReqID(context.Background(), "req-1")
+	ctx = tracectx.WithCycleID(ctx, "cycle-1")
+	rt := newRuntimeWithDepsForTest(t, cycle.Deps{Notifier: n})
+	rt.RecordAndPublishCtx(ctx, "req-1", events.TopicReversionAbort, events.CycleAbortEvent{
+		Flow:   events.FlowReversion,
+		Symbol: "BTC_USDT",
+		Reason: "risk blocked",
+	})
+
+	require.Eventually(t, func() bool {
+		select {
+		case evt := <-sent:
+			return evt.Level == notifier.LevelTrading && evt.Symbol == "BTC_USDT"
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestRuntimeExcursionRecordsOnlyAfterFill(t *testing.T) {
 	t.Parallel()
 
@@ -227,10 +263,10 @@ func TestRuntimeSubscriptionsAbortAndWSOrderEvents(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	ws := mocks.NewMockSubscriber(ctrl)
-	notifier := mocks.NewMockOrderNotifier(ctrl)
+	orderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	rt := newRuntimeWithDepsForTest(t, cycle.Deps{
 		WsSub:         ws,
-		OrderNotifier: notifier,
+		OrderNotifier: orderNotifier,
 	})
 
 	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
@@ -242,7 +278,7 @@ func TestRuntimeSubscriptionsAbortAndWSOrderEvents(t *testing.T) {
 	requireTopicInRuntime(t, rt, events.TopicScanCandidateFound)
 	requireTopicInRuntime(t, rt, events.TopicReversionAbort)
 
-	notifier.EXPECT().
+	orderNotifier.EXPECT().
 		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
 		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
 			callback(exchange.PersonalPositionUpdate{
@@ -255,7 +291,7 @@ func TestRuntimeSubscriptionsAbortAndWSOrderEvents(t *testing.T) {
 				Leverage:       5,
 			})
 		})
-	notifier.EXPECT().
+	orderNotifier.EXPECT().
 		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any()).
 		Do(func(_ context.Context, _, _ string, _ time.Duration, callback func(exchange.PersonalTrackOrderUpdate)) {
 			callback(exchange.PersonalTrackOrderUpdate{

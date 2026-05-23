@@ -87,6 +87,18 @@ func TestHandleScanAbortBranches(t *testing.T) {
 		TickerStore: &appTickerReader{ticker: &store.TickerData{
 			Symbol:      "BTC_USDT",
 			FundingRate: 0.02,
+			Amount24:    999,
+		}},
+		WsSub: ws,
+	})
+	o.rt.Global().System.Safety.MinVol24USD = 1000
+	o.handleScan(context.Background())
+	assert.Equal(t, "24h volume below threshold", requireAbort(t, o.rt).Reason)
+
+	o = newApplicationOrchestrator(t, cycle.Deps{
+		TickerStore: &appTickerReader{ticker: &store.TickerData{
+			Symbol:      "BTC_USDT",
+			FundingRate: 0.02,
 		}},
 		ContractStore: &appContractReader{err: errors.New("no contract")},
 		WsSub:         ws,
@@ -293,7 +305,7 @@ func TestWirePersonalWSRegistersAndDispatchesHandlers(t *testing.T) {
 		log:           logger,
 	}
 
-	s.wirePersonalWS()
+	s.wirePersonalWS(context.Background())
 
 	callPoolHandler(t, pool, "personal.order", []byte("ok"))
 	callPoolHandler(t, pool, "personal.order.deal", []byte("ok"))
@@ -322,7 +334,7 @@ func TestWirePersonalWSSkipsMissingDependencies(t *testing.T) {
 			},
 		},
 	} {
-		assert.NotPanics(t, sniper.wirePersonalWS)
+		assert.NotPanics(t, func() { sniper.wirePersonalWS(context.Background()) })
 	}
 }
 
@@ -361,6 +373,39 @@ func TestSpawnWorkerSkipsMissedDeadline(t *testing.T) {
 	err := s.spawnWorker(context.Background(), config.SymbolConfig{
 		Symbol:         "BTC_USDT",
 		SimulateSettle: future,
+	})()
+
+	require.NoError(t, err)
+}
+
+func TestSpawnWorkerRunsCycleAndAbortsCleanlyWithoutTickerStore(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	bus := eventbus.New(logger)
+	t.Cleanup(func() { require.NoError(t, bus.Close()) })
+	ws := mocks.NewMockSubscriber(ctrl)
+	ws.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+
+	s := &Sniper{
+		cfg:           &config.Config{System: &config.SystemConfig{}},
+		client:        mocks.NewMockClient(ctrl),
+		ws:            ws,
+		orderNotifier: watcher.NewOrderWatcher(bus, logger),
+		stores:        storelessCentralStore(),
+		timeSync:      &appClock{until: time.Minute},
+		disabled:      map[string]string{},
+		log:           logger,
+	}
+	future := time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
+
+	err := s.spawnWorker(context.Background(), config.SymbolConfig{
+		Symbol:         "BTC_USDT",
+		SimulateSettle: future,
+		FundingReversion: fundingdomain.FundingReversionConfig{
+			Enabled: true,
+		},
 	})()
 
 	require.NoError(t, err)

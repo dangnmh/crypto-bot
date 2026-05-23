@@ -27,6 +27,17 @@ func TestApplyBitwardenFallbackSkipsWhenCredentialsOrConfigMissing(t *testing.T)
 	assert.Empty(t, cfg.APISecret)
 }
 
+func TestApplyBitwardenFallbackReturnsWrappedError(t *testing.T) {
+	t.Setenv("BITWARDEN_ACCESS_TOKEN", "fake-token")
+	t.Setenv("BITWARDEN_ORGANIZATION_ID", "org")
+	t.Setenv("BITWARDEN_PROJECT_NAME", "prod")
+
+	cfg := &SystemConfig{}
+	err := applyBitwardenFallback(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bitwarden fallback failed")
+}
+
 func TestValidateAndDefaultHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -52,4 +63,12 @@ func TestValidateAndDefaultHelpers(t *testing.T) {
 	assert.Equal(t, types.Duration(5*time.Minute), cfg.Sync.Contract)
 	assert.Equal(t, 30, cfg.API.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
+}
+
+func TestHasBitwardenConfig(t *testing.T) {
+	t.Setenv("BITWARDEN_ACCESS_TOKEN", "token")
+	t.Setenv("BITWARDEN_ORGANIZATION_ID", "org")
+	t.Setenv("BITWARDEN_PROJECT_NAME", "project")
+
+	assert.True(t, hasBitwardenConfig())
 }

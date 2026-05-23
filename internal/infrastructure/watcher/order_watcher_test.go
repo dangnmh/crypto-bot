@@ -4,11 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"testing"
-
-	"crypto-bot/internal/infrastructure/watcher"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/stretchr/testify/assert"
@@ -86,7 +85,7 @@ func TestOrderWatcher_RemoveOrderCallback(t *testing.T) {
 	})
 }
 
-func TestOrderWatcher_OnOrderDealByOrderIDAndSymbolSide(t *testing.T) {
+func TestOrderWatcher_OnOrderDealBySymbolSide(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.Default()
@@ -95,12 +94,8 @@ func TestOrderWatcher_OnOrderDealByOrderIDAndSymbolSide(t *testing.T) {
 
 	w := watcher.NewOrderWatcher(bus, logger)
 
-	byOrder := make(chan exchange.PersonalOrderDeal, 1)
 	bySide := make(chan exchange.PersonalOrderDeal, 1)
-	w.OnOrderDeal(context.Background(), "order_789", 2*time.Second, func(deal exchange.PersonalOrderDeal) {
-		byOrder <- deal
-	})
-	w.OnOrderDealBySymbolSide(context.Background(), "BTC_USDT", exchange.SideCloseLong, 2*time.Second, func(deal exchange.PersonalOrderDeal) {
+	w.OnOrderDealBySymbolSide(context.Background(), "BTC_USDT", exchange.SideStr(exchange.SideCloseLong), 2*time.Second, func(deal exchange.PersonalOrderDeal) {
 		bySide <- deal
 	})
 
@@ -114,13 +109,6 @@ func TestOrderWatcher_OnOrderDealByOrderIDAndSymbolSide(t *testing.T) {
 		Price:   50001,
 	}
 	w.PublishDeal(deal)
-
-	select {
-	case d := <-byOrder:
-		assert.Equal(t, 3.0, d.Vol)
-	case <-time.After(3 * time.Second):
-		assert.Fail(t, "timeout waiting for order deal callback")
-	}
 
 	select {
 	case d := <-bySide:

@@ -7,6 +7,7 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
+	"crypto-bot/internal/infrastructure/observability"
 )
 
 const (
@@ -15,6 +16,7 @@ const (
 )
 
 func Register(ctx context.Context, rt *cycle.Runtime) {
+	ctx = observability.WithReversionID(ctx)
 	subscribeArm(ctx, rt)
 	subscribeWait(ctx, rt)
 	subscribeRecheck(ctx, rt)

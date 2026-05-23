@@ -11,6 +11,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -19,7 +20,7 @@ func subscribeTrailing(ctx context.Context, rt *cycle.Runtime) {
 	rt.Subscribe(ctx, events.TopicTrapOrderFilled, func(msg *message.Message) {
 		evt, err := cycle.Unmarshal[events.OrderFilledEvent](msg.Payload)
 		if err != nil {
-			rt.Log().Error("Unmarshal OrderFilledEvent failed", slog.Any("error", err))
+			applogger.WithCtx(ctx, rt.Log()).Error("Unmarshal OrderFilledEvent failed", slog.Any("error", err))
 			return
 		}
 		handleTrailing(ctx, rt, evt)
@@ -30,7 +31,7 @@ func handleTrailing(ctx context.Context, rt *cycle.Runtime, evt events.OrderFill
 	c := rt.CandidateCopy()
 	trailCfg := c.Config.FundingTrap.Trailing
 	if !trailCfg.Enabled {
-		rt.Log().Info("Trailing disabled, position requires manual close", slog.String("flow", evt.Flow))
+		applogger.WithCtx(ctx, rt.Log()).Info("Trailing disabled, position requires manual close", slog.String("flow", evt.Flow))
 		return
 	}
 
@@ -58,7 +59,7 @@ func handleTrailing(ctx context.Context, rt *cycle.Runtime, evt events.OrderFill
 		ReduceOnly:   true,
 	}
 
-	rt.Log().Info("Placing TrackOrder (Trailing)",
+	applogger.WithCtx(ctx, rt.Log()).Info("Placing TrackOrder (Trailing)",
 		slog.String("flow", evt.Flow),
 		slog.Int("side", req.Side),
 		slog.Float64("vol", req.Vol),
@@ -71,14 +72,14 @@ func handleTrailing(ctx context.Context, rt *cycle.Runtime, evt events.OrderFill
 
 	trackID, err := rt.Deps().Client.CreateTrackOrder(reqCtx, req)
 	if err != nil {
-		rt.Log().Error("TrackOrder failed - fallback close", slog.Any("error", err), slog.String("flow", evt.Flow))
+		applogger.WithCtx(ctx, rt.Log()).Error("TrackOrder failed - fallback close", slog.Any("error", err), slog.String("flow", evt.Flow))
 		fallbackCloseAfterTrailingFailure(ctx, rt, evt)
 		return
 	}
 
-	rt.Log().Info("TrackOrder placed successfully", slog.String("trackID", trackID), slog.String("flow", evt.Flow))
+	applogger.WithCtx(ctx, rt.Log()).Info("TrackOrder placed successfully", slog.String("trackID", trackID), slog.String("flow", evt.Flow))
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicTrapTrailingPlaced, events.TrailingPlacedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTrailingPlaced, events.TrailingPlacedEvent{
 		Flow:        events.FlowTrap,
 		Symbol:      evt.Symbol,
 		TrackID:     trackID,
@@ -95,7 +96,7 @@ func watchTrapCloseDeal(ctx context.Context, rt *cycle.Runtime, evt events.Order
 		timeout = 60 * time.Second
 	}
 
-	rt.Deps().OrderNotifier.OnOrderDealBySymbolSide(ctx, evt.Symbol, int(evt.CloseSide), timeout, func(deal exchange.PersonalOrderDeal) {
+	rt.Deps().OrderNotifier.OnOrderDealBySymbolSide(ctx, evt.Symbol, evt.CloseSide.String(), timeout, func(deal exchange.PersonalOrderDeal) {
 		if deal.Vol <= 0 || rt.IsFlowTerminal(events.FlowTrap) {
 			return
 		}
@@ -104,7 +105,7 @@ func watchTrapCloseDeal(ctx context.Context, rt *cycle.Runtime, evt events.Order
 		}
 		rt.MarkTrapTerminal()
 		reqID := rt.GetReqID()
-		rt.RecordAndPublish(reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
 			Flow:       events.FlowTrap,
 			Symbol:     evt.Symbol,
 			ClosePrice: deal.Price,
@@ -126,7 +127,7 @@ func fallbackCloseAfterTrailingFailure(ctx context.Context, rt *cycle.Runtime, e
 		return rt.Deps().Client.ClosePosition(closeCtx, evt.Symbol, evt.CloseSide, evt.FillVol, positionMode)
 	})
 	if err != nil {
-		rt.Log().Error("Exact-leg close failed - fallback close all",
+		applogger.WithCtx(ctx, rt.Log()).Error("Exact-leg close failed - fallback close all",
 			slog.Any("error", err),
 			slog.String("symbol", evt.Symbol),
 			slog.String("flow", events.FlowTrap),
@@ -140,18 +141,18 @@ func fallbackCloseAfterTrailingFailure(ctx context.Context, rt *cycle.Runtime, e
 		if allErr != nil {
 			reason := "critical_close_failed: " + allErr.Error()
 			reqID := rt.GetReqID()
-			rt.RecordAndPublish(reqID, events.TopicTrapError, events.CycleErrorEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapError, events.CycleErrorEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Error:  reason,
 			})
-			rt.RecordAndPublish(reqID, events.TopicTrapAbort, events.CycleAbortEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapAbort, events.CycleAbortEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Reason: reason,
 			})
 			rt.MarkTrapTerminal()
-			rt.Log().Error("CRITICAL close failed after exact-leg close failure",
+			applogger.WithCtx(ctx, rt.Log()).Error("CRITICAL close failed after exact-leg close failure",
 				slog.Any("error", allErr),
 				slog.String("symbol", evt.Symbol),
 				slog.String("flow", events.FlowTrap),
@@ -165,12 +166,12 @@ func fallbackCloseAfterTrailingFailure(ctx context.Context, rt *cycle.Runtime, e
 	}
 	reqID := rt.GetReqID()
 	rt.MarkTrapTerminal()
-	rt.RecordAndPublish(reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
 		Flow:     events.FlowTrap,
 		Symbol:   evt.Symbol,
 		Reason:   "trailing_failed_fallback",
 		CloseVol: evt.FillVol,
 		Method:   trapMethodFallbackClose,
 	})
-	rt.Log().Info("Trap fallback close completed", slog.Int("retries", exactRetries))
+	applogger.WithCtx(ctx, rt.Log()).Info("Trap fallback close completed", slog.Int("retries", exactRetries))
 }

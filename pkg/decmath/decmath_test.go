@@ -170,6 +170,7 @@ func TestSnapToTickCeil(t *testing.T) {
 		{"small tick", 0.004701, 0.0001, 0.0048},
 		{"large tick exact", 100.0, 0.5, 100.0},
 		{"large tick", 100.1, 0.5, 100.5},
+		{"zero tick", 100.31, 0, 100.31},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -13,6 +13,20 @@ import (
 	shared "crypto-bot/internal/domain"
 )
 
+// Notifiable allows an event to specify if it should trigger a notification.
+type Notifiable interface {
+	ShouldNotify() bool
+}
+
+// BaseEvent provides common fields for events that support notifications.
+type BaseEvent struct {
+	SendNotify bool `json:"sendNotify,omitempty"`
+}
+
+func (b BaseEvent) ShouldNotify() bool {
+	return b.SendNotify
+}
+
 // JournalEnvelope is the event message written to the journal file.
 // This serves as the single source of truth for cycle audit trails.
 type JournalEnvelope struct {
@@ -138,8 +152,12 @@ type ArmedEvent struct {
 	BestAsk     float64     `json:"best_ask"`
 
 	// Additional (filter results)
-	SafetyPassed       bool   `json:"safety_passed"`
-	SafetyRejectReason string `json:"safety_reject_reason,omitempty"`
+	SafetyPassed       bool    `json:"safety_passed"`
+	SafetyRejectReason string  `json:"safety_reject_reason,omitempty"`
+	Volume             float64 `json:"volume,omitempty"`
+	DesiredNotional    float64 `json:"desired_notional_usdt,omitempty"`
+	ActualNotional     float64 `json:"actual_notional_usdt,omitempty"`
+	MaxSafeNotional    float64 `json:"max_safe_notional_usdt,omitempty"`
 }
 
 // WaitCompleteEvent signals that the pre-settle wait period has ended.
@@ -205,6 +223,7 @@ type TrapFiredEvent struct {
 
 // OrderFilledEvent is published when an order (IOC or Trap) is filled.
 type OrderFilledEvent struct {
+	BaseEvent `json:"-"`
 	// Required
 	Flow      string      `json:"flow"`
 	Symbol    string      `json:"symbol"`
@@ -346,20 +365,23 @@ type CycleDoneEvent struct {
 
 // CycleAbortEvent signals cycle was aborted (e.g., FR too low, safety check failed).
 type CycleAbortEvent struct {
-	Flow   string `json:"flow,omitempty"`
-	Symbol string `json:"symbol"`
-	Reason string `json:"reason"`
+	BaseEvent `json:"-"`
+	Flow      string `json:"flow,omitempty"`
+	Symbol    string `json:"symbol"`
+	Reason    string `json:"reason"`
 }
 
 // CycleErrorEvent signals an unexpected error during the cycle.
 type CycleErrorEvent struct {
-	Flow   string `json:"flow"`
-	Symbol string `json:"symbol"`
-	Error  string `json:"error"`
+	BaseEvent `json:"-"`
+	Flow      string `json:"flow"`
+	Symbol    string `json:"symbol"`
+	Error     string `json:"error"`
 }
 
 // SymbolDisabledEvent is published when a symbol is disabled due to critical failure.
 type SymbolDisabledEvent struct {
+	BaseEvent  `json:"-"`
 	Symbol     string `json:"symbol"`
 	Reason     string `json:"reason"`
 	Source     string `json:"source"` // "timeout_force_close", "fallback_close"
@@ -395,6 +417,7 @@ type CycleCompletedEvent struct {
 
 // FinalPnLEvent is published at cycle end with the total PnL summary.
 type FinalPnLEvent struct {
+	BaseEvent      `json:"-"`        // Embedded for notification control
 	Symbol         string            `json:"symbol"`
 	TotalPnL       float64           `json:"total_pnl"`
 	IocPnL         float64           `json:"ioc_pnl"`
@@ -445,6 +468,7 @@ type WSOrderCancelledEvent struct {
 
 // WSOrderRejectedEvent is published when an order is rejected by the exchange.
 type WSOrderRejectedEvent struct {
+	BaseEvent `json:"-"`
 	OrderID   string    `json:"order_id"`
 	Symbol    string    `json:"symbol"`
 	Side      string    `json:"side"`

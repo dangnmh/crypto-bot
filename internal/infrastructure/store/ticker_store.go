@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 )
 
@@ -35,9 +36,9 @@ func NewTickerStore(wg *sync.WaitGroup) *TickerStore {
 
 // StartTickerSync periodically fetches all tickers and updates the store.
 func (s *TickerStore) StartTickerSync(ctx context.Context, client exchange.Client, interval time.Duration) {
-	s.logger.Debug("🔄 Starting ticker sync", "interval", interval)
+	applogger.WithCtx(ctx, s.logger).Debug("🔄 Starting ticker sync", "interval", interval)
 
-	defer s.logger.Debug("🔄 Ticker sync stopped")
+	defer applogger.WithCtx(ctx, s.logger).Debug("🔄 Ticker sync stopped")
 	ticker.RunImmediate(ctx, interval, func() bool {
 		s.syncTickers(ctx, client)
 		return true
@@ -47,7 +48,7 @@ func (s *TickerStore) StartTickerSync(ctx context.Context, client exchange.Clien
 func (s *TickerStore) syncTickers(ctx context.Context, client exchange.Client) {
 	tickers, err := client.GetTickers(ctx, "")
 	if err != nil {
-		s.logger.Error("🔴 Ticker sync failed", "error", err)
+		applogger.WithCtx(ctx, s.logger).Error("🔴 Ticker sync failed", "error", err)
 		return
 	}
 
@@ -57,7 +58,7 @@ func (s *TickerStore) syncTickers(ctx context.Context, client exchange.Client) {
 	}
 	s.mu.Unlock()
 
-	s.logger.Debug("store.SyncTickers", "count", len(tickers))
+	applogger.WithCtx(ctx, s.logger).Debug("store.SyncTickers", "count", len(tickers))
 	s.tickerReadyOnce.Do(func() { s.readyWG.Done() })
 }
 

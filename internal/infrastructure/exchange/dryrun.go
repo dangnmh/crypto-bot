@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/domain"
+	applogger "crypto-bot/pkg/logger"
 )
 
 // DryRunClient wraps a real Client and intercepts all write operations
@@ -75,11 +76,11 @@ func (d *DryRunClient) GetOpenPositions(ctx context.Context, symbol string) ([]P
 
 // ── OrderExecutor (intercepted — no real orders) ─────────────────────.
 
-func (d *DryRunClient) CreateOrder(_ context.Context, req SubmitOrderRequest) (string, error) {
+func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (string, error) {
 	seq := d.orderSeq.Add(1)
 	fakeID := fmt.Sprintf("dry_%d_%d", time.Now().UnixMilli(), seq)
 
-	d.log.Warn("🧪 DRY-RUN CreateOrder",
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN CreateOrder",
 		"orderID", fakeID,
 		"symbol", req.Symbol,
 		"side", req.Side,
@@ -93,11 +94,11 @@ func (d *DryRunClient) CreateOrder(_ context.Context, req SubmitOrderRequest) (s
 	return fakeID, nil
 }
 
-func (d *DryRunClient) CreateTrackOrder(_ context.Context, req SubmitTrackOrderRequest) (string, error) {
+func (d *DryRunClient) CreateTrackOrder(ctx context.Context, req SubmitTrackOrderRequest) (string, error) {
 	seq := d.orderSeq.Add(1)
 	fakeID := fmt.Sprintf("dry_trk_%d_%d", time.Now().UnixMilli(), seq)
 
-	d.log.Warn("🧪 DRY-RUN CreateTrackOrder",
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN CreateTrackOrder",
 		"orderID", fakeID,
 		"symbol", req.Symbol,
 		"side", req.Side,
@@ -107,18 +108,18 @@ func (d *DryRunClient) CreateTrackOrder(_ context.Context, req SubmitTrackOrderR
 	return fakeID, nil
 }
 
-func (d *DryRunClient) CancelOrder(_ context.Context, symbol, orderID string) error {
-	d.log.Warn("🧪 DRY-RUN CancelOrder", "symbol", symbol, "orderID", orderID)
+func (d *DryRunClient) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN CancelOrder", "symbol", symbol, "orderID", orderID)
 	return nil
 }
 
-func (d *DryRunClient) CancelOrders(_ context.Context, orderIDs []string) error {
-	d.log.Warn("🧪 DRY-RUN CancelOrders", "count", len(orderIDs))
+func (d *DryRunClient) CancelOrders(ctx context.Context, orderIDs []string) error {
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN CancelOrders", "count", len(orderIDs))
 	return nil
 }
 
-func (d *DryRunClient) CancelAllOpenOrders(_ context.Context, symbol string) error {
-	d.log.Warn("🧪 DRY-RUN CancelAllOpenOrders", "symbol", symbol)
+func (d *DryRunClient) CancelAllOpenOrders(ctx context.Context, symbol string) error {
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN CancelAllOpenOrders", "symbol", symbol)
 	return nil
 }
 
@@ -130,13 +131,13 @@ func (d *DryRunClient) GetOpenOrders(ctx context.Context, symbol string) ([]Orde
 	return d.inner.GetOpenOrders(ctx, symbol)
 }
 
-func (d *DryRunClient) CloseAllPositions(_ context.Context, symbol string) error {
-	d.log.Warn("🧪 DRY-RUN CloseAllPositions", "symbol", symbol)
+func (d *DryRunClient) CloseAllPositions(ctx context.Context, symbol string) error {
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN CloseAllPositions", "symbol", symbol)
 	return nil
 }
 
-func (d *DryRunClient) ClosePosition(_ context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
-	d.log.Warn("🧪 DRY-RUN ClosePosition",
+func (d *DryRunClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN ClosePosition",
 		"symbol", symbol,
 		"side", closeSide,
 		"vol", volume,
@@ -145,8 +146,8 @@ func (d *DryRunClient) ClosePosition(_ context.Context, symbol string, closeSide
 	return nil
 }
 
-func (d *DryRunClient) ChangeLeverage(_ context.Context, req ChangeLeverageRequest) error {
-	d.log.Warn("🧪 DRY-RUN ChangeLeverage", "symbol", req.Symbol, "leverage", req.Leverage)
+func (d *DryRunClient) ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error {
+	applogger.WithCtx(ctx, d.log).Warn("🧪 DRY-RUN ChangeLeverage", "symbol", req.Symbol, "leverage", req.Leverage)
 	return nil
 }
 

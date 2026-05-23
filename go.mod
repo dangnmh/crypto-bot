@@ -7,6 +7,7 @@ require (
 	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/buger/jsonparser v1.2.0
 	github.com/dangnmh/transport v0.0.0-20250317091120-3bd599167d13
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/shopspring/decimal v1.4.0

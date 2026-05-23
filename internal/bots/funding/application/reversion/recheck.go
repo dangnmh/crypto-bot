@@ -7,6 +7,7 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
+	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -23,43 +24,43 @@ func handleRecheck(ctx context.Context, rt *cycle.Runtime) {
 	reqID := rt.GetReqID()
 	td, err := rt.Deps().TickerStore.GetTicker(ctx, c.Symbol)
 	if err != nil {
-		rt.Log().Warn("No ticker for recheck")
-		rt.Abort(reqID, "recheck", "no ticker")
+		applogger.WithCtx(ctx, rt.Log()).Warn("No ticker for recheck")
+		rt.AbortCtx(ctx, reqID, "recheck", "no ticker")
 		return
 	}
 
 	if (td.FundingRate > 0) != (c.FundingRate > 0) {
-		rt.Log().Error("FR sign flip!",
+		applogger.WithCtx(ctx, rt.Log()).Error("FR sign flip!",
 			slog.Float64("old", c.FundingRate*100),
 			slog.Float64("new", td.FundingRate*100),
 		)
-		rt.RecordAndPublish(reqID, events.TopicReversionConfirmed, events.ConfirmedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionConfirmed, events.ConfirmedEvent{
 			Flow:        events.FlowReversion,
 			Symbol:      c.Symbol,
 			FundingRate: td.FundingRate,
 			FRChanged:   true,
 		})
-		rt.Abort(reqID, "recheck", "FR sign flip")
+		rt.AbortCtx(ctx, reqID, "recheck", "FR sign flip")
 		return
 	}
 
 	if math.Abs(td.FundingRate) < cfg.MinFundingRate {
-		rt.Log().Warn("FR dropped below threshold",
+		applogger.WithCtx(ctx, rt.Log()).Warn("FR dropped below threshold",
 			slog.Float64("fr", td.FundingRate*100),
 			slog.Float64("min", cfg.MinFundingRate*100),
 		)
-		rt.RecordAndPublish(reqID, events.TopicReversionConfirmed, events.ConfirmedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionConfirmed, events.ConfirmedEvent{
 			Flow:        events.FlowReversion,
 			Symbol:      c.Symbol,
 			FundingRate: td.FundingRate,
 			FRChanged:   true,
 		})
-		rt.Abort(reqID, "recheck", "FR below threshold")
+		rt.AbortCtx(ctx, reqID, "recheck", "FR below threshold")
 		return
 	}
 
-	rt.Log().Info("FR OK", slog.Float64("fr", td.FundingRate*100))
-	rt.RecordAndPublish(reqID, events.TopicReversionConfirmed, events.ConfirmedEvent{
+	applogger.WithCtx(ctx, rt.Log()).Info("FR OK", slog.Float64("fr", td.FundingRate*100))
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionConfirmed, events.ConfirmedEvent{
 		Flow:        events.FlowReversion,
 		Symbol:      c.Symbol,
 		FundingRate: td.FundingRate,

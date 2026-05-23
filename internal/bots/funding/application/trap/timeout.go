@@ -8,6 +8,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
 	"crypto-bot/internal/bots/funding/domain"
+	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -16,7 +17,7 @@ func subscribeTrapOrderTimeoutGuard(ctx context.Context, rt *cycle.Runtime) {
 	rt.Subscribe(ctx, events.TopicTrapOrderPlaced, func(msg *message.Message) {
 		evt, err := cycle.Unmarshal[events.TrapFiredEvent](msg.Payload)
 		if err != nil {
-			rt.Log().Error("Unmarshal TrapFiredEvent failed", slog.Any("error", err))
+			applogger.WithCtx(ctx, rt.Log()).Error("Unmarshal TrapFiredEvent failed", slog.Any("error", err))
 			return
 		}
 		go handleTrapOrderTimeout(ctx, rt, evt)
@@ -30,14 +31,14 @@ func handleTrapOrderTimeout(ctx context.Context, rt *cycle.Runtime, evt events.T
 	}
 	startedAt := time.Now()
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicTrapTimeoutStarted, events.TimeoutStartedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimeoutStarted, events.TimeoutStartedEvent{
 		Flow:       events.FlowTrap,
 		Symbol:     evt.Symbol,
 		DurationMs: timeout.Milliseconds(),
 		StartedAt:  startedAt,
 	})
 
-	rt.Log().Info("Trap order timeout guard started",
+	applogger.WithCtx(ctx, rt.Log()).Info("Trap order timeout guard started",
 		slog.String("orderID", evt.OrderID),
 		slog.Duration("timeout", timeout),
 	)
@@ -63,7 +64,7 @@ func handleTrapOrderTimeout(ctx context.Context, rt *cycle.Runtime, evt events.T
 		return rt.Deps().Client.CancelOrder(cancelCtx, evt.Symbol, evt.OrderID)
 	})
 	if err != nil {
-		rt.Log().Error("Trap order cancel failed - canceling all open orders", slog.Any("error", err))
+		applogger.WithCtx(ctx, rt.Log()).Error("Trap order cancel failed - canceling all open orders", slog.Any("error", err))
 		allRetries, allErr := rt.RetryWithBackoff(cancelCtx, trapRetryCount, func() error {
 			return rt.Deps().Client.CancelAllOpenOrders(cancelCtx, evt.Symbol)
 		})
@@ -71,7 +72,7 @@ func handleTrapOrderTimeout(ctx context.Context, rt *cycle.Runtime, evt events.T
 		if allErr != nil {
 			reason := "critical_trap_cancel_failed: " + allErr.Error()
 			reqID := rt.GetReqID()
-			rt.RecordAndPublish(reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
 				Flow:            events.FlowTrap,
 				Symbol:          evt.Symbol,
 				DurationMs:      timeout.Milliseconds(),
@@ -80,18 +81,18 @@ func handleTrapOrderTimeout(ctx context.Context, rt *cycle.Runtime, evt events.T
 				CloseRetryCount: cancelRetries,
 				Error:           allErr.Error(),
 			})
-			rt.RecordAndPublish(reqID, events.TopicTrapError, events.CycleErrorEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapError, events.CycleErrorEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Error:  reason,
 			})
-			rt.RecordAndPublish(reqID, events.TopicTrapAbort, events.CycleAbortEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapAbort, events.CycleAbortEvent{
 				Flow:   events.FlowTrap,
 				Symbol: evt.Symbol,
 				Reason: reason,
 			})
 			rt.MarkTrapTerminal()
-			rt.Log().Error("CRITICAL trap cancel failed",
+			applogger.WithCtx(ctx, rt.Log()).Error("CRITICAL trap cancel failed",
 				slog.Any("error", allErr),
 				slog.String("symbol", evt.Symbol),
 			)
@@ -104,7 +105,7 @@ func handleTrapOrderTimeout(ctx context.Context, rt *cycle.Runtime, evt events.T
 	}
 	reqID = rt.GetReqID()
 	rt.MarkTrapTerminal()
-	rt.RecordAndPublish(reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
 		Flow:            events.FlowTrap,
 		Symbol:          evt.Symbol,
 		DurationMs:      timeout.Milliseconds(),
@@ -112,7 +113,7 @@ func handleTrapOrderTimeout(ctx context.Context, rt *cycle.Runtime, evt events.T
 		FiredAt:         firedAt,
 		CloseRetryCount: cancelRetries,
 	})
-	rt.RecordAndPublish(reqID, events.TopicTrapTimeout, events.CycleTimeoutEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimeout, events.CycleTimeoutEvent{
 		Flow:    events.FlowTrap,
 		Symbol:  evt.Symbol,
 		Timeout: timeout,
@@ -135,7 +136,7 @@ func closeTimedOutTrapPosition(
 		return rt.Deps().Client.ClosePosition(closeCtx, fill.Symbol, fill.CloseSide, fill.FillVol, positionMode)
 	})
 	if err != nil {
-		rt.Log().Error("Trap timeout exact close failed - closing all positions", slog.Any("error", err))
+		applogger.WithCtx(ctx, rt.Log()).Error("Trap timeout exact close failed - closing all positions", slog.Any("error", err))
 		allRetries, allErr := rt.RetryWithBackoff(closeCtx, trapRetryCount, func() error {
 			return rt.Deps().Client.CloseAllPositions(closeCtx, fill.Symbol)
 		})
@@ -143,7 +144,7 @@ func closeTimedOutTrapPosition(
 		if allErr != nil {
 			reason := "critical_trap_close_failed: " + allErr.Error()
 			reqID := rt.GetReqID()
-			rt.RecordAndPublish(reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
 				Flow:            events.FlowTrap,
 				Symbol:          fill.Symbol,
 				DurationMs:      timeout.Milliseconds(),
@@ -152,12 +153,12 @@ func closeTimedOutTrapPosition(
 				CloseRetryCount: retries,
 				Error:           allErr.Error(),
 			})
-			rt.RecordAndPublish(reqID, events.TopicTrapError, events.CycleErrorEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapError, events.CycleErrorEvent{
 				Flow:   events.FlowTrap,
 				Symbol: fill.Symbol,
 				Error:  reason,
 			})
-			rt.RecordAndPublish(reqID, events.TopicTrapAbort, events.CycleAbortEvent{
+			rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapAbort, events.CycleAbortEvent{
 				Flow:   events.FlowTrap,
 				Symbol: fill.Symbol,
 				Reason: reason,
@@ -172,7 +173,7 @@ func closeTimedOutTrapPosition(
 	}
 	reqID := rt.GetReqID()
 	rt.MarkTrapTerminal()
-	rt.RecordAndPublish(reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimedOut, events.TimeoutFiredEvent{
 		Flow:            events.FlowTrap,
 		Symbol:          fill.Symbol,
 		DurationMs:      timeout.Milliseconds(),
@@ -180,7 +181,7 @@ func closeTimedOutTrapPosition(
 		FiredAt:         firedAt,
 		CloseRetryCount: retries,
 	})
-	rt.RecordAndPublish(reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
 		Flow:            events.FlowTrap,
 		Symbol:          fill.Symbol,
 		CloseVol:        fill.FillVol,
@@ -188,7 +189,7 @@ func closeTimedOutTrapPosition(
 		Method:          trapMethodFallbackClose,
 		CloseRetryCount: retries,
 	})
-	rt.RecordAndPublish(reqID, events.TopicTrapTimeout, events.CycleTimeoutEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapTimeout, events.CycleTimeoutEvent{
 		Flow:                events.FlowTrap,
 		Symbol:              fill.Symbol,
 		Timeout:             timeout,

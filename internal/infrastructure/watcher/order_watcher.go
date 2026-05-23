@@ -3,23 +3,22 @@ package watcher
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/eventbus"
+	applogger "crypto-bot/pkg/logger"
 )
 
 // OrderNotifier handles order fill callbacks.
 type OrderNotifier interface {
 	OnOrderUpdate(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal))
-	OnOrderDeal(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.PersonalOrderDeal))
 	OnOrderDealBySymbolSide(
 		ctx context.Context,
 		symbol string,
-		side int,
+		side string,
 		timeout time.Duration,
 		callback func(exchange.PersonalOrderDeal),
 	)
@@ -60,36 +59,35 @@ func (w *OrderWatcher) PublishOrder(deal exchange.WsOrderDeal) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	topic := deal.GetOrderID()
-	w.logger.Debug("📢 Publishing order lifecycle", "orderID", topic, "state", deal.State)
-	if err := w.broker.Publish(topic, deal); err != nil {
-		w.logger.Error("Failed to publish order lifecycle", "orderID", topic, "error", err)
+	orderID := deal.GetOrderID()
+	topic := orderTopic(orderID)
+	if topic == "" {
+		return
 	}
-	if err := w.broker.Publish(orderTopic(topic), deal); err != nil {
-		w.logger.Error("Failed to publish order lifecycle", "orderID", topic, "error", err)
+	w.logger.Debug("📢 Publishing order lifecycle", "orderID", orderID, "state", deal.State)
+	if err := w.broker.Publish(topic, deal); err != nil {
+		w.logger.Error("Failed to publish order lifecycle", "orderID", orderID, "error", err)
 	}
 }
 
-// PublishDeal broadcasts an execution deal by order ID and by symbol+side.
+// PublishDeal broadcasts an execution deal by symbol+side.
 func (w *OrderWatcher) PublishDeal(deal exchange.PersonalOrderDeal) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
 	orderID := deal.GetOrderID()
-	w.logger.Debug("📢 Publishing order execution deal", "orderID", orderID, "symbol", deal.Symbol, "side", deal.Side)
-	if orderID != "" {
-		if err := w.broker.Publish(orderDealTopic(orderID), deal); err != nil {
-			w.logger.Error("Failed to publish order execution deal", "orderID", orderID, "error", err)
-		}
+	side := exchange.SideStr(deal.Side)
+	w.logger.Debug("📢 Publishing order execution deal", "orderID", orderID, "symbol", deal.Symbol, "side", side)
+	topic := symbolSideDealTopic(deal.Symbol, side)
+	if topic == "" {
+		return
 	}
-	if deal.Symbol != "" && deal.Side != 0 {
-		if err := w.broker.Publish(symbolSideDealTopic(deal.Symbol, deal.Side), deal); err != nil {
-			w.logger.Error("Failed to publish symbol-side execution deal",
-				"symbol", deal.Symbol,
-				"side", deal.Side,
-				"error", err,
-			)
-		}
+	if err := w.broker.Publish(topic, deal); err != nil {
+		w.logger.Error("Failed to publish symbol-side execution deal",
+			"symbol", deal.Symbol,
+			"side", side,
+			"error", err,
+		)
 	}
 }
 
@@ -128,22 +126,13 @@ func (w *OrderWatcher) PublishPosition(update exchange.PersonalPositionUpdate) {
 // OnOrderUpdate registers a callback for a specific order ID (implements OrderNotifier).
 // The callback will be removed automatically after the specified timeout.
 func (w *OrderWatcher) OnOrderUpdate(parent context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
-	subscribe(parent, w, orderID, timeout, "order lifecycle", callback)
-}
-
-func (w *OrderWatcher) OnOrderDeal(
-	parent context.Context,
-	orderID string,
-	timeout time.Duration,
-	callback func(exchange.PersonalOrderDeal),
-) {
-	subscribe(parent, w, orderDealTopic(orderID), timeout, "order deal", callback)
+	subscribe(parent, w, orderTopic(orderID), timeout, "order lifecycle", callback)
 }
 
 func (w *OrderWatcher) OnOrderDealBySymbolSide(
 	parent context.Context,
 	symbol string,
-	side int,
+	side string,
 	timeout time.Duration,
 	callback func(exchange.PersonalOrderDeal),
 ) {
@@ -194,16 +183,16 @@ func subscribe[T any](
 
 	ch, err := w.broker.Subscribe(ctx, topic)
 	if err != nil {
-		w.logger.Error("Failed to subscribe to watcher topic", "topic", topic, "label", label, "error", err)
+		applogger.WithCtx(ctx, w.logger).Error("Failed to subscribe to watcher topic", "topic", topic, "label", label, "error", err)
 		cancel()
 		return
 	}
 
-	w.logger.Debug("📥 Subscribing to watcher topic", "topic", topic, "label", label)
+	applogger.WithCtx(ctx, w.logger).Debug("📥 Subscribing to watcher topic", "topic", topic, "label", label)
 
 	go func() {
 		defer cancel()
-		defer w.logger.Debug("📤 Unsubscribed from watcher topic", "topic", topic, "label", label)
+		defer applogger.WithCtx(ctx, w.logger).Debug("📤 Unsubscribed from watcher topic", "topic", topic, "label", label)
 
 		for {
 			select {
@@ -218,7 +207,7 @@ func subscribe[T any](
 				if err := json.Unmarshal(msg.Payload, &value); err == nil {
 					callback(value)
 				} else {
-					w.logger.Error("Failed to unmarshal watcher payload", "topic", topic, "label", label, "error", err)
+					applogger.WithCtx(ctx, w.logger).Error("Failed to unmarshal watcher payload", "topic", topic, "label", label, "error", err)
 				}
 				msg.Ack()
 			}
@@ -227,15 +216,17 @@ func subscribe[T any](
 }
 
 func orderTopic(orderID string) string {
+	if orderID == "" {
+		return ""
+	}
 	return "order:" + orderID
 }
 
-func orderDealTopic(orderID string) string {
-	return "deal:order:" + orderID
-}
-
-func symbolSideDealTopic(symbol string, side int) string {
-	return fmt.Sprintf("deal:symbol_side:%s:%d", symbol, side)
+func symbolSideDealTopic(symbol, side string) string {
+	if symbol == "" || side == "" || side == "UNKNOWN" {
+		return ""
+	}
+	return "deal:symbol_side:" + symbol + ":" + side
 }
 
 func trackTopic(trackID string) string {

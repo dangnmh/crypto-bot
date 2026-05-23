@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	pkglogger "crypto-bot/pkg/logger"
+	"crypto-bot/pkg/tracectx"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ import (
 // ──────────────────────────────────────────────────────────────────────.
 
 // TraceHandler wraps an existing slog.Handler and automatically adds
-// req_id attribute to every log record if the context carries a correlation ID.
+// tracing attributes to every log record if the context carries them.
 //
 // Example log output:
 //
@@ -32,9 +32,14 @@ func (h *TraceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
-	// Inject req_id (our correlation ID) if present.
-	if reqID := pkglogger.CorrelationID(ctx); reqID != "" {
+	if reqID := tracectx.ReqID(ctx); reqID != "" {
 		r.AddAttrs(slog.String("req_id", reqID))
+	}
+	if cycleID := tracectx.CycleID(ctx); cycleID != "" {
+		r.AddAttrs(slog.String("cycle_id", cycleID))
+	}
+	if reversionID := tracectx.ReversionID(ctx); reversionID != "" {
+		r.AddAttrs(slog.String("reversion_id", reversionID))
 	}
 
 	return h.inner.Handle(ctx, r)

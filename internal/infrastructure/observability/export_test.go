@@ -1,6 +1,8 @@
 package observability
 
-var GenerateID = generateID
+import "crypto-bot/pkg/tracectx"
+
+var GenerateID = tracectx.NewID
 
 func (c *InMemoryCollector) RLock() {
 	c.mu.RLock()

@@ -8,6 +8,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -16,7 +17,7 @@ func subscribeTimeoutGuard(ctx context.Context, rt *cycle.Runtime) {
 	rt.Subscribe(ctx, events.TopicReversionIOCFired, func(msg *message.Message) {
 		evt, err := cycle.Unmarshal[events.IOCFiredEvent](msg.Payload)
 		if err != nil {
-			rt.Log().Error("Unmarshal IOCFiredEvent failed", slog.Any("error", err))
+			applogger.WithCtx(ctx, rt.Log()).Error("Unmarshal IOCFiredEvent failed", slog.Any("error", err))
 			return
 		}
 		if evt.OrderID == "" || evt.Error != "" {
@@ -38,7 +39,7 @@ func handleTimeout(ctx context.Context, rt *cycle.Runtime, evt events.IOCFiredEv
 	}
 
 	startedAt := time.Now()
-	rt.Log().Info("Reversion timeout guard started",
+	applogger.WithCtx(ctx, rt.Log()).Info("Reversion timeout guard started",
 		slog.String("orderID", evt.OrderID),
 		slog.Duration("timeout", timeout),
 	)
@@ -76,7 +77,7 @@ func forceCloseTimedOutPosition(
 	positionMode := rt.CandidateCopy().Config.ParsedPositionMode
 	retries, err := forceClosePosition(closeCtx, rt, fill.Symbol, fill.CloseSide, fill.FillVol, positionMode)
 	if err != nil {
-		publishReversionCritical(rt, fill.Symbol, "critical_timeout_close_failed: "+err.Error())
+		publishReversionCritical(closeCtx, rt, fill.Symbol, "critical_timeout_close_failed: "+err.Error())
 		return
 	}
 	if !rt.TryMarkFlowTerminal(events.FlowReversion) {
@@ -85,7 +86,7 @@ func forceCloseTimedOutPosition(
 
 	now := time.Now()
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicReversionTimeout, events.CycleTimeoutEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionTimeout, events.CycleTimeoutEvent{
 		Flow:                events.FlowReversion,
 		Symbol:              fill.Symbol,
 		Timeout:             timeout,
@@ -94,7 +95,7 @@ func forceCloseTimedOutPosition(
 		ForceCloseSucceeded: true,
 		CloseRetryCount:     retries,
 	})
-	rt.RecordAndPublish(reqID, events.TopicReversionPositionClosed, events.PositionClosedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionPositionClosed, events.PositionClosedEvent{
 		Flow:            events.FlowReversion,
 		Symbol:          fill.Symbol,
 		CloseVol:        fill.FillVol,
@@ -113,7 +114,7 @@ func cancelTimedOutOrder(
 	startedAt time.Time,
 ) {
 	if evt.OrderType == exchange.OrderTypeIOC {
-		publishNoFillTimeout(rt, evt, timeout, startedAt, 0)
+		publishNoFillTimeout(ctx, rt, evt, timeout, startedAt, 0)
 		return
 	}
 
@@ -124,20 +125,21 @@ func cancelTimedOutOrder(
 		return rt.Deps().Client.CancelOrder(cancelCtx, evt.Symbol, evt.OrderID)
 	})
 	if err != nil {
-		rt.Log().Error("IOC cancel failed - canceling all open orders", slog.Any("error", err))
+		applogger.WithCtx(ctx, rt.Log()).Error("IOC cancel failed - canceling all open orders", slog.Any("error", err))
 		allRetries, allErr := rt.RetryWithBackoff(cancelCtx, reversionRetryCount, func() error {
 			return rt.Deps().Client.CancelAllOpenOrders(cancelCtx, evt.Symbol)
 		})
 		cancelRetries += allRetries
 		if allErr != nil {
-			publishReversionCritical(rt, evt.Symbol, "critical_timeout_cancel_failed: "+allErr.Error())
+			publishReversionCritical(cancelCtx, rt, evt.Symbol, "critical_timeout_cancel_failed: "+allErr.Error())
 			return
 		}
 	}
-	publishNoFillTimeout(rt, evt, timeout, startedAt, cancelRetries)
+	publishNoFillTimeout(ctx, rt, evt, timeout, startedAt, cancelRetries)
 }
 
 func publishNoFillTimeout(
+	ctx context.Context,
 	rt *cycle.Runtime,
 	evt events.IOCFiredEvent,
 	timeout time.Duration,
@@ -149,14 +151,14 @@ func publishNoFillTimeout(
 	}
 
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicReversionTimeout, events.CycleTimeoutEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionTimeout, events.CycleTimeoutEvent{
 		Flow:            events.FlowReversion,
 		Symbol:          evt.Symbol,
 		Timeout:         timeout,
 		Reason:          reversionReasonNoFill,
 		CloseRetryCount: cancelRetries,
 	})
-	rt.Log().Warn("Reversion order timed out without fill",
+	applogger.WithCtx(ctx, rt.Log()).Warn("Reversion order timed out without fill",
 		slog.String("orderID", evt.OrderID),
 		slog.Int("order_type", evt.OrderType),
 		slog.Duration("elapsed", time.Since(startedAt)),

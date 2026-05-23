@@ -11,7 +11,6 @@ import (
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
-	"crypto-bot/pkg/logger"
 	pkgws "crypto-bot/pkg/ws"
 )
 
@@ -24,13 +23,12 @@ type Bot interface {
 
 // Engine manages the lifecycle of the shared infrastructure components.
 type Engine struct {
-	Cfg           *sysconfig.SystemConfig
-	Client        exchange.Client
-	Adapter       ws.ExchangeAdapter
-	TimeSync      *timesync.TimeSync
-	WS            *pkgws.Pool
-	Bus           *eventbus.Bus
-	loggerCleanup func()
+	Cfg      *sysconfig.SystemConfig
+	Client   exchange.Client
+	Adapter  ws.ExchangeAdapter
+	TimeSync *timesync.TimeSync
+	WS       *pkgws.Pool
+	Bus      *eventbus.Bus
 }
 
 // EngineConfig holds the dependencies needed to create an Engine.
@@ -44,7 +42,6 @@ type EngineConfig struct {
 // NewEngine initializes the core components with an injected exchange client.
 func NewEngine(cfg EngineConfig) *Engine {
 	sysCfg := cfg.SystemConfig
-	cleanup := logger.InitLogger(sysCfg.Logging.Level)
 
 	engineLogger := slog.Default().With("component", "engine")
 	engineLogger.Info("⚙️ Initializing Engine...", "base_url", sysCfg.API.Future.BaseURL)
@@ -78,13 +75,12 @@ func NewEngine(cfg EngineConfig) *Engine {
 	bus := eventbus.New(engineLogger.With("subsystem", "eventbus"))
 
 	return &Engine{
-		Cfg:           sysCfg,
-		Client:        cfg.Client,
-		Adapter:       cfg.Adapter,
-		TimeSync:      ts,
-		WS:            wsPool,
-		Bus:           bus,
-		loggerCleanup: cleanup,
+		Cfg:      sysCfg,
+		Client:   cfg.Client,
+		Adapter:  cfg.Adapter,
+		TimeSync: ts,
+		WS:       wsPool,
+		Bus:      bus,
 	}
 }
 
@@ -101,9 +97,6 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 			if err := e.Bus.Close(); err != nil {
 				errs = append(errs, err)
 			}
-		}
-		if e.loggerCleanup != nil {
-			e.loggerCleanup()
 		}
 		errCh <- errors.Join(errs...)
 	}()

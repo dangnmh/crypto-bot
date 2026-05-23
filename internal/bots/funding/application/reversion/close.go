@@ -9,6 +9,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/events"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 )
 
 const reversionRetryCount = 3
@@ -19,7 +20,7 @@ func watchStaticCloseDeal(ctx context.Context, rt *cycle.Runtime, evt events.Ord
 		timeout = 60 * time.Second
 	}
 
-	rt.Deps().OrderNotifier.OnOrderDealBySymbolSide(ctx, evt.Symbol, int(evt.CloseSide), timeout, func(deal exchange.PersonalOrderDeal) {
+	rt.Deps().OrderNotifier.OnOrderDealBySymbolSide(ctx, evt.Symbol, evt.CloseSide.String(), timeout, func(deal exchange.PersonalOrderDeal) {
 		if deal.Vol <= 0 {
 			return
 		}
@@ -28,7 +29,7 @@ func watchStaticCloseDeal(ctx context.Context, rt *cycle.Runtime, evt events.Ord
 		}
 
 		reqID := rt.GetReqID()
-		rt.RecordAndPublish(reqID, events.TopicReversionPositionClosed, events.PositionClosedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionPositionClosed, events.PositionClosedEvent{
 			Flow:       events.FlowReversion,
 			Symbol:     evt.Symbol,
 			ClosePrice: deal.Price,
@@ -63,7 +64,7 @@ func forceClosePosition(
 		return exactRetries, nil
 	}
 
-	rt.Log().Error("Exact-leg reversion close failed - fallback close all",
+	applogger.WithCtx(ctx, rt.Log()).Error("Exact-leg reversion close failed - fallback close all",
 		slog.Any("error", err),
 		slog.String("symbol", symbol),
 		slog.Any("closeSide", closeSide),
@@ -79,17 +80,17 @@ func forceClosePosition(
 	return exactRetries, nil
 }
 
-func publishReversionCritical(rt *cycle.Runtime, symbol, reason string) {
+func publishReversionCritical(ctx context.Context, rt *cycle.Runtime, symbol, reason string) {
 	if !rt.TryMarkFlowTerminal(events.FlowReversion) {
 		return
 	}
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicReversionError, events.CycleErrorEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionError, events.CycleErrorEvent{
 		Flow:   events.FlowReversion,
 		Symbol: symbol,
 		Error:  reason,
 	})
-	rt.RecordAndPublish(reqID, events.TopicReversionAbort, events.CycleAbortEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionAbort, events.CycleAbortEvent{
 		Flow:   events.FlowReversion,
 		Symbol: symbol,
 		Reason: reason,

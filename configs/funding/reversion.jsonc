@@ -3,8 +3,8 @@
   "enabled":       true,
   "takeProfitPct": 1.5,
   "stopLossPct":   3,
-  "maxLatency":    "200ms", // Abort if RTT > 200ms
-  "bufferTime":    "40ms",  // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+  "maxLatency":    "300ms", // Abort if RTT > 200ms
+  "bufferTime":    "50ms",  // Fire at T - (Latency/2 + Buffer) the bigger the earlier
   "postSettleTimeout": "300s", // Force close if reversion lifecycle does not terminally close
 
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

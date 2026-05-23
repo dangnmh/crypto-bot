@@ -15,6 +15,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -32,7 +33,7 @@ type Client struct {
 
 // NewClient creates a new MEXC API client using the provided optimized connection pool.
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
-	logger := slog.Default().With("component", "exchange")
+	logger := slog.Default().With("component", "exchange").With("exchange", "mexc")
 
 	// If HTTP logging is enabled, wrap the underlying transport of the injected client
 	if logCfg.HTTP && httpClient.Transport != nil {
@@ -68,12 +69,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 
 // WarmUp pre-establishes connection pool and maintains it via periodic ping requests.
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	c.logger.Info("🔗 Warming up connection pool...", "interval", interval)
+	applogger.WithCtx(ctx, c.logger).Info("🔗 Warming up connection pool...", "interval", interval)
 
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.GetCtx(ctx, "/api/v1/contract/ping", nil)
 		if err != nil {
-			c.logger.Debug("Warmup ping failed", "error", err)
+			applogger.WithCtx(ctx, c.logger).Debug("Warmup ping failed", "error", err)
 		}
 		return true
 	})
@@ -149,11 +150,13 @@ func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]
 }
 
 // doRequest executes the HTTP request and returns the response body.
+//
+//nolint:contextcheck // httptrace callbacks run from the request context; log calls use req.Context().
 func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			if !connInfo.Reused {
-				c.logger.Debug("HTTP new connection",
+				applogger.WithCtx(req.Context(), c.logger).Debug("HTTP new connection",
 					"was_idle", connInfo.WasIdle,
 					"idle_time", connInfo.IdleTime,
 				)
@@ -184,7 +187,7 @@ func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 			}
 		}
 
-		c.logger.Warn("🟡 Non-200 response",
+		applogger.WithCtx(req.Context(), c.logger).Warn("🟡 Non-200 response",
 			"status", resp.StatusCode,
 			"path", path,
 			"body", string(body),

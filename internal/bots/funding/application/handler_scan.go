@@ -6,6 +6,7 @@ import (
 	"math"
 
 	shared "crypto-bot/internal/domain"
+	applogger "crypto-bot/pkg/logger"
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
@@ -21,29 +22,43 @@ func (o *CycleOrchestrator) subscribeScan(ctx context.Context) {
 
 func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 	cfg := o.rt.Config()
+	if o.rt.Deps().TickerStore == nil {
+		applogger.WithCtx(ctx, o.rt.Log()).Warn("No ticker store")
+		o.abort(ctx, "scan", "no ticker store")
+		return
+	}
 	td, err := o.rt.Deps().TickerStore.GetTicker(ctx, cfg.Symbol)
 	if err != nil {
-		o.rt.Log().Warn("No ticker", slog.Any("error", err))
-		o.abort("scan", "no ticker data")
+		applogger.WithCtx(ctx, o.rt.Log()).Warn("No ticker", slog.Any("error", err))
+		o.abort(ctx, "scan", "no ticker data")
 		return
 	}
 
 	if math.Abs(td.FundingRate) < cfg.MinFundingRate {
-		o.rt.Log().Info("FR below threshold", slog.Float64("fr", td.FundingRate*100))
-		o.abort("scan", "FR below threshold")
+		applogger.WithCtx(ctx, o.rt.Log()).Info("FR below threshold", slog.Float64("fr", td.FundingRate*100))
+		o.abort(ctx, "scan", "FR below threshold")
+		return
+	}
+
+	if minVol24USD := o.rt.Global().System.Safety.MinVol24USD; minVol24USD > 0 && td.Amount24 < minVol24USD {
+		applogger.WithCtx(ctx, o.rt.Log()).Info("24h volume below threshold",
+			slog.Float64("amount24_usd", td.Amount24),
+			slog.Float64("minVol24USD", minVol24USD),
+		)
+		o.abort(ctx, "scan", "24h volume below threshold")
 		return
 	}
 
 	candidate := o.rt.BuildCandidate(td)
 	if !o.rt.Enrich(ctx, &candidate) {
-		o.abort("scan", "enrichment failed")
+		o.abort(ctx, "scan", "enrichment failed")
 		return
 	}
 	o.rt.SetCandidate(candidate)
 
 	spread := cycle.CalcSpreadPct(candidate.BestBid, candidate.BestAsk)
 	reqID := o.rt.GetReqID()
-	o.rt.RecordAndPublish(reqID, events.TopicScanCandidateFound, events.CandidateFoundEvent{
+	o.rt.RecordAndPublishCtx(ctx, reqID, events.TopicScanCandidateFound, events.CandidateFoundEvent{
 		Flow:        events.FlowScan,
 		Symbol:      candidate.Symbol,
 		FundingRate: candidate.FundingRate,
@@ -56,7 +71,7 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 		SpreadPct:   spread,
 	})
 
-	o.rt.Log().Info("Qualified",
+	applogger.WithCtx(ctx, o.rt.Log()).Info("Qualified",
 		slog.String("side", candidate.Side.String()),
 		slog.Float64("fr", candidate.FundingRate*100),
 	)
@@ -73,13 +88,13 @@ func (o *CycleOrchestrator) handleScan(ctx context.Context) {
 		Vol24h:      candidate.Volume24,
 		SpreadPct:   spread,
 	}
-	o.rt.RecordAndPublish(reqID, events.TopicReversionCandidate, scanEvent)
+	o.rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionCandidate, scanEvent)
 
 	if cfg.IsHedgeTrapEnabled() {
 		trapEvent := scanEvent
 		trapEvent.Flow = events.FlowTrap
 		trapEvent.Side = candidate.Side.Opposite()
 		trapEvent.CloseSide = shared.CloseSideFor(trapEvent.Side)
-		o.rt.RecordAndPublish(reqID, events.TopicTrapCandidate, trapEvent)
+		o.rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapCandidate, trapEvent)
 	}
 }

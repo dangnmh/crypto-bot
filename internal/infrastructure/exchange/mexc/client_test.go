@@ -152,6 +152,60 @@ func TestClient_GetDepthCommits(t *testing.T) {
 	}
 }
 
+func TestClient_DepthInputValidationAndMalformedLevels(t *testing.T) {
+	t.Parallel()
+
+	emptySrv := httptest.NewServer(http.NotFoundHandler())
+	defer emptySrv.Close()
+	client := newTestClient(emptySrv)
+	_, err := client.GetDepthSnapshot(context.Background(), "", 20)
+	if err == nil {
+		t.Fatal("expected empty symbol error for depth snapshot")
+	}
+	_, err = client.GetDepthCommits(context.Background(), "", 20)
+	if err == nil {
+		t.Fatal("expected empty symbol error for depth commits")
+	}
+
+	body := map[string]any{
+		"asks":    [][]string{{"0", "2"}, {"101.5", "2"}, {"101.7"}},
+		"bids":    [][]string{{"0", "3"}, {"100.5", "3"}, {"100.1"}},
+		"version": int64(9),
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[map[string]any]{Success: true, Code: 0, Data: body}))
+	}))
+	defer srv.Close()
+
+	client = newTestClient(srv)
+	ob, err := client.GetDepthSnapshot(context.Background(), "BTC_USDT", 0)
+	if err != nil {
+		t.Fatalf("GetDepthSnapshot failed: %v", err)
+	}
+	if len(ob.Asks) != 1 || len(ob.Bids) != 1 {
+		t.Fatalf("unexpected malformed-level filtering: %+v", ob)
+	}
+
+	commits := []map[string]any{{
+		"version": int64(10),
+		"asks":    [][]string{{"101.5"}, {"101.6", "1"}},
+		"bids":    [][]string{{"100.5"}, {"100.4", "1"}},
+	}}
+	commitSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]map[string]any]{Success: true, Code: 0, Data: commits}))
+	}))
+	defer commitSrv.Close()
+
+	client = newTestClient(commitSrv)
+	got, err := client.GetDepthCommits(context.Background(), "BTC_USDT", 5)
+	if err != nil {
+		t.Fatalf("GetDepthCommits failed: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Asks) != 1 || len(got[0].Bids) != 1 {
+		t.Fatalf("unexpected malformed commit filtering: %+v", got)
+	}
+}
+
 // ── GetTickers (array) ───────────────────────────────────────────────.
 
 //nolint:dupl // test

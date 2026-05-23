@@ -8,7 +8,8 @@ Tài liệu này là entry point cho business logic của funding bot. Mỗi flo
 2. [reversion_flow.md](reversion_flow.md), [trap_flow.md](trap_flow.md), [pre_funding_flow.md](pre_funding_flow.md) để đọc contract từng flow.
 3. [price_flow.md](price_flow.md) và [depth.md](depth.md) để đọc shared pricing/orderbook primitives.
 4. [analyze.md](analyze.md) và [journal_analysis.md](journal_analysis.md) để hiểu journal schema, report và tuning rule.
-5. Đọc phần `Open Questions`, `Known Concerns`, `Backlog` trong từng flow/shared doc liên quan.
+5. [reversion_production_plan.md](reversion_production_plan.md) trước khi bật Reversion trên production.
+6. Đọc phần `Open Questions`, `Known Concerns`, `Backlog` trong từng flow/shared doc liên quan.
 
 ## Document Map
 
@@ -22,6 +23,7 @@ Tài liệu này là entry point cho business logic của funding bot. Mỗi flo
 | [pre_funding_flow.md](pre_funding_flow.md) | Flow Pre-Funding Wave | Design only |
 | [price_flow.md](price_flow.md) | Pricing/volume shared primitives | Shared primitive |
 | [depth.md](depth.md) | Cách dùng orderbook đã được chấp nhận | Implemented constraints |
+| [reversion_production_plan.md](reversion_production_plan.md) | Production readiness, rollout, monitoring, notification, incident runbook cho Reversion | Production plan |
 
 ### Journal And Calibration
 

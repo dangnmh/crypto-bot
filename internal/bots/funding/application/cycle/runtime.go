@@ -15,14 +15,19 @@ import (
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/eventbus"
+	applogger "crypto-bot/pkg/logger"
+	"crypto-bot/pkg/tracectx"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
+
+const notifierSendTimeout = 5 * time.Second
 
 // Deps holds all external dependencies for a funding cycle.
 type Deps struct {
@@ -36,6 +41,7 @@ type Deps struct {
 	DepthStore    store.DepthReader
 	Clock         shared.Clock
 	Log           *slog.Logger
+	Notifier      notifier.Notifier
 }
 
 // Runtime owns shared per-cycle state and dependencies used by flow packages.
@@ -80,6 +86,10 @@ func NewRuntime(cfg config.SymbolConfig, global *config.Config, deps Deps) *Runt
 }
 
 func (r *Runtime) Begin(reqID string, settle time.Time, log *slog.Logger) {
+	r.BeginWithContext(context.Background(), reqID, settle, log)
+}
+
+func (r *Runtime) BeginWithContext(ctx context.Context, reqID string, settle time.Time, log *slog.Logger) {
 	r.deps.Log = log
 	r.bus = eventbus.New(log)
 	r.terminal = make(map[string]bool)
@@ -88,7 +98,7 @@ func (r *Runtime) Begin(reqID string, settle time.Time, log *slog.Logger) {
 	r.eventSeq = 0
 	r.eventLog = make([]events.JournalEnvelope, 0, 32)
 	cfgJSON, _ := json.Marshal(ToTradeConfig(r.cfg))
-	r.RecordAndPublish(reqID, events.TopicCycleStarted, events.CycleStartEvent{
+	r.RecordAndPublishCtx(ctx, reqID, events.TopicCycleStarted, events.CycleStartEvent{
 		Symbol:     r.cfg.Symbol,
 		SettleTime: settle,
 		Config:     cfgJSON,
@@ -144,6 +154,11 @@ func (r *Runtime) JourneyEvents() []events.JournalEnvelope {
 
 // RecordAndPublish records an event to the event journal and publishes it to the event bus.
 func (r *Runtime) RecordAndPublish(reqID, topic string, payload any) {
+	r.RecordAndPublishCtx(context.Background(), reqID, topic, payload)
+}
+
+// RecordAndPublishCtx records an event to the event journal and publishes it to the event bus.
+func (r *Runtime) RecordAndPublishCtx(ctx context.Context, reqID, topic string, payload any) {
 	r.mu.Lock()
 	r.eventSeq++
 	rawPayload, _ := json.Marshal(payload)
@@ -162,8 +177,116 @@ func (r *Runtime) RecordAndPublish(reqID, topic string, payload any) {
 	r.mu.Unlock()
 
 	if err := r.bus.Publish(topic, payload); err != nil {
-		r.deps.Log.Error("Publish failed", slog.String("topic", topic), slog.Any("error", err))
+		applogger.WithCtx(ctx, r.deps.Log).Error("Publish failed", slog.String("topic", topic), slog.Any("error", err))
 	}
+
+	if r.deps.Notifier != nil {
+		if r.shouldNotify(topic, payload) {
+			msg := r.buildNotificationMessage(topic, payload)
+			notifyCtx := context.WithoutCancel(r.contextWithReqID(ctx, reqID))
+			go func() {
+				sendCtx, cancel := context.WithTimeout(notifyCtx, notifierSendTimeout)
+				defer cancel()
+				_ = r.deps.Notifier.Send(sendCtx, msg)
+			}()
+		}
+	}
+}
+
+func (r *Runtime) contextWithReqID(ctx context.Context, reqID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if reqID == "" || tracectx.ReqID(ctx) != "" {
+		return ctx
+	}
+	return tracectx.WithReqID(ctx, reqID)
+}
+
+func (r *Runtime) shouldNotify(topic string, payload any) bool {
+	if n, ok := payload.(events.Notifiable); ok && n.ShouldNotify() {
+		return true
+	}
+
+	switch topic {
+	case events.TopicCycleFinalPnL,
+		events.TopicReversionOrderFilled,
+		events.TopicTrapOrderFilled,
+		events.TopicScanAbort,
+		events.TopicReversionAbort,
+		events.TopicTrapAbort,
+		events.TopicReversionError,
+		events.TopicTrapError,
+		events.TopicSymbolDisabled,
+		events.TopicOrderRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+//nolint:cyclop // Formatting important trading notifications is intentionally centralized by topic.
+func (r *Runtime) buildNotificationMessage(topic string, payload any) notifier.Event {
+	evt := notifier.Event{
+		Symbol:    r.cfg.Symbol,
+		Timestamp: time.Now(),
+	}
+
+	switch topic {
+	case events.TopicCycleFinalPnL:
+		evt.Level = notifier.LevelTrading
+		switch pnl := payload.(type) {
+		case events.FinalPnLEvent:
+			evt.Message = fmt.Sprintf("💰 Cycle Completed\nNet PnL: %.4f USDT\nFees: %.4f\nEvents: %d", pnl.NetPnL, pnl.TradingFees, pnl.EventCount)
+		case *events.FinalPnLEvent:
+			evt.Message = fmt.Sprintf("💰 Cycle Completed\nNet PnL: %.4f USDT\nFees: %.4f\nEvents: %d", pnl.NetPnL, pnl.TradingFees, pnl.EventCount)
+		}
+	case events.TopicReversionOrderFilled, events.TopicTrapOrderFilled:
+		evt.Level = notifier.LevelTrading
+		switch fill := payload.(type) {
+		case events.OrderFilledEvent:
+			evt.Message = fmt.Sprintf("✅ Order Filled\nPrice: %.4f\nVol: %.4f\nProfit: %.4f", fill.FillPrice, fill.FillVol, fill.Profit)
+		case *events.OrderFilledEvent:
+			evt.Message = fmt.Sprintf("✅ Order Filled\nPrice: %.4f\nVol: %.4f\nProfit: %.4f", fill.FillPrice, fill.FillVol, fill.Profit)
+		}
+	case events.TopicScanAbort, events.TopicReversionAbort, events.TopicTrapAbort:
+		evt.Level = notifier.LevelTrading
+		switch abort := payload.(type) {
+		case events.CycleAbortEvent:
+			evt.Message = fmt.Sprintf("⚠️ Cycle Aborted\nReason: %s", abort.Reason)
+		case *events.CycleAbortEvent:
+			evt.Message = fmt.Sprintf("⚠️ Cycle Aborted\nReason: %s", abort.Reason)
+		}
+	case events.TopicReversionError, events.TopicTrapError:
+		evt.Level = notifier.LevelCritical
+		switch errEvt := payload.(type) {
+		case events.CycleErrorEvent:
+			evt.Message = fmt.Sprintf("❌ Cycle Error\nError: %s", errEvt.Error)
+		case *events.CycleErrorEvent:
+			evt.Message = fmt.Sprintf("❌ Cycle Error\nError: %s", errEvt.Error)
+		}
+	case events.TopicSymbolDisabled:
+		evt.Level = notifier.LevelCritical
+		switch disabled := payload.(type) {
+		case events.SymbolDisabledEvent:
+			evt.Message = fmt.Sprintf("🚫 Symbol Disabled\nReason: %s\nSource: %s", disabled.Reason, disabled.Source)
+		case *events.SymbolDisabledEvent:
+			evt.Message = fmt.Sprintf("🚫 Symbol Disabled\nReason: %s\nSource: %s", disabled.Reason, disabled.Source)
+		}
+	case events.TopicOrderRejected:
+		evt.Level = notifier.LevelCritical
+		switch rejected := payload.(type) {
+		case events.WSOrderRejectedEvent:
+			evt.Message = fmt.Sprintf("🚨 Order Rejected\nError: %s", rejected.Error)
+		case *events.WSOrderRejectedEvent:
+			evt.Message = fmt.Sprintf("🚨 Order Rejected\nError: %s", rejected.Error)
+		}
+	default:
+		evt.Level = notifier.LevelInfo
+		evt.Message = fmt.Sprintf("Event: %s", topic)
+	}
+
+	return evt
 }
 
 func (r *Runtime) getFlowFromTopic(topic string) string {
@@ -182,7 +305,7 @@ func (r *Runtime) getFlowFromTopic(topic string) string {
 func (r *Runtime) Subscribe(ctx context.Context, topic string, handler func(*message.Message)) {
 	msgs, err := r.bus.Subscribe(ctx, topic)
 	if err != nil {
-		r.deps.Log.Error("Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
+		applogger.WithCtx(ctx, r.deps.Log).Error("Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
 		return
 	}
 	go func() {
@@ -202,8 +325,12 @@ func (r *Runtime) Subscribe(ctx context.Context, topic string, handler func(*mes
 }
 
 func (r *Runtime) Publish(topic string, payload any) {
+	r.PublishCtx(context.Background(), topic, payload)
+}
+
+func (r *Runtime) PublishCtx(ctx context.Context, topic string, payload any) {
 	if err := r.bus.Publish(topic, payload); err != nil {
-		r.deps.Log.Error("🔴 Publish failed", slog.String("topic", topic), slog.Any("error", err))
+		applogger.WithCtx(ctx, r.deps.Log).Error("🔴 Publish failed", slog.String("topic", topic), slog.Any("error", err))
 	}
 }
 
@@ -215,12 +342,16 @@ func (r *Runtime) PublishStart(settle time.Time) error {
 }
 
 func (r *Runtime) Abort(reqID, source, reason string) {
+	r.AbortCtx(context.Background(), reqID, source, reason)
+}
+
+func (r *Runtime) AbortCtx(ctx context.Context, reqID, source, reason string) {
 	if source == "scan" {
-		r.RecordAndPublish(reqID, events.TopicScanCandidateFound, events.CandidateFoundEvent{
+		r.RecordAndPublishCtx(ctx, reqID, events.TopicScanCandidateFound, events.CandidateFoundEvent{
 			Flow:   events.FlowScan,
 			Symbol: r.cfg.Symbol,
 		}) // placeholder for scan rejected
-		r.Publish(events.TopicScanAbort, events.CycleAbortEvent{
+		r.PublishCtx(ctx, events.TopicScanAbort, events.CycleAbortEvent{
 			Symbol: r.cfg.Symbol,
 			Reason: reason,
 		})
@@ -228,7 +359,7 @@ func (r *Runtime) Abort(reqID, source, reason string) {
 	if !r.TryMarkFlowTerminal(events.FlowReversion) {
 		return
 	}
-	r.RecordAndPublish(reqID, events.TopicReversionAbort, events.CycleAbortEvent{
+	r.RecordAndPublishCtx(ctx, reqID, events.TopicReversionAbort, events.CycleAbortEvent{
 		Flow:   events.FlowReversion,
 		Symbol: r.cfg.Symbol,
 		Reason: reason,
@@ -364,7 +495,7 @@ func (r *Runtime) BuildCandidate(td *store.TickerData) domain.Candidate {
 func (r *Runtime) Enrich(ctx context.Context, c *domain.Candidate) bool {
 	cd, err := r.deps.ContractStore.GetContract(ctx, c.Symbol)
 	if err != nil {
-		r.deps.Log.Warn("🟡 No contract data — skip")
+		applogger.WithCtx(ctx, r.deps.Log).Warn("🟡 No contract data — skip")
 		return false
 	}
 	c.ContractSpec = domain.ContractSpec{
@@ -390,7 +521,7 @@ func (r *Runtime) RefreshPrice(ctx context.Context, c *domain.Candidate) error {
 
 func (r *Runtime) WaitUntil(ctx context.Context, target time.Time) bool {
 	if d := r.deps.Clock.Until(target); d > 0 {
-		r.deps.Log.Debug("⏱️ wait", slog.Time("target", target), slog.Duration("wait", d))
+		applogger.WithCtx(ctx, r.deps.Log).Debug("⏱️ wait", slog.Time("target", target), slog.Duration("wait", d))
 		return r.deps.Clock.Sleep(ctx, d) == nil
 	}
 	return ctx.Err() == nil
@@ -480,7 +611,7 @@ func (r *Runtime) StopExcursionPriceStream() {
 func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol string) {
 	// Subscribe to position updates
 	r.deps.OrderNotifier.OnPositionUpdate(ctx, symbol, 30*time.Second, func(pos exchange.PersonalPositionUpdate) {
-		r.RecordAndPublish(reqID, events.TopicPositionUpdated, events.WSPositionUpdatedEvent{
+		r.RecordAndPublishCtx(ctx, reqID, events.TopicPositionUpdated, events.WSPositionUpdatedEvent{
 			Symbol:        pos.Symbol,
 			Side:          pos.PositionType,
 			Size:          pos.HoldVol,
@@ -502,7 +633,7 @@ func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol stri
 		if iid, ok := track.ID.(string); ok {
 			id = iid
 		}
-		r.RecordAndPublish(reqID, events.TopicTrackUpdated, events.WSTrackUpdatedEvent{
+		r.RecordAndPublishCtx(ctx, reqID, events.TopicTrackUpdated, events.WSTrackUpdatedEvent{
 			TrackID:     id,
 			OrderID:     orderID,
 			Symbol:      track.Symbol,
@@ -548,23 +679,28 @@ func (r *Runtime) CalculateFinalPnL() events.FinalPnLEvent {
 
 // PublishFinalPnL calculates and publishes the final PnL event.
 func (r *Runtime) PublishFinalPnL(reqID string) {
+	r.PublishFinalPnLCtx(context.Background(), reqID)
+}
+
+// PublishFinalPnLCtx calculates and publishes the final PnL event.
+func (r *Runtime) PublishFinalPnLCtx(ctx context.Context, reqID string) {
 	pnl := r.CalculateFinalPnL()
 	pnl.Journey = r.JourneyEvents()
 	pnl.EventCount = len(pnl.Journey)
-	r.RecordAndPublish(reqID, events.TopicCycleFinalPnL, pnl)
-	r.logFinalPnL(pnl)
+	r.RecordAndPublishCtx(ctx, reqID, events.TopicCycleFinalPnL, pnl)
+	r.logFinalPnL(ctx, pnl)
 }
 
-func (r *Runtime) logFinalPnL(pnl events.FinalPnLEvent) {
+func (r *Runtime) logFinalPnL(ctx context.Context, pnl events.FinalPnLEvent) {
 	raw, err := json.Marshal(pnl)
 	if err != nil {
-		r.deps.Log.Warn("Cycle final PnL journal marshal failed",
+		applogger.WithCtx(ctx, r.deps.Log).Warn("Cycle final PnL journal marshal failed",
 			slog.String("symbol", pnl.Symbol),
 			slog.Any("error", err),
 		)
 		return
 	}
-	r.deps.Log.Info("Cycle final PnL journal",
+	applogger.WithCtx(ctx, r.deps.Log).Info("Cycle final PnL journal",
 		slog.String("symbol", pnl.Symbol),
 		slog.Float64("net_pnl", pnl.NetPnL),
 		slog.Int("event_count", pnl.EventCount),
@@ -642,33 +778,10 @@ func (r *Runtime) FinalizeExcursion(ctx context.Context, reqID string) bool {
 }
 
 func (r *Runtime) CycleRiskAllowsReversion(c domain.Candidate) error {
-	return r.checkCycleRisk(c.ReversionNotionalUSDT(), 0, false)
+	return nil
 }
 
 func (r *Runtime) CycleRiskAllowsTrap(c domain.Candidate, trapNotional float64) error {
-	return r.checkCycleRisk(c.ReversionNotionalUSDT(), trapNotional, true)
-}
-
-func (r *Runtime) checkCycleRisk(reversionNotional, trapNotional float64, includeTrap bool) error {
-	safety := r.global.System.Safety
-
-	cycleNotional := reversionNotional
-	if includeTrap {
-		cycleNotional = decmath.Add(cycleNotional, trapNotional)
-	}
-	if safety.MaxCycleNotionalUSDT > 0 && cycleNotional > safety.MaxCycleNotionalUSDT {
-		return fmt.Errorf("cycle notional %.4f exceeds max %.4f", cycleNotional, safety.MaxCycleNotionalUSDT)
-	}
-
-	reversionLoss := decmath.Mul(reversionNotional, r.cfg.FundingReversion.StopLossPct)
-	cycleLoss := reversionLoss
-	if includeTrap {
-		cycleLoss = decmath.Add(cycleLoss, decmath.Mul(trapNotional, r.cfg.FundingTrap.StopLossPct))
-	}
-	if safety.MaxCycleLossUSDT > 0 && cycleLoss > safety.MaxCycleLossUSDT {
-		return fmt.Errorf("cycle loss %.4f exceeds max %.4f", cycleLoss, safety.MaxCycleLossUSDT)
-	}
-
 	return nil
 }
 

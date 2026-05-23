@@ -2,6 +2,7 @@ package reversion
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math"
 	"time"
@@ -11,6 +12,8 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
+	fundingdomain "crypto-bot/internal/bots/funding/domain"
+	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -27,24 +30,29 @@ func handleArm(ctx context.Context, rt *cycle.Runtime) {
 	reqID := rt.GetReqID()
 
 	if err := rt.SubscribeAll(ctx); err != nil {
-		rt.Log().Error("Failed to subscribe WS channels", slog.Any("error", err))
-		rt.Abort(reqID, "arm", "WS subscribe failed")
+		applogger.WithCtx(ctx, rt.Log()).Error("Failed to subscribe WS channels", slog.Any("error", err))
+		rt.AbortCtx(ctx, reqID, "arm", "WS subscribe failed")
 		return
 	}
 
-	rt.Sleep(ctx, 2*time.Second)
-	if err := rt.RefreshPrice(ctx, &c); err != nil {
-		rt.Log().Warn("Refresh price failed", slog.Any("error", err))
+	if err := waitForFreshPrice(ctx, rt, c.Symbol, 5*time.Second); err != nil {
+		applogger.WithCtx(ctx, rt.Log()).Warn("Price data wait failed", slog.Any("error", err))
 		rt.UnsubscribeAll(ctx)
-		rt.Abort(reqID, "arm", "refresh price failed")
+		rt.AbortCtx(ctx, reqID, "arm", "refresh price failed")
+		return
+	}
+	if err := rt.RefreshPrice(ctx, &c); err != nil {
+		applogger.WithCtx(ctx, rt.Log()).Warn("Refresh price failed", slog.Any("error", err))
+		rt.UnsubscribeAll(ctx)
+		rt.AbortCtx(ctx, reqID, "arm", "refresh price failed")
 		return
 	}
 
 	ioc, err := c.CalculateIOCPrice()
 	if err != nil {
-		rt.Log().Warn("IOC calc failed", slog.Any("error", err))
+		applogger.WithCtx(ctx, rt.Log()).Warn("IOC calc failed", slog.Any("error", err))
 		rt.UnsubscribeAll(ctx)
-		rt.Abort(reqID, "arm", "IOC calc failed")
+		rt.AbortCtx(ctx, reqID, "arm", "IOC calc failed")
 		return
 	}
 	c.Volume = c.CalculateVolume()
@@ -61,9 +69,13 @@ func handleArm(ctx context.Context, rt *cycle.Runtime) {
 		}
 	}
 
-	c.SafetyResult = c.EvaluateSafety(rt.Global().System.Safety.MaxImpactRatio)
+	safety := rt.Global().System.Safety
+	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
+		MaxImpactRatio: safety.MaxImpactRatio,
+		MinVol24USD:    safety.MinVol24USD,
+	})
 	if !c.SafetyResult.Passed {
-		rt.RecordAndPublish(reqID, events.TopicReversionArmed, events.ArmedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionArmed, events.ArmedEvent{
 			Flow:               events.FlowReversion,
 			Symbol:             c.Symbol,
 			FundingRate:        c.FundingRate,
@@ -74,23 +86,31 @@ func handleArm(ctx context.Context, rt *cycle.Runtime) {
 			BestAsk:            c.BestAsk,
 			SafetyPassed:       false,
 			SafetyRejectReason: c.SafetyResult.RejectReason,
+			Volume:             c.Volume,
+			DesiredNotional:    c.SafetyResult.DesiredNotionalUSDT,
+			ActualNotional:     c.SafetyResult.ActualNotionalUSDT,
+			MaxSafeNotional:    c.SafetyResult.MaxSafeNotionalUSDT,
 		})
-		rt.Log().Warn("Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
+		applogger.WithCtx(ctx, rt.Log()).Warn("Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
 		rt.UnsubscribeAll(ctx)
-		rt.Abort(reqID, "arm", c.SafetyResult.RejectReason)
+		rt.AbortCtx(ctx, reqID, "arm", c.SafetyResult.RejectReason)
 		return
 	}
 
 	armed := events.ArmedEvent{
-		Flow:         events.FlowReversion,
-		Symbol:       c.Symbol,
-		FundingRate:  c.FundingRate,
-		Side:         c.Side,
-		CloseSide:    c.CloseSide,
-		LastPrice:    c.LastPrice,
-		BestBid:      c.BestBid,
-		BestAsk:      c.BestAsk,
-		SafetyPassed: true,
+		Flow:            events.FlowReversion,
+		Symbol:          c.Symbol,
+		FundingRate:     c.FundingRate,
+		Side:            c.Side,
+		CloseSide:       c.CloseSide,
+		LastPrice:       c.LastPrice,
+		BestBid:         c.BestBid,
+		BestAsk:         c.BestAsk,
+		SafetyPassed:    true,
+		Volume:          c.Volume,
+		DesiredNotional: c.SafetyResult.DesiredNotionalUSDT,
+		ActualNotional:  c.SafetyResult.ActualNotionalUSDT,
+		MaxSafeNotional: c.SafetyResult.MaxSafeNotionalUSDT,
 	}
 
 	pd, err := rt.Deps().PriceStore.GetPrice(ctx, cfg.Symbol, 5*time.Second)
@@ -101,11 +121,45 @@ func handleArm(ctx context.Context, rt *cycle.Runtime) {
 	}
 
 	rt.SetCandidate(c)
-	rt.RecordAndPublish(reqID, events.TopicReversionArmed, armed)
-	rt.Log().Info("Ready",
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionArmed, armed)
+	applogger.WithCtx(ctx, rt.Log()).Info("Ready",
 		slog.String("side", c.Side.String()),
 		slog.Float64("fr", c.FundingRate*100),
 		slog.Float64("ioc", ioc),
 		slog.Float64("vol", c.Volume),
+		slog.Float64("desiredNotionalUSDT", c.SafetyResult.DesiredNotionalUSDT),
+		slog.Float64("actualNotionalUSDT", c.SafetyResult.ActualNotionalUSDT),
+		slog.Float64("maxSafeNotionalUSDT", c.SafetyResult.MaxSafeNotionalUSDT),
+		slog.Float64("avgMinuteVolumeUSDT", c.SafetyResult.AvgMinuteVolumeUSDT),
+		slog.Bool("sizedDown", c.SafetyResult.SizedDown),
 	)
+}
+
+func waitForFreshPrice(ctx context.Context, rt *cycle.Runtime, symbol string, maxWait time.Duration) error {
+	priceStore := rt.Deps().PriceStore
+	if priceStore == nil {
+		return fmt.Errorf("price store unavailable")
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
+
+	updates := priceStore.SubscribePrice(waitCtx, symbol)
+	if _, err := priceStore.GetPrice(ctx, symbol, maxWait); err == nil {
+		return nil
+	}
+
+	for {
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("wait for price data %s: %w", symbol, waitCtx.Err())
+		case pd, ok := <-updates:
+			if !ok {
+				return fmt.Errorf("wait for price data %s: %w", symbol, waitCtx.Err())
+			}
+			if pd != nil {
+				return nil
+			}
+		}
+	}
 }

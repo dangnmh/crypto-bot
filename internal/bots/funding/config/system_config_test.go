@@ -25,8 +25,8 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 			"funding": "10s"
 		},
 		"safety": {
-			"maxCapitalPctPerSymbol": 10,
 			"maxImpactRatio": 5,
+			"minVol24USD": 1000000,
 			"maxLatency": "100ms",
 			"bufferTime": "15ms",
 			"holdDuration": "60s",
@@ -51,9 +51,9 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	// Verify safety defaults are applied (percentages normalized).
-	assert.Equal(t, 0.10, cfg.Safety.MaxCapitalPctPerSymbol)
+	// Verify safety values are loaded and percentages normalized.
 	assert.Equal(t, 0.05, cfg.Safety.MaxImpactRatio)
+	assert.Equal(t, 1000000.0, cfg.Safety.MinVol24USD)
 }
 
 func TestLoadSystemConfig_MissingFile(t *testing.T) {
@@ -155,4 +155,29 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	assert.True(t, defaults.FundingTrap.Enabled)
 	assert.Equal(t, 2.5, defaults.FundingTrap.DepthPct)
 	assert.True(t, defaults.FundingTrap.Trailing.Enabled)
+}
+
+func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
+	// Cannot run parallel: sets env vars.
+	t.Setenv("MEXC_API_KEY", "test-key")
+	t.Setenv("MEXC_API_SECRET", "test-secret")
+
+	content := `{
+		"exchange": "mexc",
+		"sync": {},
+		"safety": {},
+		"api": {
+			"future": {"baseURL": "https://test.api.com"},
+			"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+		}
+	}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "system.jsonc")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`[]`), 0o600))
+
+	_, err := config.LoadSystemConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse strategy config")
 }

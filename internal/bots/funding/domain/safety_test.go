@@ -18,27 +18,36 @@ func TestEvaluateSafety(t *testing.T) {
 		TradeIntent: domain.TradeIntent{FundingRate: 0.02}, // 2%
 		TradePlan:   domain.TradePlan{Volume: 50, Slippage: 0},
 		MarketData: domain.MarketData{
-			Amount24: 1000000, // Large liquidity
+			LastPrice: 100,
+			BestAsk:   101,
+			Amount24:  10000000000, // Large liquidity
 		},
 		ContractSpec: domain.ContractSpec{
+			ContractSize: 0.01,
 			MinVol:       10,
 			TakerFeeRate: 0.0006, // 0.06%
 		},
 	}
 
-	maxImpact := 0.05
+	limits := domain.SafetyLimits{MaxImpactRatio: 0.05}
 
 	t.Run("Passed Safety", func(t *testing.T) {
 		t.Parallel()
-		res := c.EvaluateSafety(maxImpact)
+		res := c.EvaluateSafety(limits)
 		if !res.Passed {
 			t.Errorf("expected safety to pass, got rejected: %s", res.RejectReason)
 		}
-		if res.PositionSizeUSDT != 1000 {
-			t.Errorf("expected position size 1000, got %f", res.PositionSizeUSDT)
+		if res.DesiredNotionalUSDT != 1000 {
+			t.Errorf("expected desired notional 1000, got %f", res.DesiredNotionalUSDT)
 		}
-		if res.ImpactRatio != 0.001 {
-			t.Errorf("expected impact ratio 0.001, got %f", res.ImpactRatio)
+		if math.Abs(res.AvgMinuteVolumeUSDT-6944444.444444444) > 1e-6 {
+			t.Errorf("expected avg one-minute volume 6944444.444444444, got %f", res.AvgMinuteVolumeUSDT)
+		}
+		if math.Abs(res.MaxSafeNotionalUSDT-347222.22222222225) > 1e-6 {
+			t.Errorf("expected max safe notional 347222.22222222225, got %f", res.MaxSafeNotionalUSDT)
+		}
+		if math.Abs(res.ImpactRatio-0.000144) > 1e-9 {
+			t.Errorf("expected impact ratio 0.000144, got %f", res.ImpactRatio)
 		}
 		if res.EstSlippage != 0.5 {
 			t.Errorf("expected EstSlippage 0.5 (from config), got %f", res.EstSlippage)
@@ -52,13 +61,13 @@ func TestEvaluateSafety(t *testing.T) {
 		}
 	})
 
-	t.Run("Failed High Impact Ratio", func(t *testing.T) {
+	t.Run("Failed Low 24h Volume", func(t *testing.T) {
 		t.Parallel()
-		c2 := c
-		c2.Amount24 = 10000 // 1000 / 10000 = 0.1 > maxImpact 0.05
-		res := c2.EvaluateSafety(maxImpact)
+		c5 := c
+		c5.Amount24 = 999999
+		res := c5.EvaluateSafety(domain.SafetyLimits{MinVol24USD: 1000000})
 		if res.Passed {
-			t.Error("expected safety to fail due to high impact ratio")
+			t.Error("expected safety to fail due to low 24h USD volume")
 		}
 	})
 
@@ -66,7 +75,7 @@ func TestEvaluateSafety(t *testing.T) {
 		t.Parallel()
 		c3 := c
 		c3.Volume = 5 // < MinVol 10
-		res := c3.EvaluateSafety(maxImpact)
+		res := c3.EvaluateSafety(limits)
 		if res.Passed {
 			t.Error("expected safety to fail due to low volume (minVol constraint)")
 		}
@@ -76,7 +85,7 @@ func TestEvaluateSafety(t *testing.T) {
 		t.Parallel()
 		c4 := c
 		c4.Slippage = 1.2 // Calculated slippage takes precedence over config (0.5)
-		res := c4.EvaluateSafety(maxImpact)
+		res := c4.EvaluateSafety(limits)
 		if res.EstSlippage != 1.2 {
 			t.Errorf("expected EstSlippage 1.2, got %f", res.EstSlippage)
 		}
@@ -85,4 +94,42 @@ func TestEvaluateSafety(t *testing.T) {
 			t.Errorf("expected ExpectedProfit 0.68, got %f", res.ExpectedProfit)
 		}
 	})
+}
+
+func TestApplySafetySizing_SizesDownHighImpactRatio(t *testing.T) {
+	t.Parallel()
+
+	c := domain.Candidate{
+		Config: domain.TradeConfig{
+			MarginUSDT:          100,
+			Leverage:            10,
+			MaxPriceDiffPercent: 0.5,
+		},
+		TradeIntent: domain.TradeIntent{FundingRate: 0.02},
+		TradePlan:   domain.TradePlan{Volume: 50},
+		MarketData: domain.MarketData{
+			LastPrice: 100,
+			BestAsk:   101,
+			Amount24:  1000000, // max = 1000000 / 1440 * 5% = 34.7222
+		},
+		ContractSpec: domain.ContractSpec{
+			ContractSize: 0.01,
+			MinVol:       10,
+			TakerFeeRate: 0.0006,
+		},
+	}
+
+	res := c.ApplySafetySizing(domain.SafetyLimits{MaxImpactRatio: 0.05})
+	if !res.Passed {
+		t.Fatalf("expected safety to pass by sizing down, got rejected: %s", res.RejectReason)
+	}
+	if !res.SizedDown {
+		t.Fatal("expected safety to size down")
+	}
+	if math.Abs(res.MaxSafeNotionalUSDT-34.72222222222222) > 1e-9 {
+		t.Errorf("expected max safe notional 34.72222222222222, got %f", res.MaxSafeNotionalUSDT)
+	}
+	if c.Volume <= 0 || c.Volume > 35 {
+		t.Errorf("expected capped volume in (0, 35], got %f", c.Volume)
+	}
 }

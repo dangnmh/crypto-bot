@@ -2,12 +2,12 @@ package trap
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"math"
 	"time"
 
 	shared "crypto-bot/internal/domain"
+	applogger "crypto-bot/pkg/logger"
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
@@ -44,7 +44,7 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 		}
 	}
 	if settleTime.IsZero() {
-		rt.Log().Error("Settle time not found, skipping trap fire")
+		applogger.WithCtx(ctx, rt.Log()).Error("Settle time not found, skipping trap fire")
 		return
 	}
 
@@ -55,7 +55,7 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 	}
 	trapTime := settleTime.Add(delay)
 
-	rt.Log().Info("Fire Trap waiting", slog.Duration("delay", delay), slog.Time("target_time", trapTime))
+	applogger.WithCtx(ctx, rt.Log()).Info("Fire Trap waiting", slog.Duration("delay", delay), slog.Time("target_time", trapTime))
 	rt.WaitUntil(ctx, trapTime)
 	if ctx.Err() != nil {
 		return
@@ -63,7 +63,7 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 
 	ob, err := rt.Deps().DepthStore.GetDepth(ctx, cfg.Symbol)
 	if err != nil || ob == nil {
-		rt.Log().Warn("Fire Trap: failed to fetch depth, falling back to static trap", slog.Any("error", err))
+		applogger.WithCtx(ctx, rt.Log()).Warn("Fire Trap: failed to fetch depth, falling back to static trap", slog.Any("error", err))
 		fireStaticTrap(ctx, rt)
 		return
 	}
@@ -76,7 +76,7 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 	trapCandidate.CloseSide = shared.CloseSideFor(trapSide)
 
 	if wallPrice <= 0 {
-		rt.Log().Info("Fire Trap: no suitable wall found, falling back to static trap", slog.String("side", trapSide.String()))
+		applogger.WithCtx(ctx, rt.Log()).Info("Fire Trap: no suitable wall found, falling back to static trap", slog.String("side", trapSide.String()))
 		fireStaticTrap(ctx, rt)
 		return
 	}
@@ -84,12 +84,12 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 	wallFoundAt := time.Now()
 	verifiedWall, ok := verifyTrapWall(ctx, rt, originalCandidate, wallPrice, wallFoundAt)
 	if !ok {
-		rt.Log().Warn("Fire Trap: wall disappeared before placement, skipping OB trap",
+		applogger.WithCtx(ctx, rt.Log()).Warn("Fire Trap: wall disappeared before placement, skipping OB trap",
 			slog.String("side", trapSide.String()),
 			slog.Float64("initial_wall_price", wallPrice),
 		)
 		reqID := rt.GetReqID()
-		rt.RecordAndPublish(reqID, events.TopicTrapWallVerified, events.TrapWallVerifiedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapWallVerified, events.TrapWallVerifiedEvent{
 			Flow:            events.FlowTrap,
 			Symbol:          cfg.Symbol,
 			WallPrice:       wallPrice,
@@ -98,11 +98,11 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 			WallDistancePct: originalCandidate.TrapWallDistancePct(wallPrice),
 			Side:            trapSide,
 		})
-		skipTrap(rt, domain.TrapSkipReasonWallNotVerified, trapSourceOBMonitor)
+		skipTrap(ctx, rt, domain.TrapSkipReasonWallNotVerified, trapSourceOBMonitor)
 		return
 	}
 
-	rt.Publish(events.TopicTrapOBWallFound, events.OBWallFoundEvent{
+	rt.PublishCtx(ctx, events.TopicTrapOBWallFound, events.OBWallFoundEvent{
 		Flow:            events.FlowTrap,
 		Symbol:          cfg.Symbol,
 		WallPrice:       verifiedWall.price,
@@ -113,7 +113,7 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 		Side:            trapSide,
 	})
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicTrapWallVerified, events.TrapWallVerifiedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapWallVerified, events.TrapWallVerifiedEvent{
 		Flow:            events.FlowTrap,
 		Symbol:          cfg.Symbol,
 		WallPrice:       verifiedWall.price,
@@ -123,7 +123,7 @@ func handleFireTrap(ctx context.Context, rt *cycle.Runtime) {
 		Side:            trapSide,
 	})
 
-	rt.Log().Info("OB Monitor: wall found",
+	applogger.WithCtx(ctx, rt.Log()).Info("OB Monitor: wall found",
 		slog.String("side", trapSide.String()),
 		slog.Float64("wallPrice", verifiedWall.price),
 		slog.Float64("trapPrice", verifiedWall.trapPrice),
@@ -143,7 +143,7 @@ func verifyTrapWall(
 ) (wallVerification, bool) {
 	freshOB, err := rt.Deps().DepthStore.GetDepth(ctx, c.Symbol)
 	if err != nil || freshOB == nil {
-		rt.Log().Warn("Fire Trap: failed to verify wall", slog.Any("error", err))
+		applogger.WithCtx(ctx, rt.Log()).Warn("Fire Trap: failed to verify wall", slog.Any("error", err))
 		return wallVerification{}, false
 	}
 
@@ -153,7 +153,7 @@ func verifyTrapWall(
 	}
 
 	if c.PriceUnit > 0 && math.Abs(freshWallPrice-initialWallPrice) > c.PriceUnit {
-		rt.Log().Info("Fire Trap: wall moved during verification",
+		applogger.WithCtx(ctx, rt.Log()).Info("Fire Trap: wall moved during verification",
 			slog.Float64("initial_wall_price", initialWallPrice),
 			slog.Float64("fresh_wall_price", freshWallPrice),
 		)
@@ -183,20 +183,20 @@ func fireOBTrap(ctx context.Context, rt *cycle.Runtime, c domain.Candidate, wall
 	trapPrice := wall.trapPrice
 	c.Volume = c.CalculateTrapVolume(trapPrice)
 	if c.Volume <= 0 {
-		rt.Log().Warn("TRAP volume invalid, skipping", slog.String("symbol", c.Symbol))
-		skipTrap(rt, domain.TrapSkipReasonInvalidVolume, trapSourceOBMonitor)
+		applogger.WithCtx(ctx, rt.Log()).Warn("TRAP volume invalid, skipping", slog.String("symbol", c.Symbol))
+		skipTrap(ctx, rt, domain.TrapSkipReasonInvalidVolume, trapSourceOBMonitor)
 		return
 	}
 	if err := rt.CycleRiskAllowsTrap(c, c.NotionalForVolume(c.Volume, trapPrice)); err != nil {
-		rt.Log().Warn("Cycle risk blocked Trap", slog.Any("error", err))
-		skipTrap(rt, domain.TrapSkipReasonCycleRiskBlocked, trapSourceOBMonitor)
+		applogger.WithCtx(ctx, rt.Log()).Warn("Cycle risk blocked Trap", slog.Any("error", err))
+		skipTrap(ctx, rt, domain.TrapSkipReasonCycleRiskBlocked, trapSourceOBMonitor)
 		return
 	}
 
 	tpPrice := c.CalculateTrapTPPrice(trapPrice)
 	slPrice := c.CalculateTrapSLPrice(trapPrice)
 
-	extOID := fmt.Sprintf("trp_ob_%s_%d", c.Symbol, time.Now().UnixMilli())
+	extOID := orders.ExternalOrderID("trp_ob", c.Symbol)
 	req := exchange.SubmitOrderRequest{
 		Symbol:          c.Symbol,
 		Price:           trapPrice,
@@ -211,7 +211,7 @@ func fireOBTrap(ctx context.Context, rt *cycle.Runtime, c domain.Candidate, wall
 		StopLossPrice:   slPrice,
 	}
 
-	rt.Log().Info("FIRE OB TRAP",
+	applogger.WithCtx(ctx, rt.Log()).Info("FIRE OB TRAP",
 		slog.String("symbol", c.Symbol),
 		slog.Float64("trapPrice", trapPrice),
 		slog.Float64("vol", c.Volume),
@@ -222,14 +222,14 @@ func fireOBTrap(ctx context.Context, rt *cycle.Runtime, c domain.Candidate, wall
 
 	orderID, err := rt.Deps().Client.CreateOrder(ctx, req)
 	if err != nil {
-		rt.Log().Error("TRAP order failed", slog.Any("error", err))
-		skipTrapWithError(rt, domain.TrapSkipReasonOrderFailed, trapSourceOBMonitor, err.Error())
+		applogger.WithCtx(ctx, rt.Log()).Error("TRAP order failed", slog.Any("error", err))
+		skipTrapWithError(ctx, rt, domain.TrapSkipReasonOrderFailed, trapSourceOBMonitor, err.Error())
 		return
 	}
 
-	rt.Log().Info("TRAP submitted", slog.String("orderID", orderID))
+	applogger.WithCtx(ctx, rt.Log()).Info("TRAP submitted", slog.String("orderID", orderID))
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicTrapOrderSubmitted, events.TrapOrderSubmittedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderSubmitted, events.TrapOrderSubmittedEvent{
 		Flow:            events.FlowTrap,
 		Symbol:          c.Symbol,
 		Source:          trapSourceOBMonitor,
@@ -262,7 +262,7 @@ func fireOBTrap(ctx context.Context, rt *cycle.Runtime, c domain.Candidate, wall
 		Timestamp: time.Now(),
 	}
 	rt.MarkTrapOrder(placed)
-	rt.RecordAndPublish(reqID, events.TopicTrapOrderPlaced, placed)
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderPlaced, placed)
 }
 
 func fireStaticTrap(ctx context.Context, rt *cycle.Runtime) {
@@ -271,7 +271,7 @@ func fireStaticTrap(ctx context.Context, rt *cycle.Runtime) {
 	trapPrice := c.CalculateTrapPrice()
 	trapVolume := c.CalculateTrapVolume(trapPrice)
 	if trapPrice <= 0 || trapVolume <= 0 {
-		rt.Log().Warn("Static Trap invalid, skipping",
+		applogger.WithCtx(ctx, rt.Log()).Warn("Static Trap invalid, skipping",
 			slog.Float64("trapPrice", trapPrice),
 			slog.Float64("trapVolume", trapVolume),
 		)
@@ -279,12 +279,12 @@ func fireStaticTrap(ctx context.Context, rt *cycle.Runtime) {
 		if trapPrice <= 0 {
 			reason = domain.TrapSkipReasonInvalidPrice
 		}
-		skipTrap(rt, reason, trapSourceStaticLimit)
+		skipTrap(ctx, rt, reason, trapSourceStaticLimit)
 		return
 	}
 	if err := rt.CycleRiskAllowsTrap(c, c.NotionalForVolume(trapVolume, trapPrice)); err != nil {
-		rt.Log().Warn("Cycle risk blocked Trap", slog.Any("error", err))
-		skipTrap(rt, domain.TrapSkipReasonCycleRiskBlocked, trapSourceStaticLimit)
+		applogger.WithCtx(ctx, rt.Log()).Warn("Cycle risk blocked Trap", slog.Any("error", err))
+		skipTrap(ctx, rt, domain.TrapSkipReasonCycleRiskBlocked, trapSourceStaticLimit)
 		return
 	}
 
@@ -293,7 +293,7 @@ func fireStaticTrap(ctx context.Context, rt *cycle.Runtime) {
 
 	if res.IsSuccess() {
 		reqID := rt.GetReqID()
-		rt.RecordAndPublish(reqID, events.TopicTrapOrderSubmitted, events.TrapOrderSubmittedEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderSubmitted, events.TrapOrderSubmittedEvent{
 			Flow:      events.FlowTrap,
 			Symbol:    res.Candidate.Symbol,
 			Source:    trapSourceStaticLimit,
@@ -322,7 +322,7 @@ func fireStaticTrap(ctx context.Context, rt *cycle.Runtime) {
 			Timestamp: time.Now(),
 		}
 		rt.MarkTrapOrder(placed)
-		rt.RecordAndPublish(reqID, events.TopicTrapOrderPlaced, placed)
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderPlaced, placed)
 	} else if res.Error != nil {
 		reason := domain.TrapSkipReasonOrderFailed
 		if res.Error.Error() == "trap price <= 0" {
@@ -331,21 +331,21 @@ func fireStaticTrap(ctx context.Context, rt *cycle.Runtime) {
 		if res.Error.Error() == "trap volume <= 0" {
 			reason = domain.TrapSkipReasonInvalidVolume
 		}
-		skipTrapWithError(rt, reason, trapSourceStaticLimit, res.Error.Error())
+		skipTrapWithError(ctx, rt, reason, trapSourceStaticLimit, res.Error.Error())
 	}
 }
 
-func skipTrap(rt *cycle.Runtime, reason domain.TrapSkipReason, source string) {
-	skipTrapWithError(rt, reason, source, "")
+func skipTrap(ctx context.Context, rt *cycle.Runtime, reason domain.TrapSkipReason, source string) {
+	skipTrapWithError(ctx, rt, reason, source, "")
 }
 
-func skipTrapWithError(rt *cycle.Runtime, reason domain.TrapSkipReason, source, errText string) {
+func skipTrapWithError(ctx context.Context, rt *cycle.Runtime, reason domain.TrapSkipReason, source, errText string) {
 	if !rt.TryMarkFlowTerminal(events.FlowTrap) {
 		return
 	}
 	rt.MarkTrapTerminal()
 	reqID := rt.GetReqID()
-	rt.RecordAndPublish(reqID, events.TopicTrapSkipped, events.TrapSkippedEvent{
+	rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapSkipped, events.TrapSkippedEvent{
 		Flow:      events.FlowTrap,
 		Symbol:    rt.Config().Symbol,
 		Reason:    string(reason),

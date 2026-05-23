@@ -8,25 +8,28 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	applogger "crypto-bot/pkg/logger"
 )
 
 // RunBot takes an initialized Bot and its parent Engine, and manages the full
 // application lifecycle including background services, main execution, and graceful shutdown.
 func RunBot(engine *Engine, bot Bot) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	log := applogger.WithCtx(ctx, slog.Default())
+
 	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer shutdownCancel()
 		if err := engine.Shutdown(shutdownCtx); err != nil {
-			slog.Error("🔴 Engine shutdown error", "error", err)
+			applogger.WithCtx(shutdownCtx, slog.Default()).Error("🔴 Engine shutdown error", "error", err)
 		}
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	slog.Info("🚀 Starting background services...")
+	log.Info("🚀 Starting background services...")
 	if err := bot.RunAsBackground(ctx); err != nil {
-		slog.Error("Failed to start background services", "error", err)
+		log.Error("Failed to start background services", "error", err)
 		return err
 	}
 
@@ -35,28 +38,28 @@ func RunBot(engine *Engine, bot Bot) error {
 	go func() {
 		defer wg.Done()
 		if err := bot.Run(ctx); err != nil {
-			slog.Error("🔴 Bot error", "error", err)
+			log.Error("🔴 Bot error", "error", err)
 		}
 	}()
 
-	slog.Info("🟢 All systems running — ready for operations")
+	log.Info("🟢 All systems running — ready for operations")
 
 	// Wait for interrupt signal to gracefully shutdown.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	slog.Warn("🛑 Shutdown signal received — cleaning up...")
+	log.Warn("🛑 Shutdown signal received — cleaning up...")
 
 	// Cancel global context to signal all goroutines to stop.
 	cancel()
 
 	// Execute explicit bot stop.
-	shutdownCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stopCancel()
 
 	if err := bot.Stop(shutdownCtx); err != nil {
-		slog.Error("Error during bot shutdown", "error", err)
+		applogger.WithCtx(shutdownCtx, slog.Default()).Error("Error during bot shutdown", "error", err)
 	}
 
 	// Wait for bot.Run goroutine to finish, bounded by shutdown timeout.
@@ -67,11 +70,11 @@ func RunBot(engine *Engine, bot Bot) error {
 	}()
 	select {
 	case <-done:
-		slog.Info("✅ All goroutines stopped cleanly")
+		applogger.WithCtx(shutdownCtx, slog.Default()).Info("✅ All goroutines stopped cleanly")
 	case <-shutdownCtx.Done():
-		slog.Warn("⚠️ Shutdown timeout — some goroutines may still be running")
+		applogger.WithCtx(shutdownCtx, slog.Default()).Warn("⚠️ Shutdown timeout — some goroutines may still be running")
 	}
 
-	slog.Info("👋 Goodbye!")
+	applogger.WithCtx(shutdownCtx, slog.Default()).Info("👋 Goodbye!")
 	return nil
 }

@@ -31,7 +31,7 @@ func subscribeWait(ctx context.Context, rt *cycle.Runtime) {
 			return
 		}
 		reqID := rt.GetReqID()
-		rt.RecordAndPublish(reqID, events.TopicReversionWaitComplete, events.WaitCompleteEvent{
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionWaitComplete, events.WaitCompleteEvent{
 			Flow:       events.FlowReversion,
 			Symbol:     rt.Config().Symbol,
 			SettleTime: settleTime,

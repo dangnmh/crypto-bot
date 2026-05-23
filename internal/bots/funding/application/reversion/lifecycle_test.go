@@ -2,10 +2,12 @@
 package reversion
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/testutil/mocks"
+	applogger "crypto-bot/pkg/logger"
+	"crypto-bot/pkg/tracectx"
 	"crypto-bot/pkg/types"
 
 	"github.com/stretchr/testify/assert"
@@ -44,8 +48,8 @@ func TestWatchStaticCloseDealPublishesTPClose(t *testing.T) {
 	}
 
 	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", int(shared.SideCloseLong), time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ int, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
+		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ string, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
 			callback(exchange.PersonalOrderDeal{
 				Symbol:  "BTC_USDT",
 				Side:    int(shared.SideCloseLong),
@@ -86,8 +90,8 @@ func TestWatchStaticCloseDealPublishesSLClose(t *testing.T) {
 	}
 
 	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", int(shared.SideCloseLong), time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ int, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
+		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ string, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
 			callback(exchange.PersonalOrderDeal{
 				Symbol:  "BTC_USDT",
 				Side:    int(shared.SideCloseLong),
@@ -154,6 +158,32 @@ func TestCancelTimedOutOrder_SkipsCancelForIOC(t *testing.T) {
 	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
 }
 
+func TestCancelTimedOutOrderFallsBackAndPublishesCritical(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	rt := newReversionTestRuntime(t, client, nil)
+
+	client.EXPECT().
+		CancelOrder(gomock.Any(), "BTC_USDT", "limit-1").
+		Return(errors.New("cancel failed")).Times(3)
+	client.EXPECT().
+		CancelAllOpenOrders(gomock.Any(), "BTC_USDT").
+		Return(errors.New("cancel all failed")).Times(3)
+
+	cancelTimedOutOrder(context.Background(), rt, events.IOCFiredEvent{
+		Flow:      events.FlowReversion,
+		Symbol:    "BTC_USDT",
+		OrderID:   "limit-1",
+		OrderType: exchange.OrderTypeLimit,
+	}, time.Second, time.Now())
+
+	abort := requireAbortEvent(t, rt)
+	assert.Contains(t, abort.Reason, "critical_timeout_cancel_failed")
+	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
+}
+
 func TestForceCloseTimedOutPosition_PublishesTimeoutAndClose(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +211,33 @@ func TestForceCloseTimedOutPosition_PublishesTimeoutAndClose(t *testing.T) {
 	closeEvt := requirePositionClosedEvent(t, rt, events.TopicReversionPositionClosed)
 	assert.Equal(t, "timeout_force_close", closeEvt.Reason)
 	assert.Equal(t, reversionMethodFallbackClose, closeEvt.Method)
+	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
+}
+
+func TestForceCloseTimedOutPositionPublishesCriticalOnCloseFailure(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	rt := newReversionTestRuntime(t, client, nil)
+
+	client.EXPECT().
+		ClosePosition(gomock.Any(), "BTC_USDT", shared.SideCloseLong, 2.0, 1).
+		Return(errors.New("exact failed")).Times(3)
+	client.EXPECT().
+		CloseAllPositions(gomock.Any(), "BTC_USDT").
+		Return(errors.New("all failed")).Times(3)
+
+	forceCloseTimedOutPosition(context.Background(), rt, events.OrderFilledEvent{
+		Flow:      events.FlowReversion,
+		Symbol:    "BTC_USDT",
+		OrderID:   "ioc-1",
+		CloseSide: shared.SideCloseLong,
+		FillVol:   2,
+	}, time.Second, time.Now())
+
+	abort := requireAbortEvent(t, rt)
+	assert.Contains(t, abort.Reason, "critical_timeout_close_failed")
 	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
 }
 
@@ -216,6 +273,34 @@ func TestHandleRecheckPublishesConfirmedAndAbortCases(t *testing.T) {
 	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
 }
 
+func TestHandleRecheckAbortsWhenTickerMissingOrFundingDrops(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	rt := newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		TickerStore: &fakeTickerReader{err: errors.New("missing ticker")},
+	})
+
+	handleRecheck(context.Background(), rt)
+
+	abort := requireAbortEvent(t, rt)
+	assert.Equal(t, "no ticker", abort.Reason)
+
+	rt = newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		TickerStore: &fakeTickerReader{ticker: &store.TickerData{
+			Symbol:      "BTC_USDT",
+			FundingRate: 0.0001,
+		}},
+	})
+
+	handleRecheck(context.Background(), rt)
+
+	confirmed := requireConfirmedEvent(t, rt)
+	assert.True(t, confirmed.FRChanged)
+	assert.Equal(t, "FR below threshold", requireAbortEvent(t, rt).Reason)
+}
+
 func TestSetupFillWatcherPublishesFillOrNoFillTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -248,7 +333,7 @@ func TestSetupFillWatcherPublishesFillOrNoFillTimeout(t *testing.T) {
 		})
 	notifier.EXPECT().RemoveOrderCallback("ioc-1")
 	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", int(shared.SideCloseLong), time.Second, gomock.Any())
+		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any())
 
 	setupFillWatcher(context.Background(), rt, evt)
 
@@ -308,6 +393,92 @@ func TestHandleFireIOCPublishesSuccessAndLatencyAbort(t *testing.T) {
 	assert.Equal(t, "latency too high", abort.Reason)
 }
 
+func TestHandleFireIOCPublishesOrderFailure(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	priceStore := store.NewPriceStore()
+	priceStore.UpdatePrice("BTC_USDT", &store.PriceData{
+		LastPrice: 100,
+		BestBid:   99,
+		BestAsk:   101,
+		UpdatedAt: time.Now(),
+	})
+	rt := newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		Clock:      &fakeReversionClock{latency: 10},
+		PriceStore: priceStore,
+	})
+
+	client.EXPECT().
+		CreateOrder(gomock.Any(), gomock.AssignableToTypeOf(exchange.SubmitOrderRequest{})).
+		Return("", errors.New("order rejected"))
+
+	handleFireIOC(context.Background(), rt)
+
+	fired := requireIOCFiredEvent(t, rt)
+	assert.Equal(t, "order rejected", fired.Error)
+	assert.Equal(t, "order rejected", requireAbortEvent(t, rt).Reason)
+}
+
+func TestHandleFireIOCSafetyBlocked(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	priceStore := store.NewPriceStore()
+	priceStore.UpdatePrice("BTC_USDT", &store.PriceData{
+		LastPrice: 100,
+		BestBid:   99,
+		BestAsk:   101,
+		UpdatedAt: time.Now(),
+	})
+	rt := newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		Clock:      &fakeReversionClock{latency: 10},
+		PriceStore: priceStore,
+	})
+	rt.Global().System.Safety.MinVol24USD = 1_000_000
+
+	handleFireIOC(context.Background(), rt)
+
+	fired := requireIOCFiredEvent(t, rt)
+	assert.Contains(t, fired.Error, "24h volume")
+	assert.Contains(t, requireAbortEvent(t, rt).Reason, "24h volume")
+}
+
+func TestHandleFireIOCSkipsWhenSettleMissingOrRefreshFails(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := config.SymbolConfig{
+		Symbol:             "BTC_USDT",
+		ParsedOpenType:     exchange.OpenTypeIsolated,
+		ParsedPositionMode: 1,
+		FundingReversion: fundingdomain.FundingReversionConfig{
+			MaxLatency: types.Duration(time.Second),
+		},
+	}
+	rt := cycle.NewRuntime(cfg, &config.Config{System: &config.SystemConfig{}}, cycle.Deps{
+		Client: client,
+		Clock:  &fakeReversionClock{},
+		Log:    logger,
+	})
+	require.NoError(t, rt.CloseBus())
+
+	handleFireIOC(context.Background(), rt)
+	assert.Empty(t, rt.JourneyEvents())
+
+	rt = newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		Clock:      &fakeReversionClock{latency: 10},
+		PriceStore: store.NewPriceStore(),
+	})
+
+	handleFireIOC(context.Background(), rt)
+	assert.Equal(t, "refresh price failed", requireAbortEvent(t, rt).Reason)
+}
+
 func TestHandleArmRefreshesPriceAndPublishesArmed(t *testing.T) {
 	t.Parallel()
 
@@ -339,6 +510,38 @@ func TestHandleArmRefreshesPriceAndPublishesArmed(t *testing.T) {
 	assert.Greater(t, rt.CandidateCopy().Volume, 0.0)
 }
 
+func TestHandleArmPublishesSafetyFailure(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	ws := mocks.NewMockSubscriber(ctrl)
+	priceStore := store.NewPriceStore()
+	priceStore.UpdatePrice("BTC_USDT", &store.PriceData{
+		LastPrice: 100,
+		BestBid:   99,
+		BestAsk:   101,
+		UpdatedAt: time.Now(),
+	})
+	rt := newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		WsSub:      ws,
+		PriceStore: priceStore,
+	})
+	rt.Global().System.Safety.MinVol24USD = 1_000_000
+
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+	ws.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
+
+	handleArm(context.Background(), rt)
+
+	env := requireEventTopic(t, rt, events.TopicReversionArmed)
+	armed, err := cycle.Unmarshal[events.ArmedEvent](env.Payload)
+	require.NoError(t, err)
+	assert.False(t, armed.SafetyPassed)
+	assert.Contains(t, armed.SafetyRejectReason, "24h volume")
+	assert.Contains(t, requireAbortEvent(t, rt).Reason, "24h volume")
+}
+
 func TestHandleArmAbortsOnSubscribeAndRefreshFailure(t *testing.T) {
 	t.Parallel()
 
@@ -361,7 +564,9 @@ func TestHandleArmAbortsOnSubscribeAndRefreshFailure(t *testing.T) {
 	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 	ws.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 
-	handleArm(context.Background(), rt)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	handleArm(ctx, rt)
 
 	assert.Equal(t, "refresh price failed", requireAbortEvent(t, rt).Reason)
 }
@@ -407,6 +612,37 @@ func TestRegisterSubscribesHandlers(t *testing.T) {
 	require.NotEmpty(t, rt.JourneyEvents())
 }
 
+func TestRegisterAddsReversionIDToHandlerLogs(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	ws := mocks.NewMockSubscriber(ctrl)
+	var buf bytes.Buffer
+	log := slog.New(applogger.NewTraceHandler(slog.NewTextHandler(&buf, nil)))
+	rt := newReversionRuntimeWithDeps(t, client, nil, cycle.Deps{
+		WsSub: ws,
+		Log:   log,
+	})
+
+	ctx := tracectx.WithReqID(context.Background(), "req-test")
+	ctx = tracectx.WithCycleID(ctx, "cycle-test")
+	Register(ctx, rt)
+
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(errors.New("ws down"))
+	rt.Publish(events.TopicReversionCandidate, events.CandidateFoundEvent{
+		Flow:   events.FlowReversion,
+		Symbol: "BTC_USDT",
+	})
+
+	require.Eventually(t, func() bool {
+		out := buf.String()
+		return strings.Contains(out, "req_id=req-test") &&
+			strings.Contains(out, "cycle_id=cycle-test") &&
+			strings.Contains(out, "reversion_id=")
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestSubscribeWaitPublishesWaitComplete(t *testing.T) {
 	t.Parallel()
 
@@ -445,7 +681,7 @@ func TestForceClosePositionFallsBackAndCriticalPublish(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 4, retries)
 
-	publishReversionCritical(rt, "BTC_USDT", "critical")
+	publishReversionCritical(context.Background(), rt, "BTC_USDT", "critical")
 	abort := requireAbortEvent(t, rt)
 	assert.Equal(t, "critical", abort.Reason)
 }
@@ -466,6 +702,7 @@ func newReversionRuntimeWithDeps(
 	cfg := config.SymbolConfig{
 		Symbol:              "BTC_USDT",
 		MaxPriceDiffPercent: 0.2,
+		MinFundingRate:      0.001,
 		MarginUSDT:          100,
 		Leverage:            5,
 		ParsedOpenType:      exchange.OpenTypeIsolated,

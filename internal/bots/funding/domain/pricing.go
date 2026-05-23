@@ -87,13 +87,8 @@ func (c *Candidate) CalculateVolume() float64 {
 		return 0
 	}
 
-	// Use the price we'll actually pay, not the stale LastPrice
-	refPrice := c.LastPrice // fallback
-	if c.Side == shared.SideOpenLong && c.BestAsk > 0 {
-		refPrice = c.BestAsk
-	} else if c.Side == shared.SideOpenShort && c.BestBid > 0 {
-		refPrice = c.BestBid
-	}
+	// Use the price we'll actually pay, not the stale LastPrice.
+	refPrice := c.ExecutionRefPrice()
 
 	notional := decmath.Mul(c.Config.MarginUSDT, float64(c.Config.Leverage))
 	denom := decmath.Mul(c.ContractSize, refPrice)
@@ -104,6 +99,17 @@ func (c *Candidate) CalculateVolume() float64 {
 	}
 
 	return vol
+}
+
+// ExecutionRefPrice returns the side-appropriate reference price for sizing.
+func (c *Candidate) ExecutionRefPrice() float64 {
+	refPrice := c.LastPrice
+	if c.Side == shared.SideOpenLong && c.BestAsk > 0 {
+		refPrice = c.BestAsk
+	} else if c.Side == shared.SideOpenShort && c.BestBid > 0 {
+		refPrice = c.BestBid
+	}
+	return refPrice
 }
 
 // CalculateTrapVolume calculates trap contracts from the dedicated trap sizing

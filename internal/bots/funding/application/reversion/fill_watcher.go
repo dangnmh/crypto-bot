@@ -8,6 +8,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -16,7 +17,7 @@ func subscribeFillWatcher(ctx context.Context, rt *cycle.Runtime) {
 	rt.Subscribe(ctx, events.TopicReversionIOCFired, func(msg *message.Message) {
 		evt, err := cycle.Unmarshal[events.IOCFiredEvent](msg.Payload)
 		if err != nil {
-			rt.Log().Error("Unmarshal IOCFiredEvent failed", slog.Any("error", err))
+			applogger.WithCtx(ctx, rt.Log()).Error("Unmarshal IOCFiredEvent failed", slog.Any("error", err))
 			return
 		}
 		if evt.OrderID == "" || evt.Error != "" {
@@ -36,10 +37,10 @@ func setupFillWatcher(ctx context.Context, rt *cycle.Runtime, evt events.IOCFire
 		rt.Deps().OrderNotifier.RemoveOrderCallback(orderID)
 
 		if deal.DealVol <= 0 {
-			rt.Log().Warn("IOC terminal with no fill", slog.String("orderID", orderID))
+			applogger.WithCtx(ctx, rt.Log()).Warn("IOC terminal with no fill", slog.String("orderID", orderID))
 			if rt.TryMarkFlowTerminal(events.FlowReversion) {
 				reqID := rt.GetReqID()
-				rt.RecordAndPublish(reqID, events.TopicReversionTimeout, events.CycleTimeoutEvent{
+				rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionTimeout, events.CycleTimeoutEvent{
 					Flow:    events.FlowReversion,
 					Symbol:  evt.Symbol,
 					Timeout: 0,
@@ -65,7 +66,7 @@ func setupFillWatcher(ctx context.Context, rt *cycle.Runtime, evt events.IOCFire
 
 		rt.MarkReversionFill(fillEvt)
 		reqID := rt.GetReqID()
-		rt.RecordAndPublish(reqID, events.TopicReversionOrderFilled, fillEvt)
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionOrderFilled, fillEvt)
 		rt.StartExcursionPriceStream(ctx, reqID)
 		watchStaticCloseDeal(ctx, rt, fillEvt)
 	})

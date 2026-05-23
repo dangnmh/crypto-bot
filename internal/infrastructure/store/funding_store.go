@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 )
 
@@ -35,9 +36,9 @@ func NewFundingStore(wg *sync.WaitGroup) *FundingStore {
 
 // StartFundingSync periodically fetches per-symbol funding rates and updates the store.
 func (s *FundingStore) StartFundingSync(ctx context.Context, client exchange.Client, symbols []string, interval time.Duration) {
-	s.logger.Debug("🔄 Starting funding sync", "interval", interval, "symbols", len(symbols))
+	applogger.WithCtx(ctx, s.logger).Debug("🔄 Starting funding sync", "interval", interval, "symbols", len(symbols))
 
-	defer s.logger.Debug("🔄 Funding sync stopped")
+	defer applogger.WithCtx(ctx, s.logger).Debug("🔄 Funding sync stopped")
 	ticker.RunImmediate(ctx, interval, func() bool {
 		s.syncFunding(ctx, client, symbols)
 		return true
@@ -48,7 +49,7 @@ func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, 
 	for _, sym := range symbols {
 		detail, err := client.GetFundingRate(ctx, sym)
 		if err != nil {
-			s.logger.Warn("🟡 Funding sync failed for symbol", "error", err, "symbol", sym)
+			applogger.WithCtx(ctx, s.logger).Warn("🟡 Funding sync failed for symbol", "error", err, "symbol", sym)
 			continue
 		}
 
@@ -58,7 +59,7 @@ func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, 
 		s.mu.Unlock()
 	}
 
-	s.logger.Debug("store.SyncFunding.done", "count", len(symbols))
+	applogger.WithCtx(ctx, s.logger).Debug("store.SyncFunding.done", "count", len(symbols))
 	s.fundingReadyOnce.Do(func() { s.readyWG.Done() })
 }
 

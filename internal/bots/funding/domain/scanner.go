@@ -128,6 +128,7 @@ type ScanResult struct {
 type ScanConfig struct {
 	Symbol         string
 	MinFundingRate float64
+	MinVol24USD    float64
 }
 
 // ScanFundingRates checks funding rates for configured symbols.
@@ -149,6 +150,9 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 
 		absFR := math.Abs(t.FundingRate)
 		if absFR < sc.MinFundingRate {
+			continue
+		}
+		if sc.MinVol24USD > 0 && t.Amount24 < sc.MinVol24USD {
 			continue
 		}
 

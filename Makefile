@@ -11,7 +11,7 @@ GOLANGCI_LINT   := go tool -modfile=go.tool.mod golangci-lint
 COVERAGE_DIR    := .coverage
 COVERAGE_FILE   := $(COVERAGE_DIR)/coverage.out
 COVERAGE_HTML   := $(COVERAGE_DIR)/coverage.html
-MIN_COVERAGE    := 85
+MIN_COVERAGE    := 90
 GREP_V_MOCKS    := grep -v "mocks"
 TEST_PKGS       := $(shell $(GO) list ./internal/... ./pkg/... | $(GREP_V_MOCKS))
 

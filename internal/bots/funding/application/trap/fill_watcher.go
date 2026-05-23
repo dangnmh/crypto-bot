@@ -6,6 +6,7 @@ import (
 	"time"
 
 	shared "crypto-bot/internal/domain"
+	applogger "crypto-bot/pkg/logger"
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
@@ -23,7 +24,7 @@ func subscribeFillWatcher(ctx context.Context, rt *cycle.Runtime) {
 	rt.Subscribe(ctx, events.TopicTrapOrderPlaced, func(msg *message.Message) {
 		evt, err := cycle.Unmarshal[events.TrapFiredEvent](msg.Payload)
 		if err != nil {
-			rt.Log().Error("Unmarshal TrapFiredEvent failed", slog.Any("error", err))
+			applogger.WithCtx(ctx, rt.Log()).Error("Unmarshal TrapFiredEvent failed", slog.Any("error", err))
 			return
 		}
 		setupFillWatcher(ctx, rt, evt.OrderID, evt.Side, evt.CloseSide)
@@ -43,11 +44,11 @@ func setupFillWatcher(ctx context.Context, rt *cycle.Runtime, orderID string, si
 		rt.Deps().OrderNotifier.RemoveOrderCallback(deal.GetOrderID())
 
 		if deal.DealVol <= 0 {
-			rt.Log().Warn("No fill", slog.String("flow", events.FlowTrap), slog.String("orderID", deal.GetOrderID()))
+			applogger.WithCtx(ctx, rt.Log()).Warn("No fill", slog.String("flow", events.FlowTrap), slog.String("orderID", deal.GetOrderID()))
 			return
 		}
 
-		rt.Log().Info("Position opened",
+		applogger.WithCtx(ctx, rt.Log()).Info("Position opened",
 			slog.String("flow", events.FlowTrap),
 			slog.Float64("entry", deal.DealAvgPrice),
 			slog.Float64("vol", deal.DealVol),
@@ -64,7 +65,7 @@ func setupFillWatcher(ctx context.Context, rt *cycle.Runtime, orderID string, si
 			CloseSide: closeSide,
 		}
 		rt.MarkTrapFill(fillEvt)
-		rt.RecordAndPublish(reqID, events.TopicTrapOrderFilled, fillEvt)
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderFilled, fillEvt)
 		rt.StartExcursionPriceStream(ctx, reqID)
 	})
 }

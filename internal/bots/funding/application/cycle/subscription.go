@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"crypto-bot/internal/infrastructure/ws"
+	applogger "crypto-bot/pkg/logger"
 )
 
 // SubscriptionManager handles WS channel lifecycle for a trading cycle.
@@ -24,7 +25,7 @@ func NewSubscriptionManager(
 
 func (sm *SubscriptionManager) SubscribeAll(ctx context.Context) error {
 	if err := sm.ws.SubscribeTicker(ctx, sm.symbol); err != nil {
-		sm.log.Error("🔴 Failed to subscribe ticker", slog.String("symbol", sm.symbol), slog.Any("error", err))
+		applogger.WithCtx(ctx, sm.log).Error("🔴 Failed to subscribe ticker", slog.String("symbol", sm.symbol), slog.Any("error", err))
 		return err
 	}
 	return nil
@@ -32,6 +33,6 @@ func (sm *SubscriptionManager) SubscribeAll(ctx context.Context) error {
 
 func (sm *SubscriptionManager) UnsubscribeAll(ctx context.Context) {
 	if err := sm.ws.UnsubscribeTicker(ctx, sm.symbol); err != nil {
-		sm.log.Warn("⚠️ Failed to unsubscribe ticker", slog.String("symbol", sm.symbol), slog.Any("error", err))
+		applogger.WithCtx(ctx, sm.log).Warn("⚠️ Failed to unsubscribe ticker", slog.String("symbol", sm.symbol), slog.Any("error", err))
 	}
 }

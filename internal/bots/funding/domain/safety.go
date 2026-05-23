@@ -9,33 +9,93 @@ import (
 
 // SafetyResult holds the result of safety evaluation for a candidate.
 type SafetyResult struct {
-	Passed           bool
-	RejectReason     string
-	PositionSizeUSDT float64
-	ImpactRatio      float64
-	EstSlippage      float64
-	ExpectedProfit   float64
+	Passed              bool
+	RejectReason        string
+	DesiredNotionalUSDT float64
+	ActualNotionalUSDT  float64
+	MaxSafeNotionalUSDT float64
+	AvgMinuteVolumeUSDT float64
+	ImpactRatio         float64
+	EstSlippage         float64
+	ExpectedProfit      float64
+	SizedDown           bool
 }
 
+// SafetyLimits defines global safety constraints in domain terms.
+type SafetyLimits struct {
+	MaxImpactRatio float64
+	MinVol24USD    float64
+}
+
+const minutesPerDay = 24 * 60
+
 // EvaluateSafety evaluates whether a candidate is safe to trade based on its own config and global safety limits.
-func (c *Candidate) EvaluateSafety(maxImpactRatio float64) *SafetyResult {
+func (c *Candidate) EvaluateSafety(limits SafetyLimits) *SafetyResult {
 	result := &SafetyResult{Passed: true}
 
-	// Position size (USDT)
-	positionSize := decmath.Mul(c.Config.MarginUSDT, float64(c.Config.Leverage))
-	result.PositionSizeUSDT = positionSize
+	desiredNotional := c.ReversionNotionalUSDT()
+	result.DesiredNotionalUSDT = desiredNotional
+	result.ActualNotionalUSDT = desiredNotional
 
-	// Impact ratio
-	if c.Amount24 > 0 {
-		result.ImpactRatio = decmath.Div(positionSize, c.Amount24)
-	}
-
-	if result.ImpactRatio > maxImpactRatio {
+	if limits.MinVol24USD > 0 && c.Amount24 < limits.MinVol24USD {
 		result.Passed = false
-		result.RejectReason = fmt.Sprintf("impact ratio too high (%.4f > %.4f)", result.ImpactRatio, maxImpactRatio)
+		result.RejectReason = fmt.Sprintf("24h volume %.4f below minimum %.4f", c.Amount24, limits.MinVol24USD)
 		return result
 	}
 
+	// Impact ratio is measured against average one-minute turnover:
+	// maxNotional = amount24hUSD / 1440 * maxImpactRatio.
+	if c.Amount24 > 0 {
+		result.AvgMinuteVolumeUSDT = decmath.Div(c.Amount24, minutesPerDay)
+		result.MaxSafeNotionalUSDT = decmath.Mul(result.AvgMinuteVolumeUSDT, limits.MaxImpactRatio)
+		if result.MaxSafeNotionalUSDT > 0 && desiredNotional > result.MaxSafeNotionalUSDT {
+			result.ActualNotionalUSDT = result.MaxSafeNotionalUSDT
+			result.SizedDown = true
+		}
+		if result.AvgMinuteVolumeUSDT > 0 {
+			result.ImpactRatio = decmath.Div(result.ActualNotionalUSDT, result.AvgMinuteVolumeUSDT)
+		}
+	}
+
+	return c.evaluateTradeSafety(result)
+}
+
+// ApplySafetySizing caps candidate volume to the liquidity-safe notional.
+func (c *Candidate) ApplySafetySizing(limits SafetyLimits) *SafetyResult {
+	result := c.EvaluateSafety(limits)
+	if !result.Passed {
+		return result
+	}
+
+	refPrice := c.ExecutionRefPrice()
+	if refPrice <= 0 {
+		result.Passed = false
+		result.RejectReason = "invalid execution reference price"
+		return result
+	}
+
+	if result.SizedDown {
+		c.Volume = c.CalculateVolumeForNotional(result.ActualNotionalUSDT, refPrice)
+	}
+
+	result.ActualNotionalUSDT = c.NotionalForVolume(c.Volume, refPrice)
+	if result.MaxSafeNotionalUSDT > 0 && result.ActualNotionalUSDT > result.MaxSafeNotionalUSDT {
+		result.Passed = false
+		result.RejectReason = fmt.Sprintf(
+			"minimum volume notional %.4f exceeds max safe notional %.4f USDT",
+			result.ActualNotionalUSDT,
+			result.MaxSafeNotionalUSDT,
+		)
+		return result
+	}
+	if result.AvgMinuteVolumeUSDT > 0 {
+		result.ImpactRatio = decmath.Div(result.ActualNotionalUSDT, result.AvgMinuteVolumeUSDT)
+	}
+
+	return c.evaluateTradeSafety(result)
+}
+
+func (c *Candidate) evaluateTradeSafety(result *SafetyResult) *SafetyResult {
 	// Minimum trade volume filter based on margin limit
 	if c.Volume < float64(c.MinVol) {
 		result.Passed = false

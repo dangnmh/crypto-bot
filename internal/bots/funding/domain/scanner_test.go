@@ -108,6 +108,28 @@ func TestScanFundingRates_EmptyInputs(t *testing.T) {
 	})
 }
 
+func TestScanFundingRates_FiltersMinVol24USD(t *testing.T) {
+	t.Parallel()
+
+	candidates := domain.ScanFundingRates(
+		[]domain.ScanResult{
+			{Symbol: "BTC_USDT", FundingRate: 0.006, Amount24: 999999},
+			{Symbol: "ETH_USDT", FundingRate: 0.006, Amount24: 1000000},
+		},
+		[]domain.ScanConfig{
+			{Symbol: "BTC_USDT", MinFundingRate: 0.001, MinVol24USD: 1000000},
+			{Symbol: "ETH_USDT", MinFundingRate: 0.001, MinVol24USD: 1000000},
+		},
+	)
+
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].Symbol != "ETH_USDT" {
+		t.Errorf("expected ETH_USDT, got %s", candidates[0].Symbol)
+	}
+}
+
 func TestTradeConfig_IsHedgeTrapEnabled(t *testing.T) {
 	t.Parallel()
 

@@ -14,7 +14,7 @@
     "time": "60s", // Đồng bộ đồng hồ local ↔ server (cho fire chính xác tại T-Nms)
     "ticker": "300s", // Refresh bảng giá tổng quan qua REST (WS bổ sung real-time)
     "contract": "3600s", // Refresh thông số hợp đồng (PriceUnit, MinVol, Fee — hiếm đổi)
-    "funding": "10s", // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
+    "funding": "30s", // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -30,19 +30,13 @@
   // Safety — Ngưỡng bảo vệ hệ thống
   // ══════════════════════════════════════════════════════════════
   "safety": {
-    "maxCapitalPctPerSymbol": 10, // Tối đa 10% tổng vốn cho 1 symbol
-    "maxImpactRatio": 1, // Reject nếu position > 1% volume 24h
-    "maxCycleNotionalUSDT": 30000, // Tổng Reversion + Trap notional tối đa trong cùng symbol + settle
-    "maxCycleLossUSDT": 150, // Ước tính loss tối đa theo SL của các leg trong cycle
-    "disableSymbolAfterCriticalCloseFailure": true
+    "minVol24USD": 1000000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
+    "maxImpactRatio": 10, // Tự giảm notional xuống tối đa 5% thanh khoản trung bình 1 phút (amount24h / 1440)
   },
-
-  // ══════════════════════════════════════════════════════════════
-  // Journal — Ghi chép chu kỳ giao dịch (Cycle Recording)
-  // ══════════════════════════════════════════════════════════════
-  "journal": {
-    "enabled": true,
-    "dir": "data/journal", // Output: data/journal/cycles-YYYY-MM-DD.jsonl
+  "notifier":{
+    "enable":true,
+    "chatId":8224427034,
+    "level":"info"
   },
 
   // ══════════════════════════════════════════════════════════════

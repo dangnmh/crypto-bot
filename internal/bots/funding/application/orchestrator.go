@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/trap"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/observability"
+	applogger "crypto-bot/pkg/logger"
 )
 
 type Deps = cycle.Deps
@@ -30,16 +31,19 @@ func NewCycleOrchestrator(
 }
 
 func (o *CycleOrchestrator) Run(ctx context.Context, settle time.Time) {
-	ctx = observability.WithCorrelationID(ctx)
+	if observability.ReqID(ctx) == "" {
+		ctx = observability.WithCorrelationID(ctx)
+	}
+	ctx = observability.WithCycleID(ctx)
 	cycleCtx, cancelCycle := context.WithCancel(ctx)
 	defer cancelCycle()
-	reqID := observability.CorrelationID(ctx)
-	log := o.rt.Log().With("req_id", reqID)
+	reqID := observability.ReqID(ctx)
+	log := applogger.WithCtx(ctx, o.rt.Log())
 
 	log.Info("━━━ Cycle start ━━━", slog.Time("settle", settle))
-	o.rt.Begin(reqID, settle, log)
+	o.rt.BeginWithContext(ctx, reqID, settle, o.rt.Log())
 	defer func() { _ = o.rt.CloseBus() }()
-	defer o.rt.DumpTimeline(log)
+	defer o.rt.DumpTimeline(o.rt.Log())
 
 	done := make(chan struct{})
 	o.setupEventChain(cycleCtx, done)
@@ -68,9 +72,9 @@ func (o *CycleOrchestrator) setupEventChain(ctx context.Context, done chan struc
 	o.subscribeEventLog(ctx)
 }
 
-func (o *CycleOrchestrator) abort(source, reason string) {
+func (o *CycleOrchestrator) abort(ctx context.Context, source, reason string) {
 	reqID := o.rt.GetReqID()
-	o.rt.Abort(reqID, source, reason)
+	o.rt.AbortCtx(ctx, reqID, source, reason)
 }
 
 func unmarshal[T any](data []byte) (T, error) {

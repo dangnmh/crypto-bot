@@ -42,6 +42,42 @@ func (m *MockOrderNotifier) EXPECT() *MockOrderNotifierMockRecorder {
 	return m.recorder
 }
 
+// OnOrderDealBySymbolSide mocks base method.
+func (m *MockOrderNotifier) OnOrderDealBySymbolSide(ctx context.Context, symbol, side string, timeout time.Duration, callback func(exchange.PersonalOrderDeal)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "OnOrderDealBySymbolSide", ctx, symbol, side, timeout, callback)
+}
+
+// OnOrderDealBySymbolSide indicates an expected call of OnOrderDealBySymbolSide.
+func (mr *MockOrderNotifierMockRecorder) OnOrderDealBySymbolSide(ctx, symbol, side, timeout, callback any) *MockOrderNotifierOnOrderDealBySymbolSideCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrderDealBySymbolSide", reflect.TypeOf((*MockOrderNotifier)(nil).OnOrderDealBySymbolSide), ctx, symbol, side, timeout, callback)
+	return &MockOrderNotifierOnOrderDealBySymbolSideCall{Call: call}
+}
+
+// MockOrderNotifierOnOrderDealBySymbolSideCall wrap *gomock.Call
+type MockOrderNotifierOnOrderDealBySymbolSideCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockOrderNotifierOnOrderDealBySymbolSideCall) Return() *MockOrderNotifierOnOrderDealBySymbolSideCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockOrderNotifierOnOrderDealBySymbolSideCall) Do(f func(context.Context, string, string, time.Duration, func(exchange.PersonalOrderDeal))) *MockOrderNotifierOnOrderDealBySymbolSideCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockOrderNotifierOnOrderDealBySymbolSideCall) DoAndReturn(f func(context.Context, string, string, time.Duration, func(exchange.PersonalOrderDeal))) *MockOrderNotifierOnOrderDealBySymbolSideCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // OnOrderUpdate mocks base method.
 func (m *MockOrderNotifier) OnOrderUpdate(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
 	m.ctrl.T.Helper()
@@ -78,114 +114,6 @@ func (c *MockOrderNotifierOnOrderUpdateCall) DoAndReturn(f func(context.Context,
 	return c
 }
 
-// OnOrderDeal mocks base method.
-func (m *MockOrderNotifier) OnOrderDeal(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.PersonalOrderDeal)) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnOrderDeal", ctx, orderID, timeout, callback)
-}
-
-// OnOrderDeal indicates an expected call of OnOrderDeal.
-func (mr *MockOrderNotifierMockRecorder) OnOrderDeal(ctx, orderID, timeout, callback any) *MockOrderNotifierOnOrderDealCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrderDeal", reflect.TypeOf((*MockOrderNotifier)(nil).OnOrderDeal), ctx, orderID, timeout, callback)
-	return &MockOrderNotifierOnOrderDealCall{Call: call}
-}
-
-// MockOrderNotifierOnOrderDealCall wrap *gomock.Call
-type MockOrderNotifierOnOrderDealCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockOrderNotifierOnOrderDealCall) Return() *MockOrderNotifierOnOrderDealCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockOrderNotifierOnOrderDealCall) Do(f func(context.Context, string, time.Duration, func(exchange.PersonalOrderDeal))) *MockOrderNotifierOnOrderDealCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockOrderNotifierOnOrderDealCall) DoAndReturn(f func(context.Context, string, time.Duration, func(exchange.PersonalOrderDeal))) *MockOrderNotifierOnOrderDealCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// OnOrderDealBySymbolSide mocks base method.
-func (m *MockOrderNotifier) OnOrderDealBySymbolSide(ctx context.Context, symbol string, side int, timeout time.Duration, callback func(exchange.PersonalOrderDeal)) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnOrderDealBySymbolSide", ctx, symbol, side, timeout, callback)
-}
-
-// OnOrderDealBySymbolSide indicates an expected call of OnOrderDealBySymbolSide.
-func (mr *MockOrderNotifierMockRecorder) OnOrderDealBySymbolSide(ctx, symbol, side, timeout, callback any) *MockOrderNotifierOnOrderDealBySymbolSideCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrderDealBySymbolSide", reflect.TypeOf((*MockOrderNotifier)(nil).OnOrderDealBySymbolSide), ctx, symbol, side, timeout, callback)
-	return &MockOrderNotifierOnOrderDealBySymbolSideCall{Call: call}
-}
-
-// MockOrderNotifierOnOrderDealBySymbolSideCall wrap *gomock.Call
-type MockOrderNotifierOnOrderDealBySymbolSideCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockOrderNotifierOnOrderDealBySymbolSideCall) Return() *MockOrderNotifierOnOrderDealBySymbolSideCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockOrderNotifierOnOrderDealBySymbolSideCall) Do(f func(context.Context, string, int, time.Duration, func(exchange.PersonalOrderDeal))) *MockOrderNotifierOnOrderDealBySymbolSideCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockOrderNotifierOnOrderDealBySymbolSideCall) DoAndReturn(f func(context.Context, string, int, time.Duration, func(exchange.PersonalOrderDeal))) *MockOrderNotifierOnOrderDealBySymbolSideCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// OnTrackOrderUpdate mocks base method.
-func (m *MockOrderNotifier) OnTrackOrderUpdate(ctx context.Context, trackID string, orderID string, timeout time.Duration, callback func(exchange.PersonalTrackOrderUpdate)) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "OnTrackOrderUpdate", ctx, trackID, orderID, timeout, callback)
-}
-
-// OnTrackOrderUpdate indicates an expected call of OnTrackOrderUpdate.
-func (mr *MockOrderNotifierMockRecorder) OnTrackOrderUpdate(ctx, trackID, orderID, timeout, callback any) *MockOrderNotifierOnTrackOrderUpdateCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTrackOrderUpdate", reflect.TypeOf((*MockOrderNotifier)(nil).OnTrackOrderUpdate), ctx, trackID, orderID, timeout, callback)
-	return &MockOrderNotifierOnTrackOrderUpdateCall{Call: call}
-}
-
-// MockOrderNotifierOnTrackOrderUpdateCall wrap *gomock.Call
-type MockOrderNotifierOnTrackOrderUpdateCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockOrderNotifierOnTrackOrderUpdateCall) Return() *MockOrderNotifierOnTrackOrderUpdateCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockOrderNotifierOnTrackOrderUpdateCall) Do(f func(context.Context, string, string, time.Duration, func(exchange.PersonalTrackOrderUpdate))) *MockOrderNotifierOnTrackOrderUpdateCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockOrderNotifierOnTrackOrderUpdateCall) DoAndReturn(f func(context.Context, string, string, time.Duration, func(exchange.PersonalTrackOrderUpdate))) *MockOrderNotifierOnTrackOrderUpdateCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // OnPositionUpdate mocks base method.
 func (m *MockOrderNotifier) OnPositionUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func(exchange.PersonalPositionUpdate)) {
 	m.ctrl.T.Helper()
@@ -218,6 +146,42 @@ func (c *MockOrderNotifierOnPositionUpdateCall) Do(f func(context.Context, strin
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockOrderNotifierOnPositionUpdateCall) DoAndReturn(f func(context.Context, string, time.Duration, func(exchange.PersonalPositionUpdate))) *MockOrderNotifierOnPositionUpdateCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// OnTrackOrderUpdate mocks base method.
+func (m *MockOrderNotifier) OnTrackOrderUpdate(ctx context.Context, trackID, orderID string, timeout time.Duration, callback func(exchange.PersonalTrackOrderUpdate)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "OnTrackOrderUpdate", ctx, trackID, orderID, timeout, callback)
+}
+
+// OnTrackOrderUpdate indicates an expected call of OnTrackOrderUpdate.
+func (mr *MockOrderNotifierMockRecorder) OnTrackOrderUpdate(ctx, trackID, orderID, timeout, callback any) *MockOrderNotifierOnTrackOrderUpdateCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTrackOrderUpdate", reflect.TypeOf((*MockOrderNotifier)(nil).OnTrackOrderUpdate), ctx, trackID, orderID, timeout, callback)
+	return &MockOrderNotifierOnTrackOrderUpdateCall{Call: call}
+}
+
+// MockOrderNotifierOnTrackOrderUpdateCall wrap *gomock.Call
+type MockOrderNotifierOnTrackOrderUpdateCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockOrderNotifierOnTrackOrderUpdateCall) Return() *MockOrderNotifierOnTrackOrderUpdateCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockOrderNotifierOnTrackOrderUpdateCall) Do(f func(context.Context, string, string, time.Duration, func(exchange.PersonalTrackOrderUpdate))) *MockOrderNotifierOnTrackOrderUpdateCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockOrderNotifierOnTrackOrderUpdateCall) DoAndReturn(f func(context.Context, string, string, time.Duration, func(exchange.PersonalTrackOrderUpdate))) *MockOrderNotifierOnTrackOrderUpdateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

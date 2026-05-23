@@ -2,17 +2,13 @@ package logger
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
+
+	"crypto-bot/pkg/tracectx"
 )
-
-type contextKey string
-
-const correlationIDKey contextKey = "correlation_id"
 
 // multiHandler fans out log records to multiple slog handlers.
 type multiHandler struct {
@@ -34,8 +30,14 @@ func (h *TraceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
-	if reqID := CorrelationID(ctx); reqID != "" {
+	if reqID := tracectx.ReqID(ctx); reqID != "" {
 		r.AddAttrs(slog.String("req_id", reqID))
+	}
+	if cycleID := tracectx.CycleID(ctx); cycleID != "" {
+		r.AddAttrs(slog.String("cycle_id", cycleID))
+	}
+	if reversionID := tracectx.ReversionID(ctx); reversionID != "" {
+		r.AddAttrs(slog.String("reversion_id", reversionID))
 	}
 	return h.inner.Handle(ctx, r)
 }
@@ -48,28 +50,41 @@ func (h *TraceHandler) WithGroup(name string) slog.Handler {
 	return &TraceHandler{inner: h.inner.WithGroup(name)}
 }
 
-// WithCorrelationID creates a new context with a correlation ID attached.
-func WithCorrelationID(ctx context.Context) context.Context {
-	return WithCorrelationIDValue(ctx, generateID())
+// CtxLogger binds a slog logger to a context for log records.
+//
+//nolint:containedctx // This is a short-lived logging adapter created per call site, not a long-lived service struct.
+type CtxLogger struct {
+	ctx  context.Context
+	base *slog.Logger
 }
 
-// WithCorrelationIDValue creates a new context with a specific correlation ID.
-func WithCorrelationIDValue(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, correlationIDKey, id)
-}
-
-// CorrelationID extracts the correlation ID from the context.
-func CorrelationID(ctx context.Context) string {
-	if id, ok := ctx.Value(correlationIDKey).(string); ok {
-		return id
+// WithCtx returns a context-bound logger. If base is nil, slog.Default is used.
+//
+//nolint:contextcheck // This adapter preserves the caller-provided context for immediate log calls.
+func WithCtx(ctx context.Context, base *slog.Logger) *CtxLogger {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return ""
+	if base == nil {
+		base = slog.Default()
+	}
+	return &CtxLogger{ctx: ctx, base: base}
 }
 
-func generateID() string {
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+func (l *CtxLogger) Debug(msg string, args ...any) {
+	l.base.DebugContext(l.ctx, msg, args...)
+}
+
+func (l *CtxLogger) Info(msg string, args ...any) {
+	l.base.InfoContext(l.ctx, msg, args...)
+}
+
+func (l *CtxLogger) Warn(msg string, args ...any) {
+	l.base.WarnContext(l.ctx, msg, args...)
+}
+
+func (l *CtxLogger) Error(msg string, args ...any) {
+	l.base.ErrorContext(l.ctx, msg, args...)
 }
 
 func (m *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
@@ -108,6 +123,18 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: handlers}
 }
 
+func sourceReplaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.SourceKey {
+		switch v := a.Value.Any().(type) {
+		case slog.Source:
+			return slog.String(a.Key, fmt.Sprintf("%s:%d", v.File, v.Line))
+		case *slog.Source:
+			return slog.String(a.Key, fmt.Sprintf("%s:%d", v.File, v.Line))
+		}
+	}
+	return a
+}
+
 // InitLogger initializes the global slog logger with console (JSON) + file (JSON) output.
 // All handlers are wrapped with TraceHandler to auto-inject req_id.
 // Returns a cleanup function to close the log file.
@@ -126,7 +153,7 @@ func InitLogger(level string) func() {
 		slogLevel = slog.LevelInfo
 	}
 
-	opts := &slog.HandlerOptions{Level: slogLevel, AddSource: true}
+	opts := &slog.HandlerOptions{Level: slogLevel, AddSource: true, ReplaceAttr: sourceReplaceAttr}
 	consoleHandler := slog.NewJSONHandler(os.Stdout, opts)
 
 	handlers := []slog.Handler{NewTraceHandler(consoleHandler)}

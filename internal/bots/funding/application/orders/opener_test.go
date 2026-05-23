@@ -36,6 +36,7 @@ func TestFireIOCSubmitsOrder(t *testing.T) {
 			assert.Equal(t, int(shared.SideOpenShort), req.Side)
 			assert.Equal(t, exchange.OrderTypeIOC, req.Type)
 			assert.Equal(t, 10.0, req.Vol)
+			assert.LessOrEqual(t, len(req.ExternalOID), maxExternalOrderIDLen)
 			assert.Greater(t, req.Price, 0.0)
 			assert.Greater(t, req.TakeProfitPrice, 0.0)
 			assert.Greater(t, req.StopLossPrice, 0.0)
@@ -104,6 +105,7 @@ func TestFireLimitTrapSubmitsOppositeSideOrder(t *testing.T) {
 		DoAndReturn(func(_ context.Context, req exchange.SubmitOrderRequest) (string, error) {
 			assert.Equal(t, int(shared.SideOpenLong), req.Side)
 			assert.Equal(t, exchange.OrderTypeLimit, req.Type)
+			assert.LessOrEqual(t, len(req.ExternalOID), maxExternalOrderIDLen)
 			assert.Greater(t, req.Price, 0.0)
 			assert.Greater(t, req.TakeProfitPrice, 0.0)
 			assert.Greater(t, req.StopLossPrice, 0.0)
@@ -173,6 +175,57 @@ func TestCalcSpreadPctHandlesZeroBid(t *testing.T) {
 	t.Parallel()
 
 	assert.Zero(t, calcSpreadPct(0, 100))
+}
+
+func TestExternalOrderIDFitsExchangeLimit(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_763_806_952_000)
+	for _, tc := range []struct {
+		name   string
+		prefix string
+		symbol string
+	}{
+		{name: "ioc long symbol", prefix: "ioc", symbol: "BUILDONBOB_USDT"},
+		{name: "trap long symbol", prefix: "trp", symbol: "BUILDONBOB_USDT"},
+		{name: "ob trap long symbol", prefix: "trp_ob", symbol: "BUILDONBOB_USDT"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			id := externalOrderID(tc.prefix, tc.symbol, now)
+
+			assert.LessOrEqual(t, len(id), maxExternalOrderIDLen)
+			assert.Contains(t, id, tc.prefix+"_")
+			assert.NotContains(t, id, tc.symbol)
+		})
+	}
+}
+
+func TestFireIOCExternalOrderIDFitsLongSymbol(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	clock := mocks.NewMockClock(ctrl)
+	candidate := testCandidate(shared.SideOpenShort)
+	candidate.Symbol = "BUILDONBOB_USDT"
+	candidate.Config.Symbol = candidate.Symbol
+
+	clock.EXPECT().GetServerTime().Return(time.Now().UnixMilli()).AnyTimes()
+	clock.EXPECT().Offset().Return(int64(0)).AnyTimes()
+	client.EXPECT().
+		CreateOrder(gomock.Any(), gomock.AssignableToTypeOf(exchange.SubmitOrderRequest{})).
+		DoAndReturn(func(_ context.Context, req exchange.SubmitOrderRequest) (string, error) {
+			assert.Equal(t, "BUILDONBOB_USDT", req.Symbol)
+			assert.LessOrEqual(t, len(req.ExternalOID), maxExternalOrderIDLen)
+			return "ioc-long", nil
+		})
+
+	res := FireIOC(context.Background(), client, &candidate, clock, discardLogger())
+
+	require.NoError(t, res.Error)
+	assert.Equal(t, "ioc-long", res.OrderID)
 }
 
 func testCandidate(side shared.Side) fundingdomain.Candidate {

@@ -286,44 +286,6 @@ func (c *MockPriceReaderGetPriceCall) DoAndReturn(f func(context.Context, string
 	return c
 }
 
-// SubscribePrice mocks base method.
-func (m *MockPriceReader) SubscribePrice(ctx context.Context, symbol string) <-chan *store.PriceData {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SubscribePrice", ctx, symbol)
-	ret0, _ := ret[0].(<-chan *store.PriceData)
-	return ret0
-}
-
-// SubscribePrice indicates an expected call of SubscribePrice.
-func (mr *MockPriceReaderMockRecorder) SubscribePrice(ctx, symbol any) *MockPriceReaderSubscribePriceCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribePrice", reflect.TypeOf((*MockPriceReader)(nil).SubscribePrice), ctx, symbol)
-	return &MockPriceReaderSubscribePriceCall{Call: call}
-}
-
-// MockPriceReaderSubscribePriceCall wrap *gomock.Call
-type MockPriceReaderSubscribePriceCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockPriceReaderSubscribePriceCall) Return(ch <-chan *store.PriceData) *MockPriceReaderSubscribePriceCall {
-	c.Call = c.Call.Return(ch)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockPriceReaderSubscribePriceCall) Do(f func(context.Context, string) <-chan *store.PriceData) *MockPriceReaderSubscribePriceCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockPriceReaderSubscribePriceCall) DoAndReturn(f func(context.Context, string) <-chan *store.PriceData) *MockPriceReaderSubscribePriceCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // PriceAge mocks base method.
 func (m *MockPriceReader) PriceAge(symbol string) time.Duration {
 	m.ctrl.T.Helper()
@@ -358,6 +320,44 @@ func (c *MockPriceReaderPriceAgeCall) Do(f func(string) time.Duration) *MockPric
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockPriceReaderPriceAgeCall) DoAndReturn(f func(string) time.Duration) *MockPriceReaderPriceAgeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// SubscribePrice mocks base method.
+func (m *MockPriceReader) SubscribePrice(ctx context.Context, symbol string) <-chan *store.PriceData {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubscribePrice", ctx, symbol)
+	ret0, _ := ret[0].(<-chan *store.PriceData)
+	return ret0
+}
+
+// SubscribePrice indicates an expected call of SubscribePrice.
+func (mr *MockPriceReaderMockRecorder) SubscribePrice(ctx, symbol any) *MockPriceReaderSubscribePriceCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribePrice", reflect.TypeOf((*MockPriceReader)(nil).SubscribePrice), ctx, symbol)
+	return &MockPriceReaderSubscribePriceCall{Call: call}
+}
+
+// MockPriceReaderSubscribePriceCall wrap *gomock.Call
+type MockPriceReaderSubscribePriceCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockPriceReaderSubscribePriceCall) Return(arg0 <-chan *store.PriceData) *MockPriceReaderSubscribePriceCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockPriceReaderSubscribePriceCall) Do(f func(context.Context, string) <-chan *store.PriceData) *MockPriceReaderSubscribePriceCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockPriceReaderSubscribePriceCall) DoAndReturn(f func(context.Context, string) <-chan *store.PriceData) *MockPriceReaderSubscribePriceCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -258,6 +258,38 @@ func TestCalculateTrapVolume_LegacyFallback(t *testing.T) {
 	}
 }
 
+func TestVolumeAndNotionalInvalidInputs(t *testing.T) {
+	t.Parallel()
+
+	c := &domain.Candidate{
+		ContractSpec: domain.ContractSpec{
+			ContractSize: 1,
+			MinVol:       2,
+			VolScale:     0,
+		},
+		MarketData: domain.MarketData{LastPrice: 100},
+	}
+
+	assertZero := func(name string, got float64) {
+		t.Helper()
+		if got != 0 {
+			t.Fatalf("%s = %.4f, want 0", name, got)
+		}
+	}
+
+	assertZero("zero notional volume", c.CalculateVolumeForNotional(0, 100))
+	assertZero("zero ref volume", c.CalculateVolumeForNotional(100, 0))
+	assertZero("zero contract volume", (&domain.Candidate{}).CalculateVolumeForNotional(100, 100))
+	assertZero("zero volume notional", c.NotionalForVolume(0, 100))
+	assertZero("zero ref notional", c.NotionalForVolume(1, 0))
+	assertZero("zero contract notional", (&domain.Candidate{}).NotionalForVolume(1, 100))
+
+	got := c.CalculateVolumeForNotional(1, 100)
+	if got != 2 {
+		t.Fatalf("volume clamped to minVol = %.4f, want 2", got)
+	}
+}
+
 func TestRoundToScale(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
