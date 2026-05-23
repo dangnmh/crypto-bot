@@ -171,7 +171,7 @@ func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
 
 	for _, sub := range subs {
 		if err := client.SendJSON(sub.subscribeMsg); err != nil {
-			p.logger.Warn("🟡 WS subscription replay failed", "topic", sub.topic, "error", err)
+			p.logger.Warn("🟡 WS subscription replay failed", slog.String("topic", sub.topic), slog.Any("error", err))
 		}
 	}
 }

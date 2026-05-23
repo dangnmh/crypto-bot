@@ -35,7 +35,7 @@ func (s *KlineStore) InitKlines(symbol string, maxLen int, initial []domain.Klin
 	}
 
 	s.klines[symbol] = buf
-	s.logger.Debug("store.InitKlines", "symbol", symbol, "count", len(buf.klines))
+	s.logger.Debug("store.InitKlines", slog.String("symbol", symbol), slog.Int("count", len(buf.klines)))
 }
 
 // AddKline adds a new kline (usually from WS push) to the buffer.

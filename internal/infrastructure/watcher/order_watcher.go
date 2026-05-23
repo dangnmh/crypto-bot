@@ -64,9 +64,9 @@ func (w *OrderWatcher) PublishOrder(deal exchange.WsOrderDeal) {
 	if topic == "" {
 		return
 	}
-	w.logger.Debug("📢 Publishing order lifecycle", "orderID", orderID, "state", deal.State)
+	w.logger.Debug("📢 Publishing order lifecycle", slog.String("orderID", orderID), slog.Int("state", deal.State))
 	if err := w.broker.Publish(topic, deal); err != nil {
-		w.logger.Error("Failed to publish order lifecycle", "orderID", orderID, "error", err)
+		w.logger.Error("Failed to publish order lifecycle", slog.String("orderID", orderID), slog.Any("error", err))
 	}
 }
 
@@ -77,16 +77,16 @@ func (w *OrderWatcher) PublishDeal(deal exchange.PersonalOrderDeal) {
 
 	orderID := deal.GetOrderID()
 	side := exchange.SideStr(deal.Side)
-	w.logger.Debug("📢 Publishing order execution deal", "orderID", orderID, "symbol", deal.Symbol, "side", side)
+	w.logger.Debug("📢 Publishing order execution deal", slog.String("orderID", orderID), slog.String("symbol", deal.Symbol), slog.String("side", side))
 	topic := symbolSideDealTopic(deal.Symbol, side)
 	if topic == "" {
 		return
 	}
 	if err := w.broker.Publish(topic, deal); err != nil {
 		w.logger.Error("Failed to publish symbol-side execution deal",
-			"symbol", deal.Symbol,
-			"side", side,
-			"error", err,
+			slog.String("symbol", deal.Symbol),
+			slog.String("side", side),
+			slog.Any("error", err),
 		)
 	}
 }
@@ -99,13 +99,13 @@ func (w *OrderWatcher) PublishTrackOrder(update exchange.PersonalTrackOrderUpdat
 	trackID := update.GetID()
 	if trackID != "" {
 		if err := w.broker.Publish(trackTopic(trackID), update); err != nil {
-			w.logger.Error("Failed to publish track order update", "trackID", trackID, "error", err)
+			w.logger.Error("Failed to publish track order update", slog.String("trackID", trackID), slog.Any("error", err))
 		}
 	}
 	orderID := update.GetOrderID()
 	if orderID != "" {
 		if err := w.broker.Publish(trackOrderTopic(orderID), update); err != nil {
-			w.logger.Error("Failed to publish track order update", "orderID", orderID, "error", err)
+			w.logger.Error("Failed to publish track order update", slog.String("orderID", orderID), slog.Any("error", err))
 		}
 	}
 }
@@ -119,7 +119,7 @@ func (w *OrderWatcher) PublishPosition(update exchange.PersonalPositionUpdate) {
 		return
 	}
 	if err := w.broker.Publish(positionTopic(update.Symbol), update); err != nil {
-		w.logger.Error("Failed to publish position update", "symbol", update.Symbol, "error", err)
+		w.logger.Error("Failed to publish position update", slog.String("symbol", update.Symbol), slog.Any("error", err))
 	}
 }
 
@@ -183,16 +183,16 @@ func subscribe[T any](
 
 	ch, err := w.broker.Subscribe(ctx, topic)
 	if err != nil {
-		applogger.WithCtx(ctx, w.logger).Error("Failed to subscribe to watcher topic", "topic", topic, "label", label, "error", err)
+		applogger.WithCtx(ctx, w.logger).Error("Failed to subscribe to watcher topic", slog.String("topic", topic), slog.String("label", label), slog.Any("error", err))
 		cancel()
 		return
 	}
 
-	applogger.WithCtx(ctx, w.logger).Debug("📥 Subscribing to watcher topic", "topic", topic, "label", label)
+	applogger.WithCtx(ctx, w.logger).Debug("📥 Subscribing to watcher topic", slog.String("topic", topic), slog.String("label", label))
 
 	go func() {
 		defer cancel()
-		defer applogger.WithCtx(ctx, w.logger).Debug("📤 Unsubscribed from watcher topic", "topic", topic, "label", label)
+		defer applogger.WithCtx(ctx, w.logger).Debug("📤 Unsubscribed from watcher topic", slog.String("topic", topic), slog.String("label", label))
 
 		for {
 			select {
@@ -207,7 +207,7 @@ func subscribe[T any](
 				if err := json.Unmarshal(msg.Payload, &value); err == nil {
 					callback(value)
 				} else {
-					applogger.WithCtx(ctx, w.logger).Error("Failed to unmarshal watcher payload", "topic", topic, "label", label, "error", err)
+					applogger.WithCtx(ctx, w.logger).Error("Failed to unmarshal watcher payload", slog.String("topic", topic), slog.String("label", label), slog.Any("error", err))
 				}
 				msg.Ack()
 			}
