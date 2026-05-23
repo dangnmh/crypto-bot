@@ -25,12 +25,14 @@ func TestEngineBuilder_MissingConfig(t *testing.T) {
 func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: ""},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: ""},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				APIKey:    "key",
+				APISecret: "secret",
+			},
 		},
-		APIKey:    "key",
-		APISecret: "secret",
 	}
 
 	_, err := app.NewEngineBuilder().
@@ -43,12 +45,14 @@ func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {
 func TestEngineBuilder_MissingWSURL(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "", MaxPairsPerWSConn: 10},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "", MaxPairsPerWSConn: 10},
+				APIKey:    "key",
+				APISecret: "secret",
+			},
 		},
-		APIKey:    "key",
-		APISecret: "secret",
 	}
 
 	_, err := app.NewEngineBuilder().
@@ -61,12 +65,14 @@ func TestEngineBuilder_MissingWSURL(t *testing.T) {
 func TestEngineBuilder_InvalidMaxPairs(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
+				APIKey:    "key",
+				APISecret: "secret",
+			},
 		},
-		APIKey:    "key",
-		APISecret: "secret",
 	}
 
 	_, err := app.NewEngineBuilder().
@@ -79,12 +85,14 @@ func TestEngineBuilder_InvalidMaxPairs(t *testing.T) {
 func TestEngineBuilder_MissingAPIKey(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				APIKey:    "",
+				APISecret: "secret",
+			},
 		},
-		APIKey:    "",
-		APISecret: "secret",
 	}
 
 	_, err := app.NewEngineBuilder().
@@ -97,12 +105,14 @@ func TestEngineBuilder_MissingAPIKey(t *testing.T) {
 func TestEngineBuilder_MissingAPISecret(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				APIKey:    "key",
+				APISecret: "",
+			},
 		},
-		APIKey:    "key",
-		APISecret: "",
 	}
 
 	_, err := app.NewEngineBuilder().

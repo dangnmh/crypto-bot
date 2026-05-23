@@ -85,8 +85,8 @@ func NewRuntime(cfg config.SymbolConfig, global *config.Config, deps Deps) *Runt
 	}
 }
 
-func (r *Runtime) Begin(reqID string, settle time.Time, log *slog.Logger) {
-	r.BeginWithContext(context.Background(), reqID, settle, log)
+func (r *Runtime) Begin(ctx context.Context, reqID string, settle time.Time, log *slog.Logger) {
+	r.BeginWithContext(ctx, reqID, settle, log)
 }
 
 func (r *Runtime) BeginWithContext(ctx context.Context, reqID string, settle time.Time, log *slog.Logger) {
@@ -153,8 +153,8 @@ func (r *Runtime) JourneyEvents() []events.JournalEnvelope {
 }
 
 // RecordAndPublish records an event to the event journal and publishes it to the event bus.
-func (r *Runtime) RecordAndPublish(reqID, topic string, payload any) {
-	r.RecordAndPublishCtx(context.Background(), reqID, topic, payload)
+func (r *Runtime) RecordAndPublish(ctx context.Context, reqID, topic string, payload any) {
+	r.RecordAndPublishCtx(ctx, reqID, topic, payload)
 }
 
 // RecordAndPublishCtx records an event to the event journal and publishes it to the event bus.
@@ -324,8 +324,8 @@ func (r *Runtime) Subscribe(ctx context.Context, topic string, handler func(*mes
 	}()
 }
 
-func (r *Runtime) Publish(topic string, payload any) {
-	r.PublishCtx(context.Background(), topic, payload)
+func (r *Runtime) Publish(ctx context.Context, topic string, payload any) {
+	r.PublishCtx(ctx, topic, payload)
 }
 
 func (r *Runtime) PublishCtx(ctx context.Context, topic string, payload any) {
@@ -341,8 +341,8 @@ func (r *Runtime) PublishStart(settle time.Time) error {
 	})
 }
 
-func (r *Runtime) Abort(reqID, source, reason string) {
-	r.AbortCtx(context.Background(), reqID, source, reason)
+func (r *Runtime) Abort(ctx context.Context, reqID, source, reason string) {
+	r.AbortCtx(ctx, reqID, source, reason)
 }
 
 func (r *Runtime) AbortCtx(ctx context.Context, reqID, source, reason string) {
@@ -678,8 +678,8 @@ func (r *Runtime) CalculateFinalPnL() events.FinalPnLEvent {
 }
 
 // PublishFinalPnL calculates and publishes the final PnL event.
-func (r *Runtime) PublishFinalPnL(reqID string) {
-	r.PublishFinalPnLCtx(context.Background(), reqID)
+func (r *Runtime) PublishFinalPnL(ctx context.Context, reqID string) {
+	r.PublishFinalPnLCtx(ctx, reqID)
 }
 
 // PublishFinalPnLCtx calculates and publishes the final PnL event.

@@ -9,7 +9,6 @@ import (
 	"crypto-bot/internal/bots/funding/application"
 	botconfig "crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/notifier"
@@ -42,39 +41,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. Resolve Telegram Token (Bitwarden -> Env fallback)
-	token := os.Getenv("TELEGRAM_BOT_TOKEN")
-
-	// Try Bitwarden if no env var
-	if token == "" {
-		bw, bwErr := config.NewBitwardenLoader()
-		if bwErr == nil {
-			if secret, secretErr := bw.GetSecret("TELEGRAM_BOT_TOKEN"); secretErr == nil {
-				token = secret
-				log.Info("Loaded TELEGRAM_BOT_TOKEN from Bitwarden")
-			}
-		}
-	}
-
 	// 3. Initialize Notifier
-	n, err := notifier.NewFromConfig(sysCfg, token, slog.Default())
+	n, err := notifier.NewFromConfig(sysCfg, slog.Default())
 	if err != nil {
 		log.Error("Failed to initialize notifier", "error", err)
 		os.Exit(1)
 	}
-	if err := n.Start(); err != nil {
+	if err := n.Start(ctx); err != nil {
 		log.Error("Failed to start notifier", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
-		if err := n.Stop(); err != nil {
+		if err := n.Stop(ctx); err != nil {
 			log.Warn("Failed to stop notifier", "error", err)
 		}
 	}()
 
 	// 4. Create exchange client (MEXC-specific wiring)
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
-	var client exchange.Client = mexc.NewClient(httpPool, sysCfg.API.Future.BaseURL, sysCfg.APIKey, sysCfg.APISecret, sysCfg.Logging)
+	var client exchange.Client = mexc.NewClient(httpPool, sysCfg.ExchangeConfig.Mexc.Future.BaseURL, sysCfg.ExchangeConfig.Mexc.APIKey, sysCfg.ExchangeConfig.Mexc.APISecret, sysCfg.Logging)
 
 	// 5. Wrap with DryRunClient if configured
 	if sysCfg.DryRun {

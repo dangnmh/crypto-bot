@@ -2,9 +2,11 @@
   // ══════════════════════════════════════════════════════════════
   // API — Kết nối MEXC Exchange
   // ══════════════════════════════════════════════════════════════
-  "api": {
-    "future": { "baseURL": "https://api.mexc.com" },
-    "websocket": { "wsURL": "wss://contract.mexc.com/edge" },
+  "exchange": {
+    "mexc": {
+      "future": { "baseURL": "https://api.mexc.com" },
+      "websocket": { "wsURL": "wss://contract.mexc.com/edge" },
+    },
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -33,10 +35,8 @@
     "minVol24USD": 1000000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
     "maxImpactRatio": 10, // Tự giảm notional xuống tối đa 5% thanh khoản trung bình 1 phút (amount24h / 1440)
   },
-  "notifier":{
-    "enable":true,
-    "chatId":8224427034,
-    "level":"info"
+  "notifier": {
+    "enable": true,
   },
 
   // ══════════════════════════════════════════════════════════════

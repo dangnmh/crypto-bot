@@ -16,15 +16,19 @@ func TestApplyBitwardenFallbackSkipsWhenCredentialsOrConfigMissing(t *testing.T)
 	t.Setenv("BITWARDEN_ORGANIZATION_ID", "")
 	t.Setenv("BITWARDEN_PROJECT_NAME", "")
 
-	cfg := &SystemConfig{APIKey: "key", APISecret: "secret"}
+	cfg := &SystemConfig{
+		ExchangeConfig: ExchangeConfig{
+			Mexc: APIConfig{APIKey: "key", APISecret: "secret"},
+		},
+	}
 	require.NoError(t, applyBitwardenFallback(cfg))
-	assert.Equal(t, "key", cfg.APIKey)
-	assert.Equal(t, "secret", cfg.APISecret)
+	assert.Equal(t, "key", cfg.ExchangeConfig.Mexc.APIKey)
+	assert.Equal(t, "secret", cfg.ExchangeConfig.Mexc.APISecret)
 
 	cfg = &SystemConfig{}
 	require.NoError(t, applyBitwardenFallback(cfg))
-	assert.Empty(t, cfg.APIKey)
-	assert.Empty(t, cfg.APISecret)
+	assert.Empty(t, cfg.ExchangeConfig.Mexc.APIKey)
+	assert.Empty(t, cfg.ExchangeConfig.Mexc.APISecret)
 }
 
 func TestApplyBitwardenFallbackReturnsWrappedError(t *testing.T) {
@@ -42,17 +46,29 @@ func TestValidateAndDefaultHelpers(t *testing.T) {
 	t.Parallel()
 
 	assert.Error(t, validateCredentials(&SystemConfig{}))
-	assert.Error(t, validateCredentials(&SystemConfig{APIKey: "key"}))
-	assert.NoError(t, validateCredentials(&SystemConfig{APIKey: "key", APISecret: "secret"}))
+	assert.Error(t, validateCredentials(&SystemConfig{
+		ExchangeConfig: ExchangeConfig{
+			Mexc: APIConfig{APIKey: "key"},
+		},
+	}))
+	assert.NoError(t, validateCredentials(&SystemConfig{
+		ExchangeConfig: ExchangeConfig{
+			Mexc: APIConfig{APIKey: "key", APISecret: "secret"},
+		},
+	}))
 
 	assert.Error(t, validateEndpoints(&SystemConfig{}))
 	assert.Error(t, validateEndpoints(&SystemConfig{
-		API: APIConfig{Future: RESTConfig{BaseURL: "https://api.example.com"}},
+		ExchangeConfig: ExchangeConfig{
+			Mexc: APIConfig{Future: RESTConfig{BaseURL: "https://api.example.com"}},
+		},
 	}))
 	assert.NoError(t, validateEndpoints(&SystemConfig{
-		API: APIConfig{
-			Future:    RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: WebSocketConfig{WSURL: "wss://ws.example.com"},
+		ExchangeConfig: ExchangeConfig{
+			Mexc: APIConfig{
+				Future:    RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: WebSocketConfig{WSURL: "wss://ws.example.com"},
+			},
 		},
 	}))
 
@@ -61,7 +77,7 @@ func TestValidateAndDefaultHelpers(t *testing.T) {
 	assert.Equal(t, types.Duration(30*time.Second), cfg.Sync.Time)
 	assert.Equal(t, types.Duration(30*time.Second), cfg.Sync.Ticker)
 	assert.Equal(t, types.Duration(5*time.Minute), cfg.Sync.Contract)
-	assert.Equal(t, 30, cfg.API.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 

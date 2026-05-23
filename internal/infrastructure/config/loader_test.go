@@ -16,17 +16,19 @@ func TestInitializeBase_Success(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+			},
 		},
 	}
 
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "test-key", cfg.APIKey)
-	assert.Equal(t, "test-secret", cfg.APISecret)
+	assert.Equal(t, "test-key", cfg.ExchangeConfig.Mexc.APIKey)
+	assert.Equal(t, "test-secret", cfg.ExchangeConfig.Mexc.APISecret)
 }
 
 func TestInitializeBase_Defaults(t *testing.T) {
@@ -34,9 +36,11 @@ func TestInitializeBase_Defaults(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "secret")
 
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+			},
 		},
 	}
 
@@ -47,7 +51,7 @@ func TestInitializeBase_Defaults(t *testing.T) {
 	assert.Greater(t, cfg.Sync.Time, types.Duration(0))
 	assert.Greater(t, cfg.Sync.Ticker, types.Duration(0))
 	assert.Greater(t, cfg.Sync.Contract, types.Duration(0))
-	assert.Equal(t, 30, cfg.API.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
@@ -57,13 +61,13 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 
 	customTime := types.Duration(60 * 1e9) // 60s
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 50},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 50},
+			},
 		},
-		Sync: config.SyncConfig{
-			Time: customTime,
-		},
+		Sync:    config.SyncConfig{Time: customTime},
 		Logging: config.LoggingConfig{Level: "debug"},
 	}
 
@@ -71,7 +75,7 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, customTime, cfg.Sync.Time)
-	assert.Equal(t, 50, cfg.API.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 50, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "debug", cfg.Logging.Level)
 }
 
@@ -80,9 +84,11 @@ func TestInitializeBase_MissingAPIKey(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "secret")
 
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+			},
 		},
 	}
 
@@ -95,9 +101,11 @@ func TestInitializeBase_MissingAPISecret(t *testing.T) {
 	_ = os.Unsetenv("MEXC_API_SECRET")
 
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+			},
 		},
 	}
 
@@ -110,9 +118,11 @@ func TestInitializeBase_MissingBaseURL(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "secret")
 
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: ""},
-			WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: ""},
+				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+			},
 		},
 	}
 
@@ -125,9 +135,11 @@ func TestInitializeBase_MissingWSURL(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "secret")
 
 	cfg := &config.SystemConfig{
-		API: config.APIConfig{
-			Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: config.WebSocketConfig{WSURL: ""},
+		ExchangeConfig: config.ExchangeConfig{
+			Mexc: config.APIConfig{
+				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: config.WebSocketConfig{WSURL: ""},
+			},
 		},
 	}
 

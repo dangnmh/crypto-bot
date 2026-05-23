@@ -2,11 +2,13 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"crypto-bot/pkg/types"
 
+	"github.com/bitwarden/sdk-go/v2"
 	"github.com/joho/godotenv"
 )
 
@@ -16,8 +18,8 @@ import (
 func InitializeBase(c *SystemConfig) error {
 	_ = godotenv.Load()
 
-	c.APIKey = os.Getenv("MEXC_API_KEY")
-	c.APISecret = os.Getenv("MEXC_API_SECRET")
+	c.ExchangeConfig.Mexc.APIKey = os.Getenv("MEXC_API_KEY")
+	c.ExchangeConfig.Mexc.APISecret = os.Getenv("MEXC_API_SECRET")
 
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
@@ -37,40 +39,131 @@ func InitializeBase(c *SystemConfig) error {
 }
 
 func applyBitwardenFallback(c *SystemConfig) error {
-	if c.APIKey != "" && c.APISecret != "" {
+	// Skip if credentials already set
+	if c.ExchangeConfig.Mexc.APIKey != "" && c.ExchangeConfig.Mexc.APISecret != "" && c.NotiConfig.TelegramChatID != "" {
 		return nil
 	}
-	if !hasBitwardenConfig() {
-		return nil
-	}
-	credentials, err := loadFromBitwarden()
+
+	creds, err := LoadFromBitwarden()
 	if err != nil {
+		// Bitwarden not configured or failed - non-fatal if env vars are set
+		if !hasBitwardenConfig() {
+			return nil
+		}
 		return fmt.Errorf("bitwarden fallback failed: %w", err)
 	}
-	if c.APIKey == "" {
-		c.APIKey = credentials.APIKey
+
+	// Only fill missing values (keep env vars priority)
+	if c.ExchangeConfig.Mexc.APIKey == "" {
+		c.ExchangeConfig.Mexc.APIKey = creds.APIKey
 	}
-	if c.APISecret == "" {
-		c.APISecret = credentials.APISecret
+	if c.ExchangeConfig.Mexc.APISecret == "" {
+		c.ExchangeConfig.Mexc.APISecret = creds.APISecret
 	}
+	if c.NotiConfig.TelegramChatID == "" {
+		c.NotiConfig.TelegramChatID = creds.TelegramChatID
+	}
+	if c.NotiConfig.TelegramBotToken == "" {
+		c.NotiConfig.TelegramBotToken = creds.TelegramBotToken
+	}
+
 	return nil
 }
 
+// LoadFromBitwarden retrieves MEXC credentials and Telegram Chat ID from Bitwarden Secrets Manager.
+func LoadFromBitwarden() (*bitwardenCredentials, error) {
+	if !hasBitwardenConfig() {
+		return nil, fmt.Errorf("bitwarden configuration not found (BITWARDEN_ACCESS_TOKEN, BITWARDEN_ORGANIZATION_ID, BITWARDEN_PROJECT_NAME required)")
+	}
+	loader, err := newBitwardenLoader()
+	if err != nil {
+		return nil, err
+	}
+
+	apiKey, err := loader.GetSecret("MEXC_API_KEY")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MEXC_API_KEY from Bitwarden: %w", err)
+	}
+
+	apiSecret, err := loader.GetSecret("MEXC_API_SECRET")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get MEXC_API_SECRET from Bitwarden: %w", err)
+	}
+
+	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
+	if err != nil {
+		slog.Error("failed to get TELEGRAM_CHAT_ID from Bitwarden", slog.Any("error", err))
+	}
+
+	telegramBotToken, err := loader.GetSecret("TELEGRAM_BOT_TOKEN")
+	if err != nil {
+		slog.Error("failed to get TELEGRAM_BOT_TOKEN from Bitwarden", slog.Any("error", err))
+	}
+
+	// Trim whitespace from credentials
+	apiKey = strings.TrimSpace(apiKey)
+	apiSecret = strings.TrimSpace(apiSecret)
+	telegramChatID = strings.TrimSpace(telegramChatID)
+	telegramBotToken = strings.TrimSpace(telegramBotToken)
+
+	return &bitwardenCredentials{
+		APIKey:           apiKey,
+		APISecret:        apiSecret,
+		TelegramChatID:   telegramChatID,
+		TelegramBotToken: telegramBotToken,
+	}, nil
+}
+
+// hasBitwardenConfig checks if Bitwarden environment variables are set.
+func hasBitwardenConfig() bool {
+	return os.Getenv("BITWARDEN_ACCESS_TOKEN") != "" &&
+		os.Getenv("BITWARDEN_ORGANIZATION_ID") != "" &&
+		os.Getenv("BITWARDEN_PROJECT_NAME") != ""
+}
+
+// newBitwardenLoader creates a new Bitwarden secrets loader.
+func newBitwardenLoader() (*BitwardenLoader, error) {
+	accessToken := os.Getenv("BITWARDEN_ACCESS_TOKEN")
+	organizationID := os.Getenv("BITWARDEN_ORGANIZATION_ID")
+	projectName := os.Getenv("BITWARDEN_PROJECT_NAME")
+
+	accessToken = strings.TrimSpace(accessToken)
+	organizationID = strings.TrimSpace(organizationID)
+	projectName = strings.TrimSpace(projectName)
+
+	client, err := sdk.NewBitwardenClient(nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Bitwarden client: %w", err)
+	}
+
+	if err := client.AccessTokenLogin(accessToken, nil); err != nil {
+		return nil, fmt.Errorf("failed to login to Bitwarden: %w", err)
+	}
+
+	return &BitwardenLoader{
+		client:         client,
+		accessToken:    accessToken,
+		organizationID: organizationID,
+		projectName:    projectName,
+		secretCache:    make(map[string]string),
+	}, nil
+}
+
 func validateCredentials(c *SystemConfig) error {
-	if c.APIKey == "" {
+	if c.ExchangeConfig.Mexc.APIKey == "" {
 		return fmt.Errorf("MEXC_API_KEY is required (set in .env, environment, or Bitwarden)")
 	}
-	if c.APISecret == "" {
+	if c.ExchangeConfig.Mexc.APISecret == "" {
 		return fmt.Errorf("MEXC_API_SECRET is required (set in .env, environment, or Bitwarden)")
 	}
 	return nil
 }
 
 func validateEndpoints(c *SystemConfig) error {
-	if c.API.Future.BaseURL == "" {
+	if c.ExchangeConfig.Mexc.Future.BaseURL == "" {
 		return fmt.Errorf("api.future.baseURL is required")
 	}
-	if c.API.WebSocket.WSURL == "" {
+	if c.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
 		return fmt.Errorf("api.websocket.wsURL is required")
 	}
 	return nil
@@ -86,8 +179,8 @@ func applySystemDefaults(c *SystemConfig) {
 	if c.Sync.Contract <= 0 {
 		c.Sync.Contract = types.Duration(300 * 1e9) // 5min
 	}
-	if c.API.WebSocket.MaxPairsPerWSConn <= 0 {
-		c.API.WebSocket.MaxPairsPerWSConn = 30 // default MEXC limit
+	if c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
+		c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn = 30 // default MEXC limit
 	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
@@ -96,40 +189,8 @@ func applySystemDefaults(c *SystemConfig) {
 
 // bitwardenCredentials holds API credentials from Bitwarden.
 type bitwardenCredentials struct {
-	APIKey    string
-	APISecret string
-}
-
-// hasBitwardenConfig checks if Bitwarden environment variables are set.
-func hasBitwardenConfig() bool {
-	return os.Getenv("BITWARDEN_ACCESS_TOKEN") != "" &&
-		os.Getenv("BITWARDEN_ORGANIZATION_ID") != "" &&
-		os.Getenv("BITWARDEN_PROJECT_NAME") != ""
-}
-
-// loadFromBitwarden retrieves MEXC credentials from Bitwarden Secrets Manager.
-func loadFromBitwarden() (*bitwardenCredentials, error) {
-	loader, err := NewBitwardenLoader()
-	if err != nil {
-		return nil, err
-	}
-
-	apiKey, err := loader.GetSecret("MEXC_API_KEY")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get MEXC_API_KEY from Bitwarden: %w", err)
-	}
-
-	apiSecret, err := loader.GetSecret("MEXC_API_SECRET")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get MEXC_API_SECRET from Bitwarden: %w", err)
-	}
-
-	// Trim whitespace from credentials
-	apiKey = strings.TrimSpace(apiKey)
-	apiSecret = strings.TrimSpace(apiSecret)
-
-	return &bitwardenCredentials{
-		APIKey:    apiKey,
-		APISecret: apiSecret,
-	}, nil
+	APIKey           string
+	APISecret        string
+	TelegramChatID   string
+	TelegramBotToken string
 }

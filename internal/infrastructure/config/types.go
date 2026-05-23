@@ -22,6 +22,8 @@ type RESTConfig struct {
 type APIConfig struct {
 	Future    RESTConfig      `json:"future"`
 	WebSocket WebSocketConfig `json:"websocket"`
+	APIKey    string          `json:"-"`
+	APISecret string          `json:"-"`
 }
 
 type LogWSConfig struct {
@@ -39,10 +41,19 @@ type LoggingConfig struct {
 
 // SystemConfig contains universally required configuration for any bot connecting to the exchange.
 type SystemConfig struct {
-	API       APIConfig     `json:"api"`
-	Logging   LoggingConfig `json:"logging"`
-	Sync      SyncConfig    `json:"sync"`
-	DryRun    bool          `json:"dryRun"`
-	APIKey    string        `json:"-"`
-	APISecret string        `json:"-"`
+	Logging        LoggingConfig  `json:"logging"`
+	Sync           SyncConfig     `json:"sync"`
+	DryRun         bool           `json:"dryRun"`
+	ExchangeConfig ExchangeConfig `json:"exchange"`
+	NotiConfig     NotiConfig     `json:"notifier"`
+}
+
+type ExchangeConfig struct {
+	Mexc APIConfig `json:"mexc"`
+}
+
+type NotiConfig struct {
+	Enabled          bool   `json:"enable"`
+	TelegramChatID   string `json:"-"`
+	TelegramBotToken string `json:"-"`
 }

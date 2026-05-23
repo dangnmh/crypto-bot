@@ -18,7 +18,6 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
 	content := `{
-		"exchange": "mexc",
 		"sync": {
 			"ticker": "5s",
 			"contract": "30s",
@@ -32,13 +31,15 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 			"holdDuration": "60s",
 			"trapAfterSettle": "20ms"
 		},
-		"api": {
-			"future": {
-				"baseURL": "https://test.api.com"
-			},
-			"websocket": {
-				"wsURL": "wss://test.example.com",
-				"maxPairsPerWSConn": 25
+		"exchange": {
+			"mexc": {
+				"future": {
+					"baseURL": "https://test.api.com"
+				},
+				"websocket": {
+					"wsURL": "wss://test.example.com",
+					"maxPairsPerWSConn": 25
+				}
 			}
 		}
 	}`
@@ -80,16 +81,17 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 
 	// Minimal config — all safety fields at 0, sync fields at 0.
 	content := `{
-		"exchange": "mexc",
 		"sync": {},
 		"safety": {},
-		"api": {
-			"future": {
-				"baseURL": "https://test.api.com"
-			},
-			"websocket": {
-				"wsURL": "wss://test.example.com",
-				"maxPairsPerWSConn": 25
+		"exchange": {
+			"mexc": {
+				"future": {
+					"baseURL": "https://test.api.com"
+				},
+				"websocket": {
+					"wsURL": "wss://test.example.com",
+					"maxPairsPerWSConn": 25
+				}
 			}
 		}
 	}`
@@ -111,12 +113,13 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
 	content := `{
-		"exchange": "mexc",
 		"sync": {},
 		"safety": {},
-		"api": {
-			"future": {"baseURL": "https://test.api.com"},
-			"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+		"exchange": {
+			"mexc": {
+				"future": {"baseURL": "https://test.api.com"},
+				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+			}
 		},
 		"tradingDefaults": {
 			"leverage": 5,
@@ -163,12 +166,13 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
 	content := `{
-		"exchange": "mexc",
 		"sync": {},
 		"safety": {},
-		"api": {
-			"future": {"baseURL": "https://test.api.com"},
-			"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+		"exchange": {
+			"mexc": {
+				"future": {"baseURL": "https://test.api.com"},
+				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+			}
 		}
 	}`
 

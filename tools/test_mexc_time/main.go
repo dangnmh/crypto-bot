@@ -33,7 +33,7 @@ func main() {
 	}
 
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
-	client := mexc.NewClient(httpPool, cfg.API.Future.BaseURL, cfg.APIKey, cfg.APISecret, cfg.Logging)
+	client := mexc.NewClient(httpPool, cfg.ExchangeConfig.Mexc.Future.BaseURL, cfg.ExchangeConfig.Mexc.APIKey, cfg.ExchangeConfig.Mexc.APISecret, cfg.Logging)
 
 	// 1. Get Order Details
 	orderPath := fmt.Sprintf("/api/v1/private/order/get/%s", orderID)

@@ -78,9 +78,11 @@ func TestNewEngine_Success(t *testing.T) {
 	t.Parallel()
 
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+			},
 		},
 		Logging: sysconfig.LoggingConfig{Level: "debug"},
 	}
@@ -166,9 +168,11 @@ func TestNewEngine_NilAdapter(t *testing.T) {
 	t.Parallel()
 
 	cfg := &sysconfig.SystemConfig{
-		API: sysconfig.APIConfig{
-			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+			},
 		},
 	}
 

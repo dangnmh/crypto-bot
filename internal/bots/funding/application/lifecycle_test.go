@@ -200,7 +200,7 @@ func TestSubscribeCleanupHandlesTerminalPublication(t *testing.T) {
 
 	done := make(chan struct{}, 1)
 	o.subscribeCleanup(context.Background(), done)
-	o.rt.RecordAndPublish("req-1", events.TopicTrapAbort, events.CycleAbortEvent{
+	o.rt.RecordAndPublish(context.Background(), "req-1", events.TopicTrapAbort, events.CycleAbortEvent{
 		Flow:   events.FlowTrap,
 		Symbol: "BTC_USDT",
 		Reason: "aborted",
@@ -456,7 +456,7 @@ func newApplicationOrchestrator(t *testing.T, deps cycle.Deps) *CycleOrchestrato
 		},
 	}
 	o := NewCycleOrchestrator(cfg, &config.Config{System: &config.SystemConfig{}}, deps)
-	o.rt.Begin("req-1", time.Now(), logger)
+	o.rt.Begin(context.Background(), "req-1", time.Now(), logger)
 	o.rt.SetCandidate(fundingdomain.Candidate{
 		Config: cycle.ToTradeConfig(cfg),
 		TradeIntent: fundingdomain.TradeIntent{

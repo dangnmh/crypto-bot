@@ -44,7 +44,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 	sysCfg := cfg.SystemConfig
 
 	engineLogger := slog.Default().With("component", "engine")
-	engineLogger.Info("⚙️ Initializing Engine...", "base_url", sysCfg.API.Future.BaseURL)
+	engineLogger.Info("⚙️ Initializing Engine...", "base_url", sysCfg.ExchangeConfig.Mexc.Future.BaseURL)
 
 	ts := timesync.New(cfg.Client, time.Duration(sysCfg.Sync.Time))
 
@@ -61,12 +61,12 @@ func NewEngine(cfg EngineConfig) *Engine {
 			wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
 		}
 
-		if hook := cfg.Adapter.GetAuthHook(sysCfg.APIKey, sysCfg.APISecret); hook != nil {
+		if hook := cfg.Adapter.GetAuthHook(sysCfg.ExchangeConfig.Mexc.APIKey, sysCfg.ExchangeConfig.Mexc.APISecret); hook != nil {
 			wsClientOpts = append(wsClientOpts, pkgws.WithOnConnected(hook))
 		}
 	}
 
-	wsPool := pkgws.NewPool(sysCfg.API.WebSocket.WSURL, sysCfg.API.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
+	wsPool := pkgws.NewPool(sysCfg.ExchangeConfig.Mexc.WebSocket.WSURL, sysCfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
 
 	if cfg.Adapter != nil {
 		cfg.Adapter.SetPool(wsPool)

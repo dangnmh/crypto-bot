@@ -56,7 +56,7 @@ func TestRuntimeAccessorsAndStateHelpers(t *testing.T) {
 	assert.Equal(t, 2.0, gotFill.FillVol)
 
 	assert.NoError(t, rt.PublishStart(time.Now()))
-	rt.Publish(events.TopicTrapSkipped, events.TrapSkippedEvent{Symbol: "BTC_USDT"})
+	rt.Publish(context.Background(), events.TopicTrapSkipped, events.TrapSkippedEvent{Symbol: "BTC_USDT"})
 	rt.DumpTimeline(discardCycleLogger())
 }
 
@@ -168,7 +168,7 @@ func TestRuntimeSubscribeReceivesPublishedMessage(t *testing.T) {
 		received <- struct{}{}
 	})
 
-	rt.Publish(events.TopicTrapSkipped, events.TrapSkippedEvent{Symbol: "BTC_USDT"})
+	rt.Publish(context.Background(), events.TopicTrapSkipped, events.TrapSkippedEvent{Symbol: "BTC_USDT"})
 
 	require.Eventually(t, func() bool {
 		select {
@@ -228,7 +228,7 @@ func TestRuntimeExcursionRecordsOnlyAfterFill(t *testing.T) {
 
 	assert.False(t, rt.FinalizeExcursion(context.Background(), "req-1"))
 
-	rt.RecordAndPublish("req-1", events.TopicTrapOrderFilled, events.OrderFilledEvent{
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicTrapOrderFilled, events.OrderFilledEvent{
 		Flow:   events.FlowTrap,
 		Symbol: "BTC_USDT",
 	})
@@ -274,7 +274,7 @@ func TestRuntimeSubscriptionsAbortAndWSOrderEvents(t *testing.T) {
 	ws.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 	rt.UnsubscribeAll(context.Background())
 
-	rt.Abort("req-1", "scan", "bad scan")
+	rt.Abort(context.Background(), "req-1", "scan", "bad scan")
 	requireTopicInRuntime(t, rt, events.TopicScanCandidateFound)
 	requireTopicInRuntime(t, rt, events.TopicReversionAbort)
 
@@ -368,7 +368,7 @@ func newRuntimeWithDepsForTest(t *testing.T, deps cycle.Deps) *cycle.Runtime {
 	}
 	global := &config.Config{System: &config.SystemConfig{}}
 	rt := cycle.NewRuntime(cfg, global, deps)
-	rt.Begin("req-1", time.Now().Add(time.Minute), logger)
+	rt.Begin(context.Background(), "req-1", time.Now().Add(time.Minute), logger)
 	rt.SetCandidate(fundingdomain.Candidate{
 		Config: cycle.ToTradeConfig(cfg),
 		TradeIntent: fundingdomain.TradeIntent{

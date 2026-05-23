@@ -772,7 +772,7 @@ func newTrapTestRuntimeWithDeps(
 		DepthStore:    depthReader,
 		Log:           logger,
 	})
-	rt.Begin("req-1", time.Now(), logger)
+	rt.Begin(context.Background(), "req-1", time.Now(), logger)
 	rt.SetCandidate(fundingdomain.Candidate{
 		Config: cycle.ToTradeConfig(cfg),
 		TradeIntent: fundingdomain.TradeIntent{

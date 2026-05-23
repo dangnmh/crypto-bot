@@ -630,7 +630,7 @@ func TestRegisterAddsReversionIDToHandlerLogs(t *testing.T) {
 	Register(ctx, rt)
 
 	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(errors.New("ws down"))
-	rt.Publish(events.TopicReversionCandidate, events.CandidateFoundEvent{
+	rt.Publish(context.Background(), events.TopicReversionCandidate, events.CandidateFoundEvent{
 		Flow:   events.FlowReversion,
 		Symbol: "BTC_USDT",
 	})
@@ -651,7 +651,7 @@ func TestSubscribeWaitPublishesWaitComplete(t *testing.T) {
 	rt := newReversionTestRuntime(t, client, nil)
 
 	subscribeWait(context.Background(), rt)
-	rt.Publish(events.TopicReversionArmed, events.ArmedEvent{Flow: events.FlowReversion, Symbol: "BTC_USDT"})
+	rt.Publish(context.Background(), events.TopicReversionArmed, events.ArmedEvent{Flow: events.FlowReversion, Symbol: "BTC_USDT"})
 
 	require.Eventually(t, func() bool {
 		for _, evt := range rt.JourneyEvents() {
@@ -736,7 +736,7 @@ func newReversionRuntimeWithDeps(
 		Clock:         deps.Clock,
 		Log:           deps.Log,
 	})
-	rt.Begin("req-1", time.Now().Add(100*time.Millisecond), logger)
+	rt.Begin(context.Background(), "req-1", time.Now().Add(100*time.Millisecond), logger)
 	rt.SetCandidate(fundingdomain.Candidate{
 		Config: cycle.ToTradeConfig(cfg),
 		TradeIntent: fundingdomain.TradeIntent{

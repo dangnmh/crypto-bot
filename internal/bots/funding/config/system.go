@@ -22,16 +22,14 @@ const (
 // SystemConfig represents the system configuration for the Funding Reversion bot.
 type SystemConfig struct {
 	sysconfig.SystemConfig
-	Safety          SafetyConfig    `json:"safety"`
 	Sync            SyncConfig      `json:"sync"`
+	Safety          SafetyConfig    `json:"safety"`
 	TradingDefaults json.RawMessage `json:"tradingDefaults"`
-	Notifier        NotifierConfig  `json:"notifier"`
 }
 
 type NotifierConfig struct {
 	Enabled bool   `json:"enabled"`
 	ChatID  string `json:"chatId"`
-	Level   string `json:"level"`
 }
 
 type SyncConfig struct {
@@ -148,6 +146,10 @@ func (c *SystemConfig) validate() error {
 
 	// Normalize Global System percentages.
 	c.Safety.MaxImpactRatio /= 100
+
+	if c.NotiConfig.Enabled && c.NotiConfig.TelegramChatID == "" {
+		return fmt.Errorf("notifier is enabled but chatId is missing (set TELEGRAM_CHAT_ID in .env or Bitwarden)")
+	}
 
 	return nil
 }

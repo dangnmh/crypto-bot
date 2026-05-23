@@ -72,19 +72,19 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 
 // validateConfig checks for mandatory config values.
 func (b *EngineBuilder) validateConfig() {
-	if b.cfg.API.Future.BaseURL == "" {
+	if b.cfg.ExchangeConfig.Mexc.Future.BaseURL == "" {
 		b.errors = append(b.errors, "API.Future.BaseURL is required")
 	}
-	if b.cfg.API.WebSocket.WSURL == "" {
+	if b.cfg.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
 		b.errors = append(b.errors, "API.WebSocket.WSURL is required")
 	}
-	if b.cfg.API.WebSocket.MaxPairsPerWSConn <= 0 {
+	if b.cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
 		b.errors = append(b.errors, "API.WebSocket.MaxPairsPerWSConn must be > 0")
 	}
-	if b.cfg.APIKey == "" {
+	if b.cfg.ExchangeConfig.Mexc.APIKey == "" {
 		b.errors = append(b.errors, "APIKey is required")
 	}
-	if b.cfg.APISecret == "" {
+	if b.cfg.ExchangeConfig.Mexc.APISecret == "" {
 		b.errors = append(b.errors, "APISecret is required")
 	}
 }

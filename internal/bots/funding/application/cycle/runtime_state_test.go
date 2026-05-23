@@ -1,6 +1,7 @@
 package cycle_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -21,13 +22,13 @@ func TestRuntimeCalculatesFinalPnLFromRecordedEvents(t *testing.T) {
 	t.Parallel()
 
 	rt := newCycleRuntimeForTest(t)
-	rt.RecordAndPublish("req-1", events.TopicReversionOrderFilled, events.OrderFilledEvent{
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicReversionOrderFilled, events.OrderFilledEvent{
 		Flow:   events.FlowReversion,
 		Symbol: "BTC_USDT",
 		Profit: 10,
 		Fee:    0.5,
 	})
-	rt.RecordAndPublish("req-1", events.TopicTrapOrderFilled, events.OrderFilledEvent{
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicTrapOrderFilled, events.OrderFilledEvent{
 		Flow:   events.FlowTrap,
 		Symbol: "BTC_USDT",
 		Profit: 4,
@@ -48,7 +49,7 @@ func TestRuntimeRecordAndPublishAnnotatesFlowAndSettle(t *testing.T) {
 	t.Parallel()
 
 	rt := newCycleRuntimeForTest(t)
-	rt.RecordAndPublish("req-1", events.TopicTrapSkipped, events.TrapSkippedEvent{
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicTrapSkipped, events.TrapSkippedEvent{
 		Flow:   events.FlowTrap,
 		Symbol: "BTC_USDT",
 		Reason: "disabled",
@@ -68,17 +69,17 @@ func TestRuntimePublishFinalPnLIncludesJourneySnapshot(t *testing.T) {
 	t.Parallel()
 
 	rt := newCycleRuntimeForTest(t)
-	rt.RecordAndPublish("req-1", events.TopicReversionOrderFilled, events.OrderFilledEvent{
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicReversionOrderFilled, events.OrderFilledEvent{
 		Flow:   events.FlowReversion,
 		Symbol: "BTC_USDT",
 		Profit: 10,
 		Fee:    0.5,
 	})
-	rt.RecordAndPublish("req-1", events.TopicCycleCompleted, events.CycleCompletedEvent{
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicCycleCompleted, events.CycleCompletedEvent{
 		Reason: "trailing",
 	})
 
-	rt.PublishFinalPnL("req-1")
+	rt.PublishFinalPnL(context.Background(), "req-1")
 
 	log := rt.JourneyEvents()
 	require.Len(t, log, 4)
@@ -163,7 +164,7 @@ func newCycleRuntimeForTest(t *testing.T) *cycle.Runtime {
 	rt := cycle.NewRuntime(config.SymbolConfig{Symbol: "BTC_USDT"}, &config.Config{}, cycle.Deps{
 		Log: logger,
 	})
-	rt.Begin("req-1", settle, logger)
+	rt.Begin(context.Background(), "req-1", settle, logger)
 	rt.SetCandidate(fundingdomain.Candidate{
 		Config: cycle.ToTradeConfig(config.SymbolConfig{Symbol: "BTC_USDT"}),
 	})

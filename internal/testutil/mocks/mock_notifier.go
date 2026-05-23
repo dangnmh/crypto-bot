@@ -80,17 +80,17 @@ func (c *MockNotifierSendCall) DoAndReturn(f func(context.Context, notifier.Even
 }
 
 // Start mocks base method.
-func (m *MockNotifier) Start() error {
+func (m *MockNotifier) Start(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Start")
+	ret := m.ctrl.Call(m, "Start", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Start indicates an expected call of Start.
-func (mr *MockNotifierMockRecorder) Start() *MockNotifierStartCall {
+func (mr *MockNotifierMockRecorder) Start(ctx any) *MockNotifierStartCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockNotifier)(nil).Start))
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockNotifier)(nil).Start), ctx)
 	return &MockNotifierStartCall{Call: call}
 }
 
@@ -106,29 +106,29 @@ func (c *MockNotifierStartCall) Return(arg0 error) *MockNotifierStartCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockNotifierStartCall) Do(f func() error) *MockNotifierStartCall {
+func (c *MockNotifierStartCall) Do(f func(context.Context) error) *MockNotifierStartCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockNotifierStartCall) DoAndReturn(f func() error) *MockNotifierStartCall {
+func (c *MockNotifierStartCall) DoAndReturn(f func(context.Context) error) *MockNotifierStartCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Stop mocks base method.
-func (m *MockNotifier) Stop() error {
+func (m *MockNotifier) Stop(ctx context.Context) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stop")
+	ret := m.ctrl.Call(m, "Stop", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Stop indicates an expected call of Stop.
-func (mr *MockNotifierMockRecorder) Stop() *MockNotifierStopCall {
+func (mr *MockNotifierMockRecorder) Stop(ctx any) *MockNotifierStopCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockNotifier)(nil).Stop))
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockNotifier)(nil).Stop), ctx)
 	return &MockNotifierStopCall{Call: call}
 }
 
@@ -144,13 +144,13 @@ func (c *MockNotifierStopCall) Return(arg0 error) *MockNotifierStopCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockNotifierStopCall) Do(f func() error) *MockNotifierStopCall {
+func (c *MockNotifierStopCall) Do(f func(context.Context) error) *MockNotifierStopCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockNotifierStopCall) DoAndReturn(f func() error) *MockNotifierStopCall {
+func (c *MockNotifierStopCall) DoAndReturn(f func(context.Context) error) *MockNotifierStopCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

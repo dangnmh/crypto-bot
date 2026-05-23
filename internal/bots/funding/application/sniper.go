@@ -202,7 +202,7 @@ func (s *Sniper) Stop(ctx context.Context) error {
 	applogger.WithCtx(ctx, s.log).Info("🛑 Sniper explicit stop invoked")
 	s.bgWg.Wait()
 	if s.notifier != nil {
-		return s.notifier.Stop()
+		return s.notifier.Stop(ctx)
 	}
 	return nil
 }

@@ -53,7 +53,13 @@ func (p *TelegramProvider) Send(ctx context.Context, evt Event) error {
 	}
 }
 
-func (p *TelegramProvider) Start() error {
+func (p *TelegramProvider) Start(ctx context.Context) error {
+	go func() {
+		_ = p.Send(ctx, Event{
+			Level:   LevelInfo,
+			Message: "🚀 Funding Bot started successfully",
+		})
+	}()
 	go func() {
 		for evt := range p.queue {
 			msg := tgbotapi.NewMessage(p.chatID, p.formatMessage(evt))
@@ -65,7 +71,13 @@ func (p *TelegramProvider) Start() error {
 	return nil
 }
 
-func (p *TelegramProvider) Stop() error {
+func (p *TelegramProvider) Stop(ctx context.Context) error {
+	go func() {
+		_ = p.Send(ctx, Event{
+			Level:   LevelInfo,
+			Message: "🛑 Funding Bot stopped",
+		})
+	}()
 	close(p.queue)
 	return nil
 }

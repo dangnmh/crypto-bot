@@ -29,8 +29,8 @@ type Notifier interface {
 	Send(ctx context.Context, evt Event) error
 
 	// Start begins the notification worker (if async).
-	Start() error
+	Start(ctx context.Context) error
 
 	// Stop gracefully shuts down the notifier.
-	Stop() error
+	Stop(ctx context.Context) error
 }
