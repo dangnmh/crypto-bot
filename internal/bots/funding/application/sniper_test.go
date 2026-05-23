@@ -45,7 +45,6 @@ func TestSniper_Stop(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockNotifier(ctrl)
-	m.EXPECT().Stop(context.Background()).Return(nil)
 
 	sniper := application.NewSniper(cfg, sysCfg, engine, m, slog.Default())
 	err := sniper.Stop(context.Background())

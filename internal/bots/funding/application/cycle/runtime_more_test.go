@@ -310,6 +310,206 @@ func TestRuntimeSubscriptionsAbortAndWSOrderEvents(t *testing.T) {
 	requireTopicInRuntime(t, rt, events.TopicTrackUpdated)
 }
 
+func TestRuntimePublishesReversionPositionClosedFromWSPositionUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	orderNotifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newRuntimeWithDepsForTest(t, cycle.Deps{OrderNotifier: orderNotifier})
+	rt.MarkReversionFill(events.OrderFilledEvent{
+		Flow:      events.FlowReversion,
+		Symbol:    "BTC_USDT",
+		Side:      shared.SideOpenLong,
+		CloseSide: shared.SideCloseLong,
+		FillVol:   2,
+	})
+
+	orderNotifier.EXPECT().
+		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:          "BTC_USDT",
+				PositionType:    1,
+				HoldVol:         0,
+				CloseVol:        2,
+				CloseAvgPrice:   101,
+				CloseProfitLoss: 4,
+				Fee:             0.1,
+			})
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:          "BTC_USDT",
+				PositionType:    1,
+				HoldVol:         0,
+				CloseVol:        2,
+				CloseAvgPrice:   101,
+				CloseProfitLoss: 4,
+			})
+		})
+	orderNotifier.EXPECT().
+		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
+
+	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+
+	closed := requireRuntimePositionClosed(t, rt, events.TopicReversionPositionClosed)
+	assert.Equal(t, events.FlowReversion, closed.Flow)
+	assert.Equal(t, "position_update_closed", closed.Reason)
+	assert.Equal(t, "ws_position", closed.Method)
+	assert.InDelta(t, 101, closed.ClosePrice, 1e-9)
+	assert.InDelta(t, 2, closed.CloseVol, 1e-9)
+	assert.InDelta(t, 4, closed.Profit, 1e-9)
+	assert.InDelta(t, 0.1, closed.Fee, 1e-9)
+	assert.True(t, rt.IsFlowTerminal(events.FlowReversion))
+	assert.Equal(t, 1, countRuntimeTopic(rt, events.TopicReversionPositionClosed))
+}
+
+func TestRuntimePublishesTrapPositionClosedFromWSPositionUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	orderNotifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newRuntimeWithDepsForTest(t, cycle.Deps{OrderNotifier: orderNotifier})
+	rt.MarkTrapFill(events.OrderFilledEvent{
+		Flow:      events.FlowTrap,
+		Symbol:    "BTC_USDT",
+		Side:      shared.SideOpenShort,
+		CloseSide: shared.SideCloseShort,
+		FillVol:   3,
+	})
+
+	orderNotifier.EXPECT().
+		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:           "BTC_USDT",
+				PositionType:     2,
+				HoldVol:          0,
+				NewCloseAvgPrice: 99,
+				CloseVol:         3,
+				Realized:         5,
+			})
+		})
+	orderNotifier.EXPECT().
+		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
+
+	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+
+	closed := requireRuntimePositionClosed(t, rt, events.TopicTrapPositionClosed)
+	assert.Equal(t, events.FlowTrap, closed.Flow)
+	assert.InDelta(t, 99, closed.ClosePrice, 1e-9)
+	assert.InDelta(t, 3, closed.CloseVol, 1e-9)
+	assert.InDelta(t, 5, closed.Profit, 1e-9)
+	trapOrder, hasTrapOrder, trapFill, hasTrapFill, terminal := rt.TrapSnapshot()
+	assert.Empty(t, trapOrder)
+	assert.False(t, hasTrapOrder)
+	assert.Equal(t, events.FlowTrap, trapFill.Flow)
+	assert.True(t, hasTrapFill)
+	assert.True(t, terminal)
+}
+
+func TestRuntimePublishesPositionClosedFromFlatWSPositionUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	orderNotifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newRuntimeWithDepsForTest(t, cycle.Deps{OrderNotifier: orderNotifier})
+	rt.MarkReversionFill(events.OrderFilledEvent{
+		Flow:      events.FlowReversion,
+		Symbol:    "BTC_USDT",
+		Side:      shared.SideOpenLong,
+		CloseSide: shared.SideCloseLong,
+		FillVol:   2,
+	})
+
+	orderNotifier.EXPECT().
+		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:          "BTC_USDT",
+				PositionType:    0,
+				HoldVol:         0,
+				CloseVol:        2,
+				CloseAvgPrice:   100.5,
+				CloseProfitLoss: 3,
+			})
+		})
+	orderNotifier.EXPECT().
+		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
+
+	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+
+	closed := requireRuntimePositionClosed(t, rt, events.TopicReversionPositionClosed)
+	assert.Equal(t, events.FlowReversion, closed.Flow)
+	assert.Equal(t, "position_update_closed", closed.Reason)
+	assert.Equal(t, "ws_position", closed.Method)
+	assert.InDelta(t, 100.5, closed.ClosePrice, 1e-9)
+	assert.InDelta(t, 2, closed.CloseVol, 1e-9)
+}
+
+func TestRuntimeIgnoresAmbiguousFlatWSPositionUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	orderNotifier := mocks.NewMockOrderNotifier(ctrl)
+	rt := newRuntimeWithDepsForTest(t, cycle.Deps{OrderNotifier: orderNotifier})
+	rt.MarkReversionFill(events.OrderFilledEvent{
+		Flow:    events.FlowReversion,
+		Symbol:  "BTC_USDT",
+		Side:    shared.SideOpenLong,
+		FillVol: 2,
+	})
+	rt.MarkTrapFill(events.OrderFilledEvent{
+		Flow:    events.FlowTrap,
+		Symbol:  "BTC_USDT",
+		Side:    shared.SideOpenShort,
+		FillVol: 3,
+	})
+
+	orderNotifier.EXPECT().
+		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:       "BTC_USDT",
+				PositionType: 0,
+				HoldVol:      0,
+			})
+		})
+	orderNotifier.EXPECT().
+		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
+
+	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+
+	assert.Equal(t, 0, countRuntimeTopic(rt, events.TopicReversionPositionClosed))
+	assert.Equal(t, 0, countRuntimeTopic(rt, events.TopicTrapPositionClosed))
+}
+
+func TestRuntimePositionWatcherUsesConfiguredCloseWindow(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	orderNotifier := mocks.NewMockOrderNotifier(ctrl)
+	logger := discardCycleLogger()
+	rt := cycle.NewRuntime(config.SymbolConfig{
+		Symbol: "BTC_USDT",
+		FundingTrap: fundingdomain.FundingTrapConfig{
+			PostSettleTimeout: types.Duration(time.Minute),
+		},
+	}, &config.Config{System: &config.SystemConfig{}}, cycle.Deps{
+		Log:           logger,
+		OrderNotifier: orderNotifier,
+	})
+	rt.Begin(context.Background(), "req-1", time.Now().Add(time.Minute), logger)
+	t.Cleanup(func() {
+		require.NoError(t, rt.CloseBus())
+	})
+
+	orderNotifier.EXPECT().
+		OnPositionUpdate(gomock.Any(), "BTC_USDT", 65*time.Second, gomock.Any())
+	orderNotifier.EXPECT().
+		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
+
+	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+}
+
 type fakeContractReader struct {
 	data *store.ContractData
 	err  error
@@ -408,4 +608,30 @@ func requireTopicInRuntime(t *testing.T, rt *cycle.Runtime, topic string) {
 		}
 	}
 	t.Fatalf("topic %q not found", topic)
+}
+
+func requireRuntimePositionClosed(t *testing.T, rt *cycle.Runtime, topic string) events.PositionClosedEvent {
+	t.Helper()
+	evts := rt.JourneyEvents()
+	for i := range evts {
+		if evts[i].Topic != topic {
+			continue
+		}
+		evt, err := cycle.Unmarshal[events.PositionClosedEvent](evts[i].Payload)
+		require.NoError(t, err)
+		return evt
+	}
+	t.Fatalf("topic %q not found", topic)
+	return events.PositionClosedEvent{}
+}
+
+func countRuntimeTopic(rt *cycle.Runtime, topic string) int {
+	count := 0
+	evts := rt.JourneyEvents()
+	for i := range evts {
+		if evts[i].Topic == topic {
+			count++
+		}
+	}
+	return count
 }

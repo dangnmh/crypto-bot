@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -16,6 +17,11 @@ type TelegramProvider struct {
 	chatID int64
 	logger *slog.Logger
 	queue  chan Event
+
+	startOnce sync.Once
+	stopOnce  sync.Once
+	mu        sync.RWMutex
+	stopped   bool
 }
 
 func NewTelegramProvider(token, chatID string, logger *slog.Logger) (*TelegramProvider, error) {
@@ -45,41 +51,61 @@ func NewTelegramProvider(token, chatID string, logger *slog.Logger) (*TelegramPr
 }
 
 func (p *TelegramProvider) Send(ctx context.Context, evt Event) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.stopped {
+		return nil
+	}
+
 	select {
 	case p.queue <- evt:
 		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	default:
 		return fmt.Errorf("notifier queue full, dropping message")
 	}
 }
 
 func (p *TelegramProvider) Start(ctx context.Context) error {
-	go func() {
+	p.startOnce.Do(func() {
 		_ = p.Send(ctx, Event{
 			Level:   LevelInfo,
 			Message: "🚀 Funding Bot started successfully",
 		})
-	}()
-	go func() {
-		for evt := range p.queue {
-			msg := tgbotapi.NewMessage(p.chatID, p.formatMessage(evt))
-			if _, err := p.bot.Send(msg); err != nil {
-				p.logger.Error("Failed to send telegram message", slog.Any("error", err), slog.Any("event", evt))
+
+		go func() {
+			for evt := range p.queue {
+				p.sendTelegram(evt)
 			}
-		}
-	}()
+		}()
+	})
 	return nil
 }
 
 func (p *TelegramProvider) Stop(ctx context.Context) error {
-	go func() {
-		_ = p.Send(ctx, Event{
+	p.stopOnce.Do(func() {
+		p.sendTelegram(Event{
 			Level:   LevelInfo,
 			Message: "🛑 Funding Bot stopped",
 		})
-	}()
-	close(p.queue)
+
+		p.mu.Lock()
+		p.stopped = true
+		close(p.queue)
+		p.mu.Unlock()
+	})
 	return nil
+}
+
+func (p *TelegramProvider) sendTelegram(evt Event) {
+	if p.bot == nil {
+		return
+	}
+	msg := tgbotapi.NewMessage(p.chatID, p.formatMessage(evt))
+	if _, err := p.bot.Send(msg); err != nil {
+		p.logger.Error("Failed to send telegram message", slog.Any("error", err), slog.Any("event", evt))
+	}
 }
 
 func (p *TelegramProvider) formatMessage(evt Event) string {

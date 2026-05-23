@@ -609,8 +609,10 @@ func (r *Runtime) StopExcursionPriceStream() {
 // SubscribeWSOrderEvents subscribes to order lifecycle events from OrderNotifier
 // and records them via RecordAndPublish for event sourcing.
 func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol string) {
+	positionTimeout := r.positionUpdateWatchTimeout()
+
 	// Subscribe to position updates
-	r.deps.OrderNotifier.OnPositionUpdate(ctx, symbol, 30*time.Second, func(pos exchange.PersonalPositionUpdate) {
+	r.deps.OrderNotifier.OnPositionUpdate(ctx, symbol, positionTimeout, func(pos exchange.PersonalPositionUpdate) {
 		r.RecordAndPublishCtx(ctx, reqID, events.TopicPositionUpdated, events.WSPositionUpdatedEvent{
 			Symbol:        pos.Symbol,
 			Side:          pos.PositionType,
@@ -621,6 +623,7 @@ func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol stri
 			Leverage:      pos.Leverage,
 			Timestamp:     time.Now(),
 		})
+		r.publishPositionClosedFromUpdate(ctx, reqID, pos)
 	})
 
 	// Subscribe to track order updates
@@ -643,6 +646,114 @@ func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol stri
 			Timestamp:   time.Now(),
 		})
 	})
+}
+
+func (r *Runtime) positionUpdateWatchTimeout() time.Duration {
+	timeout := 30 * time.Second
+	configured := timeout
+	if d := time.Duration(r.cfg.FundingReversion.PostSettleTimeout); d > timeout {
+		configured = d
+	}
+	if d := time.Duration(r.cfg.FundingTrap.PostSettleTimeout); d > configured {
+		configured = d
+	}
+	if configured == timeout {
+		return timeout
+	}
+	return configured + 5*time.Second
+}
+
+func (r *Runtime) publishPositionClosedFromUpdate(ctx context.Context, reqID string, pos exchange.PersonalPositionUpdate) {
+	if pos.HoldVol > 0 {
+		return
+	}
+
+	topic, flow, fill, ok := r.closedPositionFlow(pos)
+	if !ok || !r.TryMarkFlowTerminal(flow) {
+		return
+	}
+	if flow == events.FlowTrap {
+		r.MarkTrapTerminal()
+	}
+
+	r.RecordAndPublishCtx(ctx, reqID, topic, events.PositionClosedEvent{
+		Flow:       flow,
+		Symbol:     pos.Symbol,
+		ClosePrice: firstPositive(pos.CloseAvgPrice, pos.NewCloseAvgPrice),
+		CloseVol:   firstPositive(pos.CloseVol, fill.FillVol),
+		Reason:     "position_update_closed",
+		Profit:     firstNonZero(pos.CloseProfitLoss, pos.Realized, pos.PNL),
+		Fee:        pos.Fee,
+		Method:     "ws_position",
+	})
+}
+
+func (r *Runtime) closedPositionFlow(pos exchange.PersonalPositionUpdate) (string, string, events.OrderFilledEvent, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	reversionFill, hasReversion := r.activeReversionFillLocked()
+	trapFill, hasTrap := r.activeTrapFillLocked()
+
+	if hasReversion && positionTypeMatchesOpenSide(pos.PositionType, reversionFill.Side) {
+		return events.TopicReversionPositionClosed, events.FlowReversion, reversionFill, true
+	}
+	if hasTrap && positionTypeMatchesOpenSide(pos.PositionType, trapFill.Side) {
+		return events.TopicTrapPositionClosed, events.FlowTrap, trapFill, true
+	}
+	if pos.PositionType != 0 {
+		return "", "", events.OrderFilledEvent{}, false
+	}
+	if hasReversion && !hasTrap {
+		return events.TopicReversionPositionClosed, events.FlowReversion, reversionFill, true
+	}
+	if hasTrap && !hasReversion {
+		return events.TopicTrapPositionClosed, events.FlowTrap, trapFill, true
+	}
+	return "", "", events.OrderFilledEvent{}, false
+}
+
+func (r *Runtime) activeReversionFillLocked() (events.OrderFilledEvent, bool) {
+	if r.reversionFill == nil || r.terminal[events.FlowReversion] {
+		return events.OrderFilledEvent{}, false
+	}
+	return *r.reversionFill, true
+}
+
+func (r *Runtime) activeTrapFillLocked() (events.OrderFilledEvent, bool) {
+	if r.trapFill == nil || r.trapTerminal || r.terminal[events.FlowTrap] {
+		return events.OrderFilledEvent{}, false
+	}
+	return *r.trapFill, true
+}
+
+func positionTypeMatchesOpenSide(positionType int, side shared.Side) bool {
+	switch positionType {
+	case 1:
+		return side == shared.SideOpenLong
+	case -1, 2, 3:
+		return side == shared.SideOpenShort
+	default:
+		return false
+	}
+}
+
+func firstPositive(values ...float64) float64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func firstNonZero(values ...float64) float64 {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 // CalculateFinalPnL computes the total PnL from the event log at cycle end.
