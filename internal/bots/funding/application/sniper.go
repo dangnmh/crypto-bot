@@ -136,39 +136,6 @@ func (s *Sniper) wirePersonalWS(ctx context.Context) {
 		return
 	}
 
-	s.engine.WS.On("personal.order", func(data []byte) {
-		order, err := s.engine.Adapter.ParseOrder(data)
-		if err != nil {
-			log.Warn("🟡 Failed to parse personal order WS", slog.Any("error", err))
-			return
-		}
-		if order != nil {
-			s.orderNotifier.PublishOrder(*order)
-		}
-	})
-
-	s.engine.WS.On("personal.order.deal", func(data []byte) {
-		deal, err := s.engine.Adapter.ParseOrderDeal(data)
-		if err != nil {
-			log.Warn("🟡 Failed to parse personal order deal WS", slog.Any("error", err))
-			return
-		}
-		if deal != nil {
-			s.orderNotifier.PublishDeal(*deal)
-		}
-	})
-
-	s.engine.WS.On("personal.track.order", func(data []byte) {
-		update, err := s.engine.Adapter.ParseTrackOrder(data)
-		if err != nil {
-			log.Warn("🟡 Failed to parse personal track order WS", slog.Any("error", err))
-			return
-		}
-		if update != nil {
-			s.orderNotifier.PublishTrackOrder(*update)
-		}
-	})
-
 	s.engine.WS.On("personal.position", func(data []byte) {
 		update, err := s.engine.Adapter.ParsePosition(data)
 		if err != nil {

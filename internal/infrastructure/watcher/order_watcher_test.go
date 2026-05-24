@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestOrderWatcher_OnOrderUpdate_Callback(t *testing.T) {
+func TestOrderWatcher_OnPositionUpdate_Callback(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.Default()
@@ -22,30 +22,29 @@ func TestOrderWatcher_OnOrderUpdate_Callback(t *testing.T) {
 
 	w := watcher.NewOrderWatcher(bus, logger)
 
-	called := make(chan exchange.WsOrderDeal, 1)
-	w.OnOrderUpdate(context.Background(), "order_456", 2*time.Second, func(deal exchange.WsOrderDeal) {
-		called <- deal
+	called := make(chan exchange.PersonalPositionUpdate, 1)
+	w.OnPositionUpdate(context.Background(), "BTC_USDT", 2*time.Second, func(update exchange.PersonalPositionUpdate) {
+		called <- update
 	})
 
-	// Give the goroutine time to subscribe.
 	time.Sleep(50 * time.Millisecond)
 
-	deal := exchange.WsOrderDeal{
-		OrderID: "order_456",
-		State:   3,
-		DealVol: 5,
-	}
-	w.Publish(deal)
+	w.PublishPosition(exchange.PersonalPositionUpdate{
+		Symbol:       "BTC_USDT",
+		HoldVol:      2,
+		HoldAvgPrice: 100,
+	})
 
 	select {
-	case d := <-called:
-		assert.Equal(t, 5.0, d.DealVol)
+	case update := <-called:
+		assert.Equal(t, 2.0, update.HoldVol)
+		assert.Equal(t, 100.0, update.HoldAvgPrice)
 	case <-time.After(3 * time.Second):
-		assert.Fail(t, "timeout waiting for callback")
+		assert.Fail(t, "timeout waiting for position callback")
 	}
 }
 
-func TestOrderWatcher_OnOrderUpdate_Timeout(t *testing.T) {
+func TestOrderWatcher_OnPositionUpdate_Timeout(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.Default()
@@ -55,22 +54,20 @@ func TestOrderWatcher_OnOrderUpdate_Timeout(t *testing.T) {
 	w := watcher.NewOrderWatcher(bus, logger)
 
 	called := make(chan struct{}, 1)
-	w.OnOrderUpdate(context.Background(), "order_timeout", 100*time.Millisecond, func(_ exchange.WsOrderDeal) {
+	w.OnPositionUpdate(context.Background(), "BTC_USDT", 100*time.Millisecond, func(exchange.PersonalPositionUpdate) {
 		called <- struct{}{}
 	})
 
-	// Don't publish anything — should timeout without calling.
 	time.Sleep(200 * time.Millisecond)
 
 	select {
 	case <-called:
 		assert.Fail(t, "callback should not have been called on timeout")
 	default:
-		// Expected — no callback.
 	}
 }
 
-func TestOrderWatcher_RemoveOrderCallback(t *testing.T) {
+func TestOrderWatcher_PositionRoutingBySymbol(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.Default()
@@ -79,80 +76,20 @@ func TestOrderWatcher_RemoveOrderCallback(t *testing.T) {
 
 	w := watcher.NewOrderWatcher(bus, logger)
 
-	// RemoveOrderCallback is a no-op, but should not panic.
-	assert.NotPanics(t, func() {
-		w.RemoveOrderCallback("any_order")
-	})
-}
-
-func TestOrderWatcher_OnOrderDealBySymbolSide(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.Default()
-	bus := eventbus.New(logger)
-	defer func() { _ = bus.Close() }()
-
-	w := watcher.NewOrderWatcher(bus, logger)
-
-	bySide := make(chan exchange.PersonalOrderDeal, 1)
-	w.OnOrderDealBySymbolSide(context.Background(), "BTC_USDT", exchange.SideStr(exchange.SideCloseLong), 2*time.Second, func(deal exchange.PersonalOrderDeal) {
-		bySide <- deal
-	})
-
-	time.Sleep(50 * time.Millisecond)
-
-	deal := exchange.PersonalOrderDeal{
-		OrderID: "order_789",
-		Symbol:  "BTC_USDT",
-		Side:    exchange.SideCloseLong,
-		Vol:     3,
-		Price:   50001,
-	}
-	w.PublishDeal(deal)
-
-	select {
-	case d := <-bySide:
-		assert.Equal(t, 50001.0, d.Price)
-	case <-time.After(3 * time.Second):
-		assert.Fail(t, "timeout waiting for symbol-side deal callback")
-	}
-}
-
-func TestOrderWatcher_OnTrackAndPositionUpdate(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.Default()
-	bus := eventbus.New(logger)
-	defer func() { _ = bus.Close() }()
-
-	w := watcher.NewOrderWatcher(bus, logger)
-
-	// OnTrackOrderUpdate subscribes by track ID and child order ID, so one
-	// publish can legitimately fan out through both subscriptions.
-	trackCalled := make(chan exchange.PersonalTrackOrderUpdate, 2)
-	positionCalled := make(chan exchange.PersonalPositionUpdate, 1)
-	w.OnTrackOrderUpdate(context.Background(), "track_1", "order_1", 2*time.Second, func(update exchange.PersonalTrackOrderUpdate) {
-		trackCalled <- update
-	})
+	called := make(chan exchange.PersonalPositionUpdate, 1)
 	w.OnPositionUpdate(context.Background(), "BTC_USDT", 2*time.Second, func(update exchange.PersonalPositionUpdate) {
-		positionCalled <- update
+		called <- update
 	})
 
 	time.Sleep(50 * time.Millisecond)
 
-	w.PublishTrackOrder(exchange.PersonalTrackOrderUpdate{ID: "track_1", OrderID: "order_1", Symbol: "BTC_USDT", State: 1})
-	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "BTC_USDT", HoldVol: 0})
+	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "ETH_USDT", HoldVol: 3})
+	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "BTC_USDT", HoldVol: 1})
 
 	select {
-	case update := <-trackCalled:
-		assert.Equal(t, "track_1", update.GetID())
-	case <-time.After(3 * time.Second):
-		assert.Fail(t, "timeout waiting for track callback")
-	}
-
-	select {
-	case update := <-positionCalled:
-		assert.Equal(t, 0.0, update.HoldVol)
+	case update := <-called:
+		assert.Equal(t, "BTC_USDT", update.Symbol)
+		assert.Equal(t, 1.0, update.HoldVol)
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "timeout waiting for position callback")
 	}

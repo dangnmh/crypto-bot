@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported Bitwarden loader cache paths.
 package config
 
 import (

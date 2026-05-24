@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported orchestrator handlers directly.
 package application
 
 import (
@@ -226,7 +225,6 @@ func TestSubscribeCleanupHandlesFallbackReasons(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -260,8 +258,6 @@ func TestSetupEventChainWiresSubscribers(t *testing.T) {
 
 	notifier.EXPECT().
 		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any())
-	notifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
 	done := make(chan struct{}, 1)
 	o.setupEventChain(context.Background(), done)
@@ -278,8 +274,6 @@ func TestCycleOrchestratorRunCancelledContext(t *testing.T) {
 
 	notifier.EXPECT().
 		OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any())
-	notifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -342,15 +336,9 @@ func TestWirePersonalWSRegistersAndDispatchesHandlers(t *testing.T) {
 
 	s.wirePersonalWS(context.Background())
 
-	callPoolHandler(t, pool, "personal.order", []byte("ok"))
-	callPoolHandler(t, pool, "personal.order.deal", []byte("ok"))
-	callPoolHandler(t, pool, "personal.track.order", []byte("ok"))
 	callPoolHandler(t, pool, "personal.position", []byte("ok"))
 
 	adapter.err = errors.New("parse failed")
-	callPoolHandler(t, pool, "personal.order", []byte("bad"))
-	callPoolHandler(t, pool, "personal.order.deal", []byte("bad"))
-	callPoolHandler(t, pool, "personal.track.order", []byte("bad"))
 	callPoolHandler(t, pool, "personal.position", []byte("bad"))
 }
 

@@ -67,7 +67,7 @@ func (o *CycleOrchestrator) setupEventChain(ctx context.Context, done chan struc
 	o.subscribeScan(ctx)
 	reversion.Register(ctx, o.rt)
 	trap.Register(ctx, o.rt)
-	o.rt.SubscribeWSOrderEvents(ctx, reqID, o.rt.Config().Symbol)
+	o.rt.SubscribePositionLifecycle(ctx, reqID, o.rt.Config().Symbol)
 	o.subscribeCleanup(ctx, done)
 	o.subscribeEventLog(ctx)
 }

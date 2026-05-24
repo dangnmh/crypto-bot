@@ -74,7 +74,20 @@ func TestCtxLoggerLevelMethodsAndDefaults(t *testing.T) {
 	assert.Contains(t, out, "warn message")
 	assert.Contains(t, out, "error message")
 
-	require.NotNil(t, logger.WithCtx(nil, nil))
+	require.NotNil(t, logger.WithCtx(nil, nil)) //nolint:staticcheck // Verifies the logger's nil-context fallback.
+}
+
+func TestCtxLoggerReportsCallerSource(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	base := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{AddSource: true}))
+
+	logger.WithCtx(context.Background(), base).Info("source check")
+
+	out := buf.String()
+	assert.Contains(t, out, "zap_test.go")
+	assert.NotContains(t, out, "zap.go")
 }
 
 func TestInitLoggerCreatesLogFileAndCleanup(t *testing.T) {

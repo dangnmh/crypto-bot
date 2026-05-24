@@ -86,36 +86,6 @@ func handleTrailing(ctx context.Context, rt *cycle.Runtime, evt events.OrderFill
 		ActivePrice: activePrice,
 		CallbackPct: trailCfg.CallbackPct,
 	})
-
-	watchTrapCloseDeal(ctx, rt, evt)
-}
-
-func watchTrapCloseDeal(ctx context.Context, rt *cycle.Runtime, evt events.OrderFilledEvent) {
-	timeout := time.Duration(rt.Config().FundingTrap.PostSettleTimeout)
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-
-	rt.Deps().OrderNotifier.OnOrderDealBySymbolSide(ctx, evt.Symbol, evt.CloseSide.String(), timeout, func(deal exchange.PersonalOrderDeal) {
-		if deal.Vol <= 0 || rt.IsFlowTerminal(events.FlowTrap) {
-			return
-		}
-		if !rt.TryMarkFlowTerminal(events.FlowTrap) {
-			return
-		}
-		rt.MarkTrapTerminal()
-		reqID := rt.GetReqID()
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapPositionClosed, events.PositionClosedEvent{
-			Flow:       events.FlowTrap,
-			Symbol:     evt.Symbol,
-			ClosePrice: deal.Price,
-			CloseVol:   deal.Vol,
-			Reason:     "trailing",
-			Profit:     deal.Profit,
-			Fee:        deal.Fee,
-			Method:     "track_order",
-		})
-	})
 }
 
 func fallbackCloseAfterTrailingFailure(ctx context.Context, rt *cycle.Runtime, evt events.OrderFilledEvent) {

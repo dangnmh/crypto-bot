@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported cycle helpers.
 package cycle
 
 import (
@@ -13,15 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
-
-func TestTrackStateToString(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, "active", trackStateToString(0))
-	assert.Equal(t, "triggered", trackStateToString(1))
-	assert.Equal(t, "cancelled", trackStateToString(2))
-	assert.Equal(t, "unknown", trackStateToString(99))
-}
 
 func TestSubscriptionManagerSuccessAndFailure(t *testing.T) {
 	t.Parallel()

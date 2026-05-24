@@ -45,6 +45,44 @@ func TestRuntimeCalculatesFinalPnLFromRecordedEvents(t *testing.T) {
 	assert.InDelta(t, 13.25, got.NetPnL, 1e-9)
 }
 
+func TestRuntimeCalculatesFinalPnLFromClosedPositionWhenPresent(t *testing.T) {
+	t.Parallel()
+
+	rt := newCycleRuntimeForTest(t)
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicReversionOrderFilled, events.OrderFilledEvent{
+		Flow:    events.FlowReversion,
+		Symbol:  "BTC_USDT",
+		OrderID: "order-1",
+		Profit:  0,
+		Fee:     0.0087054,
+	})
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicReversionOrderFilled, events.OrderFilledEvent{
+		Flow:    events.FlowReversion,
+		Symbol:  "BTC_USDT",
+		OrderID: "order-1",
+		Profit:  0,
+		Fee:     0.0087054,
+	})
+	rt.RecordAndPublish(context.Background(), "req-1", events.TopicReversionPositionClosed, events.PositionClosedEvent{
+		Flow:       events.FlowReversion,
+		Symbol:     "BTC_USDT",
+		ClosePrice: 0.1317,
+		CloseVol:   11,
+		Profit:     0.022,
+		NetProfit:  0.0074,
+		Fee:        -0.0145,
+		Method:     "ws_position",
+	})
+
+	got := rt.CalculateFinalPnL()
+
+	assert.InDelta(t, 0.022, got.TotalPnL, 1e-9)
+	assert.InDelta(t, 0.022, got.IocPnL, 1e-9)
+	assert.InDelta(t, -0.0145, got.TradingFees, 1e-9)
+	assert.InDelta(t, 0.0074, got.NetPnL, 1e-9)
+	assert.InDelta(t, 0.1317, got.ClosePrice, 1e-9)
+}
+
 func TestRuntimeRecordAndPublishAnnotatesFlowAndSettle(t *testing.T) {
 	t.Parallel()
 

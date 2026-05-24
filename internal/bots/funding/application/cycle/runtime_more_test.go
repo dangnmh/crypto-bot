@@ -54,6 +54,11 @@ func TestRuntimeAccessorsAndStateHelpers(t *testing.T) {
 	gotFill, ok := rt.ReversionFill()
 	require.True(t, ok)
 	assert.Equal(t, 2.0, gotFill.FillVol)
+	assert.False(t, rt.TryMarkReversionFill(events.OrderFilledEvent{Symbol: "BTC_USDT", OrderID: "", FillVol: 3}))
+	assert.True(t, rt.TryMarkReversionFill(events.OrderFilledEvent{Symbol: "BTC_USDT", OrderID: "order-2", FillVol: 3}))
+	gotFill, ok = rt.ReversionFill()
+	require.True(t, ok)
+	assert.Equal(t, 3.0, gotFill.FillVol)
 
 	assert.NoError(t, rt.PublishStart(time.Now()))
 	rt.Publish(context.Background(), events.TopicTrapSkipped, events.TrapSkippedEvent{Symbol: "BTC_USDT"})
@@ -291,23 +296,9 @@ func TestRuntimeSubscriptionsAbortAndWSOrderEvents(t *testing.T) {
 				Leverage:       5,
 			})
 		})
-	orderNotifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any()).
-		Do(func(_ context.Context, _, _ string, _ time.Duration, callback func(exchange.PersonalTrackOrderUpdate)) {
-			callback(exchange.PersonalTrackOrderUpdate{
-				ID:          "track-1",
-				OrderID:     "order-1",
-				Symbol:      "BTC_USDT",
-				ActivePrice: 101,
-				BackValue:   50,
-				State:       1,
-			})
-		})
-
-	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	requireTopicInRuntime(t, rt, events.TopicPositionUpdated)
-	requireTopicInRuntime(t, rt, events.TopicTrackUpdated)
 }
 
 func TestRuntimePublishesReversionPositionClosedFromWSPositionUpdate(t *testing.T) {
@@ -345,10 +336,8 @@ func TestRuntimePublishesReversionPositionClosedFromWSPositionUpdate(t *testing.
 				CloseProfitLoss: 4,
 			})
 		})
-	orderNotifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
-	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	closed := requireRuntimePositionClosed(t, rt, events.TopicReversionPositionClosed)
 	assert.Equal(t, events.FlowReversion, closed.Flow)
@@ -388,10 +377,8 @@ func TestRuntimePublishesTrapPositionClosedFromWSPositionUpdate(t *testing.T) {
 				Realized:         5,
 			})
 		})
-	orderNotifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
-	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	closed := requireRuntimePositionClosed(t, rt, events.TopicTrapPositionClosed)
 	assert.Equal(t, events.FlowTrap, closed.Flow)
@@ -432,10 +419,8 @@ func TestRuntimePublishesPositionClosedFromFlatWSPositionUpdate(t *testing.T) {
 				CloseProfitLoss: 3,
 			})
 		})
-	orderNotifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
-	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	closed := requireRuntimePositionClosed(t, rt, events.TopicReversionPositionClosed)
 	assert.Equal(t, events.FlowReversion, closed.Flow)
@@ -473,10 +458,8 @@ func TestRuntimeIgnoresAmbiguousFlatWSPositionUpdate(t *testing.T) {
 				HoldVol:      0,
 			})
 		})
-	orderNotifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
-	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	assert.Equal(t, 0, countRuntimeTopic(rt, events.TopicReversionPositionClosed))
 	assert.Equal(t, 0, countRuntimeTopic(rt, events.TopicTrapPositionClosed))
@@ -504,10 +487,8 @@ func TestRuntimePositionWatcherUsesConfiguredCloseWindow(t *testing.T) {
 
 	orderNotifier.EXPECT().
 		OnPositionUpdate(gomock.Any(), "BTC_USDT", 65*time.Second, gomock.Any())
-	orderNotifier.EXPECT().
-		OnTrackOrderUpdate(gomock.Any(), "", "", 30*time.Second, gomock.Any())
 
-	rt.SubscribeWSOrderEvents(context.Background(), "req-1", "BTC_USDT")
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 }
 
 type fakeContractReader struct {

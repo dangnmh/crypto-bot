@@ -3,51 +3,14 @@ package reversion
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
 	shared "crypto-bot/internal/domain"
-	"crypto-bot/internal/infrastructure/exchange"
 	applogger "crypto-bot/pkg/logger"
 )
 
 const reversionRetryCount = 3
-
-func watchStaticCloseDeal(ctx context.Context, rt *cycle.Runtime, evt events.OrderFilledEvent) {
-	timeout := time.Duration(rt.Config().FundingReversion.PostSettleTimeout)
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-
-	rt.Deps().OrderNotifier.OnOrderDealBySymbolSide(ctx, evt.Symbol, evt.CloseSide.String(), timeout, func(deal exchange.PersonalOrderDeal) {
-		if deal.Vol <= 0 {
-			return
-		}
-		if !rt.TryMarkFlowTerminal(events.FlowReversion) {
-			return
-		}
-
-		reqID := rt.GetReqID()
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionPositionClosed, events.PositionClosedEvent{
-			Flow:       events.FlowReversion,
-			Symbol:     evt.Symbol,
-			ClosePrice: deal.Price,
-			CloseVol:   deal.Vol,
-			Reason:     staticExitReason(deal.Profit),
-			Profit:     deal.Profit,
-			Fee:        deal.Fee,
-			Method:     "static_tp_sl",
-		})
-	})
-}
-
-func staticExitReason(profit float64) string {
-	if profit >= 0 {
-		return "tp"
-	}
-	return "sl"
-}
 
 func forceClosePosition(
 	ctx context.Context,

@@ -1,4 +1,3 @@
-//nolint:testpackage // This test exercises unexported Sniper fields to isolate RunAsBackground.
 package application
 
 import (

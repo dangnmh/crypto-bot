@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported lifecycle handlers directly.
 package trap
 
 import (
@@ -58,36 +57,31 @@ func TestCloseTimedOutTrapPositionClosesFilledTrapBeforeCancel(t *testing.T) {
 	assert.True(t, rt.IsFlowTerminal(events.FlowTrap))
 }
 
-func TestSubscribeFillWatcherRegistersOrderCallback(t *testing.T) {
+func TestSubscribeFillWatcherStoresPendingTrapOrder(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockClient(ctrl)
 	notifier := mocks.NewMockOrderNotifier(ctrl)
 	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
-	registered := make(chan struct{}, 1)
-
-	notifier.EXPECT().
-		OnOrderUpdate(gomock.Any(), "trap-1", 5*time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
-			registered <- struct{}{}
-			callback(exchange.WsOrderDeal{OrderID: "trap-1", State: 0})
-		})
 
 	subscribeFillWatcher(context.Background(), rt)
 	rt.Publish(context.Background(), events.TopicTrapOrderPlaced, events.TrapFiredEvent{
+		Symbol:    "BTC_USDT",
 		OrderID:   "trap-1",
 		Side:      shared.SideOpenLong,
 		CloseSide: shared.SideCloseShort,
 	})
+
+	var order events.TrapFiredEvent
+	var hasOrder, hasFill, terminal bool
 	require.Eventually(t, func() bool {
-		select {
-		case <-registered:
-			return true
-		default:
-			return false
-		}
+		order, hasOrder, _, hasFill, terminal = rt.TrapSnapshot()
+		return hasOrder
 	}, time.Second, 10*time.Millisecond)
+	assert.Equal(t, "trap-1", order.OrderID)
+	assert.False(t, hasFill)
+	assert.False(t, terminal)
 }
 
 func TestSubscribeFillWatcherIgnoresEmptyOrderID(t *testing.T) {
@@ -102,7 +96,7 @@ func TestSubscribeFillWatcherIgnoresEmptyOrderID(t *testing.T) {
 	rt.Publish(context.Background(), events.TopicTrapOrderPlaced, events.TrapFiredEvent{})
 }
 
-func TestSetupFillWatcherPublishesTrapFill(t *testing.T) {
+func TestPositionUpdatePublishesTrapFill(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -110,19 +104,24 @@ func TestSetupFillWatcherPublishesTrapFill(t *testing.T) {
 	notifier := mocks.NewMockOrderNotifier(ctrl)
 	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
 
-	notifier.EXPECT().
-		OnOrderUpdate(gomock.Any(), "trap-fill", 5*time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
-			callback(exchange.WsOrderDeal{
-				OrderID:      "trap-fill",
-				State:        int(exchange.OrderStateFilled),
-				DealAvgPrice: 101,
-				DealVol:      3,
+	rt.MarkTrapOrder(events.TrapFiredEvent{
+		Flow:      events.FlowTrap,
+		Symbol:    "BTC_USDT",
+		OrderID:   "trap-fill",
+		Side:      shared.SideOpenLong,
+		CloseSide: shared.SideCloseShort,
+	})
+	notifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:       "BTC_USDT",
+				PositionType: 1,
+				HoldVol:      3,
+				HoldAvgPrice: 101,
 			})
 		})
-	notifier.EXPECT().RemoveOrderCallback("trap-fill")
 
-	setupFillWatcher(context.Background(), rt, "trap-fill", shared.SideOpenLong, shared.SideCloseShort)
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	fill := requireTrapOrderFilledEvent(t, rt)
 	assert.Equal(t, events.FlowTrap, fill.Flow)
@@ -361,7 +360,7 @@ func TestFireOBTrapSkipsInvalidVolumeAndOrderFailure(t *testing.T) {
 	assert.Equal(t, "order failed", skipped.Error)
 }
 
-func TestSetupFillWatcherPublishesFillAndStartsTrailing(t *testing.T) {
+func TestSetupFillWatcherDoesNotPublishFillWithoutPosition(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -369,26 +368,12 @@ func TestSetupFillWatcherPublishesFillAndStartsTrailing(t *testing.T) {
 	notifier := mocks.NewMockOrderNotifier(ctrl)
 	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
 
-	notifier.EXPECT().
-		OnOrderUpdate(gomock.Any(), "trap-1", 5*time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
-			callback(exchange.WsOrderDeal{
-				OrderID:      "trap-1",
-				State:        3,
-				DealAvgPrice: 100,
-				DealVol:      2,
-			})
-		})
-	notifier.EXPECT().RemoveOrderCallback("trap-1")
-
 	setupFillWatcher(context.Background(), rt, "trap-1", shared.SideOpenLong, shared.SideCloseLong)
 
-	fill := requireTrapOrderFilledEvent(t, rt)
-	assert.Equal(t, "trap-1", fill.OrderID)
-	assert.Equal(t, 2.0, fill.FillVol)
+	assert.Empty(t, findTrapEvents(rt, events.TopicTrapOrderFilled))
 }
 
-func TestSetupFillWatcherSkipsEmptyNonTerminalAndNoFill(t *testing.T) {
+func TestSetupFillWatcherSkipsEmptyOrderID(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -398,90 +383,41 @@ func TestSetupFillWatcherSkipsEmptyNonTerminalAndNoFill(t *testing.T) {
 
 	setupFillWatcher(context.Background(), rt, "", shared.SideOpenLong, shared.SideCloseLong)
 	assert.Empty(t, findTrapEvents(rt, events.TopicTrapOrderFilled))
-
-	notifier.EXPECT().
-		OnOrderUpdate(gomock.Any(), "trap-1", 5*time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
-			callback(exchange.WsOrderDeal{OrderID: "trap-1", State: 1, DealVol: 2})
-		})
-	setupFillWatcher(context.Background(), rt, "trap-1", shared.SideOpenLong, shared.SideCloseLong)
-	assert.Empty(t, findTrapEvents(rt, events.TopicTrapOrderFilled))
-
-	notifier.EXPECT().
-		OnOrderUpdate(gomock.Any(), "trap-2", 5*time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.WsOrderDeal)) {
-			callback(exchange.WsOrderDeal{OrderID: "trap-2", State: 3, DealVol: 0})
-		})
-	notifier.EXPECT().RemoveOrderCallback("trap-2")
-	setupFillWatcher(context.Background(), rt, "trap-2", shared.SideOpenLong, shared.SideCloseLong)
-	assert.Empty(t, findTrapEvents(rt, events.TopicTrapOrderFilled))
 }
 
-func TestWatchTrapCloseDealPublishesPositionClosed(t *testing.T) {
+func TestPositionUpdatePublishesTrapPositionClosed(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockClient(ctrl)
 	notifier := mocks.NewMockOrderNotifier(ctrl)
 	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
-	fill := events.OrderFilledEvent{
+	rt.MarkTrapFill(events.OrderFilledEvent{
 		Flow:      events.FlowTrap,
 		Symbol:    "BTC_USDT",
+		Side:      shared.SideOpenLong,
 		CloseSide: shared.SideCloseLong,
 		FillVol:   2,
-	}
-
-	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ string, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
-			callback(exchange.PersonalOrderDeal{
-				Symbol: "BTC_USDT",
-				Side:   int(shared.SideCloseLong),
-				Vol:    2,
-				Price:  103,
-				Profit: 5,
-				Fee:    0.1,
+	})
+	notifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", 30*time.Second, gomock.Any()).
+		Do(func(_ context.Context, _ string, _ time.Duration, callback func(exchange.PersonalPositionUpdate)) {
+			callback(exchange.PersonalPositionUpdate{
+				Symbol:          "BTC_USDT",
+				PositionType:    1,
+				HoldVol:         0,
+				CloseVol:        2,
+				CloseAvgPrice:   103,
+				CloseProfitLoss: 5,
+				Fee:             0.1,
 			})
 		})
 
-	watchTrapCloseDeal(context.Background(), rt, fill)
+	rt.SubscribePositionLifecycle(context.Background(), "req-1", "BTC_USDT")
 
 	closed := requireTrapPositionClosedEvent(t, rt)
-	assert.Equal(t, "trailing", closed.Reason)
-	assert.Equal(t, "track_order", closed.Method)
+	assert.Equal(t, "position_update_closed", closed.Reason)
+	assert.Equal(t, "ws_position", closed.Method)
 	assert.Equal(t, 103.0, closed.ClosePrice)
-}
-
-func TestWatchTrapCloseDealIgnoresZeroVolumeAndTerminalFlow(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	client := mocks.NewMockClient(ctrl)
-	notifier := mocks.NewMockOrderNotifier(ctrl)
-	rt := newTrapTestRuntimeWithDeps(t, client, notifier, nil, nil)
-	fill := events.OrderFilledEvent{
-		Flow:      events.FlowTrap,
-		Symbol:    "BTC_USDT",
-		CloseSide: shared.SideCloseLong,
-		FillVol:   2,
-	}
-
-	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ string, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
-			callback(exchange.PersonalOrderDeal{Symbol: "BTC_USDT", Side: int(shared.SideCloseLong), Vol: 0})
-		})
-	watchTrapCloseDeal(context.Background(), rt, fill)
-	assert.Empty(t, findTrapEvents(rt, events.TopicTrapPositionClosed))
-
-	rt.TryMarkFlowTerminal(events.FlowTrap)
-	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any()).
-		Do(func(_ context.Context, _ string, _ string, _ time.Duration, callback func(exchange.PersonalOrderDeal)) {
-			callback(exchange.PersonalOrderDeal{Symbol: "BTC_USDT", Side: int(shared.SideCloseLong), Vol: 2})
-		})
-	watchTrapCloseDeal(context.Background(), rt, fill)
-	assert.Empty(t, findTrapEvents(rt, events.TopicTrapPositionClosed))
 }
 
 func TestHandleTrailingPlacesTrackOrderWithActivation(t *testing.T) {
@@ -512,9 +448,6 @@ func TestHandleTrailingPlacesTrackOrderWithActivation(t *testing.T) {
 			assert.True(t, req.ReduceOnly)
 			return "track-1", nil
 		})
-	notifier.EXPECT().
-		OnOrderDealBySymbolSide(gomock.Any(), "BTC_USDT", shared.SideCloseLong.String(), time.Second, gomock.Any())
-
 	handleTrailing(context.Background(), rt, fill)
 
 	env := requireTrapEventTopic(t, rt, events.TopicTrapTrailingPlaced)

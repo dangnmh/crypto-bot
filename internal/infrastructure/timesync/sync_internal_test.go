@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported syncOnce branches.
 package timesync
 
 import (

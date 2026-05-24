@@ -1,21 +1,24 @@
-package events
+package events_test
 
-import "testing"
+import (
+	"testing"
+
+	"crypto-bot/internal/bots/funding/application/events"
+)
 
 func TestBaseEventShouldNotify(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		evt  BaseEvent
+		evt  events.BaseEvent
 		want bool
 	}{
-		{name: "enabled", evt: BaseEvent{SendNotify: true}, want: true},
-		{name: "disabled", evt: BaseEvent{SendNotify: false}, want: false},
+		{name: "enabled", evt: events.BaseEvent{SendNotify: true}, want: true},
+		{name: "disabled", evt: events.BaseEvent{SendNotify: false}, want: false},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

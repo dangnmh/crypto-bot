@@ -12,29 +12,12 @@ import (
 	applogger "crypto-bot/pkg/logger"
 )
 
-// OrderNotifier handles order fill callbacks.
+// OrderNotifier handles position lifecycle callbacks.
 type OrderNotifier interface {
-	OnOrderUpdate(ctx context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal))
-	OnOrderDealBySymbolSide(
-		ctx context.Context,
-		symbol string,
-		side string,
-		timeout time.Duration,
-		callback func(exchange.PersonalOrderDeal),
-	)
-	OnTrackOrderUpdate(
-		ctx context.Context,
-		trackID string,
-		orderID string,
-		timeout time.Duration,
-		callback func(exchange.PersonalTrackOrderUpdate),
-	)
 	OnPositionUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func(exchange.PersonalPositionUpdate))
-	RemoveOrderCallback(orderID string)
 }
 
-// OrderWatcher provides a thread-safe publish-subscribe mechanism for personal order updates.
-// It allows independent bots or FSMs to subscribe to specific order executions.
+// OrderWatcher provides a thread-safe publish-subscribe mechanism for personal position updates.
 type OrderWatcher struct {
 	mu     sync.RWMutex
 	broker *eventbus.Bus
@@ -46,67 +29,6 @@ func NewOrderWatcher(bus *eventbus.Bus, logger *slog.Logger) *OrderWatcher {
 	return &OrderWatcher{
 		broker: bus,
 		logger: logger,
-	}
-}
-
-// Publish broadcasts an order lifecycle update to all subscribers of the specific OrderID.
-func (w *OrderWatcher) Publish(deal exchange.WsOrderDeal) {
-	w.PublishOrder(deal)
-}
-
-// PublishOrder broadcasts an order lifecycle update.
-func (w *OrderWatcher) PublishOrder(deal exchange.WsOrderDeal) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-
-	orderID := deal.GetOrderID()
-	topic := orderTopic(orderID)
-	if topic == "" {
-		return
-	}
-	w.logger.Debug("📢 Publishing order lifecycle", slog.String("orderID", orderID), slog.Int("state", deal.State))
-	if err := w.broker.Publish(topic, deal); err != nil {
-		w.logger.Error("Failed to publish order lifecycle", slog.String("orderID", orderID), slog.Any("error", err))
-	}
-}
-
-// PublishDeal broadcasts an execution deal by symbol+side.
-func (w *OrderWatcher) PublishDeal(deal exchange.PersonalOrderDeal) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-
-	orderID := deal.GetOrderID()
-	side := exchange.SideStr(deal.Side)
-	w.logger.Debug("📢 Publishing order execution deal", slog.String("orderID", orderID), slog.String("symbol", deal.Symbol), slog.String("side", side))
-	topic := symbolSideDealTopic(deal.Symbol, side)
-	if topic == "" {
-		return
-	}
-	if err := w.broker.Publish(topic, deal); err != nil {
-		w.logger.Error("Failed to publish symbol-side execution deal",
-			slog.String("symbol", deal.Symbol),
-			slog.String("side", side),
-			slog.Any("error", err),
-		)
-	}
-}
-
-// PublishTrackOrder broadcasts a trailing order update by track ID and child order ID.
-func (w *OrderWatcher) PublishTrackOrder(update exchange.PersonalTrackOrderUpdate) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-
-	trackID := update.GetID()
-	if trackID != "" {
-		if err := w.broker.Publish(trackTopic(trackID), update); err != nil {
-			w.logger.Error("Failed to publish track order update", slog.String("trackID", trackID), slog.Any("error", err))
-		}
-	}
-	orderID := update.GetOrderID()
-	if orderID != "" {
-		if err := w.broker.Publish(trackOrderTopic(orderID), update); err != nil {
-			w.logger.Error("Failed to publish track order update", slog.String("orderID", orderID), slog.Any("error", err))
-		}
 	}
 }
 
@@ -123,37 +45,6 @@ func (w *OrderWatcher) PublishPosition(update exchange.PersonalPositionUpdate) {
 	}
 }
 
-// OnOrderUpdate registers a callback for a specific order ID (implements OrderNotifier).
-// The callback will be removed automatically after the specified timeout.
-func (w *OrderWatcher) OnOrderUpdate(parent context.Context, orderID string, timeout time.Duration, callback func(exchange.WsOrderDeal)) {
-	subscribe(parent, w, orderTopic(orderID), timeout, "order lifecycle", callback)
-}
-
-func (w *OrderWatcher) OnOrderDealBySymbolSide(
-	parent context.Context,
-	symbol string,
-	side string,
-	timeout time.Duration,
-	callback func(exchange.PersonalOrderDeal),
-) {
-	subscribe(parent, w, symbolSideDealTopic(symbol, side), timeout, "symbol-side order deal", callback)
-}
-
-func (w *OrderWatcher) OnTrackOrderUpdate(
-	parent context.Context,
-	trackID string,
-	orderID string,
-	timeout time.Duration,
-	callback func(exchange.PersonalTrackOrderUpdate),
-) {
-	if trackID != "" {
-		subscribe(parent, w, trackTopic(trackID), timeout, "track order", callback)
-	}
-	if orderID != "" {
-		subscribe(parent, w, trackOrderTopic(orderID), timeout, "track order", callback)
-	}
-}
-
 func (w *OrderWatcher) OnPositionUpdate(
 	parent context.Context,
 	symbol string,
@@ -161,11 +52,6 @@ func (w *OrderWatcher) OnPositionUpdate(
 	callback func(exchange.PersonalPositionUpdate),
 ) {
 	subscribe(parent, w, positionTopic(symbol), timeout, "position", callback)
-}
-
-// RemoveOrderCallback is essentially a no-op since OnOrderUpdate cleans itself up.
-func (w *OrderWatcher) RemoveOrderCallback(orderID string) {
-	// Not strictly needed with the pubsub architecture where OnOrderUpdate manages its own lifecycle.
 }
 
 func subscribe[T any](
@@ -213,28 +99,6 @@ func subscribe[T any](
 			}
 		}
 	}()
-}
-
-func orderTopic(orderID string) string {
-	if orderID == "" {
-		return ""
-	}
-	return "order:" + orderID
-}
-
-func symbolSideDealTopic(symbol, side string) string {
-	if symbol == "" || side == "" || side == "UNKNOWN" {
-		return ""
-	}
-	return "deal:symbol_side:" + symbol + ":" + side
-}
-
-func trackTopic(trackID string) string {
-	return "track:" + trackID
-}
-
-func trackOrderTopic(orderID string) string {
-	return "track:order:" + orderID
 }
 
 func positionTopic(symbol string) string {

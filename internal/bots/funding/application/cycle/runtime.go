@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -66,6 +67,7 @@ type Runtime struct {
 	excursionCancel context.CancelFunc
 
 	reversionOrderID string
+	reversionOrder   *events.IOCFiredEvent
 	reversionFill    *events.OrderFilledEvent
 	trapOrder        *events.TrapFiredEvent
 	trapFill         *events.OrderFilledEvent
@@ -237,9 +239,9 @@ func (r *Runtime) buildNotificationMessage(topic string, payload any) notifier.E
 		evt.Level = notifier.LevelTrading
 		switch pnl := payload.(type) {
 		case events.FinalPnLEvent:
-			evt.Message = fmt.Sprintf("💰 Cycle Completed\nNet PnL: %.4f USDT\nFees: %.4f\nEvents: %d", pnl.NetPnL, pnl.TradingFees, pnl.EventCount)
+			evt.Message = r.finalPnLMessage(pnl)
 		case *events.FinalPnLEvent:
-			evt.Message = fmt.Sprintf("💰 Cycle Completed\nNet PnL: %.4f USDT\nFees: %.4f\nEvents: %d", pnl.NetPnL, pnl.TradingFees, pnl.EventCount)
+			evt.Message = r.finalPnLMessage(*pnl)
 		}
 	case events.TopicReversionOrderFilled, events.TopicTrapOrderFilled:
 		evt.Level = notifier.LevelTrading
@@ -287,6 +289,40 @@ func (r *Runtime) buildNotificationMessage(topic string, payload any) notifier.E
 	}
 
 	return evt
+}
+
+func (r *Runtime) finalPnLMessage(pnl events.FinalPnLEvent) string {
+	pnlRate := 0.0
+	if r.cfg.MarginUSDT > 0 {
+		pnlRate = decmath.Mul(decmath.Div(pnl.NetPnL, r.cfg.MarginUSDT), 100.0)
+	}
+	return fmt.Sprintf("💰 Cycle Completed\nClosing PNL (USDT): %s\nTrading Fee (USDT): %s\nFunding Fees (USDT): %s\nPNL Rate: %+.2f%%\nNet PnL: %s USDT",
+		formatPNLNumber(pnl.TotalPnL),
+		formatPNLNumber(signedFeeForDisplay(pnl.TradingFees)),
+		formatPNLNumber(pnl.FundingFeePaid),
+		pnlRate,
+		formatPNLNumber(pnl.NetPnL),
+	)
+}
+
+func formatPNLNumber(value float64) string {
+	if value == 0 {
+		return "0"
+	}
+	formatted := strconv.FormatFloat(value, 'f', 4, 64)
+	formatted = strings.TrimRight(formatted, "0")
+	formatted = strings.TrimRight(formatted, ".")
+	if formatted == "-0" {
+		return "0"
+	}
+	return formatted
+}
+
+func signedFeeForDisplay(value float64) float64 {
+	if value > 0 {
+		return -value
+	}
+	return value
 }
 
 func (r *Runtime) getFlowFromTopic(topic string) string {
@@ -406,11 +442,33 @@ func (r *Runtime) MarkReversionOrder(orderID string) {
 	r.reversionOrderID = orderID
 }
 
+func (r *Runtime) MarkReversionOrderEvent(evt events.IOCFiredEvent) {
+	if evt.OrderID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reversionOrderID = evt.OrderID
+	reversionOrder := evt
+	r.reversionOrder = &reversionOrder
+}
+
 func (r *Runtime) MarkReversionFill(evt events.OrderFilledEvent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	fill := evt
 	r.reversionFill = &fill
+}
+
+func (r *Runtime) TryMarkReversionFill(evt events.OrderFilledEvent) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reversionFill != nil && r.reversionFill.OrderID == evt.OrderID {
+		return false
+	}
+	fill := evt
+	r.reversionFill = &fill
+	return true
 }
 
 func (r *Runtime) ReversionFill() (events.OrderFilledEvent, bool) {
@@ -606,12 +664,10 @@ func (r *Runtime) StopExcursionPriceStream() {
 	}
 }
 
-// SubscribeWSOrderEvents subscribes to order lifecycle events from OrderNotifier
-// and records them via RecordAndPublish for event sourcing.
-func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol string) {
+// SubscribePositionLifecycle subscribes to authoritative position lifecycle events.
+func (r *Runtime) SubscribePositionLifecycle(ctx context.Context, reqID, symbol string) {
 	positionTimeout := r.positionUpdateWatchTimeout()
 
-	// Subscribe to position updates
 	r.deps.OrderNotifier.OnPositionUpdate(ctx, symbol, positionTimeout, func(pos exchange.PersonalPositionUpdate) {
 		r.RecordAndPublishCtx(ctx, reqID, events.TopicPositionUpdated, events.WSPositionUpdatedEvent{
 			Symbol:        pos.Symbol,
@@ -623,28 +679,8 @@ func (r *Runtime) SubscribeWSOrderEvents(ctx context.Context, reqID, symbol stri
 			Leverage:      pos.Leverage,
 			Timestamp:     time.Now(),
 		})
+		r.publishPositionOpenedFromUpdate(ctx, reqID, pos)
 		r.publishPositionClosedFromUpdate(ctx, reqID, pos)
-	})
-
-	// Subscribe to track order updates
-	r.deps.OrderNotifier.OnTrackOrderUpdate(ctx, "", "", 30*time.Second, func(track exchange.PersonalTrackOrderUpdate) {
-		var orderID string
-		if oid, ok := track.OrderID.(string); ok {
-			orderID = oid
-		}
-		var id string
-		if iid, ok := track.ID.(string); ok {
-			id = iid
-		}
-		r.RecordAndPublishCtx(ctx, reqID, events.TopicTrackUpdated, events.WSTrackUpdatedEvent{
-			TrackID:     id,
-			OrderID:     orderID,
-			Symbol:      track.Symbol,
-			ActivePrice: track.ActivePrice,
-			CallbackPct: float64(track.BackValue) / 100.0,
-			Status:      trackStateToString(track.State),
-			Timestamp:   time.Now(),
-		})
 	})
 }
 
@@ -661,6 +697,91 @@ func (r *Runtime) positionUpdateWatchTimeout() time.Duration {
 		return timeout
 	}
 	return configured + 5*time.Second
+}
+
+func (r *Runtime) publishPositionOpenedFromUpdate(ctx context.Context, reqID string, pos exchange.PersonalPositionUpdate) {
+	if pos.HoldVol <= 0 {
+		return
+	}
+
+	if fill, ok := r.tryMarkReversionFillFromPosition(pos); ok {
+		r.RecordAndPublishCtx(ctx, reqID, events.TopicReversionOrderFilled, fill)
+		r.StartExcursionPriceStream(ctx, reqID)
+		return
+	}
+	if fill, ok := r.tryMarkTrapFillFromPosition(pos); ok {
+		r.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderFilled, fill)
+		r.StartExcursionPriceStream(ctx, reqID)
+	}
+}
+
+func (r *Runtime) tryMarkReversionFillFromPosition(pos exchange.PersonalPositionUpdate) (events.OrderFilledEvent, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.reversionOrder == nil || r.reversionFill != nil || r.terminal[events.FlowReversion] {
+		return events.OrderFilledEvent{}, false
+	}
+	if !positionTypeMatchesOpenSide(pos.PositionType, r.reversionOrder.Side) {
+		return events.OrderFilledEvent{}, false
+	}
+
+	fill := orderFillFromPosition(events.FlowReversion, pos, orderFillMetadata{
+		orderID:   r.reversionOrder.OrderID,
+		side:      r.reversionOrder.Side,
+		closeSide: r.reversionOrder.CloseSide,
+		tpPrice:   r.reversionOrder.TPPrice,
+		slPrice:   r.reversionOrder.SLPrice,
+	})
+	r.reversionFill = &fill
+	return fill, true
+}
+
+func (r *Runtime) tryMarkTrapFillFromPosition(pos exchange.PersonalPositionUpdate) (events.OrderFilledEvent, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.trapOrder == nil || r.trapFill != nil || r.trapTerminal || r.terminal[events.FlowTrap] {
+		return events.OrderFilledEvent{}, false
+	}
+	if !positionTypeMatchesOpenSide(pos.PositionType, r.trapOrder.Side) {
+		return events.OrderFilledEvent{}, false
+	}
+
+	fill := orderFillFromPosition(events.FlowTrap, pos, orderFillMetadata{
+		orderID:   r.trapOrder.OrderID,
+		side:      r.trapOrder.Side,
+		closeSide: r.trapOrder.CloseSide,
+		tpPrice:   r.trapOrder.TPPrice,
+		slPrice:   r.trapOrder.SLPrice,
+	})
+	r.trapFill = &fill
+	return fill, true
+}
+
+type orderFillMetadata struct {
+	orderID   string
+	side      shared.Side
+	closeSide shared.Side
+	tpPrice   float64
+	slPrice   float64
+}
+
+func orderFillFromPosition(flow string, pos exchange.PersonalPositionUpdate, metadata orderFillMetadata) events.OrderFilledEvent {
+	return events.OrderFilledEvent{
+		Flow:      flow,
+		Symbol:    pos.Symbol,
+		OrderID:   metadata.orderID,
+		Side:      metadata.side,
+		CloseSide: metadata.closeSide,
+		FillPrice: firstPositive(pos.HoldAvgPrice, pos.OpenAvgPrice, pos.NewOpenAvgPrice),
+		FillVol:   pos.HoldVol,
+		Fee:       pos.Fee,
+		Profit:    firstNonZero(pos.Realized, pos.PNL),
+		HoldFee:   pos.HoldFee,
+		TPPrice:   metadata.tpPrice,
+		SLPrice:   metadata.slPrice,
+	}
 }
 
 func (r *Runtime) publishPositionClosedFromUpdate(ctx context.Context, reqID string, pos exchange.PersonalPositionUpdate) {
@@ -683,6 +804,7 @@ func (r *Runtime) publishPositionClosedFromUpdate(ctx context.Context, reqID str
 		CloseVol:   firstPositive(pos.CloseVol, fill.FillVol),
 		Reason:     "position_update_closed",
 		Profit:     firstNonZero(pos.CloseProfitLoss, pos.Realized, pos.PNL),
+		NetProfit:  firstNonZero(pos.Realized, decmath.Add(pos.CloseProfitLoss, signedTradingFee(pos.Fee)), pos.PNL),
 		Fee:        pos.Fee,
 		Method:     "ws_position",
 	})
@@ -764,28 +886,91 @@ func (r *Runtime) CalculateFinalPnL() events.FinalPnLEvent {
 	result := events.FinalPnLEvent{
 		Symbol: r.cfg.Symbol,
 	}
+	var fillIocPnL, fillTrapPnL, fillFees float64
+	var closedIocPnL, closedTrapPnL, closedFees float64
+	var closedNetPnL float64
+	var closePrice float64
+	var holdDurationMs int64
+	var hasClosedPnL bool
 
 	for i := range r.eventLog {
 		switch r.eventLog[i].Topic {
+		case events.TopicReversionPositionClosed:
+			var closedEvt events.PositionClosedEvent
+			if err := json.Unmarshal(r.eventLog[i].Payload, &closedEvt); err == nil {
+				closedIocPnL += closedEvt.Profit
+				closedFees += signedTradingFee(closedEvt.Fee)
+				closedNetPnL += closedNetProfit(closedEvt)
+				closePrice = firstPositive(closePrice, closedEvt.ClosePrice)
+				holdDurationMs = firstNonZeroInt64(holdDurationMs, closedEvt.HoldDurationMs)
+				hasClosedPnL = true
+			}
+		case events.TopicTrapPositionClosed:
+			var closedEvt events.PositionClosedEvent
+			if err := json.Unmarshal(r.eventLog[i].Payload, &closedEvt); err == nil {
+				closedTrapPnL += closedEvt.Profit
+				closedFees += signedTradingFee(closedEvt.Fee)
+				closedNetPnL += closedNetProfit(closedEvt)
+				closePrice = firstPositive(closePrice, closedEvt.ClosePrice)
+				holdDurationMs = firstNonZeroInt64(holdDurationMs, closedEvt.HoldDurationMs)
+				hasClosedPnL = true
+			}
 		case events.TopicReversionOrderFilled:
 			var fillEvt events.OrderFilledEvent
 			if err := json.Unmarshal(r.eventLog[i].Payload, &fillEvt); err == nil {
-				result.IocPnL += fillEvt.Profit
-				result.TradingFees += fillEvt.Fee
+				fillIocPnL += fillEvt.Profit
+				fillFees += fillEvt.Fee
 			}
 		case events.TopicTrapOrderFilled:
 			var fillEvt events.OrderFilledEvent
 			if err := json.Unmarshal(r.eventLog[i].Payload, &fillEvt); err == nil {
-				result.TrapPnL += fillEvt.Profit
-				result.TradingFees += fillEvt.Fee
+				fillTrapPnL += fillEvt.Profit
+				fillFees += fillEvt.Fee
 			}
 		}
 	}
 
+	result.IocPnL = fillIocPnL
+	result.TrapPnL = fillTrapPnL
+	result.TradingFees = fillFees
+	if hasClosedPnL {
+		result.IocPnL = closedIocPnL
+		result.TrapPnL = closedTrapPnL
+		result.TradingFees = closedFees
+		result.ClosePrice = closePrice
+		result.HoldDurationMs = holdDurationMs
+	}
 	result.TotalPnL = result.IocPnL + result.TrapPnL
-	result.NetPnL = result.TotalPnL - result.TradingFees - result.FundingFeePaid
+	if hasClosedPnL {
+		result.NetPnL = closedNetPnL - result.FundingFeePaid
+	} else {
+		result.NetPnL = result.TotalPnL - result.TradingFees - result.FundingFeePaid
+	}
 
 	return result
+}
+
+func signedTradingFee(value float64) float64 {
+	if value > 0 {
+		return -value
+	}
+	return value
+}
+
+func closedNetProfit(evt events.PositionClosedEvent) float64 {
+	if evt.NetProfit != 0 {
+		return evt.NetProfit
+	}
+	return decmath.Add(evt.Profit, signedTradingFee(evt.Fee))
+}
+
+func firstNonZeroInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 // PublishFinalPnL calculates and publishes the final PnL event.
@@ -817,20 +1002,6 @@ func (r *Runtime) logFinalPnL(ctx context.Context, pnl events.FinalPnLEvent) {
 		slog.Int("event_count", pnl.EventCount),
 		slog.String("payload", string(raw)),
 	)
-}
-
-// trackStateToString converts track order state to string.
-func trackStateToString(state int) string {
-	switch state {
-	case 0:
-		return "active"
-	case 1:
-		return "triggered"
-	case 2:
-		return "cancelled"
-	default:
-		return "unknown"
-	}
 }
 
 func (r *Runtime) TryMarkFlowTerminal(flow string) bool {

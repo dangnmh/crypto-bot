@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported config helper functions directly.
 package config
 
 import (
@@ -102,7 +101,6 @@ func TestHasBitwardenConfigFalseWhenAnyValueMissing(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("BITWARDEN_ACCESS_TOKEN", tt.token)
 			t.Setenv("BITWARDEN_ORGANIZATION_ID", tt.org)

@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported notification formatting helpers.
 package cycle
 
 import (
@@ -14,7 +13,7 @@ import (
 func TestRuntimeBuildNotificationMessageFormatsKnownTopics(t *testing.T) {
 	t.Parallel()
 
-	rt := &Runtime{cfg: config.SymbolConfig{Symbol: "BTC_USDT"}}
+	rt := &Runtime{cfg: config.SymbolConfig{Symbol: "BTC_USDT", MarginUSDT: 3}}
 
 	tests := []struct {
 		name        string
@@ -26,16 +25,16 @@ func TestRuntimeBuildNotificationMessageFormatsKnownTopics(t *testing.T) {
 		{
 			name:        "final pnl value",
 			topic:       events.TopicCycleFinalPnL,
-			payload:     events.FinalPnLEvent{NetPnL: 1.23456, TradingFees: 0.12, EventCount: 7},
+			payload:     events.FinalPnLEvent{TotalPnL: 0.022, TradingFees: -0.0145, FundingFeePaid: 0, NetPnL: 0.0074, EventCount: 7},
 			wantLevel:   notifier.LevelTrading,
-			wantMessage: "💰 Cycle Completed\nNet PnL: 1.2346 USDT\nFees: 0.1200\nEvents: 7",
+			wantMessage: "💰 Cycle Completed\nClosing PNL (USDT): 0.022\nTrading Fee (USDT): -0.0145\nFunding Fees (USDT): 0\nPNL Rate: +0.25%\nNet PnL: 0.0074 USDT",
 		},
 		{
 			name:        "final pnl pointer",
 			topic:       events.TopicCycleFinalPnL,
-			payload:     &events.FinalPnLEvent{NetPnL: -2, TradingFees: 0.5, EventCount: 3},
+			payload:     &events.FinalPnLEvent{TotalPnL: -1.5, TradingFees: 0.5, FundingFeePaid: 0, NetPnL: -2, EventCount: 3},
 			wantLevel:   notifier.LevelTrading,
-			wantMessage: "💰 Cycle Completed\nNet PnL: -2.0000 USDT\nFees: 0.5000\nEvents: 3",
+			wantMessage: "💰 Cycle Completed\nClosing PNL (USDT): -1.5\nTrading Fee (USDT): -0.5\nFunding Fees (USDT): 0\nPNL Rate: -66.67%\nNet PnL: -2 USDT",
 		},
 		{
 			name:        "order filled",
@@ -103,7 +102,6 @@ func TestRuntimeBuildNotificationMessageFormatsKnownTopics(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

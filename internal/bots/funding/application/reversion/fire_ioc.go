@@ -113,8 +113,7 @@ func handleFireIOC(ctx context.Context, rt *cycle.Runtime) {
 	rt.AppendResult(res)
 
 	if res.IsSuccess() {
-		rt.MarkReversionOrder(res.OrderID)
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionIOCFired, events.IOCFiredEvent{
+		fired := events.IOCFiredEvent{
 			Flow:          events.FlowReversion,
 			Symbol:        c.Symbol,
 			OrderID:       res.OrderID,
@@ -128,7 +127,9 @@ func handleFireIOC(ctx context.Context, rt *cycle.Runtime) {
 			SettleTime:    settleTime,
 			FireTimestamp: fireTime,
 			LatencyRTTMs:  latencyMs,
-		})
+		}
+		rt.MarkReversionOrderEvent(fired)
+		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionIOCFired, fired)
 	} else {
 		errText := "IOC order failed"
 		if res.Error != nil {

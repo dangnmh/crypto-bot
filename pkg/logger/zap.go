@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"time"
 
 	"crypto-bot/pkg/tracectx"
@@ -72,19 +73,30 @@ func WithCtx(ctx context.Context, base *slog.Logger) *CtxLogger {
 }
 
 func (l *CtxLogger) Debug(msg string, args ...any) {
-	l.base.DebugContext(l.ctx, msg, args...)
+	l.log(slog.LevelDebug, msg, args...)
 }
 
 func (l *CtxLogger) Info(msg string, args ...any) {
-	l.base.InfoContext(l.ctx, msg, args...)
+	l.log(slog.LevelInfo, msg, args...)
 }
 
 func (l *CtxLogger) Warn(msg string, args ...any) {
-	l.base.WarnContext(l.ctx, msg, args...)
+	l.log(slog.LevelWarn, msg, args...)
 }
 
 func (l *CtxLogger) Error(msg string, args ...any) {
-	l.base.ErrorContext(l.ctx, msg, args...)
+	l.log(slog.LevelError, msg, args...)
+}
+
+func (l *CtxLogger) log(level slog.Level, msg string, args ...any) {
+	if !l.base.Enabled(l.ctx, level) {
+		return
+	}
+	var pcs [1]uintptr
+	runtime.Callers(3, pcs[:])
+	record := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	record.Add(args...)
+	_ = l.base.Handler().Handle(l.ctx, record)
 }
 
 func (m *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {

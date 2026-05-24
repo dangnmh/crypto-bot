@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise the unexported multiHandler fanout.
 package logger
 
 import (

@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise fallback branches for package-private context keys.
 package tracectx
 
 import (

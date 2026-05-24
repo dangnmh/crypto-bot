@@ -1,4 +1,3 @@
-//nolint:testpackage // These tests exercise unexported ID conversion variants.
 package exchange
 
 import (

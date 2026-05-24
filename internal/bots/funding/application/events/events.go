@@ -97,8 +97,6 @@ const (
 
 	TopicDealReceived = "funding.deal.received"
 
-	TopicTrackUpdated = "funding.track.updated"
-
 	TopicPositionUpdated = "funding.position.updated"
 
 	TopicCycleFinalPnL = "funding.cycle.final_pnl"
@@ -334,6 +332,7 @@ type PositionClosedEvent struct {
 
 	// Additional
 	Profit          float64 `json:"profit,omitempty"`
+	NetProfit       float64 `json:"net_profit,omitempty"`
 	Fee             float64 `json:"fee,omitempty"`
 	HoldDurationMs  int64   `json:"hold_duration_ms,omitempty"`
 	TPPriceTouched  bool    `json:"tp_price_touched,omitempty"`
@@ -485,17 +484,6 @@ type WSDealReceivedEvent struct {
 	DealVol   float64   `json:"deal_vol"`
 	DealTime  int64     `json:"deal_time"`
 	Timestamp time.Time `json:"timestamp"`
-}
-
-// WSTrackUpdatedEvent is published when a trailing order is updated.
-type WSTrackUpdatedEvent struct {
-	TrackID     string    `json:"track_id"`
-	OrderID     string    `json:"order_id"`
-	Symbol      string    `json:"symbol"`
-	ActivePrice float64   `json:"active_price"`
-	CallbackPct float64   `json:"callback_pct"`
-	Status      string    `json:"status"` // "active", "triggered", "cancelled"
-	Timestamp   time.Time `json:"timestamp"`
 }
 
 // WSPositionUpdatedEvent is published when position exposure is updated.

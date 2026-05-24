@@ -3,14 +3,12 @@ package trap
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	shared "crypto-bot/internal/domain"
 	applogger "crypto-bot/pkg/logger"
 
 	"crypto-bot/internal/bots/funding/application/cycle"
 	"crypto-bot/internal/bots/funding/application/events"
-	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -27,6 +25,7 @@ func subscribeFillWatcher(ctx context.Context, rt *cycle.Runtime) {
 			applogger.WithCtx(ctx, rt.Log()).Error("Unmarshal TrapFiredEvent failed", slog.Any("error", err))
 			return
 		}
+		rt.MarkTrapOrder(evt)
 		setupFillWatcher(ctx, rt, evt.OrderID, evt.Side, evt.CloseSide)
 	})
 }
@@ -35,37 +34,9 @@ func setupFillWatcher(ctx context.Context, rt *cycle.Runtime, orderID string, si
 	if orderID == "" {
 		return
 	}
-
-	rt.Deps().OrderNotifier.OnOrderUpdate(ctx, orderID, 5*time.Second, func(deal exchange.WsOrderDeal) {
-		if !exchange.IsTerminalOrderState(deal.State) {
-			return
-		}
-
-		rt.Deps().OrderNotifier.RemoveOrderCallback(deal.GetOrderID())
-
-		if deal.DealVol <= 0 {
-			applogger.WithCtx(ctx, rt.Log()).Warn("No fill", slog.String("flow", events.FlowTrap), slog.String("orderID", deal.GetOrderID()))
-			return
-		}
-
-		applogger.WithCtx(ctx, rt.Log()).Info("Position opened",
-			slog.String("flow", events.FlowTrap),
-			slog.Float64("entry", deal.DealAvgPrice),
-			slog.Float64("vol", deal.DealVol),
-		)
-
-		reqID := rt.GetReqID()
-		fillEvt := events.OrderFilledEvent{
-			Flow:      events.FlowTrap,
-			Symbol:    rt.Config().Symbol,
-			OrderID:   deal.GetOrderID(),
-			FillPrice: deal.DealAvgPrice,
-			FillVol:   deal.DealVol,
-			Side:      side,
-			CloseSide: closeSide,
-		}
-		rt.MarkTrapFill(fillEvt)
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicTrapOrderFilled, fillEvt)
-		rt.StartExcursionPriceStream(ctx, reqID)
-	})
+	applogger.WithCtx(ctx, rt.Log()).Debug("Trap fill watcher armed for position update",
+		slog.String("orderID", orderID),
+		slog.Any("side", side),
+		slog.Any("closeSide", closeSide),
+	)
 }
