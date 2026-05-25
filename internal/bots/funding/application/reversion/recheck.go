@@ -49,12 +49,14 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 	applogger.WithCtx(ctx, r.log).Info("FR OK", slog.String("symbol", c.Symbol), slog.Float64("fr", td.FundingRate*100))
 
 	evt := ConfirmedEvent{
-		Flow:        FlowReversion,
-		Symbol:      c.Symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			Symbol:    c.Symbol,
+			Timestamp: r.deps.Clock.Now(),
+		},
 		FundingRate: td.FundingRate,
 		Candidate:   c,
 		SettleTime:  waitEvt.SettleTime,
-		Timestamp:   r.deps.Clock.Now(),
 	}
 
 	return r.publishEvent(ctx, TopicReversionConfirmed, evt)

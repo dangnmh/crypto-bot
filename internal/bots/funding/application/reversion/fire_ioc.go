@@ -61,8 +61,11 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	})
 	if !c.SafetyResult.Passed {
 		evt := IOCFiredEvent{
-			Flow:          FlowReversion,
-			Symbol:        c.Symbol,
+			BaseReversionEvent: BaseReversionEvent{
+				Flow:      FlowReversion,
+				Symbol:    c.Symbol,
+				Timestamp: r.deps.Clock.Now(),
+			},
 			Side:          c.Side,
 			CloseSide:     c.CloseSide,
 			FireTimestamp: r.deps.Clock.Now(),
@@ -84,8 +87,11 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 
 	if res.IsSuccess() {
 		evt := IOCFiredEvent{
-			Flow:          FlowReversion,
-			Symbol:        c.Symbol,
+			BaseReversionEvent: BaseReversionEvent{
+				Flow:      FlowReversion,
+				Symbol:    c.Symbol,
+				Timestamp: fireTime,
+			},
 			OrderID:       res.OrderID,
 			Side:          c.Side,
 			CloseSide:     c.CloseSide,
@@ -106,8 +112,11 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		errText = res.Error.Error()
 	}
 	evt := IOCFiredEvent{
-		Flow:          FlowReversion,
-		Symbol:        c.Symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			Symbol:    c.Symbol,
+			Timestamp: fireTime,
+		},
 		OrderID:       res.OrderID,
 		Side:          c.Side,
 		CloseSide:     c.CloseSide,

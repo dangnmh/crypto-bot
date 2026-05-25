@@ -78,12 +78,14 @@ func (r *StatelessRunner) timeoutGuard(ctx context.Context, firedEvt IOCFiredEve
 	} else {
 		// Timeout without any open position, check if we need to publish timeout event
 		evt := TimeoutEvent{
-			Flow:                FlowReversion,
-			Symbol:              firedEvt.Symbol,
+			BaseReversionEvent: BaseReversionEvent{
+				Flow:      FlowReversion,
+				Symbol:    firedEvt.Symbol,
+				Timestamp: r.deps.Clock.Now(),
+			},
 			Timeout:             timeout,
 			Reason:              reversionReasonNoFill,
 			ForceCloseAttempted: false,
-			Timestamp:           r.deps.Clock.Now(),
 		}
 		_ = r.publishEvent(ctx, TopicReversionTimeout, evt)
 		r.abort(ctx, firedEvt.Symbol, reversionReasonNoFill)
@@ -111,27 +113,31 @@ func (r *StatelessRunner) forceCloseTimedOutPosition(
 
 	now := time.Now()
 	timeoutEvt := TimeoutEvent{
-		Flow:                FlowReversion,
-		Symbol:              symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			Symbol:    symbol,
+			Timestamp: r.deps.Clock.Now(),
+		},
 		Timeout:             timeout,
 		Reason:              "force_close",
 		ForceCloseAttempted: true,
 		ForceCloseSucceeded: true,
 		CloseRetryCount:     retries,
-		Timestamp:           r.deps.Clock.Now(),
 	}
 	_ = r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
 
 	closeEvt := PositionClosedEvent{
-		Flow:            FlowReversion,
-		Symbol:          symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			Symbol:    symbol,
+			Timestamp: r.deps.Clock.Now(),
+		},
 		CloseVol:        holdVol,
 		Reason:          "timeout_force_close",
 		Method:          reversionMethodFallbackClose,
 		HoldDurationMs:  now.Sub(startedAt).Milliseconds(),
 		CloseRetryCount: retries,
 		Direction:       firedEvt.Side,
-		Timestamp:       r.deps.Clock.Now(),
 	}
 	_ = r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
 }
@@ -149,20 +155,24 @@ func (r *StatelessRunner) forceClosePosition(
 
 func (r *StatelessRunner) publishReversionCritical(ctx context.Context, symbol, reason string) {
 	errEvt := ErrorEvent{
-		Flow:       FlowReversion,
-		Symbol:     symbol,
-		Error:      reason,
-		Timestamp:  r.deps.Clock.Now(),
-		SendNotify: true,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			Symbol:     symbol,
+			Timestamp:  r.deps.Clock.Now(),
+			SendNotify: true,
+		},
+		Error: reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionError, errEvt)
 
 	abortEvt := AbortEvent{
-		Flow:       FlowReversion,
-		Symbol:     symbol,
-		Reason:     reason,
-		Timestamp:  r.deps.Clock.Now(),
-		SendNotify: false,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			Symbol:     symbol,
+			Timestamp:  r.deps.Clock.Now(),
+			SendNotify: false,
+		},
+		Reason: reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionAbort, abortEvt)
 }

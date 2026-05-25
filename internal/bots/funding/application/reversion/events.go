@@ -51,18 +51,25 @@ type ReversionEvent interface {
 	ShouldNotify() bool
 }
 
-// CandidateFoundEvent is the starting event containing the parsed candidate.
-type CandidateFoundEvent struct {
-	Flow       string                  `json:"flow"`
-	Symbol     string                  `json:"symbol"`
-	Candidate  fundingdomain.Candidate `json:"candidate"`
-	SettleTime time.Time               `json:"settle_time"`
-	SendNotify bool                    `json:"send_notify,omitempty"`
-	Timestamp  time.Time               `json:"timestamp"`
+// BaseReversionEvent provides shared boilerplate fields and methods for all reversion events.
+type BaseReversionEvent struct {
+	Flow       string    `json:"flow,omitempty"`
+	Symbol     string    `json:"symbol"`
+	SendNotify bool      `json:"send_notify,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
-func (e CandidateFoundEvent) GetFlow() string   { return e.Flow }
-func (e CandidateFoundEvent) GetSymbol() string { return e.Symbol }
+func (b BaseReversionEvent) GetFlow() string    { return b.Flow }
+func (b BaseReversionEvent) GetSymbol() string  { return b.Symbol }
+func (b BaseReversionEvent) ShouldNotify() bool { return b.SendNotify }
+
+// CandidateFoundEvent is the starting event containing the parsed candidate.
+type CandidateFoundEvent struct {
+	BaseReversionEvent
+	Candidate  fundingdomain.Candidate `json:"candidate"`
+	SettleTime time.Time               `json:"settle_time"`
+}
+
 func (e CandidateFoundEvent) GetMessage() string {
 	return "Candidate found for " + e.Symbol
 }
@@ -73,23 +80,17 @@ func (e CandidateFoundEvent) GetDataMap() map[string]interface{} {
 		"side":         e.Candidate.Side.String(),
 	}
 }
-func (e CandidateFoundEvent) ShouldNotify() bool { return e.SendNotify }
 
 // ArmedEvent is published when WS sub and IOC price/vol check completes.
 type ArmedEvent struct {
-	Flow       string                  `json:"flow"`
-	Symbol     string                  `json:"symbol"`
+	BaseReversionEvent
 	Candidate  fundingdomain.Candidate `json:"candidate"`
 	Volume     float64                 `json:"volume"`
 	IOCPrice   float64                 `json:"ioc_price"`
 	Slippage   float64                 `json:"slippage"`
 	SettleTime time.Time               `json:"settle_time"`
-	SendNotify bool                    `json:"send_notify,omitempty"`
-	Timestamp  time.Time               `json:"timestamp"`
 }
 
-func (e ArmedEvent) GetFlow() string   { return e.Flow }
-func (e ArmedEvent) GetSymbol() string { return e.Symbol }
 func (e ArmedEvent) GetMessage() string {
 	return "Reversion armed for " + e.Symbol
 }
@@ -101,20 +102,14 @@ func (e ArmedEvent) GetDataMap() map[string]interface{} {
 		"slippage": e.Slippage,
 	}
 }
-func (e ArmedEvent) ShouldNotify() bool { return e.SendNotify }
 
 // WaitCompleteEvent signals that the pre-settle wait period has completed.
 type WaitCompleteEvent struct {
-	Flow       string                  `json:"flow"`
-	Symbol     string                  `json:"symbol"`
+	BaseReversionEvent
 	SettleTime time.Time               `json:"settle_time"`
 	Candidate  fundingdomain.Candidate `json:"candidate"`
-	SendNotify bool                    `json:"send_notify,omitempty"`
-	Timestamp  time.Time               `json:"timestamp"`
 }
 
-func (e WaitCompleteEvent) GetFlow() string   { return e.Flow }
-func (e WaitCompleteEvent) GetSymbol() string { return e.Symbol }
 func (e WaitCompleteEvent) GetMessage() string {
 	return "Wait complete for " + e.Symbol
 }
@@ -124,21 +119,15 @@ func (e WaitCompleteEvent) GetDataMap() map[string]interface{} {
 		"settleTime": e.SettleTime,
 	}
 }
-func (e WaitCompleteEvent) ShouldNotify() bool { return e.SendNotify }
 
 // ConfirmedEvent is published after funding rate and recheck passes.
 type ConfirmedEvent struct {
-	Flow        string                  `json:"flow"`
-	Symbol      string                  `json:"symbol"`
+	BaseReversionEvent
 	FundingRate float64                 `json:"funding_rate"`
 	Candidate   fundingdomain.Candidate `json:"candidate"`
 	SettleTime  time.Time               `json:"settle_time"`
-	SendNotify  bool                    `json:"send_notify,omitempty"`
-	Timestamp   time.Time               `json:"timestamp"`
 }
 
-func (e ConfirmedEvent) GetFlow() string   { return e.Flow }
-func (e ConfirmedEvent) GetSymbol() string { return e.Symbol }
 func (e ConfirmedEvent) GetMessage() string {
 	return "Recheck confirmed for " + e.Symbol
 }
@@ -148,12 +137,10 @@ func (e ConfirmedEvent) GetDataMap() map[string]interface{} {
 		keyFundingRate: e.FundingRate,
 	}
 }
-func (e ConfirmedEvent) ShouldNotify() bool { return e.SendNotify }
 
 // IOCFiredEvent is published after the IOC order is submitted to exchange.
 type IOCFiredEvent struct {
-	Flow          string      `json:"flow"`
-	Symbol        string      `json:"symbol"`
+	BaseReversionEvent
 	OrderID       string      `json:"order_id"`
 	Side          shared.Side `json:"side"`
 	CloseSide     shared.Side `json:"close_side"`
@@ -166,11 +153,8 @@ type IOCFiredEvent struct {
 	FireTimestamp time.Time   `json:"fire_timestamp"`
 	LatencyRTTMs  int64       `json:"latency_rtt_ms,omitempty"`
 	Error         string      `json:"error,omitempty"`
-	SendNotify    bool        `json:"send_notify,omitempty"`
 }
 
-func (e IOCFiredEvent) GetFlow() string   { return e.Flow }
-func (e IOCFiredEvent) GetSymbol() string { return e.Symbol }
 func (e IOCFiredEvent) GetMessage() string {
 	if e.Error != "" {
 		return "IOC Order FAILED to fire for " + e.Symbol + ": " + e.Error
@@ -190,8 +174,7 @@ func (e IOCFiredEvent) ShouldNotify() bool { return e.SendNotify || e.Error != "
 
 // OrderFilledEvent is recorded when watcher detects a position fill.
 type OrderFilledEvent struct {
-	Flow        string      `json:"flow"`
-	Symbol      string      `json:"symbol"`
+	BaseReversionEvent
 	OrderID     string      `json:"order_id"`
 	Side        shared.Side `json:"side"`
 	CloseSide   shared.Side `json:"close_side"`
@@ -203,12 +186,8 @@ type OrderFilledEvent struct {
 	SlippagePct float64     `json:"slippage_pct,omitempty"`
 	TPPrice     float64     `json:"tp_price,omitempty"`
 	SLPrice     float64     `json:"sl_price,omitempty"`
-	SendNotify  bool        `json:"send_notify,omitempty"`
-	Timestamp   time.Time   `json:"timestamp"`
 }
 
-func (e OrderFilledEvent) GetFlow() string   { return e.Flow }
-func (e OrderFilledEvent) GetSymbol() string { return e.Symbol }
 func (e OrderFilledEvent) GetMessage() string {
 	return "Position FILLED for " + e.Symbol
 }
@@ -220,12 +199,10 @@ func (e OrderFilledEvent) GetDataMap() map[string]interface{} {
 		"fillVol":   e.FillVol,
 	}
 }
-func (e OrderFilledEvent) ShouldNotify() bool { return e.SendNotify }
 
 // PositionClosedEvent is published when watcher detects a flat position.
 type PositionClosedEvent struct {
-	Flow            string      `json:"flow"`
-	Symbol          string      `json:"symbol"`
+	BaseReversionEvent
 	EntryPrice      float64     `json:"entry_price"`
 	ClosePrice      float64     `json:"close_price"`
 	CloseVol        float64     `json:"close_vol"`
@@ -240,12 +217,8 @@ type PositionClosedEvent struct {
 	Direction       shared.Side `json:"direction,omitempty"`
 	Method          string      `json:"method,omitempty"`
 	CloseRetryCount int         `json:"close_retry_count,omitempty"`
-	SendNotify      bool        `json:"send_notify,omitempty"`
-	Timestamp       time.Time   `json:"timestamp"`
 }
 
-func (e PositionClosedEvent) GetFlow() string   { return e.Flow }
-func (e PositionClosedEvent) GetSymbol() string { return e.Symbol }
 func (e PositionClosedEvent) GetMessage() string {
 	return "Position CLOSED for " + e.Symbol + " (" + e.Reason + ")"
 }
@@ -261,24 +234,18 @@ func (e PositionClosedEvent) GetDataMap() map[string]interface{} {
 		keyHoldFee:    e.HoldFee,
 	}
 }
-func (e PositionClosedEvent) ShouldNotify() bool { return e.SendNotify }
 
 // TimeoutEvent is published when safety timeout guard triggers.
 type TimeoutEvent struct {
-	Flow                string        `json:"flow"`
-	Symbol              string        `json:"symbol"`
+	BaseReversionEvent
 	Timeout             time.Duration `json:"timeout"`
 	Reason              string        `json:"reason"`
 	ForceCloseAttempted bool          `json:"force_close_attempted,omitempty"`
 	ForceCloseSucceeded bool          `json:"force_close_succeeded,omitempty"`
 	CloseRetryCount     int           `json:"close_retry_count,omitempty"`
 	Error               string        `json:"error,omitempty"`
-	SendNotify          bool          `json:"send_notify,omitempty"`
-	Timestamp           time.Time     `json:"timestamp"`
 }
 
-func (e TimeoutEvent) GetFlow() string   { return e.Flow }
-func (e TimeoutEvent) GetSymbol() string { return e.Symbol }
 func (e TimeoutEvent) GetMessage() string {
 	if e.Error != "" {
 		return "Timeout Guard TRIGGERED for " + e.Symbol + " but failed to close: " + e.Error
@@ -297,15 +264,10 @@ func (e TimeoutEvent) ShouldNotify() bool { return e.SendNotify || e.Error != ""
 
 // AbortEvent is published when a cycle aborts gracefully or due to check fail.
 type AbortEvent struct {
-	Flow       string    `json:"flow,omitempty"`
-	Symbol     string    `json:"symbol"`
-	Reason     string    `json:"reason"`
-	SendNotify bool      `json:"send_notify,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
+	BaseReversionEvent
+	Reason string `json:"reason"`
 }
 
-func (e AbortEvent) GetFlow() string   { return e.Flow }
-func (e AbortEvent) GetSymbol() string { return e.Symbol }
 func (e AbortEvent) GetMessage() string {
 	return "Cycle aborted for " + e.Symbol + ": " + e.Reason
 }
@@ -315,19 +277,13 @@ func (e AbortEvent) GetDataMap() map[string]interface{} {
 		keyReason: e.Reason,
 	}
 }
-func (e AbortEvent) ShouldNotify() bool { return e.SendNotify }
 
 // ErrorEvent signals an unexpected execution error.
 type ErrorEvent struct {
-	Flow       string    `json:"flow"`
-	Symbol     string    `json:"symbol"`
-	Error      string    `json:"error"`
-	SendNotify bool      `json:"send_notify,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
+	BaseReversionEvent
+	Error string `json:"error"`
 }
 
-func (e ErrorEvent) GetFlow() string   { return e.Flow }
-func (e ErrorEvent) GetSymbol() string { return e.Symbol }
 func (e ErrorEvent) GetMessage() string {
 	return "Cycle error for " + e.Symbol + ": " + e.Error
 }
@@ -341,8 +297,7 @@ func (e ErrorEvent) ShouldNotify() bool { return true }
 
 // FinalPnLEvent is published at cycle end with the final reversion PnL summary.
 type FinalPnLEvent struct {
-	Flow           string      `json:"flow"`
-	Symbol         string      `json:"symbol"`
+	BaseReversionEvent
 	Direction      shared.Side `json:"direction"`
 	EntryPrice     float64     `json:"entry_price"`
 	ClosePrice     float64     `json:"close_price"`
@@ -352,12 +307,8 @@ type FinalPnLEvent struct {
 	Fees           float64     `json:"fees"`
 	HoldFee        float64     `json:"hold_fees"`
 	HoldDurationMs int64       `json:"hold_duration_ms"`
-	SendNotify     bool        `json:"send_notify,omitempty"`
-	Timestamp      time.Time   `json:"timestamp"`
 }
 
-func (e FinalPnLEvent) GetFlow() string   { return e.Flow }
-func (e FinalPnLEvent) GetSymbol() string { return e.Symbol }
 func (e FinalPnLEvent) GetMessage() string {
 	return "Final PnL for " + e.Symbol + " of Flow " + e.Flow
 }
@@ -371,19 +322,13 @@ func (e FinalPnLEvent) GetDataMap() map[string]interface{} {
 		keyHoldFee:    e.HoldFee,
 	}
 }
-func (e FinalPnLEvent) ShouldNotify() bool { return e.SendNotify }
 
 // ReversionCompletedEvent is published when the reversion flow finishes.
 type ReversionCompletedEvent struct {
-	Flow       string    `json:"flow"`
-	Symbol     string    `json:"symbol"`
-	Reason     string    `json:"reason"`
-	SendNotify bool      `json:"send_notify,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
+	BaseReversionEvent
+	Reason string `json:"reason"`
 }
 
-func (e ReversionCompletedEvent) GetFlow() string   { return e.Flow }
-func (e ReversionCompletedEvent) GetSymbol() string { return e.Symbol }
 func (e ReversionCompletedEvent) GetMessage() string {
 	return "Reversion completed for " + e.Symbol
 }
@@ -393,4 +338,3 @@ func (e ReversionCompletedEvent) GetDataMap() map[string]interface{} {
 		keyReason: e.Reason,
 	}
 }
-func (e ReversionCompletedEvent) ShouldNotify() bool { return e.SendNotify }

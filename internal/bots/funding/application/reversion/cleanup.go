@@ -30,11 +30,13 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 	}
 
 	compEvt := ReversionCompletedEvent{
-		Flow:       FlowReversion,
-		Symbol:     symbol,
-		Reason:     "cleanup_finished",
-		SendNotify: false,
-		Timestamp:  r.deps.Clock.Now(),
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			Symbol:     symbol,
+			Timestamp:  r.deps.Clock.Now(),
+			SendNotify: false,
+		},
+		Reason: "cleanup_finished",
 	}
 	_ = r.publishEvent(ctx, TopicReversionCompleted, compEvt)
 
@@ -43,8 +45,12 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 
 func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalPnLEvent {
 	return FinalPnLEvent{
-		Flow:           FlowReversion,
-		Symbol:         closeEvt.Symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			Symbol:     closeEvt.Symbol,
+			Timestamp:  r.deps.Clock.Now(),
+			SendNotify: true,
+		},
 		EntryPrice:     closeEvt.EntryPrice,
 		ClosePrice:     closeEvt.ClosePrice,
 		MaxVol:         closeEvt.CloseVol,
@@ -53,7 +59,5 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 		Fees:           closeEvt.Fee,
 		HoldFee:        closeEvt.HoldFee,
 		HoldDurationMs: closeEvt.HoldDurationMs,
-		Timestamp:      r.deps.Clock.Now(),
-		SendNotify:     true,
 	}
 }

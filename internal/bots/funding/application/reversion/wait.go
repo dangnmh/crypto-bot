@@ -12,10 +12,12 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 
 	if settleTime.IsZero() {
 		evt := WaitCompleteEvent{
-			Flow:      FlowReversion,
-			Symbol:    armedEvt.Symbol,
+			BaseReversionEvent: BaseReversionEvent{
+				Flow:      FlowReversion,
+				Symbol:    armedEvt.Symbol,
+				Timestamp: r.deps.Clock.Now(),
+			},
 			Candidate: armedEvt.Candidate,
-			Timestamp: r.deps.Clock.Now(),
 		}
 		return r.publishEvent(ctx, TopicReversionWaitComplete, evt)
 	}
@@ -27,11 +29,13 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 	}
 
 	evt := WaitCompleteEvent{
-		Flow:       FlowReversion,
-		Symbol:     armedEvt.Symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			Symbol:    armedEvt.Symbol,
+			Timestamp: r.deps.Clock.Now(),
+		},
 		SettleTime: settleTime,
 		Candidate:  armedEvt.Candidate,
-		Timestamp:  r.deps.Clock.Now(),
 	}
 
 	return r.publishEvent(ctx, TopicReversionWaitComplete, evt)

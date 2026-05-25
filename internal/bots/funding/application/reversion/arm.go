@@ -79,15 +79,17 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 	)
 
 	evt := ArmedEvent{
-		Flow:       FlowReversion,
-		Symbol:     c.Symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			Symbol:     c.Symbol,
+			Timestamp:  r.deps.Clock.Now(),
+			SendNotify: true,
+		},
 		Candidate:  c,
 		Volume:     c.Volume,
 		IOCPrice:   ioc,
 		Slippage:   c.Slippage,
 		SettleTime: startEvt.SettleTime,
-		Timestamp:  r.deps.Clock.Now(),
-		SendNotify: true,
 	}
 
 	return r.publishEvent(ctx, TopicReversionArmed, evt)

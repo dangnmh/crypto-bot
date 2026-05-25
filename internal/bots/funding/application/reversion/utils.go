@@ -63,12 +63,14 @@ func (s *Strategy) Execute(ctx context.Context, settleTime time.Time, candidate 
 	applogger.WithCtx(ctx, s.log).Info("🚀 Triggering event-driven reversion bot lifecycle execution", slog.String("symbol", candidate.Symbol))
 
 	startEvt := CandidateFoundEvent{
-		Flow:       FlowReversion,
-		Symbol:     candidate.Symbol,
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			Symbol:     candidate.Symbol,
+			SendNotify: false,
+			Timestamp:  s.deps.Clock.Now(),
+		},
 		Candidate:  candidate,
 		SettleTime: settleTime,
-		SendNotify: false,
-		Timestamp:  s.deps.Clock.Now(),
 	}
 
 	return s.deps.EventBus.Publish(TopicReversionCandidate, startEvt)
@@ -165,10 +167,12 @@ func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate)
 
 func (r *StatelessRunner) abort(ctx context.Context, symbol, reason string) {
 	evt := AbortEvent{
-		Flow:      FlowReversion,
-		Symbol:    symbol,
-		Reason:    reason,
-		Timestamp: r.deps.Clock.Now(),
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			Symbol:    symbol,
+			Timestamp: r.deps.Clock.Now(),
+		},
+		Reason: reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }
@@ -225,23 +229,29 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 
 	if pos.HoldVol > 0 {
 		evt := OrderFilledEvent{
-			Flow:       FlowReversion,
-			Symbol:     pos.Symbol,
-			OrderID:    "", // Stateless matches purely by symbol
-			Side:       side,
-			CloseSide:  closeSide,
-			FillPrice:  fillPrice,
-			FillVol:    pos.HoldVol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: true,
+			BaseReversionEvent: BaseReversionEvent{
+				Flow:       FlowReversion,
+				Symbol:     pos.Symbol,
+				Timestamp:  r.deps.Clock.Now(),
+				SendNotify: true,
+			},
+			OrderID:   "", // Stateless matches purely by symbol
+			Side:      side,
+			CloseSide: closeSide,
+			FillPrice: fillPrice,
+			FillVol:   pos.HoldVol,
 		}
 		go func() {
 			_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
 		}()
 	} else if pos.HoldVol == 0 {
 		evt := PositionClosedEvent{
-			Flow:        FlowReversion,
-			Symbol:      pos.Symbol,
+			BaseReversionEvent: BaseReversionEvent{
+				Flow:       FlowReversion,
+				Symbol:     pos.Symbol,
+				Timestamp:  r.deps.Clock.Now(),
+				SendNotify: true,
+			},
 			EntryPrice:  fillPrice,
 			ClosePrice:  fillPrice, // Fallback exit price matches open avg if no specific close avg price exists
 			CloseVol:    pos.CloseVol,
@@ -252,8 +262,6 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 			HoldFee:     pos.HoldFee,
 			Direction:   side,
 			Method:      "watcher",
-			Timestamp:   r.deps.Clock.Now(),
-			SendNotify:  true,
 		}
 		if pos.CloseAvgPrice > 0 {
 			evt.ClosePrice = pos.CloseAvgPrice
