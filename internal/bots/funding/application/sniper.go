@@ -44,6 +44,9 @@ type TrapStrategyFactory func(config.SymbolConfig, *config.Config, Deps) strateg
 // TrailingStrategyFactory creates a new trailing strategy instance.
 type TrailingStrategyFactory func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy
 
+// SubscriptionInitializer represents a function that initializes global subscriptions for a strategy.
+type SubscriptionInitializer func(ctx context.Context, deps Deps, cfg *config.Config)
+
 // Sniper spawns one independent worker goroutine per configured symbol.
 type Sniper struct {
 	cfg              *config.Config
@@ -60,6 +63,7 @@ type Sniper struct {
 	reversionFactory ReversionStrategyFactory
 	trapFactory      TrapStrategyFactory
 	trailingFactory  TrailingStrategyFactory
+	initializers     []SubscriptionInitializer
 	log              *slog.Logger
 	bgWg             sync.WaitGroup // tracks background goroutines (§5.2)
 }
@@ -74,6 +78,7 @@ func NewSniper(
 	trapFactory TrapStrategyFactory,
 	trailingFactory TrailingStrategyFactory,
 	log *slog.Logger,
+	initializers ...SubscriptionInitializer,
 ) *Sniper {
 	wsSub := engine.Adapter
 	orderWatcher := watcher.NewOrderWatcher(engine.Bus, log.With("component", "order_watcher"))
@@ -107,6 +112,7 @@ func NewSniper(
 		reversionFactory: reversionFactory,
 		trapFactory:      trapFactory,
 		trailingFactory:  trailingFactory,
+		initializers:     initializers,
 		log:              log,
 	}
 }
@@ -149,6 +155,25 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 		if err := s.engine.Adapter.SubscribePersonal(ctx); err != nil {
 			log.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
 		}
+	}
+
+	// 5. Initialize global event subscriptions for strategies.
+	deps := Deps{
+		Client:        s.client,
+		WsSub:         s.ws,
+		OrderNotifier: s.orderNotifier,
+		TickerStore:   s.stores.Ticker(),
+		ContractStore: s.stores.Contract(),
+		PriceStore:    s.stores.Price(),
+		FundingStore:  s.stores.Funding(),
+		DepthStore:    s.stores.Depth(),
+		Clock:         s.timeSync,
+		Log:           s.log,
+		Notifier:      s.notifier,
+		EventBus:      s.engine.Bus,
+	}
+	for _, init := range s.initializers {
+		init(ctx, deps, s.cfg)
 	}
 
 	log.Info("🟢 Funding Reversion Background Services Ready")
@@ -244,6 +269,7 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 			Clock:         s.timeSync,
 			Log:           baseLog,
 			Notifier:      s.notifier,
+			EventBus:      s.engine.Bus,
 		}
 		orchestrator := NewOrchestrator(
 			symCfg,

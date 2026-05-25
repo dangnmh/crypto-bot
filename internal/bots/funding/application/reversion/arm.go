@@ -14,34 +14,35 @@ import (
 	applogger "crypto-bot/pkg/logger"
 )
 
-func (s *Strategy) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
+func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
+	r.log.Info("handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
 	c := startEvt.Candidate
 
-	if err := s.subscribeWS(ctx); err != nil {
-		applogger.WithCtx(ctx, s.log).Error("Failed to subscribe WS channels", slog.Any("error", err))
-		s.abort(ctx, "WS subscribe failed: "+err.Error())
+	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
+		applogger.WithCtx(ctx, r.log).Error("Failed to subscribe WS channels", slog.Any("error", err))
+		r.abort(ctx, c.Symbol, "WS subscribe failed: "+err.Error())
 		return fmt.Errorf("WS subscribe failed: %w", err)
 	}
 
-	if err := s.waitForFreshPrice(ctx, c.Symbol, 5*time.Second); err != nil {
-		applogger.WithCtx(ctx, s.log).Warn("Price data wait failed", slog.Any("error", err))
-		s.unsubscribeWS(ctx)
-		s.abort(ctx, "refresh price failed: "+err.Error())
+	if err := r.waitForFreshPrice(ctx, c.Symbol, 5*time.Second); err != nil {
+		applogger.WithCtx(ctx, r.log).Warn("Price data wait failed", slog.Any("error", err))
+		r.unsubscribeWS(ctx, c.Symbol)
+		r.abort(ctx, c.Symbol, "refresh price failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
-	if err := s.refreshPrice(ctx, &c); err != nil {
-		applogger.WithCtx(ctx, s.log).Warn("Refresh price failed", slog.Any("error", err))
-		s.unsubscribeWS(ctx)
-		s.abort(ctx, "refresh price failed: "+err.Error())
+	if err := r.refreshPrice(ctx, &c); err != nil {
+		applogger.WithCtx(ctx, r.log).Warn("Refresh price failed", slog.Any("error", err))
+		r.unsubscribeWS(ctx, c.Symbol)
+		r.abort(ctx, c.Symbol, "refresh price failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
 	ioc, err := c.CalculateIOCPrice()
 	if err != nil {
-		applogger.WithCtx(ctx, s.log).Warn("IOC calc failed", slog.Any("error", err))
-		s.unsubscribeWS(ctx)
-		s.abort(ctx, "IOC calc failed: "+err.Error())
+		applogger.WithCtx(ctx, r.log).Warn("IOC calc failed", slog.Any("error", err))
+		r.unsubscribeWS(ctx, c.Symbol)
+		r.abort(ctx, c.Symbol, "IOC calc failed: "+err.Error())
 		return fmt.Errorf("IOC calc failed: %w", err)
 	}
 	c.Volume = c.CalculateVolume()
@@ -58,20 +59,19 @@ func (s *Strategy) handleArm(ctx context.Context, startEvt CandidateFoundEvent) 
 		}
 	}
 
-	safety := s.global.System.Safety
+	safety := r.globalCfg.System.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
 		MinVol24USD:    safety.MinVol24USD,
 	})
 	if !c.SafetyResult.Passed {
-		applogger.WithCtx(ctx, s.log).Warn("Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
-		s.unsubscribeWS(ctx)
-		s.abort(ctx, "safety fail: "+c.SafetyResult.RejectReason)
+		applogger.WithCtx(ctx, r.log).Warn("Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
+		r.unsubscribeWS(ctx, c.Symbol)
+		r.abort(ctx, c.Symbol, "safety fail: "+c.SafetyResult.RejectReason)
 		return fmt.Errorf("safety fail: %s", c.SafetyResult.RejectReason)
 	}
 
-	s.setCandidate(c)
-	applogger.WithCtx(ctx, s.log).Info("Ready",
+	applogger.WithCtx(ctx, r.log).Info("Ready",
 		slog.String("side", c.Side.String()),
 		slog.Float64("fr", c.FundingRate*100),
 		slog.Float64("ioc", ioc),
@@ -85,15 +85,16 @@ func (s *Strategy) handleArm(ctx context.Context, startEvt CandidateFoundEvent) 
 		Volume:     c.Volume,
 		IOCPrice:   ioc,
 		Slippage:   c.Slippage,
-		Timestamp:  s.deps.Clock.Now(),
+		SettleTime: startEvt.SettleTime,
+		Timestamp:  r.deps.Clock.Now(),
 		SendNotify: true,
 	}
 
-	return s.publishEvent(ctx, TopicReversionArmed, evt)
+	return r.publishEvent(ctx, TopicReversionArmed, evt)
 }
 
-func (s *Strategy) waitForFreshPrice(ctx context.Context, symbol string, maxWait time.Duration) error {
-	priceStore := s.deps.PriceStore
+func (r *StatelessRunner) waitForFreshPrice(ctx context.Context, symbol string, maxWait time.Duration) error {
+	priceStore := r.deps.PriceStore
 	if priceStore == nil {
 		return fmt.Errorf("price store unavailable")
 	}

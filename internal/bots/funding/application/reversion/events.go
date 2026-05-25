@@ -37,6 +37,9 @@ const (
 	keyError       = "error"
 	keyClosePrice  = "closePrice"
 	keyReason      = "reason"
+	keyEntryPrice  = "entryPrice"
+	keyFee         = "fee"
+	keyHoldFee     = "holdFee"
 )
 
 // ReversionEvent defines the interface that all reversion lifecycle events must implement.
@@ -80,6 +83,7 @@ type ArmedEvent struct {
 	Volume     float64                 `json:"volume"`
 	IOCPrice   float64                 `json:"ioc_price"`
 	Slippage   float64                 `json:"slippage"`
+	SettleTime time.Time               `json:"settle_time"`
 	SendNotify bool                    `json:"send_notify,omitempty"`
 	Timestamp  time.Time               `json:"timestamp"`
 }
@@ -101,11 +105,12 @@ func (e ArmedEvent) ShouldNotify() bool { return e.SendNotify }
 
 // WaitCompleteEvent signals that the pre-settle wait period has completed.
 type WaitCompleteEvent struct {
-	Flow       string    `json:"flow"`
-	Symbol     string    `json:"symbol"`
-	SettleTime time.Time `json:"settle_time"`
-	SendNotify bool      `json:"send_notify,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
+	Flow       string                  `json:"flow"`
+	Symbol     string                  `json:"symbol"`
+	SettleTime time.Time               `json:"settle_time"`
+	Candidate  fundingdomain.Candidate `json:"candidate"`
+	SendNotify bool                    `json:"send_notify,omitempty"`
+	Timestamp  time.Time               `json:"timestamp"`
 }
 
 func (e WaitCompleteEvent) GetFlow() string   { return e.Flow }
@@ -123,11 +128,13 @@ func (e WaitCompleteEvent) ShouldNotify() bool { return e.SendNotify }
 
 // ConfirmedEvent is published after funding rate and recheck passes.
 type ConfirmedEvent struct {
-	Flow        string    `json:"flow"`
-	Symbol      string    `json:"symbol"`
-	FundingRate float64   `json:"funding_rate"`
-	SendNotify  bool      `json:"send_notify,omitempty"`
-	Timestamp   time.Time `json:"timestamp"`
+	Flow        string                  `json:"flow"`
+	Symbol      string                  `json:"symbol"`
+	FundingRate float64                 `json:"funding_rate"`
+	Candidate   fundingdomain.Candidate `json:"candidate"`
+	SettleTime  time.Time               `json:"settle_time"`
+	SendNotify  bool                    `json:"send_notify,omitempty"`
+	Timestamp   time.Time               `json:"timestamp"`
 }
 
 func (e ConfirmedEvent) GetFlow() string   { return e.Flow }
@@ -217,21 +224,24 @@ func (e OrderFilledEvent) ShouldNotify() bool { return e.SendNotify }
 
 // PositionClosedEvent is published when watcher detects a flat position.
 type PositionClosedEvent struct {
-	Flow            string    `json:"flow"`
-	Symbol          string    `json:"symbol"`
-	ClosePrice      float64   `json:"close_price"`
-	CloseVol        float64   `json:"close_vol"`
-	Reason          string    `json:"reason"`
-	Profit          float64   `json:"profit,omitempty"`
-	NetProfit       float64   `json:"net_profit,omitempty"`
-	Fee             float64   `json:"fee,omitempty"`
-	HoldDurationMs  int64     `json:"hold_duration_ms,omitempty"`
-	TPPriceTouched  bool      `json:"tp_price_touched,omitempty"`
-	SLPriceTouched  bool      `json:"sl_price_touched,omitempty"`
-	Method          string    `json:"method,omitempty"`
-	CloseRetryCount int       `json:"close_retry_count,omitempty"`
-	SendNotify      bool      `json:"send_notify,omitempty"`
-	Timestamp       time.Time `json:"timestamp"`
+	Flow            string      `json:"flow"`
+	Symbol          string      `json:"symbol"`
+	EntryPrice      float64     `json:"entry_price"`
+	ClosePrice      float64     `json:"close_price"`
+	CloseVol        float64     `json:"close_vol"`
+	Reason          string      `json:"reason"`
+	GrossProfit     float64     `json:"gross_profit"`
+	NetProfit       float64     `json:"net_profit"`
+	Fee             float64     `json:"fee"`
+	HoldFee         float64     `json:"hold_fee"`
+	HoldDurationMs  int64       `json:"hold_duration_ms"`
+	TPPriceTouched  bool        `json:"tp_price_touched,omitempty"`
+	SLPriceTouched  bool        `json:"sl_price_touched,omitempty"`
+	Direction       shared.Side `json:"direction,omitempty"`
+	Method          string      `json:"method,omitempty"`
+	CloseRetryCount int         `json:"close_retry_count,omitempty"`
+	SendNotify      bool        `json:"send_notify,omitempty"`
+	Timestamp       time.Time   `json:"timestamp"`
 }
 
 func (e PositionClosedEvent) GetFlow() string   { return e.Flow }
@@ -242,10 +252,13 @@ func (e PositionClosedEvent) GetMessage() string {
 func (e PositionClosedEvent) GetDataMap() map[string]interface{} {
 	return map[string]interface{}{
 		keySymbol:     e.Symbol,
+		keyEntryPrice: e.EntryPrice,
 		keyClosePrice: e.ClosePrice,
 		"closeVol":    e.CloseVol,
 		keyReason:     e.Reason,
 		"netProfit":   e.NetProfit,
+		keyFee:        e.Fee,
+		keyHoldFee:    e.HoldFee,
 	}
 }
 func (e PositionClosedEvent) ShouldNotify() bool { return e.SendNotify }
@@ -351,11 +364,11 @@ func (e FinalPnLEvent) GetMessage() string {
 func (e FinalPnLEvent) GetDataMap() map[string]interface{} {
 	return map[string]interface{}{
 		keySymbol:     e.Symbol,
-		"entryPrice":  e.EntryPrice,
+		keyEntryPrice: e.EntryPrice,
 		keyClosePrice: e.ClosePrice,
 		"netPnL":      e.NetPnL,
-		"fee":         e.Fees,
-		"holdFee":     e.HoldFee,
+		keyFee:        e.Fees,
+		keyHoldFee:    e.HoldFee,
 	}
 }
 func (e FinalPnLEvent) ShouldNotify() bool { return e.SendNotify }

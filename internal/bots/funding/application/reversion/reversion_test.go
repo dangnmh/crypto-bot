@@ -2,6 +2,7 @@ package reversion_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
@@ -14,9 +15,11 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/testutil/mocks"
+	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/types"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -45,7 +48,17 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	mockClock.EXPECT().Until(gomock.Any()).DoAndReturn(func(target time.Time) time.Duration {
 		return target.Sub(now)
 	}).AnyTimes()
-	mockClock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockClock.EXPECT().Sleep(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, d time.Duration) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(d):
+			return nil
+		}
+	}).AnyTimes()
+
+	bus := eventbus.New(slog.Default())
+	defer func() { _ = bus.Close() }()
 
 	deps := application.Deps{
 		Client:        mockClient,
@@ -57,6 +70,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 		Clock:         mockClock,
 		Log:           slog.Default(),
 		Notifier:      mockNotifier,
+		EventBus:      bus,
 	}
 
 	cfg := config.SymbolConfig{
@@ -77,6 +91,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 				MinVol24USD:    10000,
 			},
 		},
+		Symbols: []config.SymbolConfig{cfg},
 	}
 
 	candidate := domain.Candidate{
@@ -156,7 +171,30 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	// Notifier expectations for events with SendNotify = true
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
+	// Subscribe to TopicReversionCompleted to wait for the asynchronous flow to finish in tests
+	subCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := bus.Subscribe(subCtx, reversion.TopicReversionCompleted)
+	require.NoError(t, err)
+
 	strategy := reversion.NewStrategy(cfg, globalCfg, deps)
-	err := strategy.Execute(context.Background(), now.Add(5*time.Second), candidate)
+	err = strategy.Execute(context.Background(), now.Add(5*time.Second), candidate)
 	assert.NoError(t, err)
+
+	// Wait for the completion event for "BTC_USDT" to ensure all mocks are met
+	for {
+		select {
+		case msg, ok := <-ch:
+			require.True(t, ok)
+			var compEvt reversion.ReversionCompletedEvent
+			err := json.Unmarshal(msg.Payload, &compEvt)
+			if err == nil && compEvt.Symbol == "BTC_USDT" {
+				msg.Ack()
+				return
+			}
+			msg.Ack()
+		case <-time.After(15 * time.Second):
+			t.Fatal("Timeout waiting for TopicReversionCompleted")
+		}
+	}
 }

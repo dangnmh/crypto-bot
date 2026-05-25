@@ -2,27 +2,27 @@ package reversion
 
 import (
 	"context"
+	"log/slog"
 	"time"
 )
 
-func (s *Strategy) handleWait(ctx context.Context, armedEvt ArmedEvent) error {
-	s.mu.Lock()
-	settleTime := s.settleTime
-	s.mu.Unlock()
+func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) error {
+	r.log.Info("handleWait SettleTime", slog.Time("settle", armedEvt.SettleTime))
+	settleTime := armedEvt.SettleTime
 
 	if settleTime.IsZero() {
-		// If settleTime is zero, skip wait
 		evt := WaitCompleteEvent{
 			Flow:      FlowReversion,
 			Symbol:    armedEvt.Symbol,
-			Timestamp: s.deps.Clock.Now(),
+			Candidate: armedEvt.Candidate,
+			Timestamp: r.deps.Clock.Now(),
 		}
-		return s.publishEvent(ctx, TopicReversionWaitComplete, evt)
+		return r.publishEvent(ctx, TopicReversionWaitComplete, evt)
 	}
 
 	target := settleTime.Add(-2 * time.Second)
-	if !s.WaitUntil(ctx, target) {
-		s.abort(ctx, "wait period context canceled")
+	if !r.WaitUntil(ctx, armedEvt.Symbol, target) {
+		r.abort(ctx, armedEvt.Symbol, "wait period context canceled")
 		return context.Canceled
 	}
 
@@ -30,8 +30,9 @@ func (s *Strategy) handleWait(ctx context.Context, armedEvt ArmedEvent) error {
 		Flow:       FlowReversion,
 		Symbol:     armedEvt.Symbol,
 		SettleTime: settleTime,
-		Timestamp:  s.deps.Clock.Now(),
+		Candidate:  armedEvt.Candidate,
+		Timestamp:  r.deps.Clock.Now(),
 	}
 
-	return s.publishEvent(ctx, TopicReversionWaitComplete, evt)
+	return r.publishEvent(ctx, TopicReversionWaitComplete, evt)
 }

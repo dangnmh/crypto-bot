@@ -157,5 +157,6 @@ func provideBot(
 		cfg, sysCfg, engine, n,
 		reversionFactory, trapFactory, trailingFactory,
 		log.With("bot", "funding"),
+		reversion.InitGlobalSubscriptions,
 	)
 }

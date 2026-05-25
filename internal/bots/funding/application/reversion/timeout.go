@@ -5,47 +5,54 @@ import (
 	"log/slog"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/infrastructure/exchange"
 	applogger "crypto-bot/pkg/logger"
 )
 
-func (s *Strategy) handleIOCFired(ctx context.Context, evt IOCFiredEvent) error {
+func (r *StatelessRunner) handleIOCFired(ctx context.Context, evt IOCFiredEvent) error {
 	if evt.Error != "" {
-		// If IOC failed, do nothing, cleanup handler will shut it down
 		return nil
 	}
 
-	timeout := time.Duration(s.cfg.FundingReversion.PostSettleTimeout)
+	cfg, ok := r.getSymbolConfig(evt.Symbol)
+	if !ok {
+		r.log.Error("Symbol config not found for timeout handler", slog.String("symbol", evt.Symbol))
+		return nil
+	}
+
+	timeout := time.Duration(cfg.FundingReversion.PostSettleTimeout)
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
 
 	// 1. Subscribe watcher to personal position updates
-	s.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, timeout*2, func(pos exchange.PersonalPositionUpdate) {
-		s.handlePositionUpdate(ctx, pos)
+	r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, timeout*2, func(pos exchange.PersonalPositionUpdate) {
+		r.handlePositionUpdate(ctx, pos)
 	})
 
 	// 2. Start timeout guard in the background
 	go func() {
-		_ = s.timeoutGuard(ctx, evt)
+		_ = r.timeoutGuard(ctx, evt)
 	}()
 
 	return nil
 }
 
-func (s *Strategy) timeoutGuard(ctx context.Context, firedEvt IOCFiredEvent) error {
-	timeout := time.Duration(s.cfg.FundingReversion.PostSettleTimeout)
+func (r *StatelessRunner) timeoutGuard(ctx context.Context, firedEvt IOCFiredEvent) error {
+	cfg, ok := r.getSymbolConfig(firedEvt.Symbol)
+	if !ok {
+		return nil
+	}
+
+	timeout := time.Duration(cfg.FundingReversion.PostSettleTimeout)
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
 
-	s.mu.Lock()
-	settleTime := s.settleTime
-	s.mu.Unlock()
-
+	settleTime := firedEvt.SettleTime
 	startedAt := time.Now()
-	applogger.WithCtx(ctx, s.log).Info("Reversion timeout guard started",
+	applogger.WithCtx(ctx, r.log).Info("Reversion timeout guard started",
+		slog.String("symbol", firedEvt.Symbol),
 		slog.Duration("timeout", timeout),
 	)
 
@@ -54,80 +61,120 @@ func (s *Strategy) timeoutGuard(ctx context.Context, firedEvt IOCFiredEvent) err
 		target = settleTime.Add(timeout)
 	}
 
-	if !s.WaitUntil(ctx, target) {
+	if !r.WaitUntil(ctx, firedEvt.Symbol, target) {
 		return ctx.Err()
 	}
 
-	// Check if already closed or terminal
-	if s.isTerminal() {
+	// Dynamic exchange query to verify current position ground truth
+	holdVol, err := r.getHoldVolume(ctx, firedEvt.Symbol)
+	if err != nil {
+		r.log.Error("Timeout guard failed to query position", slog.String("symbol", firedEvt.Symbol), slog.Any("error", err))
+		r.abort(ctx, firedEvt.Symbol, "position query failed: "+err.Error())
 		return nil
 	}
 
-	fill, filled := s.getFill()
-	if filled && fill.FillVol > 0 {
-		s.forceCloseTimedOutPosition(ctx, fill, timeout, startedAt)
+	if holdVol > 0 {
+		r.forceCloseTimedOutPosition(ctx, firedEvt, holdVol, timeout, startedAt)
 	} else {
-		// Timeout without any fill
-		s.mu.Lock()
-		sym := s.cfg.Symbol
-		s.mu.Unlock()
-
+		// Timeout without any open position, check if we need to publish timeout event
 		evt := TimeoutEvent{
 			Flow:                FlowReversion,
-			Symbol:              sym,
+			Symbol:              firedEvt.Symbol,
 			Timeout:             timeout,
 			Reason:              reversionReasonNoFill,
 			ForceCloseAttempted: false,
-			Timestamp:           s.deps.Clock.Now(),
+			Timestamp:           r.deps.Clock.Now(),
 		}
-		_ = s.publishEvent(ctx, TopicReversionTimeout, evt)
-		s.abort(ctx, reversionReasonNoFill)
+		_ = r.publishEvent(ctx, TopicReversionTimeout, evt)
+		r.abort(ctx, firedEvt.Symbol, reversionReasonNoFill)
 	}
 
 	return nil
 }
 
-func (s *Strategy) forceCloseTimedOutPosition(
+func (r *StatelessRunner) forceCloseTimedOutPosition(
 	ctx context.Context,
-	fill application.FillInfo,
+	firedEvt IOCFiredEvent,
+	holdVol float64,
 	timeout time.Duration,
 	startedAt time.Time,
 ) {
+	symbol := firedEvt.Symbol
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
-	s.mu.Lock()
-	sym := s.order.Symbol
-	s.mu.Unlock()
-
-	retries, err := s.forceClosePosition(closeCtx, sym, 3)
+	retries, err := r.forceClosePosition(closeCtx, symbol, 3)
 	if err != nil {
-		s.publishReversionCritical(closeCtx, sym, "critical_timeout_close_failed: "+err.Error())
+		r.publishReversionCritical(closeCtx, symbol, "critical_timeout_close_failed: "+err.Error())
 		return
 	}
 
 	now := time.Now()
 	timeoutEvt := TimeoutEvent{
 		Flow:                FlowReversion,
-		Symbol:              sym,
+		Symbol:              symbol,
 		Timeout:             timeout,
 		Reason:              "force_close",
 		ForceCloseAttempted: true,
 		ForceCloseSucceeded: true,
 		CloseRetryCount:     retries,
-		Timestamp:           s.deps.Clock.Now(),
+		Timestamp:           r.deps.Clock.Now(),
 	}
-	_ = s.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
+	_ = r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
 
 	closeEvt := PositionClosedEvent{
 		Flow:            FlowReversion,
-		Symbol:          sym,
-		CloseVol:        fill.FillVol,
+		Symbol:          symbol,
+		CloseVol:        holdVol,
 		Reason:          "timeout_force_close",
 		Method:          reversionMethodFallbackClose,
 		HoldDurationMs:  now.Sub(startedAt).Milliseconds(),
 		CloseRetryCount: retries,
-		Timestamp:       s.deps.Clock.Now(),
+		Direction:       firedEvt.Side,
+		Timestamp:       r.deps.Clock.Now(),
 	}
-	_ = s.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
+	_ = r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
+}
+
+func (r *StatelessRunner) forceClosePosition(
+	ctx context.Context,
+	symbol string,
+	maxRetries int,
+) (int, error) {
+	retries, err := r.RetryWithBackoff(ctx, maxRetries, func() error {
+		return r.deps.Client.CloseAllPositions(ctx, symbol)
+	})
+	return retries, err
+}
+
+func (r *StatelessRunner) publishReversionCritical(ctx context.Context, symbol, reason string) {
+	errEvt := ErrorEvent{
+		Flow:       FlowReversion,
+		Symbol:     symbol,
+		Error:      reason,
+		Timestamp:  r.deps.Clock.Now(),
+		SendNotify: true,
+	}
+	_ = r.publishEvent(ctx, TopicReversionError, errEvt)
+
+	abortEvt := AbortEvent{
+		Flow:       FlowReversion,
+		Symbol:     symbol,
+		Reason:     reason,
+		Timestamp:  r.deps.Clock.Now(),
+		SendNotify: false,
+	}
+	_ = r.publishEvent(ctx, TopicReversionAbort, abortEvt)
+}
+
+func (r *StatelessRunner) getHoldVolume(ctx context.Context, symbol string) (float64, error) {
+	positions, err := r.deps.Client.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return 0, err
+	}
+	var totalVol float64
+	for i := range positions {
+		totalVol += positions[i].HoldVol
+	}
+	return totalVol, nil
 }

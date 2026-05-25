@@ -16,6 +16,7 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
+	"crypto-bot/pkg/eventbus"
 	applogger "crypto-bot/pkg/logger"
 )
 
@@ -32,6 +33,7 @@ type Deps struct {
 	Clock         shared.Clock
 	Log           *slog.Logger
 	Notifier      notifier.Notifier
+	EventBus      *eventbus.Bus
 }
 
 // OrderRef is the flow-agnostic order metadata needed to match fills and closes.

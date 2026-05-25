@@ -3,31 +3,35 @@ package reversion
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/orders"
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
-func (s *Strategy) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
-	s.mu.Lock()
-	settleTime := s.settleTime
-	s.mu.Unlock()
-
+func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
+	r.log.Info("handleFireIOC SettleTime", slog.Time("settle", confirmedEvt.SettleTime))
+	settleTime := confirmedEvt.SettleTime
 	if settleTime.IsZero() {
 		err := errors.New("settle time not found")
-		s.abort(ctx, err.Error())
+		r.abort(ctx, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
-	cfg := s.cfg
-	latencyMs := s.deps.Clock.LatencyMs()
+	cfg, ok := r.getSymbolConfig(confirmedEvt.Symbol)
+	if !ok {
+		err := errors.New("symbol config not found")
+		r.abort(ctx, confirmedEvt.Symbol, err.Error())
+		return err
+	}
+
+	latencyMs := r.deps.Clock.LatencyMs()
 	maxLatency := time.Duration(cfg.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
 		err := errors.New("latency too high")
-		s.abort(ctx, err.Error())
+		r.abort(ctx, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
@@ -39,18 +43,18 @@ func (s *Strategy) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEven
 	if fireOffset > snapshotOffset {
 		snapshotOffset = fireOffset
 	}
-	if !s.WaitUntil(ctx, settleTime.Add(-snapshotOffset)) {
-		s.abort(ctx, "wait snapshot context canceled")
+	if !r.WaitUntil(ctx, confirmedEvt.Symbol, settleTime.Add(-snapshotOffset)) {
+		r.abort(ctx, confirmedEvt.Symbol, "wait snapshot context canceled")
 		return ctx.Err()
 	}
 
-	c := s.getCandidateCopy()
-	if err := s.refreshPrice(ctx, &c); err != nil {
-		s.abort(ctx, "refresh price fail: "+err.Error())
+	c := confirmedEvt.Candidate
+	if err := r.refreshPrice(ctx, &c); err != nil {
+		r.abort(ctx, c.Symbol, "refresh price fail: "+err.Error())
 		return err
 	}
 	c.Volume = c.CalculateVolume()
-	safety := s.global.System.Safety
+	safety := r.globalCfg.System.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
 		MinVol24USD:    safety.MinVol24USD,
@@ -61,23 +65,22 @@ func (s *Strategy) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEven
 			Symbol:        c.Symbol,
 			Side:          c.Side,
 			CloseSide:     c.CloseSide,
-			FireTimestamp: s.deps.Clock.Now(),
+			FireTimestamp: r.deps.Clock.Now(),
 			SettleTime:    settleTime,
 			Error:         c.SafetyResult.RejectReason,
 		}
-		_ = s.publishEvent(ctx, TopicReversionIOCFired, evt)
-		s.abort(ctx, c.SafetyResult.RejectReason)
+		_ = r.publishEvent(ctx, TopicReversionIOCFired, evt)
+		r.abort(ctx, c.Symbol, c.SafetyResult.RejectReason)
 		return errors.New(c.SafetyResult.RejectReason)
 	}
 
-	if !s.WaitUntil(ctx, settleTime.Add(-fireOffset)) {
-		s.abort(ctx, "wait fire context canceled")
+	if !r.WaitUntil(ctx, confirmedEvt.Symbol, settleTime.Add(-fireOffset)) {
+		r.abort(ctx, confirmedEvt.Symbol, "wait fire context canceled")
 		return ctx.Err()
 	}
-	fireTime := s.deps.Clock.Now()
+	fireTime := r.deps.Clock.Now()
 
-	res := orders.FireIOC(ctx, s.deps.Client, &c, s.deps.Clock, s.log)
-	s.setCandidate(c)
+	res := orders.FireIOC(ctx, r.deps.Client, &c, r.deps.Clock, r.log)
 
 	if res.IsSuccess() {
 		evt := IOCFiredEvent{
@@ -95,15 +98,7 @@ func (s *Strategy) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEven
 			FireTimestamp: fireTime,
 			LatencyRTTMs:  latencyMs,
 		}
-		s.mu.Lock()
-		s.order = &application.OrderRef{
-			Symbol:    c.Symbol,
-			OrderID:   res.OrderID,
-			OrderType: exchange.OrderTypeIOC,
-		}
-		s.mu.Unlock()
-
-		return s.publishEvent(ctx, TopicReversionIOCFired, evt)
+		return r.publishEvent(ctx, TopicReversionIOCFired, evt)
 	}
 
 	errText := "IOC order failed"
@@ -123,7 +118,7 @@ func (s *Strategy) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEven
 		LatencyRTTMs:  latencyMs,
 		Error:         errText,
 	}
-	_ = s.publishEvent(ctx, TopicReversionIOCFired, evt)
-	s.abort(ctx, errText)
+	_ = r.publishEvent(ctx, TopicReversionIOCFired, evt)
+	r.abort(ctx, c.Symbol, errText)
 	return errors.New(errText)
 }
