@@ -29,6 +29,12 @@ type DepthCommit struct {
 	Bids    []OrderBookEntry `json:"bids"` // Updated bid levels
 }
 
+// Exchange name constants.
+const (
+	ExchangeMexc = "mexc"
+	ExchangeGate = "gate"
+)
+
 // Side constants — delegate to domain for backward compat.
 const (
 	SideOpenLong   = int(domain.SideOpenLong)

@@ -20,11 +20,12 @@ const (
 
 // SymbolConfig represents per-symbol trading settings loaded from funding.json.
 type SymbolConfig struct {
-	Symbol              string       `json:"symbol"`
+	Symbol              string       `json:"symbol" validate:"required"`
+	Exchange            string       `json:"exchange" validate:"required,oneof=mexc gate"`
 	SimulateSettle      string       `json:"simulateSettle"`
 	MaxPriceDiffPercent float64      `json:"maxPriceDiffPercent"`
-	MarginUSDT          float64      `json:"marginUSDT"`
-	Leverage            int          `json:"leverage"`
+	MarginUSDT          float64      `json:"marginUSDT" validate:"gt=0"`
+	Leverage            int          `json:"leverage" validate:"gte=1"`
 	OpenType            OpenType     `json:"openType"`
 	PositionMode        PositionMode `json:"positionMode"`
 	MinFundingRate      float64      `json:"minFundingRate"`
@@ -39,8 +40,8 @@ type SymbolConfig struct {
 
 // Config is the root configuration containing both System and Funding configs.
 type Config struct {
-	System  *SystemConfig
-	Symbols []SymbolConfig
+	System  *SystemConfig  `validate:"required"`
+	Symbols []SymbolConfig `json:"symbols" validate:"required,gt=0,dive"`
 }
 
 // TradingDefaults is a temporary parsing struct to extract the opaque tradingDefaults

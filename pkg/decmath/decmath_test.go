@@ -231,3 +231,24 @@ func TestFormatPrice(t *testing.T) {
 		})
 	}
 }
+
+func TestAbsInt64(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, int64(10), decmath.AbsInt64(10))
+	assert.Equal(t, int64(10), decmath.AbsInt64(-10))
+	assert.Equal(t, int64(0), decmath.AbsInt64(0))
+}
+
+func TestParseFloat(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 12.34, decmath.ParseFloat("12.34"))
+	assert.Equal(t, 0.0, decmath.ParseFloat(""))
+	assert.Equal(t, 0.0, decmath.ParseFloat("invalid"))
+}
+
+func TestParseInt(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 42, decmath.ParseInt("42"))
+	assert.Equal(t, 0, decmath.ParseInt(""))
+	assert.Equal(t, 0, decmath.ParseInt("invalid"))
+}

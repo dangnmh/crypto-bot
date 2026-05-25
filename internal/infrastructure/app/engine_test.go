@@ -80,22 +80,23 @@ func TestNewEngine_Success(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.mexc.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
+				APIKey:    "mexc-key",
+				APISecret: "mexc-secret",
+			},
+			Gate: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.gate.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
+				APIKey:    "gate-key",
+				APISecret: "gate-secret",
 			},
 		},
 		Logging: sysconfig.LoggingConfig{Level: "debug"},
 	}
 
-	adapter := &mockAdapter{
-		pingPayload: []byte("ping"),
-		pingInt:     5 * time.Second,
-	}
-
 	engineCfg := app.EngineConfig{
 		SystemConfig: cfg,
-		Client:       &dummyClient{},
-		Adapter:      adapter,
 	}
 
 	e := app.NewEngine(engineCfg)
@@ -107,8 +108,26 @@ func TestNewEngine_Success(t *testing.T) {
 	assert.NotNil(t, e.WS)
 	assert.NotNil(t, e.Bus)
 
-	// Ensure pool was injected into adapter
-	assert.Equal(t, e.WS, adapter.pool)
+	// Ensure both MEXC and Gate providers are registered
+	assert.Len(t, e.Providers, 2)
+	assert.Contains(t, e.Providers, "mexc")
+	assert.Contains(t, e.Providers, "gate")
+
+	mexcProv := e.Providers["mexc"]
+	assert.Equal(t, "mexc", mexcProv.Name)
+	assert.NotNil(t, mexcProv.Client)
+	assert.NotNil(t, mexcProv.Adapter)
+	assert.NotNil(t, mexcProv.WS)
+	assert.NotNil(t, mexcProv.TimeSync)
+	assert.NotNil(t, mexcProv.Watcher)
+
+	gateProv := e.Providers["gate"]
+	assert.Equal(t, "gate", gateProv.Name)
+	assert.NotNil(t, gateProv.Client)
+	assert.NotNil(t, gateProv.Adapter)
+	assert.NotNil(t, gateProv.WS)
+	assert.NotNil(t, gateProv.TimeSync)
+	assert.NotNil(t, gateProv.Watcher)
 
 	// Test Shutdown
 	assert.NotPanics(t, func() {
@@ -164,7 +183,7 @@ func TestStoreRegistry_WaitReadyContextCancelled(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 }
 
-func TestNewEngine_NilAdapter(t *testing.T) {
+func TestNewEngine_OnlyMexc(t *testing.T) {
 	t.Parallel()
 
 	cfg := &sysconfig.SystemConfig{
@@ -178,12 +197,34 @@ func TestNewEngine_NilAdapter(t *testing.T) {
 
 	e := app.NewEngine(app.EngineConfig{
 		SystemConfig: cfg,
-		Client:       &dummyClient{},
-		Adapter:      nil, // nil adapter — covers the `if cfg.Adapter != nil` branch
 	})
 	require.NotNil(t, e)
-	assert.Nil(t, e.Adapter)
-	assert.NotNil(t, e.WS) // WS pool is still created
+	assert.Len(t, e.Providers, 1)
+	assert.Contains(t, e.Providers, "mexc")
+	assert.NotNil(t, e.Client)
+
+	_ = e.Shutdown(context.Background())
+}
+
+func TestNewEngine_OnlyGate(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Gate: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+			},
+		},
+	}
+
+	e := app.NewEngine(app.EngineConfig{
+		SystemConfig: cfg,
+	})
+	require.NotNil(t, e)
+	assert.Len(t, e.Providers, 1)
+	assert.Contains(t, e.Providers, "gate")
+	assert.NotNil(t, e.Client)
 
 	_ = e.Shutdown(context.Background())
 }
@@ -193,7 +234,6 @@ func TestEngine_Shutdown_NilWS(t *testing.T) {
 
 	e := &app.Engine{
 		WS: nil,
-		// No loggerCleanup
 	}
 
 	assert.NotPanics(t, func() {

@@ -50,6 +50,7 @@ type SystemConfig struct {
 
 type ExchangeConfig struct {
 	Mexc APIConfig `json:"mexc"`
+	Gate APIConfig `json:"gate"`
 }
 
 type NotiConfig struct {

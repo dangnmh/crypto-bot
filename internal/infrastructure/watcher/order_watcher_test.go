@@ -20,7 +20,7 @@ func TestOrderWatcher_OnPositionUpdate_Callback(t *testing.T) {
 	bus := eventbus.New(logger)
 	defer func() { _ = bus.Close() }()
 
-	w := watcher.NewOrderWatcher(bus, logger)
+	w := watcher.NewOrderWatcher(bus, exchange.ExchangeMexc, logger)
 
 	called := make(chan exchange.PersonalPositionUpdate, 1)
 	w.OnPositionUpdate(context.Background(), "BTC_USDT", 2*time.Second, func(update exchange.PersonalPositionUpdate) {
@@ -51,7 +51,7 @@ func TestOrderWatcher_OnPositionUpdate_Timeout(t *testing.T) {
 	bus := eventbus.New(logger)
 	defer func() { _ = bus.Close() }()
 
-	w := watcher.NewOrderWatcher(bus, logger)
+	w := watcher.NewOrderWatcher(bus, exchange.ExchangeMexc, logger)
 
 	called := make(chan struct{}, 1)
 	w.OnPositionUpdate(context.Background(), "BTC_USDT", 100*time.Millisecond, func(exchange.PersonalPositionUpdate) {
@@ -74,7 +74,7 @@ func TestOrderWatcher_PositionRoutingBySymbol(t *testing.T) {
 	bus := eventbus.New(logger)
 	defer func() { _ = bus.Close() }()
 
-	w := watcher.NewOrderWatcher(bus, logger)
+	w := watcher.NewOrderWatcher(bus, exchange.ExchangeMexc, logger)
 
 	called := make(chan exchange.PersonalPositionUpdate, 1)
 	w.OnPositionUpdate(context.Background(), "BTC_USDT", 2*time.Second, func(update exchange.PersonalPositionUpdate) {

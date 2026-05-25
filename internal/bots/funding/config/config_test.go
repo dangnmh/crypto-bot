@@ -73,7 +73,7 @@ func TestLoad_EmptySymbols(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("[]"), 0o600))
 	_, err := config.Load(&config.SystemConfig{}, path)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "empty")
+	assert.Contains(t, err.Error(), "'symbols' failed on the 'gt' tag")
 }
 
 func TestLoad_MissingSymbolName(t *testing.T) {
@@ -83,7 +83,7 @@ func TestLoad_MissingSymbolName(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(`[{"marginUSDT": 100, "leverage": 20}]`), 0o600))
 	_, err := config.Load(&config.SystemConfig{}, path)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "symbol missing")
+	assert.Contains(t, err.Error(), "'symbol' failed on the 'required' tag")
 }
 
 func TestLoad_InvalidMargin(t *testing.T) {
@@ -93,7 +93,7 @@ func TestLoad_InvalidMargin(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 0, "leverage": 20}]`), 0o600))
 	_, err := config.Load(&config.SystemConfig{}, path)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "marginUSDT")
+	assert.Contains(t, err.Error(), "'marginUSDT' failed on the 'gt' tag")
 }
 
 func TestLoad_InvalidLeverage(t *testing.T) {
@@ -103,7 +103,17 @@ func TestLoad_InvalidLeverage(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 0}]`), 0o600))
 	_, err := config.Load(&config.SystemConfig{}, path)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "leverage")
+	assert.Contains(t, err.Error(), "'leverage' failed on the 'gte' tag")
+}
+
+func TestLoad_InvalidExchange(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad_exch.json")
+	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 2, "exchange": "binance"}]`), 0o600))
+	_, err := config.Load(&config.SystemConfig{}, path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "'exchange' failed on the 'oneof' tag")
 }
 
 // ──────────────────────────────────────────────────────────────────────

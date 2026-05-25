@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/types"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/tailscale/hujson"
 )
 
@@ -49,27 +52,30 @@ func (c *Config) validate() error {
 		}
 	}
 
-	if len(c.Symbols) == 0 {
-		return fmt.Errorf("funding config empty — need at least one symbol")
-	}
-
 	for i := range c.Symbols {
 		sc := &c.Symbols[i]
-		if sc.Symbol == "" {
-			return fmt.Errorf("symbol missing in funding config at index %d", i)
+
+		sc.Exchange = strings.ToLower(strings.TrimSpace(sc.Exchange))
+		if sc.Exchange == "" {
+			sc.Exchange = exchange.ExchangeMexc
 		}
 
 		c.applyDefaults(sc, &defaults)
-
-		if sc.MarginUSDT <= 0 {
-			return fmt.Errorf("marginUSDT must be > 0 for %s", sc.Symbol)
-		}
-		if sc.Leverage < 1 {
-			return fmt.Errorf("leverage >= 1 for %s", sc.Symbol)
-		}
-
 		c.normalizeSymbolMetrics(sc)
 		c.defaultSymbolModes(sc)
+	}
+
+	validate := validator.New()
+	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+		if name == "-" {
+			return ""
+		}
+		return name
+	})
+
+	if err := validate.Struct(c); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
 	}
 
 	return nil

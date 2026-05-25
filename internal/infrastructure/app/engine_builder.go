@@ -2,19 +2,16 @@ package app
 
 import (
 	"fmt"
+	"net/http"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/ws"
 )
 
 // EngineBuilder provides a fluent API for constructing an Engine with validation.
-// Required fields must be set before Build() is called.
 type EngineBuilder struct {
-	cfg     *sysconfig.SystemConfig
-	client  exchange.Client
-	adapter ws.ExchangeAdapter
-	errors  []string
+	cfg        *sysconfig.SystemConfig
+	httpClient *http.Client
+	errors     []string
 }
 
 // NewEngineBuilder creates a new EngineBuilder.
@@ -28,20 +25,13 @@ func (b *EngineBuilder) WithSystemConfig(cfg *sysconfig.SystemConfig) *EngineBui
 	return b
 }
 
-// WithClient sets the exchange REST client (required).
-func (b *EngineBuilder) WithClient(client exchange.Client) *EngineBuilder {
-	b.client = client
-	return b
-}
-
-// WithAdapter sets the exchange WS adapter (required).
-func (b *EngineBuilder) WithAdapter(adapter ws.ExchangeAdapter) *EngineBuilder {
-	b.adapter = adapter
+// WithHTTPClient sets the HTTP client connection pool (optional).
+func (b *EngineBuilder) WithHTTPClient(client *http.Client) *EngineBuilder {
+	b.httpClient = client
 	return b
 }
 
 // Build validates all required fields and returns a configured Engine.
-// Returns an error if any required field is missing or invalid.
 func (b *EngineBuilder) Build() (*Engine, error) {
 	b.errors = nil
 
@@ -51,40 +41,53 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 		b.validateConfig()
 	}
 
-	if b.client == nil {
-		b.errors = append(b.errors, "exchange Client is required")
-	}
-
-	if b.adapter == nil {
-		b.errors = append(b.errors, "WS ExchangeAdapter is required")
-	}
-
 	if len(b.errors) > 0 {
 		return nil, fmt.Errorf("engine build failed: %v", b.errors)
 	}
 
 	return NewEngine(EngineConfig{
 		SystemConfig: b.cfg,
-		Client:       b.client,
-		Adapter:      b.adapter,
+		HTTPClient:   b.httpClient,
 	}), nil
 }
 
-// validateConfig checks for mandatory config values.
+// validateConfig checks for mandatory config values for enabled exchanges.
 func (b *EngineBuilder) validateConfig() {
-	if b.cfg.ExchangeConfig.Mexc.Future.BaseURL == "" {
-		b.errors = append(b.errors, "API.Future.BaseURL is required")
+	mexcEnabled := b.cfg.ExchangeConfig.Mexc.Future.BaseURL != ""
+	gateEnabled := b.cfg.ExchangeConfig.Gate.Future.BaseURL != ""
+
+	if !mexcEnabled && !gateEnabled {
+		b.errors = append(b.errors, "at least one exchange must be configured (mexc or gate)")
+		return
 	}
-	if b.cfg.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
-		b.errors = append(b.errors, "API.WebSocket.WSURL is required")
+
+	if mexcEnabled {
+		if b.cfg.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
+			b.errors = append(b.errors, "MEXC API.WebSocket.WSURL is required")
+		}
+		if b.cfg.ExchangeConfig.Mexc.APIKey == "" {
+			b.errors = append(b.errors, "MEXC APIKey is required")
+		}
+		if b.cfg.ExchangeConfig.Mexc.APISecret == "" {
+			b.errors = append(b.errors, "MEXC APISecret is required")
+		}
+		if b.cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
+			b.errors = append(b.errors, "MEXC MaxPairsPerWSConn must be greater than 0")
+		}
 	}
-	if b.cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
-		b.errors = append(b.errors, "API.WebSocket.MaxPairsPerWSConn must be > 0")
-	}
-	if b.cfg.ExchangeConfig.Mexc.APIKey == "" {
-		b.errors = append(b.errors, "APIKey is required")
-	}
-	if b.cfg.ExchangeConfig.Mexc.APISecret == "" {
-		b.errors = append(b.errors, "APISecret is required")
+
+	if gateEnabled {
+		if b.cfg.ExchangeConfig.Gate.WebSocket.WSURL == "" {
+			b.errors = append(b.errors, "Gate API.WebSocket.WSURL is required")
+		}
+		if b.cfg.ExchangeConfig.Gate.APIKey == "" {
+			b.errors = append(b.errors, "Gate APIKey is required")
+		}
+		if b.cfg.ExchangeConfig.Gate.APISecret == "" {
+			b.errors = append(b.errors, "Gate APISecret is required")
+		}
+		if b.cfg.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn <= 0 {
+			b.errors = append(b.errors, "Gate MaxPairsPerWSConn must be greater than 0")
+		}
 	}
 }

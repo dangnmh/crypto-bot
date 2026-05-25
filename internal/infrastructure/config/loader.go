@@ -20,6 +20,8 @@ func InitializeBase(c *SystemConfig) error {
 
 	c.ExchangeConfig.Mexc.APIKey = os.Getenv("MEXC_API_KEY")
 	c.ExchangeConfig.Mexc.APISecret = os.Getenv("MEXC_API_SECRET")
+	c.ExchangeConfig.Gate.APIKey = os.Getenv("GATE_API_KEY")
+	c.ExchangeConfig.Gate.APISecret = os.Getenv("GATE_API_SECRET")
 
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
@@ -39,8 +41,14 @@ func InitializeBase(c *SystemConfig) error {
 }
 
 func applyBitwardenFallback(c *SystemConfig) error {
-	// Skip if credentials already set
-	if c.ExchangeConfig.Mexc.APIKey != "" && c.ExchangeConfig.Mexc.APISecret != "" && c.NotiConfig.TelegramChatID != "" {
+	mexcSet := c.ExchangeConfig.Mexc.APIKey != "" && c.ExchangeConfig.Mexc.APISecret != ""
+	gateSet := c.ExchangeConfig.Gate.APIKey != "" && c.ExchangeConfig.Gate.APISecret != ""
+	notiSet := c.NotiConfig.TelegramChatID != "" && c.NotiConfig.TelegramBotToken != ""
+
+	mexcEnabled := c.ExchangeConfig.Mexc.Future.BaseURL != ""
+	gateEnabled := c.ExchangeConfig.Gate.Future.BaseURL != ""
+
+	if (!mexcEnabled || mexcSet) && (!gateEnabled || gateSet) && notiSet {
 		return nil
 	}
 
@@ -54,11 +62,17 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	}
 
 	// Only fill missing values (keep env vars priority)
-	if c.ExchangeConfig.Mexc.APIKey == "" {
+	if mexcEnabled && c.ExchangeConfig.Mexc.APIKey == "" {
 		c.ExchangeConfig.Mexc.APIKey = creds.APIKey
 	}
-	if c.ExchangeConfig.Mexc.APISecret == "" {
+	if mexcEnabled && c.ExchangeConfig.Mexc.APISecret == "" {
 		c.ExchangeConfig.Mexc.APISecret = creds.APISecret
+	}
+	if gateEnabled && c.ExchangeConfig.Gate.APIKey == "" {
+		c.ExchangeConfig.Gate.APIKey = creds.GateKey
+	}
+	if gateEnabled && c.ExchangeConfig.Gate.APISecret == "" {
+		c.ExchangeConfig.Gate.APISecret = creds.GateSecret
 	}
 	if c.NotiConfig.TelegramChatID == "" {
 		c.NotiConfig.TelegramChatID = creds.TelegramChatID
@@ -70,7 +84,7 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	return nil
 }
 
-// LoadFromBitwarden retrieves MEXC credentials and Telegram Chat ID from Bitwarden Secrets Manager.
+// LoadFromBitwarden retrieves MEXC and Gate credentials and Telegram Chat ID from Bitwarden Secrets Manager.
 func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	if !hasBitwardenConfig() {
 		return nil, fmt.Errorf("bitwarden configuration not found (BITWARDEN_ACCESS_TOKEN, BITWARDEN_ORGANIZATION_ID, BITWARDEN_PROJECT_NAME required)")
@@ -90,6 +104,9 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 		return nil, fmt.Errorf("failed to get MEXC_API_SECRET from Bitwarden: %w", err)
 	}
 
+	gateKey, _ := loader.GetSecret("GATE_API_KEY")
+	gateSecret, _ := loader.GetSecret("GATE_API_SECRET")
+
 	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
 	if err != nil {
 		slog.Error("failed to get TELEGRAM_CHAT_ID from Bitwarden", slog.Any("error", err))
@@ -103,12 +120,16 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	// Trim whitespace from credentials
 	apiKey = strings.TrimSpace(apiKey)
 	apiSecret = strings.TrimSpace(apiSecret)
+	gateKey = strings.TrimSpace(gateKey)
+	gateSecret = strings.TrimSpace(gateSecret)
 	telegramChatID = strings.TrimSpace(telegramChatID)
 	telegramBotToken = strings.TrimSpace(telegramBotToken)
 
 	return &bitwardenCredentials{
 		APIKey:           apiKey,
 		APISecret:        apiSecret,
+		GateKey:          gateKey,
+		GateSecret:       gateSecret,
 		TelegramChatID:   telegramChatID,
 		TelegramBotToken: telegramBotToken,
 	}, nil
@@ -150,21 +171,42 @@ func newBitwardenLoader() (*BitwardenLoader, error) {
 }
 
 func validateCredentials(c *SystemConfig) error {
-	if c.ExchangeConfig.Mexc.APIKey == "" {
-		return fmt.Errorf("MEXC_API_KEY is required (set in .env, environment, or Bitwarden)")
+	if c.ExchangeConfig.Mexc.Future.BaseURL != "" {
+		if c.ExchangeConfig.Mexc.APIKey == "" {
+			return fmt.Errorf("MEXC_API_KEY is required (set in .env, environment, or Bitwarden)")
+		}
+		if c.ExchangeConfig.Mexc.APISecret == "" {
+			return fmt.Errorf("MEXC_API_SECRET is required (set in .env, environment, or Bitwarden)")
+		}
 	}
-	if c.ExchangeConfig.Mexc.APISecret == "" {
-		return fmt.Errorf("MEXC_API_SECRET is required (set in .env, environment, or Bitwarden)")
+	if c.ExchangeConfig.Gate.Future.BaseURL != "" {
+		if c.ExchangeConfig.Gate.APIKey == "" {
+			return fmt.Errorf("GATE_API_KEY is required (set in .env, environment, or Bitwarden)")
+		}
+		if c.ExchangeConfig.Gate.APISecret == "" {
+			return fmt.Errorf("GATE_API_SECRET is required (set in .env, environment, or Bitwarden)")
+		}
 	}
 	return nil
 }
 
 func validateEndpoints(c *SystemConfig) error {
-	if c.ExchangeConfig.Mexc.Future.BaseURL == "" {
-		return fmt.Errorf("api.future.baseURL is required")
+	mexcEnabled := c.ExchangeConfig.Mexc.Future.BaseURL != ""
+	gateEnabled := c.ExchangeConfig.Gate.Future.BaseURL != ""
+
+	if !mexcEnabled && !gateEnabled {
+		return fmt.Errorf("api.future.baseURL is required for at least one active exchange")
 	}
-	if c.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
-		return fmt.Errorf("api.websocket.wsURL is required")
+
+	if mexcEnabled {
+		if c.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
+			return fmt.Errorf("mexc api.websocket.wsURL is required when mexc is enabled")
+		}
+	}
+	if gateEnabled {
+		if c.ExchangeConfig.Gate.WebSocket.WSURL == "" {
+			return fmt.Errorf("gate api.websocket.wsURL is required when gate is enabled")
+		}
 	}
 	return nil
 }
@@ -179,8 +221,11 @@ func applySystemDefaults(c *SystemConfig) {
 	if c.Sync.Contract <= 0 {
 		c.Sync.Contract = types.Duration(300 * 1e9) // 5min
 	}
-	if c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
+	if c.ExchangeConfig.Mexc.Future.BaseURL != "" && c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
 		c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn = 30 // default MEXC limit
+	}
+	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn <= 0 {
+		c.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn = 30 // default Gate limit
 	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
@@ -191,6 +236,8 @@ func applySystemDefaults(c *SystemConfig) {
 type bitwardenCredentials struct {
 	APIKey           string
 	APISecret        string
+	GateKey          string
+	GateSecret       string
 	TelegramChatID   string
 	TelegramBotToken string
 }

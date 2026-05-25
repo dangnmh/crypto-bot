@@ -11,14 +11,9 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/stretchr/testify/assert"
 )
-
-type mockClient struct {
-	exchange.Client
-}
 
 type mockBot struct {
 	runAsBackgroundErr error
@@ -51,7 +46,6 @@ func TestRunBot_Lifecycle(t *testing.T) {
 	bot := &mockBot{}
 	engine := app.NewEngine(app.EngineConfig{
 		SystemConfig: &config.SystemConfig{},
-		Client:       &mockClient{},
 	})
 
 	done := make(chan struct{})
@@ -86,7 +80,6 @@ func TestRunBot_BackgroundFail(t *testing.T) {
 	}
 	engine := app.NewEngine(app.EngineConfig{
 		SystemConfig: &config.SystemConfig{},
-		Client:       &mockClient{},
 	})
 
 	err := app.RunBot(engine, bot)
@@ -105,7 +98,6 @@ func TestRunBot_StopError(t *testing.T) {
 	}
 	engine := app.NewEngine(app.EngineConfig{
 		SystemConfig: &config.SystemConfig{},
-		Client:       &mockClient{},
 	})
 
 	done := make(chan struct{})

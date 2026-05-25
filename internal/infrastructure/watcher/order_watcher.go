@@ -19,16 +19,18 @@ type OrderNotifier interface {
 
 // OrderWatcher provides a thread-safe publish-subscribe mechanism for personal position updates.
 type OrderWatcher struct {
-	mu     sync.RWMutex
-	broker *eventbus.Bus
-	logger *slog.Logger
+	mu           sync.RWMutex
+	broker       *eventbus.Bus
+	logger       *slog.Logger
+	exchangeName string
 }
 
 // NewOrderWatcher creates a new OrderWatcher wrapping a shared event bus.
-func NewOrderWatcher(bus *eventbus.Bus, logger *slog.Logger) *OrderWatcher {
+func NewOrderWatcher(bus *eventbus.Bus, exchangeName string, logger *slog.Logger) *OrderWatcher {
 	return &OrderWatcher{
-		broker: bus,
-		logger: logger,
+		broker:       bus,
+		exchangeName: exchangeName,
+		logger:       logger,
 	}
 }
 
@@ -40,7 +42,7 @@ func (w *OrderWatcher) PublishPosition(update exchange.PersonalPositionUpdate) {
 	if update.Symbol == "" {
 		return
 	}
-	if err := w.broker.Publish(positionTopic(update.Symbol), update); err != nil {
+	if err := w.broker.Publish(w.positionTopic(update.Symbol), update); err != nil {
 		w.logger.Error("Failed to publish position update", slog.String("symbol", update.Symbol), slog.Any("error", err))
 	}
 }
@@ -51,7 +53,7 @@ func (w *OrderWatcher) OnPositionUpdate(
 	timeout time.Duration,
 	callback func(exchange.PersonalPositionUpdate),
 ) {
-	subscribe(parent, w, positionTopic(symbol), timeout, "position", callback)
+	subscribe(parent, w, w.positionTopic(symbol), timeout, "position", callback)
 }
 
 func subscribe[T any](
@@ -101,6 +103,9 @@ func subscribe[T any](
 	}()
 }
 
-func positionTopic(symbol string) string {
+func (w *OrderWatcher) positionTopic(symbol string) string {
+	if w.exchangeName != "" {
+		return "position:" + w.exchangeName + ":" + symbol
+	}
 	return "position:" + symbol
 }

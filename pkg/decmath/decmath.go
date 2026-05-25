@@ -8,6 +8,7 @@ package decmath
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/shopspring/decimal"
 )
@@ -232,4 +233,38 @@ func CalcSpreadPct(bestBid, bestAsk float64) float64 {
 		return 0
 	}
 	return Mul(Div(Sub(bestAsk, bestBid), bestBid), 100.0)
+}
+
+// AbsInt64 returns the absolute value of v.
+func AbsInt64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// ParseFloat is a safe float64 parser helper.
+func ParseFloat(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	var f float64
+	_, err := fmt.Sscanf(strings.TrimSpace(s), "%f", &f)
+	if err != nil {
+		return 0
+	}
+	return f
+}
+
+// ParseInt is a safe int parser helper.
+func ParseInt(s string) int {
+	if s == "" {
+		return 0
+	}
+	var i int
+	_, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &i)
+	if err != nil {
+		return 0
+	}
+	return i
 }

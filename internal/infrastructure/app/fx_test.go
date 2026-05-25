@@ -1,13 +1,11 @@
 package app_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,7 +19,6 @@ func TestFxBotRunnerLifecycle(t *testing.T) {
 	bot := &mockBot{}
 	engine := app.NewEngine(app.EngineConfig{
 		SystemConfig: &config.SystemConfig{},
-		Client:       &mockFxClient{},
 	})
 
 	fxApp := fxtest.New(
@@ -42,9 +39,3 @@ func TestFxBotRunnerLifecycle(t *testing.T) {
 	fxApp.RequireStop()
 	assert.True(t, bot.runStopped)
 }
-
-type mockFxClient struct {
-	exchange.Client
-}
-
-func (m *mockFxClient) WarmUp(context.Context, time.Duration) {}

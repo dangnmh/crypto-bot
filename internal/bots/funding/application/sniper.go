@@ -54,8 +54,8 @@ type Sniper struct {
 	engine           *app.Engine
 	client           exchange.Client
 	ws               ws.Subscriber
-	orderNotifier    *watcher.OrderWatcher
-	stores           *app.CentralStore
+	orderNotifiers   map[string]*watcher.OrderWatcher
+	stores           map[string]*app.CentralStore
 	timeSync         shared.Clock
 	notifier         notifier.Notifier
 	disabled         map[string]string
@@ -81,22 +81,34 @@ func NewSniper(
 	initializers ...SubscriptionInitializer,
 ) *Sniper {
 	wsSub := engine.Adapter
-	orderWatcher := watcher.NewOrderWatcher(engine.Bus, log.With("component", "order_watcher"))
-
-	// Build funding symbols list for the FundingStore option.
-	fundingSymbols := make([]string, 0, len(cfg.Symbols))
-	for i := range cfg.Symbols {
-		fundingSymbols = append(fundingSymbols, cfg.Symbols[i].Symbol)
+	orderWatchers := make(map[string]*watcher.OrderWatcher)
+	for name, prov := range engine.Providers {
+		orderWatchers[name] = prov.Watcher
 	}
 
-	stores := app.NewCentralStore(
-		app.WithTicker(engine.Client, time.Duration(sysCfg.Sync.Ticker)),
-		app.WithContract(engine.Client, time.Duration(sysCfg.Sync.Contract)),
-		app.WithFunding(engine.Client, time.Duration(sysCfg.Sync.FundingSync), fundingSymbols),
-		app.WithPrice(),
-		app.WithDepth(),
-		app.WithKline(),
-	)
+	// Build map of stores per active exchange
+	storesMap := make(map[string]*app.CentralStore)
+
+	for name, prov := range engine.Providers {
+		var symbols []string
+		for i := range cfg.Symbols {
+			exch := cfg.Symbols[i].Exchange
+			if exch == name {
+				symbols = append(symbols, cfg.Symbols[i].Symbol)
+			}
+		}
+
+		if len(symbols) > 0 {
+			storesMap[name] = app.NewCentralStore(
+				app.WithTicker(prov.Client, time.Duration(sysCfg.Sync.Ticker)),
+				app.WithContract(prov.Client, time.Duration(sysCfg.Sync.Contract)),
+				app.WithFunding(prov.Client, time.Duration(sysCfg.Sync.FundingSync), symbols),
+				app.WithPrice(),
+				app.WithDepth(),
+				app.WithKline(),
+			)
+		}
+	}
 
 	return &Sniper{
 		cfg:              cfg,
@@ -104,8 +116,8 @@ func NewSniper(
 		engine:           engine,
 		client:           engine.Client,
 		ws:               wsSub,
-		orderNotifier:    orderWatcher,
-		stores:           stores,
+		orderNotifiers:   orderWatchers,
+		stores:           storesMap,
 		timeSync:         engine.TimeSync,
 		notifier:         n,
 		disabled:         make(map[string]string),
@@ -117,83 +129,101 @@ func NewSniper(
 	}
 }
 
-// RunAsBackground launches all required sync and connection routines for Funding Reversion.
+// RunAsBackground launches all required sync and connection routines for all active exchanges.
 func (s *Sniper) RunAsBackground(ctx context.Context) error {
 	log := applogger.WithCtx(ctx, s.log)
-	// 1. WarmUp + TimeSync.
-	s.bgWg.Add(1)
-	go func() {
-		defer s.bgWg.Done()
-		s.engine.Client.WarmUp(ctx, 4*time.Second)
-	}()
-	s.bgWg.Add(1)
-	go func() {
-		defer s.bgWg.Done()
-		s.engine.TimeSync.Start(ctx)
-	}()
-	s.engine.TimeSync.WaitReady(ctx)
 
-	// 2. Start stores + wait for initial data.
-	s.stores.Start(ctx)
-	if err := s.stores.WaitReady(ctx); err != nil {
-		return err
-	}
-
-	// 3. Connect WS + subscribe personal channels.
-	s.bgWg.Add(1)
-	go func() {
-		defer s.bgWg.Done()
-		s.engine.WS.Connect(ctx)
-	}()
-	s.engine.WS.WaitReady(ctx)
-
-	// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
-	s.stores.WireWS(s.engine.WS, s.engine.Adapter)
-	s.wirePersonalWS(ctx)
-
-	if s.engine.Adapter != nil {
-		if err := s.engine.Adapter.SubscribePersonal(ctx); err != nil {
-			log.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
+	for name, prov := range s.engine.Providers {
+		stores, hasStore := s.stores[name]
+		if !hasStore {
+			continue
 		}
-	}
 
-	// 5. Initialize global event subscriptions for strategies.
-	deps := Deps{
-		Client:        s.client,
-		WsSub:         s.ws,
-		OrderNotifier: s.orderNotifier,
-		TickerStore:   s.stores.Ticker(),
-		ContractStore: s.stores.Contract(),
-		PriceStore:    s.stores.Price(),
-		FundingStore:  s.stores.Funding(),
-		DepthStore:    s.stores.Depth(),
-		Clock:         s.timeSync,
-		Log:           s.log,
-		Notifier:      s.notifier,
-		EventBus:      s.engine.Bus,
-	}
-	for _, init := range s.initializers {
-		init(ctx, deps, s.cfg)
+		provLogger := s.log.With("exchange", name)
+		provCtxLog := applogger.WithCtx(ctx, provLogger)
+
+		provCtxLog.Info("🔗 Starting background services...")
+
+		// 1. WarmUp + TimeSync.
+		s.bgWg.Add(1)
+		go func(p *app.ExchangeProvider) {
+			defer s.bgWg.Done()
+			p.Client.WarmUp(ctx, 4*time.Second)
+		}(prov)
+
+		s.bgWg.Add(1)
+		go func(p *app.ExchangeProvider) {
+			defer s.bgWg.Done()
+			p.TimeSync.Start(ctx)
+		}(prov)
+
+		prov.TimeSync.WaitReady(ctx)
+
+		// 2. Start stores + wait for initial data.
+		stores.Start(ctx)
+		if err := stores.WaitReady(ctx); err != nil {
+			return err
+		}
+
+		// 3. Connect WS + subscribe personal channels.
+		s.bgWg.Add(1)
+		go func(p *app.ExchangeProvider) {
+			defer s.bgWg.Done()
+			p.WS.Connect(ctx)
+		}(prov)
+
+		prov.WS.WaitReady(ctx)
+
+		// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
+		stores.WireWS(prov.WS, prov.Adapter)
+		s.wirePersonalWSForProvider(ctx, prov)
+
+		if prov.Adapter != nil {
+			if err := prov.Adapter.SubscribePersonal(ctx); err != nil {
+				provCtxLog.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
+			}
+		}
+
+		// 5. Initialize global event subscriptions for strategies.
+		deps := Deps{
+			Client:        prov.Client,
+			WsSub:         prov.Adapter,
+			OrderNotifier: prov.Watcher,
+			TickerStore:   stores.Ticker(),
+			ContractStore: stores.Contract(),
+			PriceStore:    stores.Price(),
+			FundingStore:  stores.Funding(),
+			DepthStore:    stores.Depth(),
+			Clock:         prov.TimeSync,
+			Log:           provLogger,
+			Notifier:      s.notifier,
+			EventBus:      s.engine.Bus,
+		}
+		for _, init := range s.initializers {
+			init(ctx, deps, s.cfg)
+		}
+
+		provCtxLog.Info("🟢 Exchange Background Services Ready")
 	}
 
 	log.Info("🟢 Funding Reversion Background Services Ready")
 	return nil
 }
 
-func (s *Sniper) wirePersonalWS(ctx context.Context) {
-	log := applogger.WithCtx(ctx, s.log)
-	if s.engine == nil || s.engine.WS == nil || s.engine.Adapter == nil || s.orderNotifier == nil {
+func (s *Sniper) wirePersonalWSForProvider(ctx context.Context, prov *app.ExchangeProvider) {
+	log := applogger.WithCtx(ctx, s.log.With("exchange", prov.Name))
+	if prov.WS == nil || prov.Adapter == nil || prov.Watcher == nil {
 		return
 	}
 
-	s.engine.WS.On("personal.position", func(data []byte) {
-		update, err := s.engine.Adapter.ParsePosition(data)
+	prov.WS.On("personal.position", func(data []byte) {
+		update, err := prov.Adapter.ParsePosition(data)
 		if err != nil {
 			log.Warn("🟡 Failed to parse personal position WS", slog.Any("error", err))
 			return
 		}
 		if update != nil {
-			s.orderNotifier.PublishPosition(*update)
+			prov.Watcher.PublishPosition(*update)
 		}
 	})
 }
@@ -222,11 +252,22 @@ func (s *Sniper) Stop(ctx context.Context) error {
 }
 
 // spawnWorker creates a closure that runs one complete cycle for a symbol.
-// This replaces the former symbolWorker struct — the orchestrator now
-// handles all cycle logic directly.
 func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) func() error {
 	return func() error {
-		baseLog := s.log.With("sym", symCfg.Symbol)
+		exchName := symCfg.Exchange
+		prov, err := s.engine.GetProvider(exchName)
+		if err != nil {
+			s.log.Error("🔴 Failed to locate exchange provider", slog.String("exchange", exchName), slog.Any("error", err))
+			return nil
+		}
+
+		stores := s.stores[exchName]
+		if stores == nil {
+			s.log.Error("🔴 Failed to locate central store for exchange", slog.String("exchange", exchName))
+			return nil
+		}
+
+		baseLog := s.log.With("sym", symCfg.Symbol, "exchange", exchName)
 		log := applogger.WithCtx(ctx, baseLog)
 		log.Info("🚀 Worker started")
 		defer log.Info("🛑 Worker stopped")
@@ -236,37 +277,37 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 			return nil
 		}
 
-		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, s.stores.Funding())
+		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, stores.Funding())
 		if err != nil {
 			log.Error("🔴 No settle time", slog.Any("error", err))
 			return nil
 		}
 
 		// Wait until T-5m before actively entering the cycle.
-		if d := s.timeSync.Until(settle.Add(-5 * time.Minute)); d > 0 {
+		if d := prov.TimeSync.Until(settle.Add(-5 * time.Minute)); d > 0 {
 			log.Debug("😴 Waiting for funding window", slog.Time("settle", settle), slog.Duration("wait", d))
-			if err := s.timeSync.Sleep(ctx, d); err != nil {
+			if err := prov.TimeSync.Sleep(ctx, d); err != nil {
 				return nil
 			}
 		}
 
 		// If we are already past the firing deadline (T-5s), skip.
-		if s.timeSync.Until(settle.Add(-5*time.Second)) <= 0 {
+		if prov.TimeSync.Until(settle.Add(-5*time.Second)) <= 0 {
 			log.Warn("🔴 Settle time passed or missed", slog.Time("settle", settle))
 			return nil
 		}
 
 		// Execute one funding cycle via event-driven orchestrator.
 		deps := Deps{
-			Client:        s.client,
-			WsSub:         s.ws,
-			OrderNotifier: s.orderNotifier,
-			TickerStore:   s.stores.Ticker(),
-			ContractStore: s.stores.Contract(),
-			PriceStore:    s.stores.Price(),
-			FundingStore:  s.stores.Funding(),
-			DepthStore:    s.stores.Depth(),
-			Clock:         s.timeSync,
+			Client:        prov.Client,
+			WsSub:         prov.Adapter,
+			OrderNotifier: prov.Watcher,
+			TickerStore:   stores.Ticker(),
+			ContractStore: stores.Contract(),
+			PriceStore:    stores.Price(),
+			FundingStore:  stores.Funding(),
+			DepthStore:    stores.Depth(),
+			Clock:         prov.TimeSync,
 			Log:           baseLog,
 			Notifier:      s.notifier,
 			EventBus:      s.engine.Bus,

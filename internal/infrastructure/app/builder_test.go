@@ -16,8 +16,6 @@ import (
 func TestEngineBuilder_MissingConfig(t *testing.T) {
 	t.Parallel()
 	_, err := app.NewEngineBuilder().
-		WithClient(nil).
-		WithAdapter(nil).
 		Build()
 	assert.Error(t, err, "expected error for nil config")
 }

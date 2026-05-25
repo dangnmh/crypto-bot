@@ -13,7 +13,6 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/notifier"
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/httpclient"
@@ -96,32 +95,18 @@ func provideHTTPClient() *http.Client {
 	return httpclient.NewPool(httpclient.DefaultPoolConfig())
 }
 
-func provideExchangeClient(httpClient *http.Client, cfg *fundingconfig.SystemConfig, log *slog.Logger) exchange.Client {
-	var client exchange.Client = mexc.NewClient(
-		httpClient,
-		cfg.ExchangeConfig.Mexc.Future.BaseURL,
-		cfg.ExchangeConfig.Mexc.APIKey,
-		cfg.ExchangeConfig.Mexc.APISecret,
-		cfg.Logging,
-	)
-
-	if cfg.DryRun {
-		log.Warn("DRY-RUN MODE ENABLED: no real orders will be placed")
-		client = exchange.NewDryRunClient(client)
-	}
-
-	return client
+func provideExchangeClient(engine *infraapp.Engine) exchange.Client {
+	return engine.Client
 }
 
-func provideWSAdapter() infraws.ExchangeAdapter {
-	return mexc.NewWsAdapter()
+func provideWSAdapter(engine *infraapp.Engine) infraws.ExchangeAdapter {
+	return engine.Adapter
 }
 
-func provideEngine(cfg *fundingconfig.SystemConfig, client exchange.Client, adapter infraws.ExchangeAdapter) *infraapp.Engine {
+func provideEngine(cfg *fundingconfig.SystemConfig, httpClient *http.Client) *infraapp.Engine {
 	return infraapp.NewEngine(infraapp.EngineConfig{
 		SystemConfig: &cfg.SystemConfig,
-		Client:       client,
-		Adapter:      adapter,
+		HTTPClient:   httpClient,
 	})
 }
 
