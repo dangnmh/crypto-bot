@@ -30,11 +30,25 @@ func (r *StatelessRunner) handleIOCFired(ctx context.Context, evt IOCFiredEvent)
 		r.handlePositionUpdate(ctx, pos, evt.ReqID)
 	})
 
-	// 2. Start timeout guard in the background
-	go func() {
-		_ = r.timeoutGuard(ctx, evt)
-	}()
+	// 2. Publish event to trigger the asynchronous timeout guard
+	checkEvt := CheckTimeoutEvent{
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:      FlowReversion,
+			ReqID:     evt.ReqID,
+			Symbol:    evt.Symbol,
+			Timestamp: r.deps.Clock.Now(),
+		},
+		IOCEvent: evt,
+	}
 
+	return r.publishEvent(ctx, TopicReversionCheckTimeout, checkEvt)
+}
+
+func (r *StatelessRunner) handleCheckTimeout(ctx context.Context, evt CheckTimeoutEvent) error {
+	// Start timeout guard in the background to avoid blocking subscription loop
+	go func() {
+		_ = r.timeoutGuard(ctx, evt.IOCEvent)
+	}()
 	return nil
 }
 
@@ -103,6 +117,20 @@ func (r *StatelessRunner) forceCloseTimedOutPosition(
 	startedAt time.Time,
 ) {
 	symbol := firedEvt.Symbol
+
+	initEvt := ForceCloseInitiatedEvent{
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			ReqID:      firedEvt.ReqID,
+			Symbol:     symbol,
+			Timestamp:  r.deps.Clock.Now(),
+			SendNotify: true,
+		},
+		HoldVol:    holdVol,
+		TimeoutSec: timeout.Seconds(),
+	}
+	_ = r.publishEvent(ctx, TopicReversionForceCloseInitiated, initEvt)
+
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 

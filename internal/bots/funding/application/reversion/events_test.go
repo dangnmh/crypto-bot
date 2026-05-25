@@ -182,6 +182,20 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			keys:        []string{"symbol", "reason"},
 			notify:      true,
 		},
+		{
+			name:        "check timeout",
+			event:       reversion.CheckTimeoutEvent{BaseReversionEvent: base, IOCEvent: reversion.IOCFiredEvent{BaseReversionEvent: base}},
+			messagePart: "Timeout check initiated",
+			keys:        []string{"symbol"},
+			notify:      true,
+		},
+		{
+			name:        "force close initiated",
+			event:       reversion.ForceCloseInitiatedEvent{BaseReversionEvent: base, HoldVol: 1.5, TimeoutSec: 10.0},
+			messagePart: "Initiating safety timeout force close",
+			keys:        []string{"symbol", "holdVol", "timeout"},
+			notify:      true,
+		},
 	}
 
 	for _, tt := range tests {

@@ -42,6 +42,7 @@ func InitGlobalSubscriptions(ctx context.Context, deps application.Deps, globalC
 		subscribeTopic(ctx, bus, deps.Log, TopicReversionWaitComplete, runner.handleRecheckMessage)
 		subscribeTopic(ctx, bus, deps.Log, TopicReversionConfirmed, runner.handleFireIOCMessage)
 		subscribeTopic(ctx, bus, deps.Log, TopicReversionIOCFired, runner.handleIOCFiredMessage)
+		subscribeTopic(ctx, bus, deps.Log, TopicReversionCheckTimeout, runner.handleCheckTimeoutMessage)
 		subscribeTopic(ctx, bus, deps.Log, TopicReversionPositionClosed, runner.handleCleanupMessage)
 		subscribeTopic(ctx, bus, deps.Log, TopicReversionAbort, runner.handleCleanupMessage)
 		subscribeTopic(ctx, bus, deps.Log, TopicReversionError, runner.handleCleanupMessage)
@@ -115,4 +116,12 @@ func (r *StatelessRunner) handleIOCFiredMessage(ctx context.Context, msg *messag
 
 func (r *StatelessRunner) handleCleanupMessage(ctx context.Context, msg *message.Message) error {
 	return r.handleCleanup(ctx, msg)
+}
+
+func (r *StatelessRunner) handleCheckTimeoutMessage(ctx context.Context, msg *message.Message) error {
+	var evt CheckTimeoutEvent
+	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+		return err
+	}
+	return r.handleCheckTimeout(ctx, evt)
 }

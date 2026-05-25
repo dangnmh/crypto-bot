@@ -14,18 +14,20 @@ const (
 
 // Reversion event topics.
 const (
-	TopicReversionCandidate      = "funding.reversion.candidate"
-	TopicReversionArmed          = "funding.reversion.armed"
-	TopicReversionWaitComplete   = "funding.reversion.wait_complete"
-	TopicReversionConfirmed      = "funding.reversion.confirmed"
-	TopicReversionIOCFired       = "funding.reversion.ioc_fired"
-	TopicReversionOrderFilled    = "funding.reversion.order_filled"
-	TopicReversionPositionClosed = "funding.reversion.position_closed"
-	TopicReversionTimeout        = "funding.reversion.timeout"
-	TopicReversionAbort          = "funding.reversion.abort"
-	TopicReversionError          = "funding.reversion.error"
-	TopicReversionFinalPnL       = "funding.reversion.final_pnl"
-	TopicReversionCompleted      = "funding.reversion.completed"
+	TopicReversionCandidate           = "funding.reversion.candidate"
+	TopicReversionArmed               = "funding.reversion.armed"
+	TopicReversionWaitComplete        = "funding.reversion.wait_complete"
+	TopicReversionConfirmed           = "funding.reversion.confirmed"
+	TopicReversionIOCFired            = "funding.reversion.ioc_fired"
+	TopicReversionOrderFilled         = "funding.reversion.order_filled"
+	TopicReversionPositionClosed      = "funding.reversion.position_closed"
+	TopicReversionTimeout             = "funding.reversion.timeout"
+	TopicReversionAbort               = "funding.reversion.abort"
+	TopicReversionError               = "funding.reversion.error"
+	TopicReversionFinalPnL            = "funding.reversion.final_pnl"
+	TopicReversionCompleted           = "funding.reversion.completed"
+	TopicReversionCheckTimeout        = "funding.reversion.check_timeout"
+	TopicReversionForceCloseInitiated = "funding.reversion.force_close_initiated"
 )
 
 // Map keys for goconst lint compliance.
@@ -40,6 +42,7 @@ const (
 	keyEntryPrice  = "entryPrice"
 	keyFee         = "fee"
 	keyHoldFee     = "holdFee"
+	keyTimeout     = "timeout"
 )
 
 // ReversionEvent defines the interface that all reversion lifecycle events must implement.
@@ -258,7 +261,7 @@ func (e TimeoutEvent) GetMessage() string {
 func (e TimeoutEvent) GetDataMap() map[string]interface{} {
 	return map[string]interface{}{
 		keySymbol:             e.Symbol,
-		"timeout":             e.Timeout.String(),
+		keyTimeout:            e.Timeout.String(),
 		keyReason:             e.Reason,
 		"forceCloseSucceeded": e.ForceCloseSucceeded,
 	}
@@ -339,5 +342,38 @@ func (e ReversionCompletedEvent) GetDataMap() map[string]interface{} {
 	return map[string]interface{}{
 		keySymbol: e.Symbol,
 		keyReason: e.Reason,
+	}
+}
+
+// CheckTimeoutEvent is published to trigger the asynchronous timeout guard.
+type CheckTimeoutEvent struct {
+	BaseReversionEvent
+	IOCEvent IOCFiredEvent `json:"ioc_event"`
+}
+
+func (e CheckTimeoutEvent) GetMessage() string {
+	return "Timeout check initiated for " + e.Symbol
+}
+func (e CheckTimeoutEvent) GetDataMap() map[string]interface{} {
+	return map[string]interface{}{
+		keySymbol: e.Symbol,
+	}
+}
+
+// ForceCloseInitiatedEvent is published when fallback close begins.
+type ForceCloseInitiatedEvent struct {
+	BaseReversionEvent
+	HoldVol    float64 `json:"hold_vol"`
+	TimeoutSec float64 `json:"timeout_sec"`
+}
+
+func (e ForceCloseInitiatedEvent) GetMessage() string {
+	return "CRITICAL: Initiating safety timeout force close for " + e.Symbol
+}
+func (e ForceCloseInitiatedEvent) GetDataMap() map[string]interface{} {
+	return map[string]interface{}{
+		keySymbol:  e.Symbol,
+		"holdVol":  e.HoldVol,
+		keyTimeout: e.TimeoutSec,
 	}
 }
