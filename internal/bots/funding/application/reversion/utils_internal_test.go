@@ -128,7 +128,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runner.abort(ctx, "BTC_USDT", "not profitable")
+	runner.abort(ctx, "BTC_USDT", "test-req-abort", "not profitable")
 
 	final := runner.calculateFinalPnL(PositionClosedEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
@@ -185,7 +185,7 @@ func TestStatelessRunnerHandlePositionUpdateFallbacks(t *testing.T) {
 		Symbol:       "BTC_USDT",
 		PositionType: 2,
 		HoldVol:      1,
-	})
+	}, "test-req-1")
 	runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
 		Symbol:          "BTC_USDT",
 		HoldVol:         0,
@@ -195,7 +195,7 @@ func TestStatelessRunnerHandlePositionUpdateFallbacks(t *testing.T) {
 		CloseProfitLoss: 1,
 		Fee:             -0.1,
 		HoldFee:         -0.01,
-	})
+	}, "test-req-2")
 }
 
 func TestStatelessRunnerGetSymbolAndWaitUntilBranches(t *testing.T) {
@@ -443,7 +443,7 @@ func TestStatelessRunnerTimeoutHelpers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, retries)
 
-	runner.publishReversionCritical(context.Background(), "BTC_USDT", "critical")
+	runner.publishReversionCritical(context.Background(), "BTC_USDT", "test-req-crit", "critical")
 }
 
 func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {

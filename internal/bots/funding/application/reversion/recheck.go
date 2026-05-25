@@ -15,14 +15,14 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 	cfg, ok := r.getSymbolConfig(waitEvt.Symbol)
 	if !ok {
 		r.log.Error("Symbol config not found for recheck", slog.String("symbol", waitEvt.Symbol))
-		r.abort(ctx, waitEvt.Symbol, "symbol config not found")
+		r.abort(ctx, waitEvt.Symbol, waitEvt.ReqID, "symbol config not found")
 		return fmt.Errorf("symbol config not found")
 	}
 
 	td, err := r.deps.TickerStore.GetTicker(ctx, c.Symbol)
 	if err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("No ticker for recheck", slog.String("symbol", c.Symbol))
-		r.abort(ctx, c.Symbol, "no ticker for recheck")
+		r.abort(ctx, c.Symbol, waitEvt.ReqID, "no ticker for recheck")
 		return fmt.Errorf("no ticker for recheck")
 	}
 
@@ -32,7 +32,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 			slog.Float64("old", c.FundingRate*100),
 			slog.Float64("new", td.FundingRate*100),
 		)
-		r.abort(ctx, c.Symbol, "FR sign flip")
+		r.abort(ctx, c.Symbol, waitEvt.ReqID, "FR sign flip")
 		return fmt.Errorf("FR sign flip")
 	}
 
@@ -42,7 +42,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 			slog.Float64("fr", td.FundingRate*100),
 			slog.Float64("min", cfg.MinFundingRate*100),
 		)
-		r.abort(ctx, c.Symbol, "FR below threshold")
+		r.abort(ctx, c.Symbol, waitEvt.ReqID, "FR below threshold")
 		return fmt.Errorf("FR below threshold")
 	}
 
@@ -51,6 +51,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 	evt := ConfirmedEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:      FlowReversion,
+			ReqID:     waitEvt.ReqID,
 			Symbol:    c.Symbol,
 			Timestamp: r.deps.Clock.Now(),
 		},

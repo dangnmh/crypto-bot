@@ -14,6 +14,7 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 		evt := WaitCompleteEvent{
 			BaseReversionEvent: BaseReversionEvent{
 				Flow:      FlowReversion,
+				ReqID:     armedEvt.ReqID,
 				Symbol:    armedEvt.Symbol,
 				Timestamp: r.deps.Clock.Now(),
 			},
@@ -24,13 +25,14 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 
 	target := settleTime.Add(-2 * time.Second)
 	if !r.WaitUntil(ctx, armedEvt.Symbol, target) {
-		r.abort(ctx, armedEvt.Symbol, "wait period context canceled")
+		r.abort(ctx, armedEvt.Symbol, armedEvt.ReqID, "wait period context canceled")
 		return context.Canceled
 	}
 
 	evt := WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:      FlowReversion,
+			ReqID:     armedEvt.ReqID,
 			Symbol:    armedEvt.Symbol,
 			Timestamp: r.deps.Clock.Now(),
 		},

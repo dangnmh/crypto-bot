@@ -65,6 +65,7 @@ func (s *Strategy) Execute(ctx context.Context, settleTime time.Time, candidate 
 	startEvt := CandidateFoundEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:       FlowReversion,
+			ReqID:      observability.ReversionID(ctx),
 			Symbol:     candidate.Symbol,
 			SendNotify: false,
 			Timestamp:  s.deps.Clock.Now(),
@@ -165,10 +166,11 @@ func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate)
 	return err
 }
 
-func (r *StatelessRunner) abort(ctx context.Context, symbol, reason string) {
+func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, reason string) {
 	evt := AbortEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:      FlowReversion,
+			ReqID:     reqID,
 			Symbol:    symbol,
 			Timestamp: r.deps.Clock.Now(),
 		},
@@ -207,7 +209,7 @@ func (r *StatelessRunner) RetryWithBackoffOpts(ctx context.Context, attempts int
 	return attempts, err
 }
 
-func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate) {
+func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, reqID string) {
 	r.log.Debug("Position update received", slog.Any("pos", pos))
 
 	fillPrice := pos.OpenAvgPrice
@@ -231,6 +233,7 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 		evt := OrderFilledEvent{
 			BaseReversionEvent: BaseReversionEvent{
 				Flow:       FlowReversion,
+				ReqID:      reqID,
 				Symbol:     pos.Symbol,
 				Timestamp:  r.deps.Clock.Now(),
 				SendNotify: true,
@@ -248,6 +251,7 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 		evt := PositionClosedEvent{
 			BaseReversionEvent: BaseReversionEvent{
 				Flow:       FlowReversion,
+				ReqID:      reqID,
 				Symbol:     pos.Symbol,
 				Timestamp:  r.deps.Clock.Now(),
 				SendNotify: true,

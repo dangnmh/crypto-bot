@@ -10,6 +10,7 @@ import (
 
 func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Message) error {
 	var baseEvt struct {
+		ReqID  string `json:"req_id"`
 		Symbol string `json:"symbol"`
 		Reason string `json:"reason"`
 		Error  string `json:"error"`
@@ -32,6 +33,7 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 	compEvt := ReversionCompletedEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:       FlowReversion,
+			ReqID:      baseEvt.ReqID,
 			Symbol:     symbol,
 			Timestamp:  r.deps.Clock.Now(),
 			SendNotify: false,
@@ -47,6 +49,7 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 	return FinalPnLEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:       FlowReversion,
+			ReqID:      closeEvt.ReqID,
 			Symbol:     closeEvt.Symbol,
 			Timestamp:  r.deps.Clock.Now(),
 			SendNotify: true,

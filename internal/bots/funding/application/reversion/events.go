@@ -45,6 +45,7 @@ const (
 // ReversionEvent defines the interface that all reversion lifecycle events must implement.
 type ReversionEvent interface {
 	GetFlow() string
+	GetReqID() string
 	GetSymbol() string
 	GetMessage() string
 	GetDataMap() map[string]interface{}
@@ -54,12 +55,14 @@ type ReversionEvent interface {
 // BaseReversionEvent provides shared boilerplate fields and methods for all reversion events.
 type BaseReversionEvent struct {
 	Flow       string    `json:"flow,omitempty"`
+	ReqID      string    `json:"req_id,omitempty"`
 	Symbol     string    `json:"symbol"`
 	SendNotify bool      `json:"send_notify,omitempty"`
 	Timestamp  time.Time `json:"timestamp"`
 }
 
 func (b BaseReversionEvent) GetFlow() string    { return b.Flow }
+func (b BaseReversionEvent) GetReqID() string   { return b.ReqID }
 func (b BaseReversionEvent) GetSymbol() string  { return b.Symbol }
 func (b BaseReversionEvent) ShouldNotify() bool { return b.SendNotify }
 

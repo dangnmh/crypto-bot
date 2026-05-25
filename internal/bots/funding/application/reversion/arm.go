@@ -20,21 +20,21 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 
 	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
 		applogger.WithCtx(ctx, r.log).Error("Failed to subscribe WS channels", slog.Any("error", err))
-		r.abort(ctx, c.Symbol, "WS subscribe failed: "+err.Error())
+		r.abort(ctx, c.Symbol, startEvt.ReqID, "WS subscribe failed: "+err.Error())
 		return fmt.Errorf("WS subscribe failed: %w", err)
 	}
 
 	if err := r.waitForFreshPrice(ctx, c.Symbol, 5*time.Second); err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("Price data wait failed", slog.Any("error", err))
 		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, "refresh price failed: "+err.Error())
+		r.abort(ctx, c.Symbol, startEvt.ReqID, "refresh price failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
 	if err := r.refreshPrice(ctx, &c); err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("Refresh price failed", slog.Any("error", err))
 		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, "refresh price failed: "+err.Error())
+		r.abort(ctx, c.Symbol, startEvt.ReqID, "refresh price failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
@@ -42,7 +42,7 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 	if err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("IOC calc failed", slog.Any("error", err))
 		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, "IOC calc failed: "+err.Error())
+		r.abort(ctx, c.Symbol, startEvt.ReqID, "IOC calc failed: "+err.Error())
 		return fmt.Errorf("IOC calc failed: %w", err)
 	}
 	c.Volume = c.CalculateVolume()
@@ -67,7 +67,7 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 	if !c.SafetyResult.Passed {
 		applogger.WithCtx(ctx, r.log).Warn("Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
 		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, "safety fail: "+c.SafetyResult.RejectReason)
+		r.abort(ctx, c.Symbol, startEvt.ReqID, "safety fail: "+c.SafetyResult.RejectReason)
 		return fmt.Errorf("safety fail: %s", c.SafetyResult.RejectReason)
 	}
 
@@ -81,6 +81,7 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 	evt := ArmedEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:       FlowReversion,
+			ReqID:      startEvt.ReqID,
 			Symbol:     c.Symbol,
 			Timestamp:  r.deps.Clock.Now(),
 			SendNotify: true,

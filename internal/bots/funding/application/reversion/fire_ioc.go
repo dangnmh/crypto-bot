@@ -16,14 +16,14 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	settleTime := confirmedEvt.SettleTime
 	if settleTime.IsZero() {
 		err := errors.New("settle time not found")
-		r.abort(ctx, confirmedEvt.Symbol, err.Error())
+		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, err.Error())
 		return err
 	}
 
 	cfg, ok := r.getSymbolConfig(confirmedEvt.Symbol)
 	if !ok {
 		err := errors.New("symbol config not found")
-		r.abort(ctx, confirmedEvt.Symbol, err.Error())
+		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, err.Error())
 		return err
 	}
 
@@ -31,7 +31,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	maxLatency := time.Duration(cfg.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
 		err := errors.New("latency too high")
-		r.abort(ctx, confirmedEvt.Symbol, err.Error())
+		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, err.Error())
 		return err
 	}
 
@@ -44,13 +44,13 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		snapshotOffset = fireOffset
 	}
 	if !r.WaitUntil(ctx, confirmedEvt.Symbol, settleTime.Add(-snapshotOffset)) {
-		r.abort(ctx, confirmedEvt.Symbol, "wait snapshot context canceled")
+		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, "wait snapshot context canceled")
 		return ctx.Err()
 	}
 
 	c := confirmedEvt.Candidate
 	if err := r.refreshPrice(ctx, &c); err != nil {
-		r.abort(ctx, c.Symbol, "refresh price fail: "+err.Error())
+		r.abort(ctx, c.Symbol, confirmedEvt.ReqID, "refresh price fail: "+err.Error())
 		return err
 	}
 	c.Volume = c.CalculateVolume()
@@ -63,6 +63,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		evt := IOCFiredEvent{
 			BaseReversionEvent: BaseReversionEvent{
 				Flow:      FlowReversion,
+				ReqID:     confirmedEvt.ReqID,
 				Symbol:    c.Symbol,
 				Timestamp: r.deps.Clock.Now(),
 			},
@@ -73,12 +74,12 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 			Error:         c.SafetyResult.RejectReason,
 		}
 		_ = r.publishEvent(ctx, TopicReversionIOCFired, evt)
-		r.abort(ctx, c.Symbol, c.SafetyResult.RejectReason)
+		r.abort(ctx, c.Symbol, confirmedEvt.ReqID, c.SafetyResult.RejectReason)
 		return errors.New(c.SafetyResult.RejectReason)
 	}
 
 	if !r.WaitUntil(ctx, confirmedEvt.Symbol, settleTime.Add(-fireOffset)) {
-		r.abort(ctx, confirmedEvt.Symbol, "wait fire context canceled")
+		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, "wait fire context canceled")
 		return ctx.Err()
 	}
 	fireTime := r.deps.Clock.Now()
@@ -89,6 +90,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		evt := IOCFiredEvent{
 			BaseReversionEvent: BaseReversionEvent{
 				Flow:      FlowReversion,
+				ReqID:     confirmedEvt.ReqID,
 				Symbol:    c.Symbol,
 				Timestamp: fireTime,
 			},
@@ -114,6 +116,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	evt := IOCFiredEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:      FlowReversion,
+			ReqID:     confirmedEvt.ReqID,
 			Symbol:    c.Symbol,
 			Timestamp: fireTime,
 		},
@@ -128,6 +131,6 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		Error:         errText,
 	}
 	_ = r.publishEvent(ctx, TopicReversionIOCFired, evt)
-	r.abort(ctx, c.Symbol, errText)
+	r.abort(ctx, c.Symbol, confirmedEvt.ReqID, errText)
 	return errors.New(errText)
 }

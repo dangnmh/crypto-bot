@@ -18,6 +18,7 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	base := reversion.BaseReversionEvent{
 		Flow:       reversion.FlowReversion,
+		ReqID:      "req-123",
 		Symbol:     "BTC_USDT",
 		SendNotify: true,
 		Timestamp:  now,
@@ -188,6 +189,7 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			t.Parallel()
 
 			assert.Equal(t, reversion.FlowReversion, tt.event.GetFlow())
+			assert.Equal(t, "req-123", tt.event.GetReqID())
 			assert.Equal(t, "BTC_USDT", tt.event.GetSymbol())
 			assert.True(t, strings.Contains(tt.event.GetMessage(), tt.messagePart), tt.event.GetMessage())
 			assert.Equal(t, tt.notify, tt.event.ShouldNotify())
