@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"context"
+	"net/http"
 	"testing"
 
 	"crypto-bot/internal/infrastructure/app"
@@ -18,6 +20,31 @@ func TestEngineBuilder_MissingConfig(t *testing.T) {
 	_, err := app.NewEngineBuilder().
 		Build()
 	assert.Error(t, err, "expected error for nil config")
+}
+
+func TestEngineBuilder_WithOptionalDependenciesBuilds(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				APIKey:    "key",
+				APISecret: "secret",
+			},
+		},
+	}
+
+	e, err := app.NewEngineBuilder().
+		WithSystemConfig(cfg).
+		WithHTTPClient(&http.Client{}).
+		WithLogger(testLogger()).
+		Build()
+	require.NoError(t, err)
+	require.NotNil(t, e)
+	assert.Len(t, e.Providers, 1)
+	require.NoError(t, e.Shutdown(context.Background()))
 }
 
 func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {

@@ -1,0 +1,263 @@
+package gate_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/gate"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestClient_MarketAndAccountEndpoints(t *testing.T) {
+	t.Parallel()
+
+	server := newGateServer(t)
+	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	ctx := context.Background()
+
+	serverTime, err := client.GetServerTime(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1700000000000), serverTime)
+
+	contracts, err := client.GetContractDetails(ctx)
+	require.NoError(t, err)
+	require.Len(t, contracts, 1)
+	assert.Equal(t, "BTC_USDT", contracts[0].Symbol)
+	assert.Equal(t, 0.0001, contracts[0].PriceUnit)
+	assert.Equal(t, 100, contracts[0].MaxLeverage)
+
+	tickers, err := client.GetTickers(ctx, "BTC_USDT")
+	require.NoError(t, err)
+	require.Len(t, tickers, 1)
+	assert.Equal(t, 100.5, tickers[0].LastPrice)
+	assert.Equal(t, 0.001, tickers[0].FundingRate)
+
+	funding, err := client.GetFundingRate(ctx, "BTC_USDT")
+	require.NoError(t, err)
+	assert.Equal(t, "BTC_USDT", funding.Symbol)
+	assert.Equal(t, 0.001, funding.FundingRate)
+
+	klines, err := client.GetKlines(ctx, "BTC_USDT", "Min15", 1000, 2000)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
+	assert.Equal(t, int64(1700000000000), klines[0].Timestamp)
+	assert.Equal(t, 99.0, klines[0].Open)
+
+	depth, err := client.GetDepthSnapshot(ctx, "BTC_USDT", 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(123), depth.Version)
+	require.Len(t, depth.Asks, 1)
+	require.Len(t, depth.Bids, 1)
+
+	commits, err := client.GetDepthCommits(ctx, "BTC_USDT", 20)
+	require.NoError(t, err)
+	assert.Nil(t, commits)
+
+	assets, err := client.GetAssets(ctx)
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+	assert.Equal(t, "USDT", assets[0].Currency)
+	assert.Equal(t, 1000.0, assets[0].Equity)
+
+	asset, err := client.GetAssetByCurrency(ctx, "usdt")
+	require.NoError(t, err)
+	assert.Equal(t, "USDT", asset.Currency)
+	asset, err = client.GetAssetByCurrency(ctx, "BTC")
+	require.NoError(t, err)
+	assert.Equal(t, "BTC", asset.Currency)
+
+	positions, err := client.GetOpenPositions(ctx, "BTC_USDT")
+	require.NoError(t, err)
+	require.Len(t, positions, 1)
+	assert.Equal(t, 2.0, positions[0].HoldVol)
+	assert.Equal(t, 1, positions[0].PositionType)
+
+	positions, err = client.GetOpenPositions(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, positions, 1)
+	assert.Equal(t, "BTC_USDT", positions[0].Symbol)
+}
+
+func TestClient_OrderEndpoints(t *testing.T) {
+	t.Parallel()
+
+	server := newGateServer(t)
+	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	ctx := context.Background()
+
+	require.NoError(t, client.CancelOrder(ctx, "BTC_USDT", "42"))
+	require.NoError(t, client.CancelOrders(ctx, []string{"42", "43"}))
+	require.NoError(t, client.CancelAllOpenOrders(ctx, "BTC_USDT"))
+
+	order, err := client.GetOrder(ctx, "42")
+	require.NoError(t, err)
+	require.NotNil(t, order)
+	assert.Equal(t, "42", order.OrderID)
+	assert.Equal(t, exchange.OrderStateFilled, order.State)
+	assert.Equal(t, "ext", order.ExternalOID)
+
+	openOrders, err := client.GetOpenOrders(ctx, "BTC_USDT")
+	require.NoError(t, err)
+	require.Len(t, openOrders, 1)
+	assert.Equal(t, exchange.OrderStatePartial, openOrders[0].State)
+
+	require.NoError(t, client.ClosePosition(ctx, "BTC_USDT", domain.SideCloseLong, 2, 1))
+	require.NoError(t, client.CloseAllPositions(ctx, "BTC_USDT"))
+	require.NoError(t, client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{Symbol: "BTC_USDT", Leverage: 20}))
+
+	_, err = client.CreateTrackOrder(ctx, exchange.SubmitTrackOrderRequest{Symbol: "BTC_USDT"})
+	require.ErrorContains(t, err, "not implemented")
+}
+
+func TestClient_InputValidation(t *testing.T) {
+	t.Parallel()
+
+	server := newGateServer(t)
+	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	_, err := client.GetFundingRate(context.Background(), "")
+	require.Error(t, err)
+	_, err = client.GetKlines(context.Background(), "", "1m", 0, 0)
+	require.Error(t, err)
+	_, err = client.GetDepthSnapshot(context.Background(), "", 0)
+	require.Error(t, err)
+}
+
+func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
+	t.Parallel()
+
+	server := newGateServer(t)
+	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	latency, err := client.Latency(context.Background())
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, latency, int64(0))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, time.Hour)
+
+	errServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "failed", http.StatusInternalServerError)
+	}))
+	t.Cleanup(errServer.Close)
+	errClient := gate.NewClient(errServer.Client(), errServer.URL, "key", "secret", config.LoggingConfig{})
+
+	_, err = errClient.GetServerTime(context.Background())
+	require.Error(t, err)
+	_, err = errClient.GetContractDetails(context.Background())
+	require.Error(t, err)
+	_, err = errClient.GetTickers(context.Background(), "BTC_USDT")
+	require.Error(t, err)
+	_, err = errClient.GetFundingRate(context.Background(), "BTC_USDT")
+	require.Error(t, err)
+	_, err = errClient.GetKlines(context.Background(), "BTC_USDT", "Min1", 0, 60)
+	require.Error(t, err)
+	_, err = errClient.GetDepthSnapshot(context.Background(), "BTC_USDT", 20)
+	require.Error(t, err)
+	_, err = errClient.GetAssets(context.Background())
+	require.Error(t, err)
+	_, err = errClient.GetOpenPositions(context.Background(), "BTC_USDT")
+	require.Error(t, err)
+	_, err = errClient.CreateOrder(context.Background(), exchange.SubmitOrderRequest{Symbol: "BTC_USDT", Vol: 1})
+	require.Error(t, err)
+	require.Error(t, errClient.CancelOrder(context.Background(), "BTC_USDT", "42"))
+	require.Error(t, errClient.CancelOrders(context.Background(), []string{"42"}))
+	require.Error(t, errClient.CancelAllOpenOrders(context.Background(), "BTC_USDT"))
+	_, err = errClient.GetOrder(context.Background(), "42")
+	require.Error(t, err)
+	_, err = errClient.GetOpenOrders(context.Background(), "BTC_USDT")
+	require.Error(t, err)
+	require.Error(t, errClient.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, 1))
+	require.Error(t, errClient.CloseAllPositions(context.Background(), "BTC_USDT"))
+	require.Error(t, errClient.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{Symbol: "BTC_USDT", Leverage: 10}))
+	_, err = errClient.Latency(context.Background())
+	require.Error(t, err)
+}
+
+//nolint:cyclop // Single test server switch keeps endpoint fixtures local and readable.
+func newGateServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/spot/time":
+			writeJSON(t, w, map[string]int64{"server_time": 1700000000000})
+		case r.URL.Path == "/futures/usdt/contracts":
+			writeJSON(t, w, []map[string]any{{
+				"name": "BTC_USDT", "quanto_multiplier": "0.0001", "leverage_min": "1",
+				"leverage_max": "100", "order_price_round": "0.0001",
+				"maker_fee_rate": "0.0002", "taker_fee_rate": "0.0006",
+			}})
+		case r.URL.Path == "/futures/usdt/tickers":
+			writeJSON(t, w, []map[string]string{{
+				"contract": "BTC_USDT", "last": "100.5", "highest_bid": "100",
+				"lowest_ask": "101", "volume_24h": "10", "volume_24h_quote": "1000",
+				"index_price": "100.2", "mark_price": "100.3", "funding_rate": "0.001",
+			}})
+		case r.URL.Path == "/futures/usdt/candlesticks":
+			writeJSON(t, w, []map[string]any{{
+				"t": 1700000000, "o": "99", "c": "100", "h": "101", "l": "98", "v": 12, "sum": "1200",
+			}})
+		case strings.HasSuffix(r.URL.Path, "/order_book"):
+			writeJSON(t, w, map[string]any{
+				"id":   123,
+				"asks": []map[string]any{{"p": "101", "s": 2}, {"p": "0", "s": 1}},
+				"bids": []map[string]any{{"p": "100", "s": 3}},
+			})
+		case r.URL.Path == "/futures/usdt/accounts":
+			writeJSON(t, w, map[string]string{
+				"currency": "USDT", "total": "1000", "unrealised_pnl": "10",
+				"position_margin": "100", "available": "900",
+			})
+		case r.URL.Path == "/futures/usdt/positions/BTC_USDT":
+			writeJSON(t, w, gatePosition(2))
+		case r.URL.Path == "/futures/usdt/positions":
+			writeJSON(t, w, []map[string]any{gatePosition(2), gatePosition(0)})
+		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodGet:
+			writeJSON(t, w, []map[string]any{gateOrder(43, "open", "", 5, 2, "raw")})
+		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodPost:
+			writeJSON(t, w, map[string]int64{"id": 99})
+		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodDelete:
+			writeJSON(t, w, []map[string]any{})
+		case strings.Contains(r.URL.Path, "/orders/"):
+			writeJSON(t, w, gateOrder(42, "finished", "filled", 5, 0, "t-ext"))
+		case strings.Contains(r.URL.Path, "/leverage"):
+			writeJSON(t, w, map[string]string{})
+		default:
+			t.Fatalf("unhandled %s %s", r.Method, r.URL.String())
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func gateOrder(id int64, status, finishAs string, size, left int64, text string) map[string]any {
+	return map[string]any{
+		"id": id, "contract": "BTC_USDT", "price": "100", "size": size, "left": left,
+		"fill_price": "100.5", "status": status, "finish_as": finishAs, "text": text,
+		"create_time": 1700000000, "finish_time": 1700000001,
+	}
+}
+
+//nolint:misspell // Gate.io uses the British spelling in the API field name.
+func gatePosition(size int64) map[string]any {
+	return map[string]any{
+		"contract": "BTC_USDT", "size": size, "entry_price": "100", "liq_price": "50",
+		"realised_pnl": "1.5", "leverage": "20",
+	}
+}
+
+func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
+	t.Helper()
+	require.NoError(t, json.NewEncoder(w).Encode(value))
+}

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 
 	applogger "crypto-bot/pkg/logger"
@@ -70,12 +71,12 @@ type StoreSyncConfig struct {
 }
 
 // StartStores launches background sync goroutines for all non-nil stores.
-func (r *StoreRegistry) StartStores(ctx context.Context, engine *Engine, cfg StoreSyncConfig) {
-	go r.Ticker.StartTickerSync(ctx, engine.Client, time.Duration(cfg.TickerInterval))
-	go r.Contract.StartContractSync(ctx, engine.Client, time.Duration(cfg.ContractInterval))
+func (r *StoreRegistry) StartStores(ctx context.Context, client exchange.Client, cfg StoreSyncConfig) {
+	go r.Ticker.StartTickerSync(ctx, client, time.Duration(cfg.TickerInterval))
+	go r.Contract.StartContractSync(ctx, client, time.Duration(cfg.ContractInterval))
 
 	if r.Funding != nil && len(cfg.FundingSymbols) > 0 {
-		go r.Funding.StartFundingSync(ctx, engine.Client, cfg.FundingSymbols, time.Duration(cfg.FundingInterval))
+		go r.Funding.StartFundingSync(ctx, client, cfg.FundingSymbols, time.Duration(cfg.FundingInterval))
 	}
 }
 

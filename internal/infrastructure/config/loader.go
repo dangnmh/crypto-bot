@@ -12,6 +12,14 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type bitwardenSecretLoader interface {
+	GetSecret(secretKey string) (string, error)
+}
+
+var newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
+	return newBitwardenLoader()
+}
+
 // InitializeBase loads environment variables, injects credentials,
 // and applies universal default values to the core SystemConfig.
 // This function should be called by any bot immediately after parsing its JSON configuration.
@@ -41,14 +49,7 @@ func InitializeBase(c *SystemConfig) error {
 }
 
 func applyBitwardenFallback(c *SystemConfig) error {
-	mexcSet := c.ExchangeConfig.Mexc.APIKey != "" && c.ExchangeConfig.Mexc.APISecret != ""
-	gateSet := c.ExchangeConfig.Gate.APIKey != "" && c.ExchangeConfig.Gate.APISecret != ""
-	notiSet := c.NotiConfig.TelegramChatID != "" && c.NotiConfig.TelegramBotToken != ""
-
-	mexcEnabled := c.ExchangeConfig.Mexc.Future.BaseURL != ""
-	gateEnabled := c.ExchangeConfig.Gate.Future.BaseURL != ""
-
-	if (!mexcEnabled || mexcSet) && (!gateEnabled || gateSet) && notiSet {
+	if bitwardenFallbackNotNeeded(c) {
 		return nil
 	}
 
@@ -62,16 +63,16 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	}
 
 	// Only fill missing values (keep env vars priority)
-	if mexcEnabled && c.ExchangeConfig.Mexc.APIKey == "" {
+	if c.ExchangeConfig.Mexc.Future.BaseURL != "" && c.ExchangeConfig.Mexc.APIKey == "" {
 		c.ExchangeConfig.Mexc.APIKey = creds.APIKey
 	}
-	if mexcEnabled && c.ExchangeConfig.Mexc.APISecret == "" {
+	if c.ExchangeConfig.Mexc.Future.BaseURL != "" && c.ExchangeConfig.Mexc.APISecret == "" {
 		c.ExchangeConfig.Mexc.APISecret = creds.APISecret
 	}
-	if gateEnabled && c.ExchangeConfig.Gate.APIKey == "" {
+	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.APIKey == "" {
 		c.ExchangeConfig.Gate.APIKey = creds.GateKey
 	}
-	if gateEnabled && c.ExchangeConfig.Gate.APISecret == "" {
+	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.APISecret == "" {
 		c.ExchangeConfig.Gate.APISecret = creds.GateSecret
 	}
 	if c.NotiConfig.TelegramChatID == "" {
@@ -84,12 +85,29 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	return nil
 }
 
+func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
+	return exchangeCredentialsComplete(c.ExchangeConfig.Mexc) &&
+		exchangeCredentialsComplete(c.ExchangeConfig.Gate) &&
+		notificationCredentialsComplete(c.NotiConfig)
+}
+
+func exchangeCredentialsComplete(c APIConfig) bool {
+	if c.Future.BaseURL == "" {
+		return true
+	}
+	return c.APIKey != "" && c.APISecret != ""
+}
+
+func notificationCredentialsComplete(c NotiConfig) bool {
+	return c.TelegramChatID != "" && c.TelegramBotToken != ""
+}
+
 // LoadFromBitwarden retrieves MEXC and Gate credentials and Telegram Chat ID from Bitwarden Secrets Manager.
 func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	if !hasBitwardenConfig() {
 		return nil, fmt.Errorf("bitwarden configuration not found (BITWARDEN_ACCESS_TOKEN, BITWARDEN_ORGANIZATION_ID, BITWARDEN_PROJECT_NAME required)")
 	}
-	loader, err := newBitwardenLoader()
+	loader, err := newBitwardenSecretLoader()
 	if err != nil {
 		return nil, err
 	}

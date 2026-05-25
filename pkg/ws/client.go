@@ -307,10 +307,12 @@ func waitContext(ctx context.Context, d time.Duration) bool {
 }
 
 // WaitReady blocks until the WebSocket connection is established and ready.
-func (c *Client) WaitReady(ctx context.Context) {
+func (c *Client) WaitReady(ctx context.Context) error {
 	select {
 	case <-c.ready:
+		return nil
 	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

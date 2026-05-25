@@ -110,13 +110,14 @@ func (p *Pool) attachHandlers(client *Client) {
 }
 
 // WaitReady blocks until the primary connection is authenticated and ready.
-func (p *Pool) WaitReady(ctx context.Context) {
+func (p *Pool) WaitReady(ctx context.Context) error {
 	p.mu.RLock()
 	pc := p.privateClient
 	p.mu.RUnlock()
 	if pc != nil {
-		pc.WaitReady(ctx)
+		return pc.WaitReady(ctx)
 	}
+	return nil
 }
 
 // Close gracefully shuts down all connections.
@@ -135,10 +136,10 @@ func (p *Pool) Close() {
 
 // getOrCreatePublicClient returns the index of an available public client or creates a new one.
 // Callers must hold p.mu.Lock().
-func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) int {
+func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) (int, error) {
 	for i, count := range p.clientSubCount {
 		if count < p.maxPairs {
-			return i
+			return i, nil
 		}
 	}
 
@@ -154,9 +155,11 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) int {
 
 	applogger.WithCtx(ctx, p.logger).Info("🌊 Spawning new public WS connection", "pool_idx", idx)
 	go newClient.Connect(ctx)
-	newClient.WaitReady(ctx)
+	if err := newClient.WaitReady(ctx); err != nil {
+		return 0, err
+	}
 
-	return idx
+	return idx, nil
 }
 
 func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
@@ -181,7 +184,12 @@ func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg interface{
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
 	if !exists {
-		idx = p.getOrCreatePublicClientIdx(ctx)
+		var err error
+		idx, err = p.getOrCreatePublicClientIdx(ctx)
+		if err != nil {
+			p.mu.Unlock()
+			return err
+		}
 		p.topicRouting[topic] = idx
 		p.clientSubCount[idx]++
 		p.subscriptions[topic] = publicSubscription{

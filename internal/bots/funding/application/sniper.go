@@ -8,12 +8,9 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
-	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
-	"crypto-bot/internal/infrastructure/ws"
 	applogger "crypto-bot/pkg/logger"
 
 	"golang.org/x/sync/errgroup"
@@ -52,11 +49,8 @@ type Sniper struct {
 	cfg              *config.Config
 	sysCfg           *config.SystemConfig
 	engine           *app.Engine
-	client           exchange.Client
-	ws               ws.Subscriber
 	orderNotifiers   map[string]*watcher.OrderWatcher
 	stores           map[string]*app.CentralStore
-	timeSync         shared.Clock
 	notifier         notifier.Notifier
 	disabled         map[string]string
 	disabledMu       sync.RWMutex
@@ -80,7 +74,6 @@ func NewSniper(
 	log *slog.Logger,
 	initializers ...SubscriptionInitializer,
 ) *Sniper {
-	wsSub := engine.Adapter
 	orderWatchers := make(map[string]*watcher.OrderWatcher)
 	for name, prov := range engine.Providers {
 		orderWatchers[name] = prov.Watcher
@@ -114,11 +107,8 @@ func NewSniper(
 		cfg:              cfg,
 		sysCfg:           sysCfg,
 		engine:           engine,
-		client:           engine.Client,
-		ws:               wsSub,
 		orderNotifiers:   orderWatchers,
 		stores:           storesMap,
-		timeSync:         engine.TimeSync,
 		notifier:         n,
 		disabled:         make(map[string]string),
 		reversionFactory: reversionFactory,
@@ -157,7 +147,9 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 			p.TimeSync.Start(ctx)
 		}(prov)
 
-		prov.TimeSync.WaitReady(ctx)
+		if err := prov.TimeSync.WaitReady(ctx); err != nil {
+			return err
+		}
 
 		// 2. Start stores + wait for initial data.
 		stores.Start(ctx)
@@ -172,7 +164,9 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 			p.WS.Connect(ctx)
 		}(prov)
 
-		prov.WS.WaitReady(ctx)
+		if err := prov.WS.WaitReady(ctx); err != nil {
+			return err
+		}
 
 		// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
 		stores.WireWS(prov.WS, prov.Adapter)

@@ -11,8 +11,6 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/exchange/gate"
-	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
@@ -40,30 +38,37 @@ type ExchangeProvider struct {
 // Engine manages the lifecycle of all dynamic ExchangeProvider instances.
 type Engine struct {
 	Cfg       *sysconfig.SystemConfig
-	Client    exchange.Client    // Default client (backwards compatibility)
-	Adapter   ws.ExchangeAdapter // Default adapter (backwards compatibility)
-	TimeSync  *timesync.TimeSync // Default timesync (backwards compatibility)
-	WS        *pkgws.Pool        // Default WS pool (backwards compatibility)
 	Bus       *eventbus.Bus
 	Providers map[string]*ExchangeProvider
+	log       *slog.Logger
 }
 
 // EngineConfig holds the dependencies needed to create an Engine.
 type EngineConfig struct {
-	SystemConfig *sysconfig.SystemConfig
-	HTTPClient   *http.Client
+	SystemConfig      *sysconfig.SystemConfig
+	HTTPClient        *http.Client
+	Logger            *slog.Logger
+	ProviderFactories []ProviderFactory
 }
 
 // NewEngine dynamically instantiates exchange providers based on configured credentials and endpoints.
-func NewEngine(cfg EngineConfig) *Engine {
+func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 	sysCfg := cfg.SystemConfig
-	engineLogger := slog.Default().With("component", "engine")
+	if sysCfg == nil {
+		return nil, fmt.Errorf("system config is required")
+	}
+	if cfg.Logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
+
+	engineLogger := cfg.Logger.With("component", "engine")
 	bus := eventbus.New(engineLogger.With("subsystem", "eventbus"))
 
 	engine := &Engine{
 		Cfg:       sysCfg,
 		Bus:       bus,
 		Providers: make(map[string]*ExchangeProvider),
+		log:       engineLogger,
 	}
 
 	httpClient := cfg.HTTPClient
@@ -73,126 +78,35 @@ func NewEngine(cfg EngineConfig) *Engine {
 		}
 	}
 
-	// 1. Initialize MEXC if configured
-	if sysCfg.ExchangeConfig.Mexc.Future.BaseURL != "" {
-		engineLogger.Info("⚙️ Initializing MEXC Exchange Provider...", "base_url", sysCfg.ExchangeConfig.Mexc.Future.BaseURL)
-		mexcClient := mexc.NewClient(
-			httpClient,
-			sysCfg.ExchangeConfig.Mexc.Future.BaseURL,
-			sysCfg.ExchangeConfig.Mexc.APIKey,
-			sysCfg.ExchangeConfig.Mexc.APISecret,
-			sysCfg.Logging,
-		)
-
-		var client exchange.Client = mexcClient
-		if sysCfg.DryRun {
-			client = exchange.NewDryRunClient(client)
+	factories := cfg.ProviderFactories
+	if len(factories) == 0 {
+		factories = DefaultProviderFactories()
+	}
+	factoryCfg := ProviderFactoryConfig{
+		SystemConfig: sysCfg,
+		HTTPClient:   httpClient,
+		Logger:       engineLogger,
+		Bus:          bus,
+	}
+	if err := validateProviderFactoryConfig(factoryCfg); err != nil {
+		return nil, err
+	}
+	for _, factory := range factories {
+		if !factory.Enabled(sysCfg) {
+			continue
 		}
-
-		mexcAdapter := mexc.NewWsAdapter()
-		mexcTimeSync := timesync.New(client, time.Duration(sysCfg.Sync.Time))
-
-		wsLogger := engineLogger.With("subsystem", "websocket", "exchange", exchange.ExchangeMexc)
-		wsClientOpts := []pkgws.ClientOption{}
-
-		if payload, interval := mexcAdapter.GetPingConfig(); payload != nil && interval > 0 {
-			wsClientOpts = append(wsClientOpts, pkgws.WithPing(payload, interval))
+		engineLogger.Info("initializing exchange provider", slog.String("exchange", factory.Name()))
+		prov, err := factory.Build(ctx, factoryCfg)
+		if err != nil {
+			return nil, fmt.Errorf("build %s provider: %w", factory.Name(), err)
 		}
-		if extractor := mexcAdapter.GetChannelExtractor(); extractor != nil {
-			wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
-		}
-		if hook := mexcAdapter.GetAuthHook(sysCfg.ExchangeConfig.Mexc.APIKey, sysCfg.ExchangeConfig.Mexc.APISecret); hook != nil {
-			wsClientOpts = append(wsClientOpts, pkgws.WithOnConnected(hook))
-		}
-
-		mexcWSPool := pkgws.NewPool(
-			sysCfg.ExchangeConfig.Mexc.WebSocket.WSURL,
-			sysCfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn,
-			wsLogger,
-			wsClientOpts...,
-		)
-		mexcAdapter.SetPool(mexcWSPool)
-
-		mexcWatcher := watcher.NewOrderWatcher(bus, exchange.ExchangeMexc, engineLogger.With("component", "order_watcher", "exchange", exchange.ExchangeMexc))
-
-		prov := &ExchangeProvider{
-			Name:     exchange.ExchangeMexc,
-			Client:   client,
-			Adapter:  mexcAdapter,
-			WS:       mexcWSPool,
-			TimeSync: mexcTimeSync,
-			Watcher:  mexcWatcher,
-		}
-		engine.Providers[exchange.ExchangeMexc] = prov
-
-		// Set default fallback properties for backwards compatibility
-		engine.Client = client
-		engine.Adapter = mexcAdapter
-		engine.TimeSync = mexcTimeSync
-		engine.WS = mexcWSPool
+		engine.Providers[prov.Name] = prov
+	}
+	if len(engine.Providers) == 0 {
+		return nil, fmt.Errorf("no exchange providers configured")
 	}
 
-	// 2. Initialize Gate.io if configured
-	if sysCfg.ExchangeConfig.Gate.Future.BaseURL != "" {
-		engineLogger.Info("⚙️ Initializing Gate.io Exchange Provider...", "base_url", sysCfg.ExchangeConfig.Gate.Future.BaseURL)
-		gateClient := gate.NewClient(
-			httpClient,
-			sysCfg.ExchangeConfig.Gate.Future.BaseURL,
-			sysCfg.ExchangeConfig.Gate.APIKey,
-			sysCfg.ExchangeConfig.Gate.APISecret,
-			sysCfg.Logging,
-		)
-
-		var client exchange.Client = gateClient
-		if sysCfg.DryRun {
-			client = exchange.NewDryRunClient(client)
-		}
-
-		gateAdapter := gate.NewWsAdapter()
-		gateTimeSync := timesync.New(client, time.Duration(sysCfg.Sync.Time))
-
-		wsLogger := engineLogger.With("subsystem", "websocket", "exchange", "gate")
-		wsClientOpts := []pkgws.ClientOption{}
-
-		if payload, interval := gateAdapter.GetPingConfig(); payload != nil && interval > 0 {
-			wsClientOpts = append(wsClientOpts, pkgws.WithPing(payload, interval))
-		}
-		if extractor := gateAdapter.GetChannelExtractor(); extractor != nil {
-			wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
-		}
-		// Auth hook is stored and computed inside subscriptions for Gate.io, but we call GetAuthHook to pass keys
-		gateAdapter.GetAuthHook(sysCfg.ExchangeConfig.Gate.APIKey, sysCfg.ExchangeConfig.Gate.APISecret)
-
-		gateWSPool := pkgws.NewPool(
-			sysCfg.ExchangeConfig.Gate.WebSocket.WSURL,
-			sysCfg.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn,
-			wsLogger,
-			wsClientOpts...,
-		)
-		gateAdapter.SetPool(gateWSPool)
-
-		gateWatcher := watcher.NewOrderWatcher(bus, "gate", engineLogger.With("component", "order_watcher", "exchange", "gate"))
-
-		prov := &ExchangeProvider{
-			Name:     "gate",
-			Client:   client,
-			Adapter:  gateAdapter,
-			WS:       gateWSPool,
-			TimeSync: gateTimeSync,
-			Watcher:  gateWatcher,
-		}
-		engine.Providers["gate"] = prov
-
-		// If no default provider was set yet (e.g. MEXC is disabled), default to Gate
-		if engine.Client == nil {
-			engine.Client = client
-			engine.Adapter = gateAdapter
-			engine.TimeSync = gateTimeSync
-			engine.WS = gateWSPool
-		}
-	}
-
-	return engine
+	return engine, nil
 }
 
 // GetProvider retrieves an ExchangeProvider by name.

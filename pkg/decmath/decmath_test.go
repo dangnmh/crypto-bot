@@ -232,6 +232,25 @@ func TestFormatPrice(t *testing.T) {
 	}
 }
 
+func TestTradingProfitHelpers(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, -0.12, decmath.SignedTradingFee(0.12))
+	assert.Equal(t, -0.12, decmath.SignedTradingFee(-0.12))
+	assert.Equal(t, 0.0, decmath.SignedTradingFee(0))
+	assert.Equal(t, 9.88, decmath.ClosedNetProfit(10, 0.12))
+	assert.Equal(t, 9.88, decmath.ClosedNetProfit(10, -0.12))
+}
+
+func TestCalcSpreadPct(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 0.0, decmath.CalcSpreadPct(0, 101))
+	assert.Equal(t, 0.0, decmath.CalcSpreadPct(-1, 101))
+	assert.Equal(t, 1.0, decmath.CalcSpreadPct(100, 101))
+	assert.Equal(t, 0.5, decmath.CalcSpreadPct(200, 201))
+}
+
 func TestAbsInt64(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, int64(10), decmath.AbsInt64(10))

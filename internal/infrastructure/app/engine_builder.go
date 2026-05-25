@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
@@ -11,6 +13,7 @@ import (
 type EngineBuilder struct {
 	cfg        *sysconfig.SystemConfig
 	httpClient *http.Client
+	logger     *slog.Logger
 	errors     []string
 }
 
@@ -31,6 +34,12 @@ func (b *EngineBuilder) WithHTTPClient(client *http.Client) *EngineBuilder {
 	return b
 }
 
+// WithLogger sets the logger used by the Engine and exchange providers.
+func (b *EngineBuilder) WithLogger(logger *slog.Logger) *EngineBuilder {
+	b.logger = logger
+	return b
+}
+
 // Build validates all required fields and returns a configured Engine.
 func (b *EngineBuilder) Build() (*Engine, error) {
 	b.errors = nil
@@ -40,15 +49,19 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	} else {
 		b.validateConfig()
 	}
+	if b.logger == nil {
+		b.errors = append(b.errors, "Logger is required")
+	}
 
 	if len(b.errors) > 0 {
 		return nil, fmt.Errorf("engine build failed: %v", b.errors)
 	}
 
-	return NewEngine(EngineConfig{
+	return NewEngine(context.Background(), EngineConfig{
 		SystemConfig: b.cfg,
 		HTTPClient:   b.httpClient,
-	}), nil
+		Logger:       b.logger,
+	})
 }
 
 // validateConfig checks for mandatory config values for enabled exchanges.

@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"testing"
-
-	"crypto-bot/internal/infrastructure/app"
 	"time"
 
-	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/app"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -19,8 +18,8 @@ type mockBot struct {
 	runAsBackgroundErr error
 	runErr             error
 	stopErr            error
-	runStarted         bool
-	runStopped         bool
+	runStarted         atomic.Bool
+	runStopped         atomic.Bool
 }
 
 func (m *mockBot) RunAsBackground(_ context.Context) error {
@@ -28,9 +27,9 @@ func (m *mockBot) RunAsBackground(_ context.Context) error {
 }
 
 func (m *mockBot) Run(ctx context.Context) error {
-	m.runStarted = true
+	m.runStarted.Store(true)
 	<-ctx.Done()
-	m.runStopped = true
+	m.runStopped.Store(true)
 	return m.runErr
 }
 
@@ -44,9 +43,7 @@ func TestRunBot_Lifecycle(t *testing.T) {
 	}
 	t.Parallel()
 	bot := &mockBot{}
-	engine := app.NewEngine(app.EngineConfig{
-		SystemConfig: &config.SystemConfig{},
-	})
+	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
 
 	done := make(chan struct{})
 	go func() {
@@ -66,8 +63,8 @@ func TestRunBot_Lifecycle(t *testing.T) {
 
 	select {
 	case <-done:
-		assert.True(t, bot.runStarted)
-		assert.True(t, bot.runStopped)
+		assert.True(t, bot.runStarted.Load())
+		assert.True(t, bot.runStopped.Load())
 	case <-time.After(2 * time.Second):
 		t.Fatal("app.RunBot did not exit after signal")
 	}
@@ -78,14 +75,12 @@ func TestRunBot_BackgroundFail(t *testing.T) {
 	bot := &mockBot{
 		runAsBackgroundErr: fmt.Errorf("background fail"),
 	}
-	engine := app.NewEngine(app.EngineConfig{
-		SystemConfig: &config.SystemConfig{},
-	})
+	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
 
 	err := app.RunBot(engine, bot)
 	assert.Error(t, err)
 	assert.Equal(t, "background fail", err.Error())
-	assert.False(t, bot.runStarted)
+	assert.False(t, bot.runStarted.Load())
 }
 
 func TestRunBot_StopError(t *testing.T) {
@@ -96,9 +91,7 @@ func TestRunBot_StopError(t *testing.T) {
 	bot := &mockBot{
 		stopErr: fmt.Errorf("stop failed"),
 	}
-	engine := app.NewEngine(app.EngineConfig{
-		SystemConfig: &config.SystemConfig{},
-	})
+	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
 
 	done := make(chan struct{})
 	go func() {
@@ -114,7 +107,7 @@ func TestRunBot_StopError(t *testing.T) {
 
 	select {
 	case <-done:
-		assert.True(t, bot.runStarted)
+		assert.True(t, bot.runStarted.Load())
 	case <-time.After(2 * time.Second):
 		t.Fatal("app.RunBot did not exit")
 	}

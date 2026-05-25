@@ -4,23 +4,28 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"crypto-bot/internal/bots/funding/config"
 )
+
+// Config contains provider-agnostic notification settings.
+type Config struct {
+	Enabled          bool
+	TelegramBotToken string
+	TelegramChatID   string
+}
 
 // NewFromConfig creates a Notifier based on system config and a bot token.
 // Currently only Telegram is supported.
-func NewFromConfig(cfg *config.SystemConfig, logger *slog.Logger) (Notifier, error) {
-	if !cfg.NotiConfig.Enabled {
+func NewFromConfig(cfg Config, logger *slog.Logger) (Notifier, error) {
+	if !cfg.Enabled {
 		return &noopNotifier{}, nil
 	}
 
-	chatID := cfg.NotiConfig.TelegramChatID
+	chatID := cfg.TelegramChatID
 	if chatID == "" {
 		return nil, fmt.Errorf("notifier.chatId is required when notifier.enabled is true")
 	}
 
-	provider, err := NewTelegramProvider(cfg.NotiConfig.TelegramBotToken, chatID, logger)
+	provider, err := NewTelegramProvider(cfg.TelegramBotToken, chatID, logger)
 	if err != nil {
 		return nil, err
 	}

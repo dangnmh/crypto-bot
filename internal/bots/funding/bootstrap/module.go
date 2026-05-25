@@ -12,9 +12,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/trap"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
-	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/httpclient"
 	applogger "crypto-bot/pkg/logger"
 
@@ -38,8 +36,6 @@ func Module(paths ConfigPaths) fx.Option {
 			provideFundingConfig,
 			provideNotifier,
 			provideHTTPClient,
-			provideExchangeClient,
-			provideWSAdapter,
 			provideEngine,
 			provideReversionStrategyFactory,
 			provideTrapStrategyFactory,
@@ -74,7 +70,11 @@ func provideFundingConfig(paths ConfigPaths, cfg *fundingconfig.SystemConfig) (*
 }
 
 func provideNotifier(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig, log *slog.Logger) (notifier.Notifier, error) {
-	n, err := notifier.NewFromConfig(cfg, log)
+	n, err := notifier.NewFromConfig(notifier.Config{
+		Enabled:          cfg.NotiConfig.Enabled,
+		TelegramBotToken: cfg.NotiConfig.TelegramBotToken,
+		TelegramChatID:   cfg.NotiConfig.TelegramChatID,
+	}, log)
 	if err != nil {
 		return nil, err
 	}
@@ -95,18 +95,11 @@ func provideHTTPClient() *http.Client {
 	return httpclient.NewPool(httpclient.DefaultPoolConfig())
 }
 
-func provideExchangeClient(engine *infraapp.Engine) exchange.Client {
-	return engine.Client
-}
-
-func provideWSAdapter(engine *infraapp.Engine) infraws.ExchangeAdapter {
-	return engine.Adapter
-}
-
-func provideEngine(cfg *fundingconfig.SystemConfig, httpClient *http.Client) *infraapp.Engine {
-	return infraapp.NewEngine(infraapp.EngineConfig{
+func provideEngine(cfg *fundingconfig.SystemConfig, httpClient *http.Client, log *slog.Logger) (*infraapp.Engine, error) {
+	return infraapp.NewEngine(context.Background(), infraapp.EngineConfig{
 		SystemConfig: &cfg.SystemConfig,
 		HTTPClient:   httpClient,
+		Logger:       log,
 	})
 }
 

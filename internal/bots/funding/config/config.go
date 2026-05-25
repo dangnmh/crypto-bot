@@ -57,7 +57,10 @@ func (c *Config) validate() error {
 
 		sc.Exchange = strings.ToLower(strings.TrimSpace(sc.Exchange))
 		if sc.Exchange == "" {
-			sc.Exchange = exchange.ExchangeMexc
+			return fmt.Errorf("symbols[%d].exchange is required", i)
+		}
+		if !c.exchangeConfigured(sc.Exchange) {
+			return fmt.Errorf("symbols[%d].exchange %q is not configured", i, sc.Exchange)
 		}
 
 		c.applyDefaults(sc, &defaults)
@@ -79,6 +82,17 @@ func (c *Config) validate() error {
 	}
 
 	return nil
+}
+
+func (c *Config) exchangeConfigured(name string) bool {
+	switch name {
+	case exchange.ExchangeMexc:
+		return c.System.ExchangeConfig.Mexc.Future.BaseURL != ""
+	case exchange.ExchangeGate:
+		return c.System.ExchangeConfig.Gate.Future.BaseURL != ""
+	default:
+		return false
+	}
 }
 
 func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {

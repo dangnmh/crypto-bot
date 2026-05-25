@@ -2,6 +2,7 @@ package ws_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -119,7 +120,9 @@ func TestWithChannelExtractor(t *testing.T) {
 		received <- string(data)
 	})
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-received:
@@ -182,7 +185,9 @@ func TestWithPing(t *testing.T) {
 
 	c := ws.NewClient(wsURL(srv), nil, ws.WithPing(map[string]string{"ping": "pong"}, 50*time.Millisecond))
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-received:
@@ -245,7 +250,9 @@ func TestClient_ConnectAndSend(t *testing.T) {
 
 	c := ws.NewClient(wsURL(srv), nil)
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	if !c.IsConnected() {
 		t.Fatal("client should be connected")
@@ -286,7 +293,9 @@ func TestClient_OnMessage_ReceivesRouted(t *testing.T) {
 		received <- data
 	})
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-received:
@@ -318,7 +327,9 @@ func TestClient_SetGlobalHandler_ReceivesAll(t *testing.T) {
 		received <- data
 	})
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-received:
@@ -358,7 +369,9 @@ func TestClient_PongFiltered(t *testing.T) {
 		globalCalled <- data
 	})
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-globalCalled:
@@ -399,7 +412,9 @@ func TestClient_EmptyChannelFiltered(t *testing.T) {
 		globalCalled <- data
 	})
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-globalCalled:
@@ -427,7 +442,9 @@ func TestClient_NoExtractor_NoHandler_NoPanic(t *testing.T) {
 	// No extractor, no global handler — should not panic.
 	c := ws.NewClient(wsURL(srv), nil)
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(100 * time.Millisecond)
 	c.Close()
 }
@@ -458,7 +475,9 @@ func TestClient_Close_WithConnection(t *testing.T) {
 
 	c := ws.NewClient(wsURL(srv), nil)
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	c.Close()
 	if c.IsConnected() {
@@ -483,7 +502,9 @@ func TestClient_WaitReady_ContextCancel(t *testing.T) {
 	c := ws.NewClient("ws://fake", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	c.WaitReady(ctx) // Should return immediately.
+	if err := c.WaitReady(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
 }
 
 // ── IsConnected ──────────────────────────────────────────────────────.
@@ -535,7 +556,9 @@ func TestPool_On_HandlerReceivesMessage(t *testing.T) {
 	defer cancel()
 
 	p.Connect(ctx)
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	select {
 	case msg := <-received:
@@ -571,7 +594,9 @@ func TestPool_WaitReady_NoClient(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	// Should return immediately when no private client.
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPool_Close_Empty(t *testing.T) {
@@ -597,7 +622,9 @@ func TestPool_ConnectAndClose(t *testing.T) {
 	defer cancel()
 
 	p.Connect(ctx)
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	client := p.GetPrivateClient()
 	if client == nil {
@@ -624,7 +651,9 @@ func TestPool_ConnectIdempotent(t *testing.T) {
 
 	p.Connect(ctx)
 	p.Connect(ctx) // Second call should be a no-op.
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	p.Close()
 }
@@ -649,7 +678,9 @@ func TestPool_On_MultipleHandlers(t *testing.T) {
 	defer cancel()
 
 	p.Connect(ctx)
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(200 * time.Millisecond) // Allow message dispatch.
 
 	if got := calls.Load(); got < 2 {
@@ -674,7 +705,9 @@ func TestPool_SubscribePublic(t *testing.T) {
 	defer cancel()
 
 	p.Connect(ctx)
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	// Subscribe to a public topic — should create a new public client.
 	err := p.SubscribePublic(ctx, "BTC:ticker", map[string]string{"method": "sub.ticker"})
@@ -717,7 +750,9 @@ func TestPool_SendPrivate_WithClient(t *testing.T) {
 	defer cancel()
 
 	p.Connect(ctx)
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	err := p.SendPrivate(context.Background(), map[string]string{"method": "test"})
 	if err != nil {
@@ -746,7 +781,9 @@ func TestPool_UnsubscribePublic_Success(t *testing.T) {
 	defer cancel()
 
 	p.Connect(ctx)
-	p.WaitReady(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	err := p.SubscribePublic(ctx, "BTC:ticker", map[string]string{"method": "sub"})
 	if err != nil {
@@ -779,7 +816,9 @@ func TestClient_ConcurrentSend(t *testing.T) {
 
 	c := ws.NewClient(wsURL(srv), nil)
 	go c.Connect(ctx)
-	c.WaitReady(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {

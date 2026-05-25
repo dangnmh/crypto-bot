@@ -10,7 +10,6 @@ import (
 	"crypto-bot/internal/bots/funding/bootstrap"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 
 	"github.com/stretchr/testify/require"
@@ -48,7 +47,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 		"notifier": {"enabled": false}
 	}`), 0o600))
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[
-		{"symbol": "BTC_USDT", "marginUSDT": 10, "leverage": 5}
+		{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 10, "leverage": 5}
 	]`), 0o600))
 
 	var (
@@ -56,7 +55,6 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 		systemCfg  *fundingconfig.SystemConfig
 		fundingCfg *fundingconfig.Config
 		httpClient *http.Client
-		client     exchange.Client
 		engine     *infraapp.Engine
 		bot        infraapp.Bot
 		n          notifier.Notifier
@@ -65,7 +63,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	app := fxtest.New(
 		t,
 		bootstrap.Module(bootstrap.ConfigPaths{System: systemPath, Bot: fundingPath}),
-		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &client, &engine, &bot, &n),
+		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
 	)
 	require.NotNil(t, app)
 
@@ -73,7 +71,6 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	require.NotNil(t, systemCfg)
 	require.NotNil(t, fundingCfg)
 	require.NotNil(t, httpClient)
-	require.NotNil(t, client)
 	require.NotNil(t, engine)
 	require.NotNil(t, bot)
 	require.NotNil(t, n)

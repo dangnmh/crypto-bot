@@ -9,6 +9,7 @@ import (
 
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
+	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/types"
 
 	"github.com/stretchr/testify/assert"
@@ -31,7 +32,18 @@ func loadWith(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) *co
 
 func sysWithDefaults(defaults config.TradingDefaults) *config.SystemConfig {
 	raw, _ := json.Marshal(defaults)
-	return &config.SystemConfig{TradingDefaults: json.RawMessage(raw)}
+	return &config.SystemConfig{
+		SystemConfig: sysconfig.SystemConfig{
+			ExchangeConfig: sysconfig.ExchangeConfig{
+				Mexc: sysconfig.APIConfig{Future: sysconfig.RESTConfig{BaseURL: "https://mexc.test"}},
+			},
+		},
+		TradingDefaults: json.RawMessage(raw),
+	}
+}
+
+func sysWithMexc() *config.SystemConfig {
+	return sysWithDefaults(config.TradingDefaults{})
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -41,8 +53,8 @@ func sysWithDefaults(defaults config.TradingDefaults) *config.SystemConfig {
 func TestLoad_ValidConfig(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, &config.SystemConfig{},
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 20}]`)
+	cfg := loadWith(t, sysWithMexc(),
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 20}]`)
 
 	require.Len(t, cfg.Symbols, 1)
 	assert.Equal(t, "BTC_USDT", cfg.Symbols[0].Symbol)
@@ -62,7 +74,7 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, path)
+	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
 }
 
@@ -80,8 +92,8 @@ func TestLoad_MissingSymbolName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "no_sym.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"marginUSDT": 100, "leverage": 20}]`), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, path)
+	require.NoError(t, os.WriteFile(path, []byte(`[{"exchange": "mexc", "marginUSDT": 100, "leverage": 20}]`), 0o600))
+	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "'symbol' failed on the 'required' tag")
 }
@@ -90,8 +102,8 @@ func TestLoad_InvalidMargin(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad_margin.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 0, "leverage": 20}]`), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, path)
+	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 0, "leverage": 20}]`), 0o600))
+	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "'marginUSDT' failed on the 'gt' tag")
 }
@@ -100,8 +112,8 @@ func TestLoad_InvalidLeverage(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad_lev.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 0}]`), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, path)
+	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 0}]`), 0o600))
+	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "'leverage' failed on the 'gte' tag")
 }
@@ -111,9 +123,9 @@ func TestLoad_InvalidExchange(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad_exch.json")
 	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 2, "exchange": "binance"}]`), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, path)
+	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "'exchange' failed on the 'oneof' tag")
+	assert.Contains(t, err.Error(), `exchange "binance" is not configured`)
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -148,7 +160,7 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 		},
 	})
 
-	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "marginUSDT": 100}]`)
+	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100}]`)
 	sc := cfg.Symbols[0]
 
 	// Verify defaults were applied (note: values are normalized to ratios by Load).
@@ -176,7 +188,7 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 	})
 
 	cfg := loadWith(t, sysCfg,
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 20, "minFundingRate": 1.0}]`)
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 20, "minFundingRate": 1.0}]`)
 	sc := cfg.Symbols[0]
 
 	assert.Equal(t, 20, sc.Leverage, "per-symbol value should win")
@@ -190,8 +202,8 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 func TestLoad_NormalizesPercentages(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, &config.SystemConfig{},
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
+	cfg := loadWith(t, sysWithMexc(),
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
 		   "minFundingRate": 0.3, "maxPriceDiffPercent": 0.8,
 		   "fundingReversion": {"enabled": true, "takeProfitPct": 20, "stopLossPct": 5}}]`)
 	sc := cfg.Symbols[0]
@@ -205,8 +217,8 @@ func TestLoad_NormalizesPercentages(t *testing.T) {
 func TestLoad_DefaultTPSL_WhenZero(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, &config.SystemConfig{TradingDefaults: json.RawMessage(`{"fundingReversion":{"enabled":true}}`)},
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5}]`)
+	cfg := loadWith(t, sysWithDefaults(config.TradingDefaults{FundingReversion: domain.FundingReversionConfig{Enabled: true}}),
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5}]`)
 	sc := cfg.Symbols[0]
 
 	assert.InDelta(t, 0.20, sc.FundingReversion.TakeProfitPct, 1e-9, "default TP 20% -> 0.20")
@@ -216,8 +228,8 @@ func TestLoad_DefaultTPSL_WhenZero(t *testing.T) {
 func TestLoad_AcceptsDecimalPercentRatiosAtConfigBoundary(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, &config.SystemConfig{},
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
+	cfg := loadWith(t, sysWithMexc(),
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
 		   "minFundingRate": 0.003,
 		   "fundingReversion": {"enabled": true, "takeProfitPct": 0.03, "stopLossPct": 0.02},
 		   "fundingTrap": {"enabled": true, "depthPct": 0.025, "takeProfitPct": 0.015, "stopLossPct": 0.015,
@@ -246,16 +258,16 @@ func TestLoad_ParsesSymbolModes(t *testing.T) {
 		wantOpen     int
 		wantPosition int
 	}{
-		{"ISOLATED/HEDGE", `[{"symbol":"S","marginUSDT":1,"leverage":1,"openType":"ISOLATED","positionMode":"HEDGE"}]`, 1, 1},
-		{"CROSS/ONE_WAY", `[{"symbol":"S","marginUSDT":1,"leverage":1,"openType":"CROSS","positionMode":"ONE_WAY"}]`, 2, 2},
-		{"empty defaults to ISOLATED/HEDGE", `[{"symbol":"S","marginUSDT":1,"leverage":1}]`, 1, 1},
-		{"lowercase", `[{"symbol":"S","marginUSDT":1,"leverage":1,"openType":"isolated","positionMode":"hedge"}]`, 1, 1},
+		{"ISOLATED/HEDGE", `[{"symbol":"S","exchange":"mexc","marginUSDT":1,"leverage":1,"openType":"ISOLATED","positionMode":"HEDGE"}]`, 1, 1},
+		{"CROSS/ONE_WAY", `[{"symbol":"S","exchange":"mexc","marginUSDT":1,"leverage":1,"openType":"CROSS","positionMode":"ONE_WAY"}]`, 2, 2},
+		{"empty defaults to ISOLATED/HEDGE", `[{"symbol":"S","exchange":"mexc","marginUSDT":1,"leverage":1}]`, 1, 1},
+		{"lowercase", `[{"symbol":"S","exchange":"mexc","marginUSDT":1,"leverage":1,"openType":"isolated","positionMode":"hedge"}]`, 1, 1},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			cfg := loadWith(t, &config.SystemConfig{}, tt.json)
+			cfg := loadWith(t, sysWithMexc(), tt.json)
 			sc := cfg.Symbols[0]
 			assert.Equal(t, tt.wantOpen, sc.ParsedOpenType)
 			assert.Equal(t, tt.wantPosition, sc.ParsedPositionMode)
@@ -270,8 +282,8 @@ func TestLoad_ParsesSymbolModes(t *testing.T) {
 func TestLoad_TrapDefaults_WhenEnabled(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, &config.SystemConfig{},
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
+	cfg := loadWith(t, sysWithMexc(),
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
 		   "fundingTrap": {"enabled": true}}]`)
 	sc := cfg.Symbols[0]
 
@@ -306,8 +318,8 @@ func TestIsHedgeTrapEnabled(t *testing.T) {
 func TestLoad_NormalizesTrailingPct(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, &config.SystemConfig{},
-		`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 5,
+	cfg := loadWith(t, sysWithMexc(),
+		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
 		   "fundingReversion": {"enabled": true},
 		   "fundingTrap": {"enabled": true, "depthPct": 3, "takeProfitPct": 2, "stopLossPct": 2,
 		            "trailing": {"enabled": true, "activationPct": 0, "callbackPct": 0.5}}}]`)
@@ -330,7 +342,7 @@ func TestLoad_WithTradingDefaults(t *testing.T) {
 		MaxPriceDiffPercent: 0.1,
 	})
 
-	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "marginUSDT": 50}]`)
+	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 50}]`)
 	sc := cfg.Symbols[0]
 	assert.Equal(t, 10, sc.Leverage, "should inherit from defaults")
 }

@@ -2,10 +2,13 @@ package app_test
 
 import (
 	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/app"
-	"time"
 
 	"crypto-bot/internal/domain"
 	sysconfig "crypto-bot/internal/infrastructure/config"
@@ -17,6 +20,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // mockAdapter for testing engine setup.
 type mockAdapter struct {
@@ -74,6 +81,23 @@ func (d *dummyClient) GetFundingRate(_ context.Context, _ string) (*exchange.Fun
 	}, nil
 }
 
+type fakeProviderFactory struct {
+	name    string
+	enabled bool
+	err     error
+}
+
+func (f fakeProviderFactory) Name() string { return f.name }
+func (f fakeProviderFactory) Enabled(*sysconfig.SystemConfig) bool {
+	return f.enabled
+}
+func (f fakeProviderFactory) Build(context.Context, app.ProviderFactoryConfig) (*app.ExchangeProvider, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &app.ExchangeProvider{Name: f.name, Client: &dummyClient{}}, nil
+}
+
 func TestNewEngine_Success(t *testing.T) {
 	t.Parallel()
 
@@ -97,15 +121,13 @@ func TestNewEngine_Success(t *testing.T) {
 
 	engineCfg := app.EngineConfig{
 		SystemConfig: cfg,
+		Logger:       testLogger(),
 	}
 
-	e := app.NewEngine(engineCfg)
+	e, err := app.NewEngine(context.Background(), engineCfg)
+	require.NoError(t, err)
 	require.NotNil(t, e)
 	assert.NotNil(t, e.Cfg)
-	assert.NotNil(t, e.Client)
-	assert.NotNil(t, e.Adapter)
-	assert.NotNil(t, e.TimeSync)
-	assert.NotNil(t, e.WS)
 	assert.NotNil(t, e.Bus)
 
 	// Ensure both MEXC and Gate providers are registered
@@ -135,6 +157,51 @@ func TestNewEngine_Success(t *testing.T) {
 	})
 }
 
+func TestNewEngine_ValidatesCoreDependencies(t *testing.T) {
+	t.Parallel()
+
+	_, err := app.NewEngine(context.Background(), app.EngineConfig{Logger: testLogger()})
+	require.ErrorContains(t, err, "system config is required")
+
+	_, err = app.NewEngine(context.Background(), app.EngineConfig{SystemConfig: &sysconfig.SystemConfig{}})
+	require.ErrorContains(t, err, "logger is required")
+}
+
+func TestNewEngine_CustomProviderFactoryPaths(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{}
+
+	_, err := app.NewEngine(context.Background(), app.EngineConfig{
+		SystemConfig:      cfg,
+		Logger:            testLogger(),
+		ProviderFactories: []app.ProviderFactory{fakeProviderFactory{name: "fake", enabled: false}},
+	})
+	require.ErrorContains(t, err, "no exchange providers configured")
+
+	_, err = app.NewEngine(context.Background(), app.EngineConfig{
+		SystemConfig:      cfg,
+		Logger:            testLogger(),
+		ProviderFactories: []app.ProviderFactory{fakeProviderFactory{name: "fake", enabled: true, err: errors.New("boom")}},
+	})
+	require.ErrorContains(t, err, "build fake provider")
+
+	e, err := app.NewEngine(context.Background(), app.EngineConfig{
+		SystemConfig:      cfg,
+		Logger:            testLogger(),
+		ProviderFactories: []app.ProviderFactory{fakeProviderFactory{name: "fake", enabled: true}},
+	})
+	require.NoError(t, err)
+	defer func() { _ = e.Shutdown(context.Background()) }()
+
+	prov, err := e.GetProvider("FAKE")
+	require.NoError(t, err)
+	assert.Equal(t, "fake", prov.Name)
+
+	_, err = e.GetProvider("missing")
+	require.ErrorContains(t, err, `exchange provider "missing"`)
+}
+
 func TestStoreRegistry_StartStores(t *testing.T) {
 	t.Parallel()
 
@@ -148,7 +215,7 @@ func TestStoreRegistry_StartStores(t *testing.T) {
 	cancel() // instantly cancel to prevent loops
 
 	assert.NotPanics(t, func() {
-		reg.StartStores(ctx, &app.Engine{Client: &dummyClient{}}, app.StoreSyncConfig{
+		reg.StartStores(ctx, &dummyClient{}, app.StoreSyncConfig{
 			TickerInterval:   types.Duration(time.Second),
 			ContractInterval: types.Duration(time.Second),
 		})
@@ -163,7 +230,7 @@ func TestStoreRegistry_StartStoresWithFunding(t *testing.T) {
 	cancel()
 
 	assert.NotPanics(t, func() {
-		reg.StartStores(ctx, &app.Engine{Client: &dummyClient{}}, app.StoreSyncConfig{
+		reg.StartStores(ctx, &dummyClient{}, app.StoreSyncConfig{
 			TickerInterval:   types.Duration(time.Second),
 			ContractInterval: types.Duration(time.Second),
 			FundingInterval:  types.Duration(time.Second),
@@ -186,45 +253,36 @@ func TestStoreRegistry_WaitReadyContextCancelled(t *testing.T) {
 func TestNewEngine_OnlyMexc(t *testing.T) {
 	t.Parallel()
 
-	cfg := &sysconfig.SystemConfig{
-		ExchangeConfig: sysconfig.ExchangeConfig{
-			Mexc: sysconfig.APIConfig{
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-			},
+	assertSingleProviderEngine(t, exchange.ExchangeMexc, sysconfig.ExchangeConfig{
+		Mexc: sysconfig.APIConfig{
+			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 		},
-	}
-
-	e := app.NewEngine(app.EngineConfig{
-		SystemConfig: cfg,
 	})
-	require.NotNil(t, e)
-	assert.Len(t, e.Providers, 1)
-	assert.Contains(t, e.Providers, "mexc")
-	assert.NotNil(t, e.Client)
-
-	_ = e.Shutdown(context.Background())
 }
 
 func TestNewEngine_OnlyGate(t *testing.T) {
 	t.Parallel()
 
-	cfg := &sysconfig.SystemConfig{
-		ExchangeConfig: sysconfig.ExchangeConfig{
-			Gate: sysconfig.APIConfig{
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-			},
+	assertSingleProviderEngine(t, exchange.ExchangeGate, sysconfig.ExchangeConfig{
+		Gate: sysconfig.APIConfig{
+			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
+			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 		},
-	}
-
-	e := app.NewEngine(app.EngineConfig{
-		SystemConfig: cfg,
 	})
+}
+
+func assertSingleProviderEngine(t *testing.T, exchangeName string, exchangeCfg sysconfig.ExchangeConfig) {
+	t.Helper()
+
+	e, err := app.NewEngine(context.Background(), app.EngineConfig{
+		SystemConfig: &sysconfig.SystemConfig{ExchangeConfig: exchangeCfg},
+		Logger:       testLogger(),
+	})
+	require.NoError(t, err)
 	require.NotNil(t, e)
 	assert.Len(t, e.Providers, 1)
-	assert.Contains(t, e.Providers, "gate")
-	assert.NotNil(t, e.Client)
+	assert.Contains(t, e.Providers, exchangeName)
 
 	_ = e.Shutdown(context.Background())
 }
@@ -233,7 +291,7 @@ func TestEngine_Shutdown_NilWS(t *testing.T) {
 	t.Parallel()
 
 	e := &app.Engine{
-		WS: nil,
+		Providers: map[string]*app.ExchangeProvider{},
 	}
 
 	assert.NotPanics(t, func() {

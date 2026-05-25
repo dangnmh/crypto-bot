@@ -47,10 +47,10 @@ func (a *WsAdapter) sign(channel, event string, timestamp int64) string {
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
 	msg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.tickers",
-		"event":   "subscribe",
-		"payload": []string{symbol},
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelTickers,
+		gateJSONEvent:   gateEventSubscribe,
+		gateJSONPayload: []string{symbol},
 	}
 	topic := symbol + ":ticker"
 	return a.pool.SubscribePublic(ctx, topic, msg)
@@ -60,10 +60,10 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
 	msg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.tickers",
-		"event":   "unsubscribe",
-		"payload": []string{symbol},
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelTickers,
+		gateJSONEvent:   gateEventUnsubscribe,
+		gateJSONPayload: []string{symbol},
 	}
 	topic := symbol + ":ticker"
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
@@ -73,10 +73,10 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
 	msg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.candlesticks",
-		"event":   "subscribe",
-		"payload": []string{"1m", symbol},
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelCandlesticks,
+		gateJSONEvent:   gateEventSubscribe,
+		gateJSONPayload: []string{"1m", symbol},
 	}
 	topic := symbol + ":kline"
 	return a.pool.SubscribePublic(ctx, topic, msg)
@@ -86,10 +86,10 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
 	msg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.candlesticks",
-		"event":   "unsubscribe",
-		"payload": []string{"1m", symbol},
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelCandlesticks,
+		gateJSONEvent:   gateEventUnsubscribe,
+		gateJSONPayload: []string{"1m", symbol},
 	}
 	topic := symbol + ":kline"
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
@@ -99,10 +99,10 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	unixSec := time.Now().Unix()
 	msg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.order_book",
-		"event":   "subscribe",
-		"payload": []string{symbol, "20", "0"}, // symbol, depth, interval in ms ("0" for real-time)
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelOrderBook,
+		gateJSONEvent:   gateEventSubscribe,
+		gateJSONPayload: []string{symbol, "20", "0"}, // symbol, depth, interval in ms ("0" for real-time)
 	}
 	topic := symbol + ":depth:" + step
 	return a.pool.SubscribePublic(ctx, topic, msg)
@@ -112,10 +112,10 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	unixSec := time.Now().Unix()
 	msg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.order_book",
-		"event":   "unsubscribe",
-		"payload": []string{symbol, "20", "0"},
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelOrderBook,
+		gateJSONEvent:   gateEventUnsubscribe,
+		gateJSONPayload: []string{symbol, "20", "0"},
 	}
 	topic := symbol + ":depth:" + step
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
@@ -126,17 +126,17 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	unixSec := time.Now().Unix()
 
 	// 1. Subscribe to Orders channel
-	ordersSign := a.sign("futures.orders", "subscribe", unixSec)
+	ordersSign := a.sign(gateChannelOrders, gateEventSubscribe, unixSec)
 	ordersMsg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.orders",
-		"event":   "subscribe",
-		"auth": map[string]string{
-			"method": "api_key",
-			"KEY":    a.apiKey,
-			"SIGN":   ordersSign,
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelOrders,
+		gateJSONEvent:   gateEventSubscribe,
+		gateJSONAuth: map[string]string{
+			gateJSONMethod: gateAuthMethodAPIKey,
+			gateJSONKey:    a.apiKey,
+			gateJSONSign:   ordersSign,
 		},
-		"payload": []string{"!all"},
+		gateJSONPayload: []string{gatePayloadAll},
 	}
 	err := a.pool.SendPrivate(ctx, ordersMsg)
 	if err != nil {
@@ -144,17 +144,17 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	}
 
 	// 2. Subscribe to Positions channel
-	posSign := a.sign("futures.positions", "subscribe", unixSec)
+	posSign := a.sign(gateChannelPositions, gateEventSubscribe, unixSec)
 	posMsg := map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.positions",
-		"event":   "subscribe",
-		"auth": map[string]string{
-			"method": "api_key",
-			"KEY":    a.apiKey,
-			"SIGN":   posSign,
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelPositions,
+		gateJSONEvent:   gateEventSubscribe,
+		gateJSONAuth: map[string]string{
+			gateJSONMethod: gateAuthMethodAPIKey,
+			gateJSONKey:    a.apiKey,
+			gateJSONSign:   posSign,
 		},
-		"payload": []string{"!all"},
+		gateJSONPayload: []string{gatePayloadAll},
 	}
 	err = a.pool.SendPrivate(ctx, posMsg)
 	if err != nil {
@@ -169,8 +169,8 @@ func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
 	// Gate uses standard ping but some channels support active pings.
 	unixSec := time.Now().Unix()
 	return map[string]interface{}{
-		"time":    unixSec,
-		"channel": "futures.ping",
+		gateJSONTime:    unixSec,
+		gateJSONChannel: gateChannelPing,
 	}, 15 * time.Second
 }
 
@@ -190,15 +190,15 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		}
 		if err := json.Unmarshal(data, &msg); err == nil {
 			switch msg.Channel {
-			case "futures.tickers":
+			case gateChannelTickers:
 				return "ticker"
-			case "futures.order_book":
+			case gateChannelOrderBook:
 				return "depth"
-			case "futures.candlesticks":
+			case gateChannelCandlesticks:
 				return "kline"
-			case "futures.orders":
+			case gateChannelOrders:
 				return "personal.order"
-			case "futures.positions":
+			case gateChannelPositions:
 				return "personal.position"
 			}
 			return msg.Channel
@@ -343,13 +343,14 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 		DealVol: float64(decmath.AbsInt64(raw.Size) - decmath.AbsInt64(raw.Left)),
 	}
 
-	if raw.Status == "finished" {
-		if raw.FinishAs == "filled" {
+	switch raw.Status {
+	case gateOrderStatusFinished:
+		if raw.FinishAs == gateFinishAsFilled {
 			deal.State = exchange.OrderStateFilled
 		} else {
 			deal.State = exchange.OrderStateCanceled
 		}
-	} else if raw.Status == "open" {
+	case gateOrderStatusOpen:
 		deal.State = exchange.OrderStatePartial
 	}
 

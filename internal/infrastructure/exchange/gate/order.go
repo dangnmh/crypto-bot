@@ -23,14 +23,14 @@ func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) gateapi.Futures
 	// 1. Map Price & Tif
 	if req.Type == exchange.OrderTypeMarket {
 		order.Price = "0"
-		order.Tif = "ioc"
+		order.Tif = gateTifIOC
 	} else {
 		order.Price = fmt.Sprintf("%g", req.Price)
 		switch req.Type {
 		case exchange.OrderTypePostOnly:
 			order.Tif = "poc"
 		case exchange.OrderTypeIOC:
-			order.Tif = "ioc"
+			order.Tif = gateTifIOC
 		case exchange.OrderTypeFOK:
 			order.Tif = "fok"
 		default:
@@ -96,13 +96,15 @@ func mapOrderInfo(raw gateapi.FuturesOrder) exchange.OrderInfo {
 	}
 
 	// Map State
-	if raw.Status == "finished" {
-		if raw.FinishAs == "filled" {
+	switch raw.Status {
+	case gateOrderStatusFinished:
+		switch raw.FinishAs {
+		case gateFinishAsFilled:
 			info.State = exchange.OrderStateFilled
-		} else if raw.FinishAs == "cancelled" || raw.FinishAs == "ioc" {
+		case "cancelled", gateTifIOC:
 			info.State = exchange.OrderStateCanceled
 		}
-	} else if raw.Status == "open" {
+	case gateOrderStatusOpen:
 		if raw.Left < raw.Size {
 			info.State = exchange.OrderStatePartial
 		}

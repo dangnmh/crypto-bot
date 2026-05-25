@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,9 +16,7 @@ func TestFxBotRunnerLifecycle(t *testing.T) {
 	t.Parallel()
 
 	bot := &mockBot{}
-	engine := app.NewEngine(app.EngineConfig{
-		SystemConfig: &config.SystemConfig{},
-	})
+	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
 
 	fxApp := fxtest.New(
 		t,
@@ -33,9 +30,9 @@ func TestFxBotRunnerLifecycle(t *testing.T) {
 
 	fxApp.RequireStart()
 	require.Eventually(t, func() bool {
-		return bot.runStarted
+		return bot.runStarted.Load()
 	}, time.Second, 10*time.Millisecond)
 
 	fxApp.RequireStop()
-	assert.True(t, bot.runStopped)
+	assert.True(t, bot.runStopped.Load())
 }

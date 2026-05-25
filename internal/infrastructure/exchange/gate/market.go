@@ -142,10 +142,10 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		gateInterval = "1m"
 	case "Min5", "5m":
 		gateInterval = "5m"
-	case "Min15", "15m":
-		gateInterval = "15m"
-	case "Min30", "30m":
-		gateInterval = "30m"
+	case "Min15", gateInterval15m:
+		gateInterval = gateInterval15m
+	case "Min30", gateInterval30m:
+		gateInterval = gateInterval30m
 	case "Hour1", "1h":
 		gateInterval = "1h"
 	case "Hour4", "4h":

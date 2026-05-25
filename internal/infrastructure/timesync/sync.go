@@ -39,10 +39,12 @@ func New(client exchange.Client, interval time.Duration) *TimeSync {
 }
 
 // WaitReady blocks until the first successful time sync completes or context is cancelled.
-func (ts *TimeSync) WaitReady(ctx context.Context) {
+func (ts *TimeSync) WaitReady(ctx context.Context) error {
 	select {
 	case <-ts.ready:
+		return nil
 	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

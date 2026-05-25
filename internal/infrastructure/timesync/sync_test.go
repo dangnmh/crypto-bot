@@ -26,7 +26,7 @@ func TestTimeSync_StartAndAccessors(t *testing.T) {
 	defer cancel()
 
 	go ts.Start(ctx)
-	ts.WaitReady(ctx)
+	assert.NoError(t, ts.WaitReady(ctx))
 
 	assert.NotZero(t, ts.GetServerTime())
 	assert.NotZero(t, ts.Now())
@@ -46,6 +46,6 @@ func TestTimeSync_WaitReadyAndSleepCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	ts.WaitReady(ctx)
+	assert.ErrorIs(t, ts.WaitReady(ctx), context.Canceled)
 	assert.ErrorIs(t, ts.Sleep(ctx, time.Second), context.Canceled)
 }
