@@ -6,6 +6,10 @@ import (
 	"testing"
 
 	"crypto-bot/internal/bots/funding/application"
+	"crypto-bot/internal/bots/funding/application/reversion"
+	"crypto-bot/internal/bots/funding/application/strategy"
+	"crypto-bot/internal/bots/funding/application/trailing"
+	"crypto-bot/internal/bots/funding/application/trap"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/testutil/mocks"
@@ -30,7 +34,22 @@ func TestNewSniper(t *testing.T) {
 	}
 
 	ctrl := gomock.NewController(t)
-	sniper := application.NewSniper(cfg, sysCfg, engine, mocks.NewMockNotifier(ctrl), slog.Default())
+	var reversionFactory application.ReversionStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return reversion.NewStrategy(cfg, global, deps)
+	}
+	var trapFactory application.TrapStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return trap.NewStrategy(cfg, global, deps)
+	}
+	var trailingFactory application.TrailingStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return trailing.NewStrategy(cfg, global, deps)
+	}
+
+	sniper := application.NewSniper(
+		cfg, sysCfg, engine,
+		mocks.NewMockNotifier(ctrl),
+		reversionFactory, trapFactory, trailingFactory,
+		slog.Default(),
+	)
 	require.NotNil(t, sniper)
 }
 
@@ -46,7 +65,21 @@ func TestSniper_Stop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockNotifier(ctrl)
 
-	sniper := application.NewSniper(cfg, sysCfg, engine, m, slog.Default())
+	var reversionFactory application.ReversionStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return reversion.NewStrategy(cfg, global, deps)
+	}
+	var trapFactory application.TrapStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return trap.NewStrategy(cfg, global, deps)
+	}
+	var trailingFactory application.TrailingStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return trailing.NewStrategy(cfg, global, deps)
+	}
+
+	sniper := application.NewSniper(
+		cfg, sysCfg, engine, m,
+		reversionFactory, trapFactory, trailingFactory,
+		slog.Default(),
+	)
 	err := sniper.Stop(context.Background())
 	assert.NoError(t, err)
 }
@@ -65,7 +98,22 @@ func TestSniper_Run_CancelledContext(t *testing.T) {
 	}
 
 	ctrl := gomock.NewController(t)
-	sniper := application.NewSniper(cfg, sysCfg, engine, mocks.NewMockNotifier(ctrl), slog.Default())
+	var reversionFactory application.ReversionStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return reversion.NewStrategy(cfg, global, deps)
+	}
+	var trapFactory application.TrapStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return trap.NewStrategy(cfg, global, deps)
+	}
+	var trailingFactory application.TrailingStrategyFactory = func(cfg config.SymbolConfig, global *config.Config, deps application.Deps) strategy.Strategy {
+		return trailing.NewStrategy(cfg, global, deps)
+	}
+
+	sniper := application.NewSniper(
+		cfg, sysCfg, engine,
+		mocks.NewMockNotifier(ctrl),
+		reversionFactory, trapFactory, trailingFactory,
+		slog.Default(),
+	)
 
 	// Run it with a cancelled context so it exits immediately after spawning workers.
 	ctx, cancel := context.WithCancel(context.Background())

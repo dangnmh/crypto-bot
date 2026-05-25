@@ -26,14 +26,10 @@ func TestContextIDs(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	ctx = tracectx.WithReqID(ctx, "req-123")
-	ctx = tracectx.WithCycleID(ctx, "cyc-123")
+	ctx = tracectx.WithCorrelationIDValue(ctx, "req-123")
 	ctx = tracectx.WithReversionID(ctx, "rev-123")
 
-	assert.Equal(t, "req-123", tracectx.ReqID(ctx))
 	assert.Equal(t, "req-123", tracectx.CorrelationID(ctx))
-	assert.Equal(t, "cyc-123", tracectx.CycleID(ctx))
 	assert.Equal(t, "rev-123", tracectx.ReversionID(ctx))
-	assert.Empty(t, tracectx.ReqID(context.Background()))
 	assert.NotEmpty(t, tracectx.NewID())
 }

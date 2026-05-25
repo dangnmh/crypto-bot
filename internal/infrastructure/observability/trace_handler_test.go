@@ -39,12 +39,9 @@ func TestTraceHandler(t *testing.T) {
 			fn: func(t *testing.T) {
 				th := observability.NewTraceHandler(slog.Default().Handler())
 				ctx := observability.WithCorrelationIDValue(context.Background(), "req-123")
-				ctx = observability.WithCycleIDValue(ctx, "cyc-123")
 				ctx = observability.WithReversionIDValue(ctx, "rev-123")
 				r := slog.NewRecord(time.Now(), slog.LevelInfo, "test", 0)
 				assert.NoError(t, th.Handle(ctx, r))
-				assert.Equal(t, "req-123", observability.ReqID(ctx))
-				assert.Equal(t, "cyc-123", observability.CycleID(ctx))
 				assert.Equal(t, "rev-123", observability.ReversionID(ctx))
 			},
 		},

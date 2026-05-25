@@ -86,7 +86,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 		StopLossPrice:   slPrice,
 	}
 
-	spread := calcSpreadPct(candidate.BestBid, candidate.BestAsk)
+	spread := decmath.CalcSpreadPct(candidate.BestBid, candidate.BestAsk)
 	actualNotional := candidate.NotionalForVolume(candidate.Volume, iocPrice)
 	log.Info("🎯 FIRE IOC",
 		slog.String("symbol", candidate.Symbol),
@@ -191,11 +191,4 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 
 	log.Info("📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
 	return result
-}
-
-func calcSpreadPct(bestBid, bestAsk float64) float64 {
-	if bestBid <= 0 {
-		return 0
-	}
-	return decmath.Mul(decmath.Div(decmath.Sub(bestAsk, bestBid), bestBid), 100.0)
 }

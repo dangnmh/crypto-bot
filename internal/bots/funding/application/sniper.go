@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
@@ -34,25 +35,46 @@ type CloseResult struct {
 // Sniper — top-level orchestrator.
 // ──────────────────────────────────────────────────────────────────────.
 
+// ReversionStrategyFactory creates a new reversion strategy instance.
+type ReversionStrategyFactory func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy
+
+// TrapStrategyFactory creates a new trap strategy instance.
+type TrapStrategyFactory func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy
+
+// TrailingStrategyFactory creates a new trailing strategy instance.
+type TrailingStrategyFactory func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy
+
 // Sniper spawns one independent worker goroutine per configured symbol.
 type Sniper struct {
-	cfg           *config.Config
-	sysCfg        *config.SystemConfig
-	engine        *app.Engine
-	client        exchange.Client
-	ws            ws.Subscriber
-	orderNotifier *watcher.OrderWatcher
-	stores        *app.CentralStore
-	timeSync      shared.Clock
-	notifier      notifier.Notifier
-	disabled      map[string]string
-	disabledMu    sync.RWMutex
-	log           *slog.Logger
-	bgWg          sync.WaitGroup // tracks background goroutines (§5.2)
+	cfg              *config.Config
+	sysCfg           *config.SystemConfig
+	engine           *app.Engine
+	client           exchange.Client
+	ws               ws.Subscriber
+	orderNotifier    *watcher.OrderWatcher
+	stores           *app.CentralStore
+	timeSync         shared.Clock
+	notifier         notifier.Notifier
+	disabled         map[string]string
+	disabledMu       sync.RWMutex
+	reversionFactory ReversionStrategyFactory
+	trapFactory      TrapStrategyFactory
+	trailingFactory  TrailingStrategyFactory
+	log              *slog.Logger
+	bgWg             sync.WaitGroup // tracks background goroutines (§5.2)
 }
 
 // NewSniper creates a new Sniper instance.
-func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engine, n notifier.Notifier, log *slog.Logger) *Sniper {
+func NewSniper(
+	cfg *config.Config,
+	sysCfg *config.SystemConfig,
+	engine *app.Engine,
+	n notifier.Notifier,
+	reversionFactory ReversionStrategyFactory,
+	trapFactory TrapStrategyFactory,
+	trailingFactory TrailingStrategyFactory,
+	log *slog.Logger,
+) *Sniper {
 	wsSub := engine.Adapter
 	orderWatcher := watcher.NewOrderWatcher(engine.Bus, log.With("component", "order_watcher"))
 
@@ -72,17 +94,20 @@ func NewSniper(cfg *config.Config, sysCfg *config.SystemConfig, engine *app.Engi
 	)
 
 	return &Sniper{
-		cfg:           cfg,
-		sysCfg:        sysCfg,
-		engine:        engine,
-		client:        engine.Client,
-		ws:            wsSub,
-		orderNotifier: orderWatcher,
-		stores:        stores,
-		timeSync:      engine.TimeSync,
-		notifier:      n,
-		disabled:      make(map[string]string),
-		log:           log,
+		cfg:              cfg,
+		sysCfg:           sysCfg,
+		engine:           engine,
+		client:           engine.Client,
+		ws:               wsSub,
+		orderNotifier:    orderWatcher,
+		stores:           stores,
+		timeSync:         engine.TimeSync,
+		notifier:         n,
+		disabled:         make(map[string]string),
+		reversionFactory: reversionFactory,
+		trapFactory:      trapFactory,
+		trailingFactory:  trailingFactory,
+		log:              log,
 	}
 }
 
@@ -194,7 +219,7 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 
 		// Wait until T-5m before actively entering the cycle.
 		if d := s.timeSync.Until(settle.Add(-5 * time.Minute)); d > 0 {
-			log.Debug("😴 Waiting for cycle window", slog.Time("settle", settle), slog.Duration("wait", d))
+			log.Debug("😴 Waiting for funding window", slog.Time("settle", settle), slog.Duration("wait", d))
 			if err := s.timeSync.Sleep(ctx, d); err != nil {
 				return nil
 			}
@@ -220,7 +245,14 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 			Log:           baseLog,
 			Notifier:      s.notifier,
 		}
-		orchestrator := NewCycleOrchestrator(symCfg, s.cfg, deps)
+		orchestrator := NewOrchestrator(
+			symCfg,
+			s.cfg,
+			deps,
+			s.reversionFactory(symCfg, s.cfg, deps),
+			s.trapFactory(symCfg, s.cfg, deps),
+			s.trailingFactory(symCfg, s.cfg, deps),
+		)
 		orchestrator.Run(ctx, settle)
 		return nil
 	}

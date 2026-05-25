@@ -16,20 +16,20 @@ const (
 type TrapSkipReason string
 
 const (
-	TrapSkipReasonWallNotVerified  TrapSkipReason = "wall_not_verified"
-	TrapSkipReasonInvalidPrice     TrapSkipReason = "invalid_price"
-	TrapSkipReasonInvalidVolume    TrapSkipReason = "invalid_volume"
-	TrapSkipReasonCycleRiskBlocked TrapSkipReason = "cycle_risk_blocked"
-	TrapSkipReasonOrderFailed      TrapSkipReason = "order_failed"
+	TrapSkipReasonWallNotVerified TrapSkipReason = "wall_not_verified"
+	TrapSkipReasonInvalidPrice    TrapSkipReason = "invalid_price"
+	TrapSkipReasonInvalidVolume   TrapSkipReason = "invalid_volume"
+	TrapSkipReasonRiskBlocked     TrapSkipReason = "risk_blocked"
+	TrapSkipReasonOrderFailed     TrapSkipReason = "order_failed"
 )
 
-// CycleOutcome enumerates possible cycle endings.
-type CycleOutcome string
+// Outcome enumerates possible endings.
+type Outcome string
 
 const (
-	OutcomeProfit  CycleOutcome = "profit"
-	OutcomeLoss    CycleOutcome = "loss"
-	OutcomeAborted CycleOutcome = "aborted"
-	OutcomeTimeout CycleOutcome = "timeout"
-	OutcomeNoFill  CycleOutcome = "no_fill"
+	OutcomeProfit  Outcome = "profit"
+	OutcomeLoss    Outcome = "loss"
+	OutcomeAborted Outcome = "aborted"
+	OutcomeTimeout Outcome = "timeout"
+	OutcomeNoFill  Outcome = "no_fill"
 )

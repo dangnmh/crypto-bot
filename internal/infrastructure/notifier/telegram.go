@@ -124,5 +124,10 @@ func (p *TelegramProvider) formatMessage(evt Event) string {
 		symbol = fmt.Sprintf(" [%s]", evt.Symbol)
 	}
 
-	return fmt.Sprintf("%s%s\n%s", prefix, symbol, evt.Message)
+	data := ""
+	for k, v := range evt.Data {
+		data = fmt.Sprintf("%s\n%s: %v", data, k, v)
+	}
+
+	return fmt.Sprintf("%s%s\n%s\n%s", prefix, symbol, evt.Message, data)
 }

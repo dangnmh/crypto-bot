@@ -212,3 +212,24 @@ func FormatPrice(price float64, scale int) string {
 func FormatDecimal(price Decimal, scale int) string {
 	return price.StringFixed(int32(scale))
 }
+
+// SignedTradingFee ensures a trading fee is represented as a negative value.
+func SignedTradingFee(value float64) float64 {
+	if value > 0 {
+		return -value
+	}
+	return value
+}
+
+// ClosedNetProfit calculates net profit by adding the signed trading fee.
+func ClosedNetProfit(profit, fee float64) float64 {
+	return Add(profit, SignedTradingFee(fee))
+}
+
+// CalcSpreadPct calculates the spread percentage between bid and ask.
+func CalcSpreadPct(bestBid, bestAsk float64) float64 {
+	if bestBid <= 0 {
+		return 0
+	}
+	return Mul(Div(Sub(bestAsk, bestBid), bestBid), 100.0)
+}

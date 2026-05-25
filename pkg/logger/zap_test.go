@@ -25,14 +25,12 @@ func TestTraceHandlerInjectsContextIDs(t *testing.T) {
 	l := slog.New(handler)
 
 	ctx := tracectx.WithCorrelationIDValue(context.Background(), "req-123")
-	ctx = tracectx.WithCycleID(ctx, "cyc-123")
 	ctx = tracectx.WithReversionID(ctx, "rev-123")
 	logger.WithCtx(ctx, l).Info("hello")
 
 	out := buf.String()
 	assert.True(t, handler.Enabled(ctx, slog.LevelInfo))
-	assert.Contains(t, out, "req_id=req-123")
-	assert.Contains(t, out, "cycle_id=cyc-123")
+	assert.Contains(t, out, "correlation_id=req-123")
 	assert.Contains(t, out, "reversion_id=rev-123")
 	assert.Contains(t, out, "msg=hello")
 }
@@ -60,7 +58,7 @@ func TestCtxLoggerLevelMethodsAndDefaults(t *testing.T) {
 
 	var buf bytes.Buffer
 	base := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	ctx := tracectx.WithReqID(context.Background(), "req-1")
+	ctx := tracectx.WithCorrelationIDValue(context.Background(), "req-1")
 	l := logger.WithCtx(ctx, base)
 
 	l.Debug("debug message")

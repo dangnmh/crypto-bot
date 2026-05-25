@@ -3,38 +3,35 @@ package reversion
 import (
 	"context"
 	"time"
-
-	"crypto-bot/internal/bots/funding/application/cycle"
-	"crypto-bot/internal/bots/funding/application/events"
-
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-func subscribeWait(ctx context.Context, rt *cycle.Runtime) {
-	rt.Subscribe(ctx, events.TopicReversionArmed, func(msg *message.Message) {
-		// Get settle time from the cycle start event
-		envelopes := rt.JourneyEvents()
-		var settleTime time.Time
-		for i := range envelopes {
-			if envelopes[i].Topic == events.TopicCycleStarted {
-				startEvent, err := cycle.Unmarshal[events.CycleStartEvent](envelopes[i].Payload)
-				if err == nil {
-					settleTime = startEvent.SettleTime
-					break
-				}
-			}
+func (s *Strategy) handleWait(ctx context.Context, armedEvt ArmedEvent) error {
+	s.mu.Lock()
+	settleTime := s.settleTime
+	s.mu.Unlock()
+
+	if settleTime.IsZero() {
+		// If settleTime is zero, skip wait
+		evt := WaitCompleteEvent{
+			Flow:      FlowReversion,
+			Symbol:    armedEvt.Symbol,
+			Timestamp: s.deps.Clock.Now(),
 		}
-		if settleTime.IsZero() {
-			return
-		}
-		if !rt.WaitUntil(ctx, settleTime.Add(-2*time.Second)) {
-			return
-		}
-		reqID := rt.GetReqID()
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionWaitComplete, events.WaitCompleteEvent{
-			Flow:       events.FlowReversion,
-			Symbol:     rt.Config().Symbol,
-			SettleTime: settleTime,
-		})
-	})
+		return s.publishEvent(ctx, TopicReversionWaitComplete, evt)
+	}
+
+	target := settleTime.Add(-2 * time.Second)
+	if !s.WaitUntil(ctx, target) {
+		s.abort(ctx, "wait period context canceled")
+		return context.Canceled
+	}
+
+	evt := WaitCompleteEvent{
+		Flow:       FlowReversion,
+		Symbol:     armedEvt.Symbol,
+		SettleTime: settleTime,
+		Timestamp:  s.deps.Clock.Now(),
+	}
+
+	return s.publishEvent(ctx, TopicReversionWaitComplete, evt)
 }

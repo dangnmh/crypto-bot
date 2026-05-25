@@ -2,119 +2,86 @@ package reversion
 
 import (
 	"context"
-	"log/slog"
+	"errors"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application/cycle"
-	"crypto-bot/internal/bots/funding/application/events"
+	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/orders"
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
-	applogger "crypto-bot/pkg/logger"
-
-	"github.com/ThreeDotsLabs/watermill/message"
 )
 
-func subscribeFireIOC(ctx context.Context, rt *cycle.Runtime) {
-	rt.Subscribe(ctx, events.TopicReversionConfirmed, func(_ *message.Message) {
-		handleFireIOC(ctx, rt)
-	})
-}
+func (s *Strategy) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
+	s.mu.Lock()
+	settleTime := s.settleTime
+	s.mu.Unlock()
 
-func handleFireIOC(ctx context.Context, rt *cycle.Runtime) {
-	settleTime := rt.SettleTime()
 	if settleTime.IsZero() {
-		applogger.WithCtx(ctx, rt.Log()).Error("Settle time not found, aborting IOC fire")
-		return
+		err := errors.New("settle time not found")
+		s.abort(ctx, err.Error())
+		return err
 	}
 
-	cfg := rt.Config()
-	reqID := rt.GetReqID()
-	latencyMs := rt.Deps().Clock.LatencyMs()
+	cfg := s.cfg
+	latencyMs := s.deps.Clock.LatencyMs()
 	maxLatency := time.Duration(cfg.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
-		applogger.WithCtx(ctx, rt.Log()).Warn("Latency too high, aborting IOC fire",
-			slog.Int64("latency_rtt", latencyMs),
-			slog.Duration("max_latency", maxLatency),
-		)
-		rt.AbortCtx(ctx, reqID, "fire_ioc", "latency too high")
-		return
+		err := errors.New("latency too high")
+		s.abort(ctx, err.Error())
+		return err
 	}
 
 	oneWayMs := latencyMs / 2
 	bufferTime := time.Duration(cfg.FundingReversion.BufferTime)
 	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
 
-	applogger.WithCtx(ctx, rt.Log()).Info("Firing configuration",
-		slog.Int64("latency_rtt", latencyMs),
-		slog.Int64("one_way", oneWayMs),
-		slog.Duration("buffer", bufferTime),
-		slog.Duration("total_offset", fireOffset),
-	)
-
 	snapshotOffset := 50 * time.Millisecond
 	if fireOffset > snapshotOffset {
 		snapshotOffset = fireOffset
 	}
-	if !rt.WaitUntil(ctx, settleTime.Add(-snapshotOffset)) {
-		return
+	if !s.WaitUntil(ctx, settleTime.Add(-snapshotOffset)) {
+		s.abort(ctx, "wait snapshot context canceled")
+		return ctx.Err()
 	}
 
-	c := rt.CandidateCopy()
-	if err := rt.RefreshPrice(ctx, &c); err != nil {
-		applogger.WithCtx(ctx, rt.Log()).Warn("Refresh price failed, abort", slog.Any("error", err))
-		rt.AbortCtx(ctx, reqID, "fire_ioc", "refresh price failed")
-		return
+	c := s.getCandidateCopy()
+	if err := s.refreshPrice(ctx, &c); err != nil {
+		s.abort(ctx, "refresh price fail: "+err.Error())
+		return err
 	}
 	c.Volume = c.CalculateVolume()
-	safety := rt.Global().System.Safety
+	safety := s.global.System.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
 		MinVol24USD:    safety.MinVol24USD,
 	})
 	if !c.SafetyResult.Passed {
-		applogger.WithCtx(ctx, rt.Log()).Warn("Safety blocked IOC",
-			slog.String("reason", c.SafetyResult.RejectReason),
-			slog.Float64("desiredNotionalUSDT", c.SafetyResult.DesiredNotionalUSDT),
-			slog.Float64("actualNotionalUSDT", c.SafetyResult.ActualNotionalUSDT),
-			slog.Float64("maxSafeNotionalUSDT", c.SafetyResult.MaxSafeNotionalUSDT),
-		)
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionIOCFired, events.IOCFiredEvent{
-			Flow:          events.FlowReversion,
+		evt := IOCFiredEvent{
+			Flow:          FlowReversion,
 			Symbol:        c.Symbol,
-			OrderID:       "",
 			Side:          c.Side,
 			CloseSide:     c.CloseSide,
-			IntendedPrice: 0,
-			FireTimestamp: rt.Deps().Clock.Now(),
-			Volume:        0,
+			FireTimestamp: s.deps.Clock.Now(),
 			SettleTime:    settleTime,
 			Error:         c.SafetyResult.RejectReason,
-		})
-		rt.AbortCtx(ctx, reqID, "fire_ioc", c.SafetyResult.RejectReason)
-		return
+		}
+		_ = s.publishEvent(ctx, TopicReversionIOCFired, evt)
+		s.abort(ctx, c.SafetyResult.RejectReason)
+		return errors.New(c.SafetyResult.RejectReason)
 	}
-	applogger.WithCtx(ctx, rt.Log()).Info("IOC sizing",
-		slog.Float64("desiredNotionalUSDT", c.SafetyResult.DesiredNotionalUSDT),
-		slog.Float64("actualNotionalUSDT", c.SafetyResult.ActualNotionalUSDT),
-		slog.Float64("maxSafeNotionalUSDT", c.SafetyResult.MaxSafeNotionalUSDT),
-		slog.Float64("avgMinuteVolumeUSDT", c.SafetyResult.AvgMinuteVolumeUSDT),
-		slog.Float64("vol", c.Volume),
-		slog.Bool("sizedDown", c.SafetyResult.SizedDown),
-	)
 
-	if !rt.WaitUntil(ctx, settleTime.Add(-fireOffset)) {
-		return
+	if !s.WaitUntil(ctx, settleTime.Add(-fireOffset)) {
+		s.abort(ctx, "wait fire context canceled")
+		return ctx.Err()
 	}
-	fireTime := rt.Deps().Clock.Now()
+	fireTime := s.deps.Clock.Now()
 
-	res := orders.FireIOC(ctx, rt.Deps().Client, &c, rt.Deps().Clock, rt.Log())
-	rt.SetCandidate(c)
-	rt.AppendResult(res)
+	res := orders.FireIOC(ctx, s.deps.Client, &c, s.deps.Clock, s.log)
+	s.setCandidate(c)
 
 	if res.IsSuccess() {
-		fired := events.IOCFiredEvent{
-			Flow:          events.FlowReversion,
+		evt := IOCFiredEvent{
+			Flow:          FlowReversion,
 			Symbol:        c.Symbol,
 			OrderID:       res.OrderID,
 			Side:          c.Side,
@@ -128,25 +95,35 @@ func handleFireIOC(ctx context.Context, rt *cycle.Runtime) {
 			FireTimestamp: fireTime,
 			LatencyRTTMs:  latencyMs,
 		}
-		rt.MarkReversionOrderEvent(fired)
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionIOCFired, fired)
-	} else {
-		errText := "IOC order failed"
-		if res.Error != nil {
-			errText = res.Error.Error()
+		s.mu.Lock()
+		s.order = &application.OrderRef{
+			Symbol:    c.Symbol,
+			OrderID:   res.OrderID,
+			OrderType: exchange.OrderTypeIOC,
 		}
-		rt.RecordAndPublishCtx(ctx, reqID, events.TopicReversionIOCFired, events.IOCFiredEvent{
-			Flow:          events.FlowReversion,
-			Symbol:        c.Symbol,
-			OrderID:       res.OrderID,
-			Side:          c.Side,
-			CloseSide:     c.CloseSide,
-			IntendedPrice: res.Price,
-			Volume:        res.Volume,
-			SettleTime:    settleTime,
-			FireTimestamp: fireTime,
-			Error:         errText,
-		})
-		rt.AbortCtx(ctx, reqID, "fire_ioc", errText)
+		s.mu.Unlock()
+
+		return s.publishEvent(ctx, TopicReversionIOCFired, evt)
 	}
+
+	errText := "IOC order failed"
+	if res.Error != nil {
+		errText = res.Error.Error()
+	}
+	evt := IOCFiredEvent{
+		Flow:          FlowReversion,
+		Symbol:        c.Symbol,
+		OrderID:       res.OrderID,
+		Side:          c.Side,
+		CloseSide:     c.CloseSide,
+		IntendedPrice: res.Price,
+		Volume:        res.Volume,
+		SettleTime:    settleTime,
+		FireTimestamp: fireTime,
+		LatencyRTTMs:  latencyMs,
+		Error:         errText,
+	}
+	_ = s.publishEvent(ctx, TopicReversionIOCFired, evt)
+	s.abort(ctx, errText)
+	return errors.New(errText)
 }

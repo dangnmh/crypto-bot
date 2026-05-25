@@ -6,6 +6,10 @@ import (
 	"net/http"
 
 	"crypto-bot/internal/bots/funding/application"
+	"crypto-bot/internal/bots/funding/application/reversion"
+	"crypto-bot/internal/bots/funding/application/strategy"
+	"crypto-bot/internal/bots/funding/application/trailing"
+	"crypto-bot/internal/bots/funding/application/trap"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -38,6 +42,9 @@ func Module(paths ConfigPaths) fx.Option {
 			provideExchangeClient,
 			provideWSAdapter,
 			provideEngine,
+			provideReversionStrategyFactory,
+			provideTrapStrategyFactory,
+			provideTrailingStrategyFactory,
 			provideBot,
 			infraapp.NewBotRunner,
 		),
@@ -118,12 +125,37 @@ func provideEngine(cfg *fundingconfig.SystemConfig, client exchange.Client, adap
 	})
 }
 
+func provideReversionStrategyFactory() application.ReversionStrategyFactory {
+	return func(cfg fundingconfig.SymbolConfig, global *fundingconfig.Config, deps application.Deps) strategy.Strategy {
+		return reversion.NewStrategy(cfg, global, deps)
+	}
+}
+
+func provideTrapStrategyFactory() application.TrapStrategyFactory {
+	return func(cfg fundingconfig.SymbolConfig, global *fundingconfig.Config, deps application.Deps) strategy.Strategy {
+		return trap.NewStrategy(cfg, global, deps)
+	}
+}
+
+func provideTrailingStrategyFactory() application.TrailingStrategyFactory {
+	return func(cfg fundingconfig.SymbolConfig, global *fundingconfig.Config, deps application.Deps) strategy.Strategy {
+		return trailing.NewStrategy(cfg, global, deps)
+	}
+}
+
 func provideBot(
 	cfg *fundingconfig.Config,
 	sysCfg *fundingconfig.SystemConfig,
 	engine *infraapp.Engine,
 	n notifier.Notifier,
+	reversionFactory application.ReversionStrategyFactory,
+	trapFactory application.TrapStrategyFactory,
+	trailingFactory application.TrailingStrategyFactory,
 	log *slog.Logger,
 ) infraapp.Bot {
-	return application.NewSniper(cfg, sysCfg, engine, n, log.With("bot", "funding"))
+	return application.NewSniper(
+		cfg, sysCfg, engine, n,
+		reversionFactory, trapFactory, trailingFactory,
+		log.With("bot", "funding"),
+	)
 }

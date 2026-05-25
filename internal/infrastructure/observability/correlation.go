@@ -23,26 +23,6 @@ func CorrelationID(ctx context.Context) string {
 	return tracectx.CorrelationID(ctx)
 }
 
-func WithReqID(ctx context.Context, id string) context.Context {
-	return tracectx.WithReqID(ctx, id)
-}
-
-func ReqID(ctx context.Context) string {
-	return tracectx.ReqID(ctx)
-}
-
-func WithCycleID(ctx context.Context) context.Context {
-	return WithCycleIDValue(ctx, tracectx.NewID())
-}
-
-func WithCycleIDValue(ctx context.Context, id string) context.Context {
-	return tracectx.WithCycleID(ctx, id)
-}
-
-func CycleID(ctx context.Context) string {
-	return tracectx.CycleID(ctx)
-}
-
 func WithReversionID(ctx context.Context) context.Context {
 	return WithReversionIDValue(ctx, tracectx.NewID())
 }

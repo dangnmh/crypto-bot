@@ -9,9 +9,8 @@ import (
 type contextKey string
 
 const (
-	reqIDKey       contextKey = "req_id"
-	cycleIDKey     contextKey = "cycle_id"
-	reversionIDKey contextKey = "reversion_id"
+	correlationIDKey contextKey = "correlation_id"
+	reversionIDKey   contextKey = "reversion_id"
 )
 
 // WithCorrelationID creates a new context with a correlation ID attached.
@@ -21,35 +20,12 @@ func WithCorrelationID(ctx context.Context) context.Context {
 
 // WithCorrelationIDValue creates a new context with a specific correlation ID.
 func WithCorrelationIDValue(ctx context.Context, id string) context.Context {
-	return WithReqID(ctx, id)
+	return context.WithValue(ctx, correlationIDKey, id)
 }
 
 // CorrelationID extracts the correlation ID from the context.
 func CorrelationID(ctx context.Context) string {
-	return ReqID(ctx)
-}
-
-// WithReqID returns a child context with req_id attached.
-func WithReqID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, reqIDKey, id)
-}
-
-// ReqID extracts req_id from the context.
-func ReqID(ctx context.Context) string {
-	if id, ok := ctx.Value(reqIDKey).(string); ok {
-		return id
-	}
-	return ""
-}
-
-// WithCycleID returns a child context with cycle_id attached.
-func WithCycleID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, cycleIDKey, id)
-}
-
-// CycleID extracts cycle_id from the context.
-func CycleID(ctx context.Context) string {
-	if id, ok := ctx.Value(cycleIDKey).(string); ok {
+	if id, ok := ctx.Value(correlationIDKey).(string); ok {
 		return id
 	}
 	return ""
