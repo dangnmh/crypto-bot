@@ -45,4 +45,14 @@ const (
 	opSubscribe     = "subscribe"
 	opUnsubscribe   = "unsubscribe"
 	constantSuccess = "success"
+
+	paramReqType      = "reqType"
+	paramDataType     = "dataType"
+	posSideBoth       = "BOTH"
+	paramPositionSide = "positionSide"
+	paramOrderId      = "orderId"
+	paramLeverage     = "leverage"
+	msgPing           = "Ping"
+	opUnsub           = "unsub"
+	opSub             = "sub"
 )

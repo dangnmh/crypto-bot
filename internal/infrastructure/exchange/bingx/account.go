@@ -115,7 +115,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		sideVal := 1 // long
-		if p.PositionSide == posSideShort || (p.PositionSide == "BOTH" && amt < 0) {
+		if p.PositionSide == posSideShort || (p.PositionSide == posSideBoth && amt < 0) {
 			sideVal = 2 // short
 		}
 

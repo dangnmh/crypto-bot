@@ -29,55 +29,64 @@ type bingxOrder struct {
 	Time         interface{} `json:"time"`
 }
 
-// CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
-	ordType := "LIMIT"
-	switch req.Type {
+func mapOrderType(t int) string {
+	switch t {
 	case exchange.OrderTypeMarket:
-		ordType = "MARKET"
+		return "MARKET"
 	case exchange.OrderTypePostOnly:
-		ordType = "POST_ONLY"
+		return "POST_ONLY"
 	case exchange.OrderTypeIOC:
-		ordType = "IOC"
+		return "IOC"
 	case exchange.OrderTypeFOK:
-		ordType = "FOK"
+		return "FOK"
+	default:
+		return "LIMIT"
 	}
+}
 
-	side := sideBuy
+func mapSideAndPosSide(side, posMode int) (string, string) {
+	ordSide := sideBuy
 	posSide := posSideLong
-	isHedge := req.PositionMode == 1 || req.PositionMode == 0
+	isHedge := posMode == 1 || posMode == 0
 
 	if isHedge {
-		switch req.Side {
+		switch side {
 		case exchange.SideOpenLong:
-			side = sideBuy
+			ordSide = sideBuy
 			posSide = posSideLong
 		case exchange.SideCloseLong:
-			side = sideSell
+			ordSide = sideSell
 			posSide = posSideLong
 		case exchange.SideOpenShort:
-			side = sideSell
+			ordSide = sideSell
 			posSide = posSideShort
 		case exchange.SideCloseShort:
-			side = sideBuy
+			ordSide = sideBuy
 			posSide = posSideShort
 		}
 	} else {
-		switch req.Side {
+		switch side {
 		case exchange.SideOpenLong, exchange.SideCloseShort:
-			side = sideBuy
+			ordSide = sideBuy
 		case exchange.SideOpenShort, exchange.SideCloseLong:
-			side = sideSell
+			ordSide = sideSell
 		}
-		posSide = "BOTH"
+		posSide = posSideBoth
 	}
+	return ordSide, posSide
+}
+
+// CreateOrder submits a new order and returns the order ID.
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+	ordType := mapOrderType(req.Type)
+	side, posSide := mapSideAndPosSide(req.Side, req.PositionMode)
 
 	bodyMap := map[string]interface{}{
-		paramSymbol:    req.Symbol,
-		"side":         side,
-		"positionSide": posSide,
-		"type":         ordType,
-		"quantity":     fmt.Sprintf("%g", req.Vol),
+		paramSymbol:       req.Symbol,
+		"side":            side,
+		paramPositionSide: posSide,
+		"type":            ordType,
+		"quantity":        fmt.Sprintf("%g", req.Vol),
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
@@ -109,8 +118,8 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 // CancelOrder cancels an existing order by ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	bodyMap := map[string]interface{}{
-		paramSymbol: symbol,
-		"orderId":   orderID,
+		paramSymbol:  symbol,
+		paramOrderId: orderID,
 	}
 
 	body, err := c.PostCtx(ctx, pathCancelOrder, bodyMap)
@@ -133,8 +142,8 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 		return err
 	}
 
-	for _, ord := range orders {
-		_ = c.CancelOrder(ctx, symbol, ord.OrderID)
+	for i := range orders {
+		_ = c.CancelOrder(ctx, symbol, orders[i].OrderID)
 	}
 
 	return nil
@@ -143,7 +152,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 // GetOrder fetches details of a specific order.
 func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
 	params := map[string]string{
-		"orderId": orderID,
+		paramOrderId: orderID,
 	}
 
 	body, err := c.GetCtx(ctx, pathGetOrder, params)
@@ -208,7 +217,8 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		return err
 	}
 
-	for _, pos := range positions {
+	for i := range positions {
+		pos := &positions[i]
 		closeSide := domain.SideCloseLong
 		if pos.PositionType == 2 { // 2 = Short
 			closeSide = domain.SideCloseShort
@@ -223,9 +233,9 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
 	// Set for LONG
 	bodyMapLong := map[string]interface{}{
-		paramSymbol:    req.Symbol,
-		"leverage":     strconv.Itoa(req.Leverage),
-		"positionSide": "LONG",
+		paramSymbol:       req.Symbol,
+		paramLeverage:     strconv.Itoa(req.Leverage),
+		paramPositionSide: posSideLong,
 	}
 	bodyLong, err := c.PostCtx(ctx, pathSetLeverage, bodyMapLong)
 	if err != nil {
@@ -237,9 +247,9 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 
 	// Set for SHORT
 	bodyMapShort := map[string]interface{}{
-		paramSymbol:    req.Symbol,
-		"leverage":     strconv.Itoa(req.Leverage),
-		"positionSide": "SHORT",
+		paramSymbol:       req.Symbol,
+		paramLeverage:     strconv.Itoa(req.Leverage),
+		paramPositionSide: posSideShort,
 	}
 	bodyShort, err := c.PostCtx(ctx, pathSetLeverage, bodyMapShort)
 	if err != nil {

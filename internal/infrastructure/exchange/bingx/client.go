@@ -129,8 +129,6 @@ func (c *Client) Post(ctx context.Context, path string, body interface{}) ([]byt
 
 // PostCtx makes a signed POST request with context.
 func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]byte, error) {
-	url := c.baseURL + path
-
 	params := make(map[string]string)
 	if body != nil {
 		bodyBytes, err := json.Marshal(body)
@@ -159,7 +157,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]
 		urlPath += "?" + strings.Join(parts, "&")
 	}
 
-	url = c.baseURL + urlPath
+	url := c.baseURL + urlPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create POST request: %w", err)

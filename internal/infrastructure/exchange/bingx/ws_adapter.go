@@ -35,66 +35,66 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to ticker stream.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	topic := symbol + "@ticker"
+	topic := symbol + "@" + channelTicker
 	msg := map[string]interface{}{
-		"id":       "sub-" + symbol + "-ticker",
-		"reqType":  "sub",
-		"dataType": topic,
+		"id":          "sub-" + symbol + "-ticker",
+		paramReqType:  opSub,
+		paramDataType: topic,
 	}
 	return a.pool.SubscribePublic(ctx, symbol+":tickers", msg)
 }
 
 // UnsubscribeTicker unsubscribes from ticker stream.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	topic := symbol + "@ticker"
+	topic := symbol + "@" + channelTicker
 	msg := map[string]interface{}{
-		"id":       "unsub-" + symbol + "-ticker",
-		"reqType":  "unsub",
-		"dataType": topic,
+		"id":          "unsub-" + symbol + "-ticker",
+		paramReqType:  opUnsub,
+		paramDataType: topic,
 	}
 	return a.pool.UnsubscribePublic(ctx, symbol+":tickers", msg)
 }
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	topic := symbol + "@kline_1m"
+	topic := symbol + "@" + channelKline + "_1m"
 	msg := map[string]interface{}{
-		"id":       "sub-" + symbol + "-kline",
-		"reqType":  "sub",
-		"dataType": topic,
+		"id":          "sub-" + symbol + "-kline",
+		paramReqType:  opSub,
+		paramDataType: topic,
 	}
 	return a.pool.SubscribePublic(ctx, symbol+":kline", msg)
 }
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	topic := symbol + "@kline_1m"
+	topic := symbol + "@" + channelKline + "_1m"
 	msg := map[string]interface{}{
-		"id":       "unsub-" + symbol + "-kline",
-		"reqType":  "unsub",
-		"dataType": topic,
+		"id":          "unsub-" + symbol + "-kline",
+		paramReqType:  opUnsub,
+		paramDataType: topic,
 	}
 	return a.pool.UnsubscribePublic(ctx, symbol+":kline", msg)
 }
 
 // SubscribeDepth subscribes to depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	topic := symbol + "@depth20"
+	topic := symbol + "@" + channelDepth + "20"
 	msg := map[string]interface{}{
-		"id":       "sub-" + symbol + "-depth",
-		"reqType":  "sub",
-		"dataType": topic,
+		"id":          "sub-" + symbol + "-depth",
+		paramReqType:  opSub,
+		paramDataType: topic,
 	}
 	return a.pool.SubscribePublic(ctx, symbol+":depth", msg)
 }
 
 // UnsubscribeDepth unsubscribes from depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	topic := symbol + "@depth20"
+	topic := symbol + "@" + channelDepth + "20"
 	msg := map[string]interface{}{
-		"id":       "unsub-" + symbol + "-depth",
-		"reqType":  "unsub",
-		"dataType": topic,
+		"id":          "unsub-" + symbol + "-depth",
+		paramReqType:  opUnsub,
+		paramDataType: topic,
 	}
 	return a.pool.UnsubscribePublic(ctx, symbol+":depth", msg)
 }
@@ -106,7 +106,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 
 // GetPingConfig returns application ping config.
 func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
-	return "Ping", 30 * time.Second
+	return msgPing, 30 * time.Second
 }
 
 // GetAuthHook is not used for BingX Futures since we don't stream personal deals.
@@ -121,7 +121,7 @@ func (a *WsAdapter) GetPreprocessor() func([]byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 		return io.ReadAll(r)
 	}
 }
@@ -129,11 +129,11 @@ func (a *WsAdapter) GetPreprocessor() func([]byte) ([]byte, error) {
 // GetChannelExtractor maps BingX events to channels.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
-		if string(data) == "Ping" {
-			return "Ping"
+		if string(data) == msgPing {
+			return msgPing
 		}
 
-		dataType, err := jsonparser.GetString(data, "dataType")
+		dataType, err := jsonparser.GetString(data, paramDataType)
 		if err != nil {
 			return ""
 		}
@@ -144,13 +144,13 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		}
 
 		streamType := parts[1]
-		if strings.HasPrefix(streamType, "kline") {
-			return "kline"
+		if strings.HasPrefix(streamType, channelKline) {
+			return channelKline
 		}
-		if strings.HasPrefix(streamType, "depth") {
-			return "depth"
+		if strings.HasPrefix(streamType, channelDepth) {
+			return channelDepth
 		}
-		if streamType == "ticker" {
+		if streamType == channelTicker {
 			return "tickers"
 		}
 
@@ -160,7 +160,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 
 // ParseTicker parses ticker feed into store.PriceData.
 func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
-	dataType, err := jsonparser.GetString(data, "dataType")
+	dataType, err := jsonparser.GetString(data, paramDataType)
 	if err != nil {
 		return "", nil, err
 	}
@@ -208,7 +208,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 
 // ParseDepth parses books feed into domain.OrderBook.
 func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error) {
-	dataType, err := jsonparser.GetString(data, "dataType")
+	dataType, err := jsonparser.GetString(data, paramDataType)
 	if err != nil {
 		return "", nil, err
 	}
@@ -276,4 +276,14 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 // ParseOrderDeal is a placeholder.
 func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
 	return nil, fmt.Errorf("ParseOrderDeal not implemented on BingX WS")
+}
+
+// ParseTrackOrder is a placeholder.
+func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
+	return nil, fmt.Errorf("ParseTrackOrder not implemented on BingX WS")
+}
+
+// ParsePosition is a placeholder.
+func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
+	return nil, fmt.Errorf("ParsePosition not implemented on BingX WS")
 }

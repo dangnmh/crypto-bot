@@ -111,8 +111,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	var rawTickers []bingxTicker
-	// If a single symbol is queried, the exchange might return an object or array.
-	// Let's support both.
 	var singleTicker bingxTicker
 	if err := json.Unmarshal(tickerBody, &singleTicker); err == nil && singleTicker.Symbol != "" {
 		rawTickers = []bingxTicker{singleTicker}
@@ -167,24 +165,27 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		amt := parseFloat(t.QuoteVolume)
 		ts := parseInt64(t.Time)
 
-		var mark float64 = last
+		mark := last
 		var fr float64
+		var nextSettle int64
 
 		if idx, ok := indexMap[t.Symbol]; ok {
 			mark = parseFloat(idx.MarkPrice)
 			fr = parseFloat(idx.LastFundingRate)
+			nextSettle = parseInt64(idx.NextFundingTime)
 		}
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:      t.Symbol,
-			LastPrice:   last,
-			Bid1:        bid,
-			Ask1: ask,
-			Volume24:    vol,
-			Amount24:    amt,
-			FairPrice:   mark,
-			FundingRate: fr,
-			Timestamp:   ts,
+			Symbol:         t.Symbol,
+			LastPrice:      last,
+			Bid1:           bid,
+			Ask1:           ask,
+			Volume24:       vol,
+			Amount24:       amt,
+			FairPrice:      mark,
+			FundingRate:    fr,
+			NextSettleTime: nextSettle,
+			Timestamp:      ts,
 		})
 	}
 
@@ -240,6 +241,94 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 	}, nil
 }
 
+type bingxKlineObj struct {
+	OpenTime interface{} `json:"openTime"`
+	Open     interface{} `json:"open"`
+	High     interface{} `json:"high"`
+	Low      interface{} `json:"low"`
+	Close    interface{} `json:"close"`
+	Volume   interface{} `json:"volume"`
+	Time     interface{} `json:"time"`
+	O        interface{} `json:"o"`
+	H        interface{} `json:"h"`
+	L        interface{} `json:"l"`
+	C        interface{} `json:"c"`
+	V        interface{} `json:"v"`
+	T        interface{} `json:"t"`
+}
+
+func parseSingleKlineRow(row json.RawMessage) (*exchange.Kline, error) {
+	var listRow []interface{}
+	if err := json.Unmarshal(row, &listRow); err == nil && len(listRow) >= 6 {
+		ts := parseInt64(listRow[0])
+		o := parseFloat(listRow[1])
+		h := parseFloat(listRow[2])
+		l := parseFloat(listRow[3])
+		cVal := parseFloat(listRow[4])
+		v := parseFloat(listRow[5])
+
+		return &exchange.Kline{
+			Timestamp: ts,
+			Open:      o,
+			High:      h,
+			Low:       l,
+			Close:     cVal,
+			Volume:    v,
+		}, nil
+	}
+
+	var objRow bingxKlineObj
+	if err := json.Unmarshal(row, &objRow); err == nil {
+		var ts int64
+		switch {
+		case objRow.Time != nil:
+			ts = parseInt64(objRow.Time)
+		case objRow.OpenTime != nil:
+			ts = parseInt64(objRow.OpenTime)
+		default:
+			ts = parseInt64(objRow.T)
+		}
+
+		var o, h, l, cVal, v float64
+		if objRow.Open != nil {
+			o = parseFloat(objRow.Open)
+		} else {
+			o = parseFloat(objRow.O)
+		}
+		if objRow.High != nil {
+			h = parseFloat(objRow.High)
+		} else {
+			h = parseFloat(objRow.H)
+		}
+		if objRow.Low != nil {
+			l = parseFloat(objRow.Low)
+		} else {
+			l = parseFloat(objRow.L)
+		}
+		if objRow.Close != nil {
+			cVal = parseFloat(objRow.Close)
+		} else {
+			cVal = parseFloat(objRow.C)
+		}
+		if objRow.Volume != nil {
+			v = parseFloat(objRow.Volume)
+		} else {
+			v = parseFloat(objRow.V)
+		}
+
+		return &exchange.Kline{
+			Timestamp: ts,
+			Open:      o,
+			High:      h,
+			Low:       l,
+			Close:     cVal,
+			Volume:    v,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("failed to parse kline row")
+}
+
 // GetKlines returns candlestick data for a symbol. Supports both array-of-arrays and array-of-objects formats.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
 	if symbol == "" {
@@ -276,91 +365,11 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	}
 	rawData = parsedData
 
-	type bingxKlineObj struct {
-		OpenTime  interface{} `json:"openTime"`
-		Open      interface{} `json:"open"`
-		High      interface{} `json:"high"`
-		Low       interface{} `json:"low"`
-		Close     interface{} `json:"close"`
-		Volume    interface{} `json:"volume"`
-		Time      interface{} `json:"time"`
-		O         interface{} `json:"o"`
-		H         interface{} `json:"h"`
-		L         interface{} `json:"l"`
-		C         interface{} `json:"c"`
-		V         interface{} `json:"v"`
-		T         interface{} `json:"t"`
-	}
-
 	klines := make([]exchange.Kline, 0, len(rawData))
 	for _, row := range rawData {
-		var listRow []interface{}
-		if err := json.Unmarshal(row, &listRow); err == nil && len(listRow) >= 6 {
-			// Array format: [openTime, open, high, low, close, volume, ...]
-			ts := parseInt64(listRow[0])
-			o := parseFloat(listRow[1])
-			h := parseFloat(listRow[2])
-			l := parseFloat(listRow[3])
-			cVal := parseFloat(listRow[4])
-			v := parseFloat(listRow[5])
-
-			klines = append(klines, exchange.Kline{
-				Timestamp: ts,
-				Open:      o,
-				High:      h,
-				Low:       l,
-				Close:     cVal,
-				Volume:    v,
-			})
-			continue
-		}
-
-		var objRow bingxKlineObj
-		if err := json.Unmarshal(row, &objRow); err == nil {
-			var ts int64
-			if objRow.Time != nil {
-				ts = parseInt64(objRow.Time)
-			} else if objRow.OpenTime != nil {
-				ts = parseInt64(objRow.OpenTime)
-			} else {
-				ts = parseInt64(objRow.T)
-			}
-
-			var o, h, l, cVal, v float64
-			if objRow.Open != nil {
-				o = parseFloat(objRow.Open)
-			} else {
-				o = parseFloat(objRow.O)
-			}
-			if objRow.High != nil {
-				h = parseFloat(objRow.High)
-			} else {
-				h = parseFloat(objRow.H)
-			}
-			if objRow.Low != nil {
-				l = parseFloat(objRow.Low)
-			} else {
-				l = parseFloat(objRow.L)
-			}
-			if objRow.Close != nil {
-				cVal = parseFloat(objRow.Close)
-			} else {
-				cVal = parseFloat(objRow.C)
-			}
-			if objRow.Volume != nil {
-				v = parseFloat(objRow.Volume)
-			} else {
-				v = parseFloat(objRow.V)
-			}
-
-			klines = append(klines, exchange.Kline{
-				Timestamp: ts,
-				Open:      o,
-				High:      h,
-				Low:       l,
-				Close:     cVal,
-				Volume:    v,
-			})
+		k, err := parseSingleKlineRow(row)
+		if err == nil && k != nil {
+			klines = append(klines, *k)
 		}
 	}
 

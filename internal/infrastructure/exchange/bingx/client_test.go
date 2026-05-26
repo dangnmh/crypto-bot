@@ -83,7 +83,8 @@ func TestClient_GetTickers(t *testing.T) {
 		assert.Equal(t, "GET", r.Method)
 
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/openApi/swap/v2/quote/ticker" {
+		switch r.URL.Path {
+		case "/openApi/swap/v2/quote/ticker":
 			_, _ = w.Write([]byte(`{
 				"code": 0,
 				"msg": "success",
@@ -99,7 +100,7 @@ func TestClient_GetTickers(t *testing.T) {
 					}
 				]
 			}`))
-		} else if r.URL.Path == "/openApi/swap/v2/quote/premiumIndex" {
+		case "/openApi/swap/v2/quote/premiumIndex":
 			_, _ = w.Write([]byte(`{
 				"code": 0,
 				"msg": "success",
