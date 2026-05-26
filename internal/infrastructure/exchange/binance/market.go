@@ -102,7 +102,9 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	lastMap := make(map[string]float64)
 
 	if tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse2 != nil {
-		for _, t := range tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse2.Items {
+		items := tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse2.Items
+		for i := range items {
+			t := items[i]
 			sym := t.GetSymbol()
 			volMap[sym] = decmath.ParseFloat(t.GetVolume())
 			amountMap[sym] = decmath.ParseFloat(t.GetQuoteVolume())

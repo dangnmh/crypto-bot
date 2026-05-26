@@ -157,8 +157,8 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	}
 
 	orders := make([]exchange.OrderInfo, 0, len(list))
-	for _, o := range list {
-		orders = append(orders, mapAllOrder(o))
+	for i := range list {
+		orders = append(orders, mapAllOrder(list[i]))
 	}
 
 	return orders, nil
@@ -185,7 +185,8 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		return err
 	}
 
-	for _, pos := range positions {
+	for i := range positions {
+		pos := positions[i]
 		if pos.HoldVol > 0 {
 			side := domain.SideCloseShort
 			if pos.PositionType == 1 { // Long
@@ -256,19 +257,20 @@ func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 		PositionMode: 2, // default OneWay
 	}
 
-	if raw.GetPositionSide() == "LONG" {
+	switch raw.GetPositionSide() {
+	case "LONG":
 		info.Side = exchange.SideOpenLong
 		if raw.GetSide() == "SELL" {
 			info.Side = exchange.SideCloseLong
 		}
 		info.PositionMode = 1
-	} else if raw.GetPositionSide() == "SHORT" {
+	case "SHORT":
 		info.Side = exchange.SideOpenShort
 		if raw.GetSide() == "BUY" {
 			info.Side = exchange.SideCloseShort
 		}
 		info.PositionMode = 1
-	} else {
+	default:
 		// One-way mode mapping
 		if raw.GetSide() == "BUY" {
 			info.Side = exchange.SideOpenLong
@@ -342,19 +344,20 @@ func mapAllOrder(raw models.AllOrdersResponseInner) exchange.OrderInfo {
 		PositionMode: 2,
 	}
 
-	if raw.GetPositionSide() == "LONG" {
+	switch raw.GetPositionSide() {
+	case "LONG":
 		info.Side = exchange.SideOpenLong
 		if raw.GetSide() == "SELL" {
 			info.Side = exchange.SideCloseLong
 		}
 		info.PositionMode = 1
-	} else if raw.GetPositionSide() == "SHORT" {
+	case "SHORT":
 		info.Side = exchange.SideOpenShort
 		if raw.GetSide() == "BUY" {
 			info.Side = exchange.SideCloseShort
 		}
 		info.PositionMode = 1
-	} else {
+	default:
 		if raw.GetSide() == "BUY" {
 			info.Side = exchange.SideOpenLong
 		} else {

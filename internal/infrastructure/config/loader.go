@@ -30,6 +30,8 @@ func InitializeBase(c *SystemConfig) error {
 	c.ExchangeConfig.Mexc.APISecret = os.Getenv("MEXC_API_SECRET")
 	c.ExchangeConfig.Gate.APIKey = os.Getenv("GATE_API_KEY")
 	c.ExchangeConfig.Gate.APISecret = os.Getenv("GATE_API_SECRET")
+	c.ExchangeConfig.Okx.APIKey = os.Getenv("OKX_API_KEY")
+	c.ExchangeConfig.Okx.APISecret = os.Getenv("OKX_API_SECRET")
 
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
@@ -205,14 +207,24 @@ func validateCredentials(c *SystemConfig) error {
 			return fmt.Errorf("GATE_API_SECRET is required (set in .env, environment, or Bitwarden)")
 		}
 	}
+	if c.ExchangeConfig.Okx.Future.BaseURL != "" {
+		if c.ExchangeConfig.Okx.APIKey == "" {
+			return fmt.Errorf("OKX_API_KEY is required (set in .env, environment, or Bitwarden)")
+		}
+		if c.ExchangeConfig.Okx.APISecret == "" {
+			return fmt.Errorf("OKX_API_SECRET is required (set in .env, environment, or Bitwarden)")
+		}
+	}
 	return nil
 }
 
 func validateEndpoints(c *SystemConfig) error {
 	mexcEnabled := c.ExchangeConfig.Mexc.Future.BaseURL != ""
 	gateEnabled := c.ExchangeConfig.Gate.Future.BaseURL != ""
+	okxEnabled := c.ExchangeConfig.Okx.Future.BaseURL != ""
+	binanceEnabled := c.ExchangeConfig.Binance.Future.BaseURL != ""
 
-	if !mexcEnabled && !gateEnabled {
+	if !mexcEnabled && !gateEnabled && !okxEnabled && !binanceEnabled {
 		return fmt.Errorf("api.future.baseURL is required for at least one active exchange")
 	}
 
@@ -224,6 +236,16 @@ func validateEndpoints(c *SystemConfig) error {
 	if gateEnabled {
 		if c.ExchangeConfig.Gate.WebSocket.WSURL == "" {
 			return fmt.Errorf("gate api.websocket.wsURL is required when gate is enabled")
+		}
+	}
+	if okxEnabled {
+		if c.ExchangeConfig.Okx.WebSocket.WSURL == "" {
+			return fmt.Errorf("okx api.websocket.wsURL is required when okx is enabled")
+		}
+	}
+	if binanceEnabled {
+		if c.ExchangeConfig.Binance.WebSocket.WSURL == "" {
+			return fmt.Errorf("binance api.websocket.wsURL is required when binance is enabled")
 		}
 	}
 	return nil
@@ -244,6 +266,12 @@ func applySystemDefaults(c *SystemConfig) {
 	}
 	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn <= 0 {
 		c.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn = 30 // default Gate limit
+	}
+	if c.ExchangeConfig.Okx.Future.BaseURL != "" && c.ExchangeConfig.Okx.WebSocket.MaxPairsPerWSConn <= 0 {
+		c.ExchangeConfig.Okx.WebSocket.MaxPairsPerWSConn = 30 // default OKX limit
+	}
+	if c.ExchangeConfig.Binance.Future.BaseURL != "" && c.ExchangeConfig.Binance.WebSocket.MaxPairsPerWSConn <= 0 {
+		c.ExchangeConfig.Binance.WebSocket.MaxPairsPerWSConn = 30 // default Binance limit
 	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"

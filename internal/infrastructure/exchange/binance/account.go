@@ -89,7 +89,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	items := resp.Data.Items
 	positions := make([]exchange.Position, 0, len(items))
 
-	for _, raw := range items {
+	for i := range items {
+		raw := items[i]
 		amt := 0.0
 		if raw.PositionAmt != nil {
 			amt = decmath.ParseFloat(*raw.PositionAmt)

@@ -208,14 +208,14 @@ func TestClient_CreateOrder(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		req          exchange.SubmitOrderRequest
-		wantSide     string
-		wantType     string
-		wantTif      string
-		wantPosSide  string
-		wantPrice    float32
-		wantReduce   string
+		name        string
+		req         exchange.SubmitOrderRequest
+		wantSide    string
+		wantType    string
+		wantTif     string
+		wantPosSide string
+		wantPrice   float32
+		wantReduce  string
 	}{
 		{
 			name: "Open Long Limit (Hedge)",

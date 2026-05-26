@@ -9,10 +9,11 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
-	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
@@ -45,6 +46,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		BybitStandardProviderFactory{},
 		BybitUnifiedProviderFactory{},
 		BinanceProviderFactory{},
+		OkxProviderFactory{},
 	}
 }
 
@@ -157,6 +159,44 @@ func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig
 		WS:       wsPool,
 		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBinance, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBinance)),
+	}, nil
+}
+
+// OkxProviderFactory builds OKX infrastructure.
+type OkxProviderFactory struct{}
+
+func (OkxProviderFactory) Name() string { return exchange.ExchangeOkx }
+
+func (OkxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Okx.Future.BaseURL != ""
+}
+
+func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Okx
+	client := exchange.Client(okx.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		"", // Passphrase from environment variables in okx.NewClient
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := okx.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeOkx, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeOkx,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeOkx, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeOkx)),
 	}, nil
 }
 

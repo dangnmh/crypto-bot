@@ -5,6 +5,8 @@ go 1.26.0
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.1
 	github.com/antihax/optional v1.0.0
+	github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures v1.9.0
+	github.com/binance/binance-connector-go/common/v2 v2.2.0
 	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/buger/jsonparser v1.2.0
 	github.com/bybit-exchange/bybit.go.api v1.1.1
@@ -24,8 +26,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
-	github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures v1.9.0 // indirect
-	github.com/binance/binance-connector-go/common/v2 v2.2.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -53,6 +53,5 @@ require (
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

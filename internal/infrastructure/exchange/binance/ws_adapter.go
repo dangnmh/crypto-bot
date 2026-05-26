@@ -16,6 +16,17 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 )
 
+const (
+	posSideLong  = "LONG"
+	posSideShort = "SHORT"
+	sideBuy      = "BUY"
+	sideSell     = "SELL"
+	statusNew    = "NEW"
+	statusPart   = "PARTIALLY_FILLED"
+	statusFilled = "FILLED"
+	statusCancel = "CANCELED"
+)
+
 // WsAdapter implements ws.ExchangeAdapter for Binance Futures.
 type WsAdapter struct {
 	pool      *pkgws.Pool
@@ -330,20 +341,20 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 	}
 
 	// Map Side & Position mode
-	if raw.PositionSide == "LONG" {
+	if raw.PositionSide == posSideLong {
 		deal.Side = exchange.SideOpenLong
-		if raw.Side == "SELL" {
+		if raw.Side == sideSell {
 			deal.Side = exchange.SideCloseLong
 		}
 		deal.PositionMode = 1
-	} else if raw.PositionSide == "SHORT" {
+	} else if raw.PositionSide == posSideShort {
 		deal.Side = exchange.SideOpenShort
-		if raw.Side == "BUY" {
+		if raw.Side == sideBuy {
 			deal.Side = exchange.SideCloseShort
 		}
 		deal.PositionMode = 1
 	} else {
-		if raw.Side == "BUY" {
+		if raw.Side == sideBuy {
 			deal.Side = exchange.SideOpenLong
 		} else {
 			deal.Side = exchange.SideOpenShort
@@ -352,13 +363,13 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 
 	// Map State
 	switch raw.Status {
-	case "NEW":
+	case statusNew:
 		deal.State = exchange.OrderStatePartial
-	case "PARTIALLY_FILLED":
+	case statusPart:
 		deal.State = exchange.OrderStatePartial
-	case "FILLED":
+	case statusFilled:
 		deal.State = exchange.OrderStateFilled
-	case "CANCELED", "EXPIRED":
+	case statusCancel, "EXPIRED":
 		deal.State = exchange.OrderStateCanceled
 	}
 
