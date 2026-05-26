@@ -10,6 +10,7 @@ import (
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
@@ -49,6 +50,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		BinanceProviderFactory{},
 		OkxProviderFactory{},
 		HyperliquidProviderFactory{},
+		BitgetProviderFactory{},
 	}
 }
 
@@ -202,6 +204,45 @@ func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*
 		WS:       wsPool,
 		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeOkx, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeOkx)),
+	}, nil
+}
+
+// BitgetProviderFactory builds Bitget infrastructure.
+type BitgetProviderFactory struct{}
+
+func (BitgetProviderFactory) Name() string { return exchange.ExchangeBitget }
+
+func (BitgetProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Bitget.Future.BaseURL != ""
+}
+
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
+func (BitgetProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Bitget
+	client := exchange.Client(bitget.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		"", // Passphrase from environment variables or config
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := bitget.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeBitget, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeBitget,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBitget, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBitget)),
 	}, nil
 }
 
