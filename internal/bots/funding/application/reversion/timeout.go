@@ -5,15 +5,14 @@ import (
 	"log/slog"
 	"time"
 
-	"crypto-bot/internal/infrastructure/exchange"
 	applogger "crypto-bot/pkg/logger"
 )
 
-func (r *StatelessRunner) handleIOCFired(ctx context.Context, evt IOCFiredEvent) error {
-	if evt.Error != "" {
-		return nil
-	}
+func (r *StatelessRunner) scheduleTimeoutGuard(ctx context.Context, evt IOCOutcomeCheckedEvent) error {
+	return r.scheduleTimeoutGuardAfter(ctx, evt.BaseReversionEvent, evt.IOCEvent)
+}
 
+func (r *StatelessRunner) scheduleTimeoutGuardAfter(ctx context.Context, prev BaseReversionEvent, evt IOCSubmittedEvent) error {
 	cfg, ok := r.getSymbolConfig(evt.Symbol)
 	if !ok {
 		r.log.Error("Symbol config not found for timeout handler", slog.String("symbol", evt.Symbol))
@@ -25,152 +24,167 @@ func (r *StatelessRunner) handleIOCFired(ctx context.Context, evt IOCFiredEvent)
 		timeout = 60 * time.Second
 	}
 
-	// 1. Subscribe watcher to personal position updates
-	r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, timeout*2, func(pos exchange.PersonalPositionUpdate) {
-		r.handlePositionUpdate(ctx, pos, evt.ReqID)
-	})
-
-	// 2. Publish event to trigger the asynchronous timeout guard
-	checkEvt := CheckTimeoutEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:      FlowReversion,
-			ReqID:     evt.ReqID,
-			Symbol:    evt.Symbol,
-			Timestamp: r.deps.Clock.Now(),
-		},
-		IOCEvent: evt,
+	guardEvt := TimeoutGuardScheduledEvent{
+		BaseReversionEvent: nextReversionBase(prev, evt.Symbol, r.deps.Clock.Now()),
+		IOCEvent:           evt,
+		Timeout:            timeout,
+		StartedAt:          r.deps.Clock.Now(),
 	}
 
-	return r.publishEvent(ctx, TopicReversionCheckTimeout, checkEvt)
+	return r.publishEvent(ctx, TopicReversionTimeoutGuardScheduled, guardEvt)
 }
 
-func (r *StatelessRunner) handleCheckTimeout(ctx context.Context, evt CheckTimeoutEvent) error {
-	// Start timeout guard in the background to avoid blocking subscription loop
+func (r *StatelessRunner) handleTimeoutGuardScheduled(ctx context.Context, evt TimeoutGuardScheduledEvent) error {
 	go func() {
-		_ = r.timeoutGuard(ctx, evt.IOCEvent)
+		_ = r.waitTimeoutDeadline(ctx, evt)
 	}()
 	return nil
 }
 
-func (r *StatelessRunner) timeoutGuard(ctx context.Context, firedEvt IOCFiredEvent) error {
-	cfg, ok := r.getSymbolConfig(firedEvt.Symbol)
-	if !ok {
-		return nil
-	}
+func (r *StatelessRunner) timeoutGuard(ctx context.Context, firedEvt IOCSubmittedEvent) error {
+	return r.scheduleTimeoutGuardAfter(ctx, firedEvt.BaseReversionEvent, firedEvt)
+}
 
-	timeout := time.Duration(cfg.FundingReversion.PostSettleTimeout)
+func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGuardScheduledEvent) error {
+	timeout := evt.Timeout
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
 
-	settleTime := firedEvt.SettleTime
-	startedAt := time.Now()
+	settleTime := evt.IOCEvent.SettleTime
 	applogger.WithCtx(ctx, r.log).Info("Reversion timeout guard started",
-		slog.String("symbol", firedEvt.Symbol),
+		slog.String("symbol", evt.Symbol),
 		slog.Duration("timeout", timeout),
 	)
 
-	target := startedAt.Add(timeout)
+	target := evt.StartedAt.Add(timeout)
 	if !settleTime.IsZero() {
 		target = settleTime.Add(timeout)
 	}
 
-	if !r.WaitUntil(ctx, firedEvt.Symbol, target) {
+	if !r.WaitUntil(ctx, evt.Symbol, target) {
 		return ctx.Err()
 	}
 
-	// Dynamic exchange query to verify current position ground truth
-	holdVol, err := r.getHoldVolume(ctx, firedEvt.Symbol)
+	holdVol, err := r.getHoldVolume(ctx, evt.Symbol)
+	errText := ""
 	if err != nil {
-		r.log.Error("Timeout guard failed to query position", slog.String("symbol", firedEvt.Symbol), slog.Any("error", err))
-		r.abort(ctx, firedEvt.Symbol, firedEvt.ReqID, "position query failed: "+err.Error())
+		errText = err.Error()
+		r.log.Error("Timeout guard failed to query position", slog.String("symbol", evt.Symbol), slog.Any("error", err))
+	}
+
+	next := TimeoutPositionCheckedEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		IOCEvent:           evt.IOCEvent,
+		Timeout:            timeout,
+		StartedAt:          evt.StartedAt,
+		HoldVol:            holdVol,
+		Error:              errText,
+	}
+	return r.publishEvent(ctx, TopicReversionTimeoutPositionChecked, next)
+}
+
+func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt TimeoutPositionCheckedEvent) error {
+	if evt.Error != "" {
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "position query failed: "+evt.Error)
 		return nil
 	}
 
-	if holdVol > 0 {
-		r.forceCloseTimedOutPosition(ctx, firedEvt, holdVol, timeout, startedAt)
-	} else {
-		// Timeout without any open position, check if we need to publish timeout event
-		evt := TimeoutEvent{
-			BaseReversionEvent: BaseReversionEvent{
-				Flow:      FlowReversion,
-				ReqID:     firedEvt.ReqID,
-				Symbol:    firedEvt.Symbol,
-				Timestamp: r.deps.Clock.Now(),
-			},
-			Timeout:             timeout,
+	if evt.HoldVol <= 0 {
+		timeoutEvt := TimeoutEvent{
+			BaseReversionEvent:  nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+			Timeout:             evt.Timeout,
 			Reason:              reversionReasonNoFill,
 			ForceCloseAttempted: false,
 		}
-		_ = r.publishEvent(ctx, TopicReversionTimeout, evt)
-		r.abort(ctx, firedEvt.Symbol, firedEvt.ReqID, reversionReasonNoFill)
+		return r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
 	}
 
-	return nil
+	initEvt := ForceCloseInitiatedEvent{
+		BaseReversionEvent: nextNotifyReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		IOCEvent:           evt.IOCEvent,
+		Timeout:            evt.Timeout,
+		StartedAt:          evt.StartedAt,
+		HoldVol:            evt.HoldVol,
+		TimeoutSec:         evt.Timeout.Seconds(),
+	}
+	return r.publishEvent(ctx, TopicReversionForceCloseInitiated, initEvt)
 }
 
 func (r *StatelessRunner) forceCloseTimedOutPosition(
 	ctx context.Context,
-	firedEvt IOCFiredEvent,
+	prev BaseReversionEvent,
+	firedEvt IOCSubmittedEvent,
 	holdVol float64,
 	timeout time.Duration,
 	startedAt time.Time,
 ) {
 	symbol := firedEvt.Symbol
 
-	initEvt := ForceCloseInitiatedEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      firedEvt.ReqID,
-			Symbol:     symbol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: true,
-		},
-		HoldVol:    holdVol,
-		TimeoutSec: timeout.Seconds(),
-	}
-	_ = r.publishEvent(ctx, TopicReversionForceCloseInitiated, initEvt)
-
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 
 	retries, err := r.forceClosePosition(closeCtx, symbol, 3)
+	errText := ""
 	if err != nil {
-		r.publishReversionCritical(closeCtx, symbol, firedEvt.ReqID, "critical_timeout_close_failed: "+err.Error())
-		return
+		errText = err.Error()
 	}
 
-	now := time.Now()
+	completedEvt := ForceCloseCompletedEvent{
+		BaseReversionEvent: nextReversionBase(prev, symbol, r.deps.Clock.Now()),
+		IOCEvent:           firedEvt,
+		Timeout:            timeout,
+		StartedAt:          startedAt,
+		HoldVol:            holdVol,
+		CloseRetryCount:    retries,
+		Succeeded:          err == nil,
+		Error:              errText,
+	}
+	_ = r.publishEvent(ctx, TopicReversionForceCloseCompleted, completedEvt)
+}
+
+func (r *StatelessRunner) handleForceCloseInitiated(ctx context.Context, evt ForceCloseInitiatedEvent) error {
+	r.forceCloseTimedOutPosition(ctx, evt.BaseReversionEvent, evt.IOCEvent, evt.HoldVol, evt.Timeout, evt.StartedAt)
+	return nil
+}
+
+func (r *StatelessRunner) handleForceCloseCompleted(ctx context.Context, evt ForceCloseCompletedEvent) error {
+	if !evt.Succeeded {
+		r.publishReversionCritical(ctx, evt.BaseReversionEvent, evt.Symbol, "critical_timeout_close_failed: "+evt.Error)
+		return nil
+	}
+
+	now := r.deps.Clock.Now()
 	timeoutEvt := TimeoutEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:      FlowReversion,
-			ReqID:     firedEvt.ReqID,
-			Symbol:    symbol,
-			Timestamp: r.deps.Clock.Now(),
-		},
-		Timeout:             timeout,
+		BaseReversionEvent:  nextReversionBase(evt.BaseReversionEvent, evt.Symbol, now),
+		Timeout:             evt.Timeout,
 		Reason:              "force_close",
 		ForceCloseAttempted: true,
 		ForceCloseSucceeded: true,
-		CloseRetryCount:     retries,
+		CloseRetryCount:     evt.CloseRetryCount,
+		HoldVol:             evt.HoldVol,
+		HoldDurationMs:      now.Sub(evt.StartedAt).Milliseconds(),
+		Direction:           evt.IOCEvent.Side,
 	}
-	_ = r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
+	return r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
+}
+
+func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) error {
+	if !evt.ForceCloseSucceeded {
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, evt.Reason)
+		return nil
+	}
 
 	closeEvt := PositionClosedEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:      FlowReversion,
-			ReqID:     firedEvt.ReqID,
-			Symbol:    symbol,
-			Timestamp: r.deps.Clock.Now(),
-		},
-		CloseVol:        holdVol,
-		Reason:          "timeout_force_close",
-		Method:          reversionMethodFallbackClose,
-		HoldDurationMs:  now.Sub(startedAt).Milliseconds(),
-		CloseRetryCount: retries,
-		Direction:       firedEvt.Side,
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		CloseVol:           evt.HoldVol,
+		Reason:             "timeout_force_close",
+		Method:             reversionMethodFallbackClose,
+		HoldDurationMs:     evt.HoldDurationMs,
+		CloseRetryCount:    evt.CloseRetryCount,
+		Direction:          evt.Direction,
 	}
-	_ = r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
+	return r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
 }
 
 func (r *StatelessRunner) forceClosePosition(
@@ -184,28 +198,18 @@ func (r *StatelessRunner) forceClosePosition(
 	return retries, err
 }
 
-func (r *StatelessRunner) publishReversionCritical(ctx context.Context, symbol, reqID, reason string) {
+func (r *StatelessRunner) publishReversionCritical(ctx context.Context, prev BaseReversionEvent, symbol, reason string) {
 	errEvt := ErrorEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      reqID,
-			Symbol:     symbol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: true,
-		},
-		Error: reason,
+		BaseReversionEvent: nextNotifyReversionBase(prev, symbol, r.deps.Clock.Now()),
+		Error:              reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionError, errEvt)
 
+	errBase := errEvt.BaseReversionEvent
+	errBase.Topic = TopicReversionError
 	abortEvt := AbortEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      reqID,
-			Symbol:     symbol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: false,
-		},
-		Reason: reason,
+		BaseReversionEvent: nextReversionBase(errBase, symbol, r.deps.Clock.Now()),
+		Reason:             reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionAbort, abortEvt)
 }

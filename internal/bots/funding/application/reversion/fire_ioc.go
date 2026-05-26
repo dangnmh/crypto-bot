@@ -4,11 +4,18 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/orders"
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
+)
+
+const (
+	iocOutcomePollTimeout  = 2 * time.Second
+	iocOutcomePollInterval = 100 * time.Millisecond
 )
 
 func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
@@ -16,14 +23,14 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	settleTime := confirmedEvt.SettleTime
 	if settleTime.IsZero() {
 		err := errors.New("settle time not found")
-		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, err.Error())
+		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
 	cfg, ok := r.getSymbolConfig(confirmedEvt.Symbol)
 	if !ok {
 		err := errors.New("symbol config not found")
-		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, err.Error())
+		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
@@ -31,7 +38,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	maxLatency := time.Duration(cfg.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
 		err := errors.New("latency too high")
-		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, err.Error())
+		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
@@ -43,94 +50,177 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	if fireOffset > snapshotOffset {
 		snapshotOffset = fireOffset
 	}
-	if !r.WaitUntil(ctx, confirmedEvt.Symbol, settleTime.Add(-snapshotOffset)) {
-		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, "wait snapshot context canceled")
+
+	evt := FireTimingReadyEvent{
+		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.deps.Clock.Now()),
+		Candidate:          confirmedEvt.Candidate,
+		FundingRate:        confirmedEvt.FundingRate,
+		SettleTime:         settleTime,
+		LatencyRTTMs:       latencyMs,
+		FireOffsetMs:       fireOffset.Milliseconds(),
+		SnapshotOffsetMs:   snapshotOffset.Milliseconds(),
+	}
+
+	return r.publishEvent(ctx, TopicReversionFireTimingReady, evt)
+}
+
+func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTimingReadyEvent) error {
+	snapshotOffset := time.Duration(evt.SnapshotOffsetMs) * time.Millisecond
+	if !r.WaitUntil(ctx, evt.Symbol, evt.SettleTime.Add(-snapshotOffset)) {
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait snapshot context canceled")
 		return ctx.Err()
 	}
 
-	c := confirmedEvt.Candidate
+	c := evt.Candidate
 	if err := r.refreshPrice(ctx, &c); err != nil {
-		r.abort(ctx, c.Symbol, confirmedEvt.ReqID, "refresh price fail: "+err.Error())
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "refresh price fail: "+err.Error())
 		return err
 	}
-	c.Volume = c.CalculateVolume()
+
+	requestedVolume := c.CalculateVolume()
+	c.Volume = requestedVolume
+	ioc, err := c.CalculateIOCPrice()
+	if err != nil {
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "IOC calc failed: "+err.Error())
+		return err
+	}
+	refPrice := executionRefPrice(c)
+	if ioc > 0 && refPrice > 0 {
+		c.Slippage = decmath.Mul(decmath.Div(math.Abs(decmath.Sub(ioc, refPrice)), refPrice), 100.0)
+	}
+
 	safety := r.globalCfg.System.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
 		MinVol24USD:    safety.MinVol24USD,
 	})
-	if !c.SafetyResult.Passed {
-		evt := IOCFiredEvent{
-			BaseReversionEvent: BaseReversionEvent{
-				Flow:      FlowReversion,
-				ReqID:     confirmedEvt.ReqID,
-				Symbol:    c.Symbol,
-				Timestamp: r.deps.Clock.Now(),
-			},
-			Side:          c.Side,
-			CloseSide:     c.CloseSide,
-			FireTimestamp: r.deps.Clock.Now(),
-			SettleTime:    settleTime,
-			Error:         c.SafetyResult.RejectReason,
-		}
-		_ = r.publishEvent(ctx, TopicReversionIOCFired, evt)
-		r.abort(ctx, c.Symbol, confirmedEvt.ReqID, c.SafetyResult.RejectReason)
-		return errors.New(c.SafetyResult.RejectReason)
+	passed := c.SafetyResult != nil && c.SafetyResult.Passed
+	rejectReason := ""
+	if c.SafetyResult != nil {
+		rejectReason = c.SafetyResult.RejectReason
 	}
 
-	if !r.WaitUntil(ctx, confirmedEvt.Symbol, settleTime.Add(-fireOffset)) {
-		r.abort(ctx, confirmedEvt.Symbol, confirmedEvt.ReqID, "wait fire context canceled")
+	next := FirePlanCheckedEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+		Candidate:          c,
+		SettleTime:         evt.SettleTime,
+		LatencyRTTMs:       evt.LatencyRTTMs,
+		FireOffsetMs:       evt.FireOffsetMs,
+		BestBid:            c.BestBid,
+		BestAsk:            c.BestAsk,
+		LastPrice:          c.LastPrice,
+		IOCPrice:           ioc,
+		RefPrice:           refPrice,
+		Slippage:           c.Slippage,
+		RequestedVolume:    requestedVolume,
+		AdjustedVolume:     c.Volume,
+		Passed:             passed,
+		RejectReason:       rejectReason,
+	}
+
+	return r.publishEvent(ctx, TopicReversionFirePlanChecked, next)
+}
+
+func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePlanCheckedEvent) error {
+	c := evt.Candidate
+	if !evt.Passed {
+		submitted := IOCSubmittedEvent{
+			BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+			Side:               c.Side,
+			CloseSide:          c.CloseSide,
+			FireTimestamp:      r.deps.Clock.Now(),
+			SettleTime:         evt.SettleTime,
+			Error:              evt.RejectReason,
+		}
+		_ = r.publishEvent(ctx, TopicReversionIOCSubmitted, submitted)
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, evt.RejectReason)
+		return errors.New(evt.RejectReason)
+	}
+
+	fireOffset := time.Duration(evt.FireOffsetMs) * time.Millisecond
+	if !r.WaitUntil(ctx, evt.Symbol, evt.SettleTime.Add(-fireOffset)) {
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait fire context canceled")
 		return ctx.Err()
 	}
 	fireTime := r.deps.Clock.Now()
 
+	next := FireWindowReachedEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, fireTime),
+		Candidate:          c,
+		SettleTime:         evt.SettleTime,
+		LatencyRTTMs:       evt.LatencyRTTMs,
+		FireTimestamp:      fireTime,
+	}
+
+	return r.publishEvent(ctx, TopicReversionFireWindowReached, next)
+}
+
+func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireWindowReachedEvent) error {
+	cfg, ok := r.getSymbolConfig(evt.Symbol)
+	if !ok {
+		r.log.Error("Symbol config not found for position watch", slog.String("symbol", evt.Symbol))
+		return nil
+	}
+	timeout := time.Duration(cfg.FundingReversion.PostSettleTimeout)
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+
+	next := PositionWatchReadyEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		Candidate:          evt.Candidate,
+		SettleTime:         evt.SettleTime,
+		LatencyRTTMs:       evt.LatencyRTTMs,
+		FireTimestamp:      evt.FireTimestamp,
+		Timeout:            timeout,
+	}
+	watchBase := next.BaseReversionEvent
+	watchBase.Topic = TopicReversionPositionWatchReady
+	r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, timeout*2, func(pos exchange.PersonalPositionUpdate) {
+		r.handlePositionUpdate(ctx, pos, watchBase)
+	})
+	return r.publishEvent(ctx, TopicReversionPositionWatchReady, next)
+}
+
+func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt PositionWatchReadyEvent) error {
+	c := evt.Candidate
 	res := orders.FireIOC(ctx, r.deps.Client, &c, r.deps.Clock, r.log)
 
 	if res.IsSuccess() {
-		evt := IOCFiredEvent{
-			BaseReversionEvent: BaseReversionEvent{
-				Flow:      FlowReversion,
-				ReqID:     confirmedEvt.ReqID,
-				Symbol:    c.Symbol,
-				Timestamp: fireTime,
-			},
-			OrderID:       res.OrderID,
-			Side:          c.Side,
-			CloseSide:     c.CloseSide,
-			OrderType:     exchange.OrderTypeIOC,
-			IntendedPrice: res.Price,
-			Volume:        res.Volume,
-			TPPrice:       res.TakeProfitPrice,
-			SLPrice:       res.StopLossPrice,
-			SettleTime:    settleTime,
-			FireTimestamp: fireTime,
-			LatencyRTTMs:  latencyMs,
+		next := IOCSubmittedEvent{
+			BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp),
+			OrderID:            res.OrderID,
+			Side:               c.Side,
+			CloseSide:          c.CloseSide,
+			OrderType:          exchange.OrderTypeIOC,
+			IntendedPrice:      res.Price,
+			Volume:             res.Volume,
+			TPPrice:            res.TakeProfitPrice,
+			SLPrice:            res.StopLossPrice,
+			SettleTime:         evt.SettleTime,
+			FireTimestamp:      evt.FireTimestamp,
+			LatencyRTTMs:       evt.LatencyRTTMs,
 		}
-		return r.publishEvent(ctx, TopicReversionIOCFired, evt)
+		return r.publishEvent(ctx, TopicReversionIOCSubmitted, next)
 	}
 
 	errText := "IOC order failed"
 	if res.Error != nil {
 		errText = res.Error.Error()
 	}
-	evt := IOCFiredEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:      FlowReversion,
-			ReqID:     confirmedEvt.ReqID,
-			Symbol:    c.Symbol,
-			Timestamp: fireTime,
-		},
-		OrderID:       res.OrderID,
-		Side:          c.Side,
-		CloseSide:     c.CloseSide,
-		IntendedPrice: res.Price,
-		Volume:        res.Volume,
-		SettleTime:    settleTime,
-		FireTimestamp: fireTime,
-		LatencyRTTMs:  latencyMs,
-		Error:         errText,
+	next := IOCSubmittedEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp),
+		OrderID:            res.OrderID,
+		Side:               c.Side,
+		CloseSide:          c.CloseSide,
+		IntendedPrice:      res.Price,
+		Volume:             res.Volume,
+		SettleTime:         evt.SettleTime,
+		FireTimestamp:      evt.FireTimestamp,
+		LatencyRTTMs:       evt.LatencyRTTMs,
+		Error:              errText,
 	}
-	_ = r.publishEvent(ctx, TopicReversionIOCFired, evt)
-	r.abort(ctx, c.Symbol, confirmedEvt.ReqID, errText)
+	_ = r.publishEvent(ctx, TopicReversionIOCSubmitted, next)
+	r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, errText)
 	return errors.New(errText)
 }

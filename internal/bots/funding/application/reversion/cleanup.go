@@ -10,8 +10,7 @@ import (
 
 func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Message) error {
 	var baseEvt struct {
-		ReqID  string `json:"req_id"`
-		Symbol string `json:"symbol"`
+		BaseReversionEvent
 		Reason string `json:"reason"`
 		Error  string `json:"error"`
 	}
@@ -23,22 +22,20 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 
 	r.unsubscribeWS(ctx, symbol)
 
+	completedPrev := baseEvt.BaseReversionEvent
+
 	// Check if this is a PositionClosedEvent containing rich trade metrics
 	var closedEvt PositionClosedEvent
 	if err := json.Unmarshal(msg.Payload, &closedEvt); err == nil && closedEvt.CloseVol > 0 {
 		finalEvt := r.calculateFinalPnL(closedEvt)
 		_ = r.publishEvent(ctx, TopicReversionFinalPnL, finalEvt)
+		completedPrev = finalEvt.BaseReversionEvent
+		completedPrev.Topic = TopicReversionFinalPnL
 	}
 
 	compEvt := ReversionCompletedEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      baseEvt.ReqID,
-			Symbol:     symbol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: false,
-		},
-		Reason: "cleanup_finished",
+		BaseReversionEvent: nextReversionBase(completedPrev, symbol, r.deps.Clock.Now()),
+		Reason:             "cleanup_finished",
 	}
 	_ = r.publishEvent(ctx, TopicReversionCompleted, compEvt)
 
@@ -47,20 +44,14 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 
 func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalPnLEvent {
 	return FinalPnLEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      closeEvt.ReqID,
-			Symbol:     closeEvt.Symbol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: true,
-		},
-		EntryPrice:     closeEvt.EntryPrice,
-		ClosePrice:     closeEvt.ClosePrice,
-		MaxVol:         closeEvt.CloseVol,
-		GrossPnL:       closeEvt.GrossProfit,
-		NetPnL:         closeEvt.NetProfit,
-		Fees:           closeEvt.Fee,
-		HoldFee:        closeEvt.HoldFee,
-		HoldDurationMs: closeEvt.HoldDurationMs,
+		BaseReversionEvent: nextNotifyReversionBase(closeEvt.BaseReversionEvent, closeEvt.Symbol, r.deps.Clock.Now()),
+		EntryPrice:         closeEvt.EntryPrice,
+		ClosePrice:         closeEvt.ClosePrice,
+		MaxVol:             closeEvt.CloseVol,
+		GrossPnL:           closeEvt.GrossProfit,
+		NetPnL:             closeEvt.NetProfit,
+		Fees:               closeEvt.Fee,
+		HoldFee:            closeEvt.HoldFee,
+		HoldDurationMs:     closeEvt.HoldDurationMs,
 	}
 }

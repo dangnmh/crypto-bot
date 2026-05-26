@@ -31,6 +31,15 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			CloseSide:   shared.SideCloseLong,
 		},
 	}
+	ioc := reversion.IOCSubmittedEvent{
+		BaseReversionEvent: base,
+		OrderID:            "ord-1",
+		Side:               shared.SideOpenLong,
+		CloseSide:          shared.SideCloseLong,
+		IntendedPrice:      60000,
+		Volume:             1.25,
+		FireTimestamp:      now,
+	}
 
 	tests := []struct {
 		name        string
@@ -40,109 +49,142 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		notify      bool
 	}{
 		{
-			name: "candidate",
-			event: reversion.CandidateFoundEvent{
-				BaseReversionEvent: base,
-				Candidate:          candidate,
-				SettleTime:         now.Add(time.Hour),
-			},
+			name:        "candidate",
+			event:       reversion.CandidateFoundEvent{BaseReversionEvent: base, Candidate: candidate, SettleTime: now.Add(time.Hour)},
 			messagePart: "Candidate found",
 			keys:        []string{"symbol", "fundingRate", "side"},
 			notify:      true,
 		},
 		{
-			name: "armed",
-			event: reversion.ArmedEvent{
-				BaseReversionEvent: base,
-				Candidate:          candidate,
-				Volume:             12.5,
-				IOCPrice:           60001,
-				Slippage:           0.02,
-				SettleTime:         now.Add(time.Hour),
-			},
+			name:        "arm market ready",
+			event:       reversion.ArmMarketReadyEvent{BaseReversionEvent: base, Candidate: candidate, BestBid: 59990, BestAsk: 60000, LastPrice: 59995},
+			messagePart: "Arm market ready",
+			keys:        []string{"symbol", "bestBid", "bestAsk", "lastPrice"},
+			notify:      true,
+		},
+		{
+			name:        "arm plan calculated",
+			event:       reversion.ArmPlanCalculatedEvent{BaseReversionEvent: base, Candidate: candidate, IOCPrice: 60001, Slippage: 0.02, RequestedVolume: 12.5},
+			messagePart: "Arm plan calculated",
+			keys:        []string{"symbol", "iocPrice", "slippage", "volume"},
+			notify:      true,
+		},
+		{
+			name:        "safety checked",
+			event:       reversion.SafetyCheckedEvent{BaseReversionEvent: base, Candidate: candidate, AdjustedVolume: 12.5, Passed: true},
+			messagePart: "Safety checked",
+			keys:        []string{"symbol", "passed", "reason", "volume"},
+			notify:      true,
+		},
+		{
+			name:        "armed",
+			event:       reversion.ArmedEvent{BaseReversionEvent: base, Candidate: candidate, Volume: 12.5, IOCPrice: 60001, Slippage: 0.02, SettleTime: now.Add(time.Hour)},
 			messagePart: "Reversion armed",
 			keys:        []string{"symbol", "volume", "iocPrice", "slippage"},
 			notify:      true,
 		},
 		{
-			name: "wait complete",
-			event: reversion.WaitCompleteEvent{
-				BaseReversionEvent: base,
-				SettleTime:         now.Add(time.Hour),
-				Candidate:          candidate,
-			},
+			name:        "wait complete",
+			event:       reversion.WaitCompleteEvent{BaseReversionEvent: base, SettleTime: now.Add(time.Hour), Candidate: candidate},
 			messagePart: "Wait complete",
 			keys:        []string{"symbol", "settleTime"},
 			notify:      true,
 		},
 		{
-			name: "confirmed",
-			event: reversion.ConfirmedEvent{
-				BaseReversionEvent: base,
-				FundingRate:        0.001,
-				Candidate:          candidate,
-				SettleTime:         now.Add(time.Hour),
-			},
+			name:        "confirmed",
+			event:       reversion.ConfirmedEvent{BaseReversionEvent: base, FundingRate: 0.001, Candidate: candidate, SettleTime: now.Add(time.Hour)},
 			messagePart: "Recheck confirmed",
 			keys:        []string{"symbol", "fundingRate"},
 			notify:      true,
 		},
 		{
-			name: "ioc fired",
-			event: reversion.IOCFiredEvent{
-				BaseReversionEvent: base,
-				OrderID:            "ord-1",
-				Side:               shared.SideOpenLong,
-				CloseSide:          shared.SideCloseLong,
-				IntendedPrice:      60000,
-				Volume:             1.25,
-				FireTimestamp:      now,
-			},
-			messagePart: "IOC Order fired",
-			keys:        []string{"symbol", "orderId", "intendedPrice", "volume", "error"},
+			name:        "fire timing ready",
+			event:       reversion.FireTimingReadyEvent{BaseReversionEvent: base, Candidate: candidate, LatencyRTTMs: 20, FireOffsetMs: 10},
+			messagePart: "Fire timing ready",
+			keys:        []string{"symbol", "latencyRTTMs", "fireOffsetMs"},
 			notify:      true,
 		},
 		{
-			name: "filled",
-			event: reversion.OrderFilledEvent{
-				BaseReversionEvent: base,
-				OrderID:            "ord-1",
-				Side:               shared.SideOpenLong,
-				CloseSide:          shared.SideCloseLong,
-				FillPrice:          60010,
-				FillVol:            2,
-			},
-			messagePart: "Position FILLED",
+			name:        "fire plan checked",
+			event:       reversion.FirePlanCheckedEvent{BaseReversionEvent: base, Candidate: candidate, AdjustedVolume: 12.5, Passed: true},
+			messagePart: "Fire plan checked",
+			keys:        []string{"symbol", "passed", "reason", "volume"},
+			notify:      true,
+		},
+		{
+			name:        "fire window reached",
+			event:       reversion.FireWindowReachedEvent{BaseReversionEvent: base, Candidate: candidate, LatencyRTTMs: 20},
+			messagePart: "Fire window reached",
+			keys:        []string{"symbol", "latencyRTTMs"},
+			notify:      true,
+		},
+		{
+			name:        "position watch ready",
+			event:       reversion.PositionWatchReadyEvent{BaseReversionEvent: base, Candidate: candidate, Timeout: 10 * time.Second},
+			messagePart: "Position watch ready",
+			keys:        []string{"symbol", "timeout"},
+			notify:      true,
+		},
+		{
+			name:        "ioc submitted",
+			event:       ioc,
+			messagePart: "IOC order submitted",
+			keys:        []string{"symbol", "orderId", "iocPrice", "volume", "error"},
+			notify:      true,
+		},
+		{
+			name:        "ioc outcome checked",
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: base, IOCEvent: ioc, OrderID: "ord-1", Outcome: reversion.IOCOutcomeFilled, HoldVol: 1.25},
+			messagePart: "IOC outcome checked",
+			keys:        []string{"symbol", "orderId", "outcome", "holdVol", "reason"},
+			notify:      true,
+		},
+		{
+			name:        "filled",
+			event:       reversion.OrderFilledEvent{BaseReversionEvent: base, OrderID: "ord-1", Side: shared.SideOpenLong, CloseSide: shared.SideCloseLong, FillPrice: 60010, FillVol: 2},
+			messagePart: "Position filled",
 			keys:        []string{"symbol", "orderId", "fillPrice", "fillVol"},
 			notify:      true,
 		},
 		{
-			name: "closed",
-			event: reversion.PositionClosedEvent{
-				BaseReversionEvent: base,
-				EntryPrice:         60000,
-				ClosePrice:         60100,
-				CloseVol:           2,
-				Reason:             "target",
-				NetProfit:          10,
-				Fee:                -0.5,
-				HoldFee:            -0.1,
-			},
-			messagePart: "Position CLOSED",
+			name:        "closed",
+			event:       reversion.PositionClosedEvent{BaseReversionEvent: base, EntryPrice: 60000, ClosePrice: 60100, CloseVol: 2, Reason: "target", NetProfit: 10, Fee: -0.5, HoldFee: -0.1},
+			messagePart: "Position closed",
 			keys:        []string{"symbol", "entryPrice", "closePrice", "closeVol", "reason", "netProfit", "fee", "holdFee"},
 			notify:      true,
 		},
 		{
-			name: "timeout",
-			event: reversion.TimeoutEvent{
-				BaseReversionEvent:  base,
-				Timeout:             3 * time.Second,
-				Reason:              "guard",
-				ForceCloseAttempted: true,
-				ForceCloseSucceeded: true,
-				CloseRetryCount:     1,
-			},
-			messagePart: "Timeout Guard TRIGGERED",
+			name:        "timeout guard scheduled",
+			event:       reversion.TimeoutGuardScheduledEvent{BaseReversionEvent: base, IOCEvent: ioc, Timeout: 10 * time.Second},
+			messagePart: "Timeout guard scheduled",
+			keys:        []string{"symbol", "timeout"},
+			notify:      true,
+		},
+		{
+			name:        "timeout position checked",
+			event:       reversion.TimeoutPositionCheckedEvent{BaseReversionEvent: base, IOCEvent: ioc, HoldVol: 1.5},
+			messagePart: "Timeout position checked",
+			keys:        []string{"symbol", "holdVol", "error"},
+			notify:      true,
+		},
+		{
+			name:        "force close initiated",
+			event:       reversion.ForceCloseInitiatedEvent{BaseReversionEvent: base, IOCEvent: ioc, HoldVol: 1.5, TimeoutSec: 10.0},
+			messagePart: "Initiating safety timeout force close",
+			keys:        []string{"symbol", "holdVol", "timeout"},
+			notify:      true,
+		},
+		{
+			name:        "force close completed",
+			event:       reversion.ForceCloseCompletedEvent{BaseReversionEvent: base, IOCEvent: ioc, HoldVol: 1.5, CloseRetryCount: 2, Succeeded: true},
+			messagePart: "Force close completed",
+			keys:        []string{"symbol", "holdVol", "retries", "succeeded", "error"},
+			notify:      true,
+		},
+		{
+			name:        "timeout",
+			event:       reversion.TimeoutEvent{BaseReversionEvent: base, Timeout: 3 * time.Second, Reason: "guard", ForceCloseAttempted: true, ForceCloseSucceeded: true, CloseRetryCount: 1},
+			messagePart: "Timeout guard triggered",
 			keys:        []string{"symbol", "timeout", "reason", "forceCloseSucceeded"},
 			notify:      true,
 		},
@@ -161,16 +203,8 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			notify:      true,
 		},
 		{
-			name: "final pnl",
-			event: reversion.FinalPnLEvent{
-				BaseReversionEvent: base,
-				Direction:          shared.SideOpenLong,
-				EntryPrice:         60000,
-				ClosePrice:         60100,
-				NetPnL:             9.4,
-				Fees:               -0.5,
-				HoldFee:            -0.1,
-			},
+			name:        "final pnl",
+			event:       reversion.FinalPnLEvent{BaseReversionEvent: base, Direction: shared.SideOpenLong, EntryPrice: 60000, ClosePrice: 60100, NetPnL: 9.4, Fees: -0.5, HoldFee: -0.1},
 			messagePart: "Final PnL",
 			keys:        []string{"symbol", "entryPrice", "closePrice", "netPnL", "fee", "holdFee"},
 			notify:      true,
@@ -180,20 +214,6 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			event:       reversion.ReversionCompletedEvent{BaseReversionEvent: base, Reason: "done"},
 			messagePart: "Reversion completed",
 			keys:        []string{"symbol", "reason"},
-			notify:      true,
-		},
-		{
-			name:        "check timeout",
-			event:       reversion.CheckTimeoutEvent{BaseReversionEvent: base, IOCEvent: reversion.IOCFiredEvent{BaseReversionEvent: base}},
-			messagePart: "Timeout check initiated",
-			keys:        []string{"symbol"},
-			notify:      true,
-		},
-		{
-			name:        "force close initiated",
-			event:       reversion.ForceCloseInitiatedEvent{BaseReversionEvent: base, HoldVol: 1.5, TimeoutSec: 10.0},
-			messagePart: "Initiating safety timeout force close",
-			keys:        []string{"symbol", "holdVol", "timeout"},
 			notify:      true,
 		},
 	}
@@ -222,9 +242,9 @@ func TestReversionEventsNotifyOnErrorsEvenWhenSendNotifyFalse(t *testing.T) {
 
 	base := reversion.BaseReversionEvent{Symbol: "ETH_USDT"}
 
-	ioc := reversion.IOCFiredEvent{BaseReversionEvent: base, Error: "exchange rejected"}
+	ioc := reversion.IOCSubmittedEvent{BaseReversionEvent: base, Error: "exchange rejected"}
 	assert.True(t, ioc.ShouldNotify())
-	assert.Contains(t, ioc.GetMessage(), "FAILED")
+	assert.Contains(t, ioc.GetMessage(), "failed")
 
 	timeout := reversion.TimeoutEvent{BaseReversionEvent: base, Error: "close failed"}
 	assert.True(t, timeout.ShouldNotify())

@@ -143,6 +143,16 @@ func TestStrategy_Execute_Success(t *testing.T) {
 
 	// 3. FireIOC expectations
 	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ord_123", nil)
+	mockClient.EXPECT().GetOrder(gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
+		OrderID:      "ord_123",
+		Symbol:       "BTC_USDT",
+		State:        exchange.OrderStateFilled,
+		DealVol:      1,
+		DealAvgPrice: 60005.0,
+	}, nil).AnyTimes()
+	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
+		{Symbol: "BTC_USDT", HoldVol: 1},
+	}, nil).AnyTimes()
 
 	// 4. Watcher/notifier expectations
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(

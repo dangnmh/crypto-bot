@@ -17,83 +17,129 @@ import (
 func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
 	r.log.Info("handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
 	c := startEvt.Candidate
+	maxWait := 5 * time.Second
 
 	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
 		applogger.WithCtx(ctx, r.log).Error("Failed to subscribe WS channels", slog.Any("error", err))
-		r.abort(ctx, c.Symbol, startEvt.ReqID, "WS subscribe failed: "+err.Error())
+		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "WS subscribe failed: "+err.Error())
 		return fmt.Errorf("WS subscribe failed: %w", err)
 	}
 
-	if err := r.waitForFreshPrice(ctx, c.Symbol, 5*time.Second); err != nil {
+	if err := r.waitForFreshPrice(ctx, c.Symbol, maxWait); err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("Price data wait failed", slog.Any("error", err))
-		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, startEvt.ReqID, "refresh price failed: "+err.Error())
+		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "fresh price wait failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
 	if err := r.refreshPrice(ctx, &c); err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("Refresh price failed", slog.Any("error", err))
-		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, startEvt.ReqID, "refresh price failed: "+err.Error())
+		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "refresh price failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
+	evt := ArmMarketReadyEvent{
+		BaseReversionEvent: nextReversionBase(startEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+		Candidate:          c,
+		SettleTime:         startEvt.SettleTime,
+		MaxWaitMs:          maxWait.Milliseconds(),
+		BestBid:            c.BestBid,
+		BestAsk:            c.BestAsk,
+		LastPrice:          c.LastPrice,
+	}
+
+	return r.publishEvent(ctx, TopicReversionArmMarketReady, evt)
+}
+
+func (r *StatelessRunner) handleArmMarketReady(ctx context.Context, evt ArmMarketReadyEvent) error {
+	c := evt.Candidate
 	ioc, err := c.CalculateIOCPrice()
 	if err != nil {
 		applogger.WithCtx(ctx, r.log).Warn("IOC calc failed", slog.Any("error", err))
-		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, startEvt.ReqID, "IOC calc failed: "+err.Error())
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "IOC calc failed: "+err.Error())
 		return fmt.Errorf("IOC calc failed: %w", err)
+	}
+
+	refPrice := executionRefPrice(c)
+	if ioc > 0 && refPrice > 0 {
+		c.Slippage = decmath.Mul(decmath.Div(math.Abs(decmath.Sub(ioc, refPrice)), refPrice), 100.0)
 	}
 	c.Volume = c.CalculateVolume()
 
-	if ioc > 0 {
-		var refPrice float64
-		if c.Side == shared.SideOpenLong {
-			refPrice = c.BestAsk
-		} else {
-			refPrice = c.BestBid
-		}
-		if refPrice > 0 {
-			c.Slippage = decmath.Mul(decmath.Div(math.Abs(decmath.Sub(ioc, refPrice)), refPrice), 100.0)
-		}
+	next := ArmPlanCalculatedEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+		Candidate:          c,
+		SettleTime:         evt.SettleTime,
+		IOCPrice:           ioc,
+		RefPrice:           refPrice,
+		Slippage:           c.Slippage,
+		RequestedVolume:    c.Volume,
 	}
 
+	return r.publishEvent(ctx, TopicReversionArmPlanCalculated, next)
+}
+
+func (r *StatelessRunner) handleArmPlanCalculated(ctx context.Context, evt ArmPlanCalculatedEvent) error {
+	c := evt.Candidate
 	safety := r.globalCfg.System.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
 		MinVol24USD:    safety.MinVol24USD,
 	})
-	if !c.SafetyResult.Passed {
-		applogger.WithCtx(ctx, r.log).Warn("Safety FAIL", slog.String("reason", c.SafetyResult.RejectReason))
-		r.unsubscribeWS(ctx, c.Symbol)
-		r.abort(ctx, c.Symbol, startEvt.ReqID, "safety fail: "+c.SafetyResult.RejectReason)
-		return fmt.Errorf("safety fail: %s", c.SafetyResult.RejectReason)
+
+	rejectReason := ""
+	passed := c.SafetyResult != nil && c.SafetyResult.Passed
+	if c.SafetyResult != nil {
+		rejectReason = c.SafetyResult.RejectReason
+	}
+
+	next := SafetyCheckedEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+		Candidate:          c,
+		SettleTime:         evt.SettleTime,
+		IOCPrice:           evt.IOCPrice,
+		RefPrice:           evt.RefPrice,
+		Slippage:           evt.Slippage,
+		RequestedVolume:    evt.RequestedVolume,
+		AdjustedVolume:     c.Volume,
+		Passed:             passed,
+		RejectReason:       rejectReason,
+	}
+
+	return r.publishEvent(ctx, TopicReversionSafetyChecked, next)
+}
+
+func (r *StatelessRunner) handleSafetyChecked(ctx context.Context, safetyEvt SafetyCheckedEvent) error {
+	c := safetyEvt.Candidate
+	if !safetyEvt.Passed {
+		applogger.WithCtx(ctx, r.log).Warn("Safety FAIL", slog.String("reason", safetyEvt.RejectReason))
+		r.abortAfter(ctx, safetyEvt.BaseReversionEvent, c.Symbol, "safety fail: "+safetyEvt.RejectReason)
+		return fmt.Errorf("safety fail: %s", safetyEvt.RejectReason)
 	}
 
 	applogger.WithCtx(ctx, r.log).Info("Ready",
 		slog.String("side", c.Side.String()),
 		slog.Float64("fr", c.FundingRate*100),
-		slog.Float64("ioc", ioc),
+		slog.Float64("ioc", safetyEvt.IOCPrice),
 		slog.Float64("vol", c.Volume),
 	)
 
 	evt := ArmedEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      startEvt.ReqID,
-			Symbol:     c.Symbol,
-			Timestamp:  r.deps.Clock.Now(),
-			SendNotify: true,
-		},
-		Candidate:  c,
-		Volume:     c.Volume,
-		IOCPrice:   ioc,
-		Slippage:   c.Slippage,
-		SettleTime: startEvt.SettleTime,
+		BaseReversionEvent: nextNotifyReversionBase(safetyEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+		Candidate:          c,
+		Volume:             c.Volume,
+		IOCPrice:           safetyEvt.IOCPrice,
+		Slippage:           c.Slippage,
+		SettleTime:         safetyEvt.SettleTime,
 	}
 
 	return r.publishEvent(ctx, TopicReversionArmed, evt)
+}
+
+func executionRefPrice(c fundingdomain.Candidate) float64 {
+	if c.Side == shared.SideOpenLong {
+		return c.BestAsk
+	}
+	return c.BestBid
 }
 
 func (r *StatelessRunner) waitForFreshPrice(ctx context.Context, symbol string, maxWait time.Duration) error {

@@ -3,6 +3,7 @@ package reversion
 import (
 	"context"
 	"log/slog"
+	"reflect"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application"
@@ -15,6 +16,8 @@ import (
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/pkg/eventbus"
 	applogger "crypto-bot/pkg/logger"
+
+	"github.com/ThreeDotsLabs/watermill"
 )
 
 const (
@@ -69,6 +72,9 @@ func (s *Strategy) Execute(ctx context.Context, settleTime time.Time, candidate 
 			Symbol:     candidate.Symbol,
 			SendNotify: false,
 			Timestamp:  s.deps.Clock.Now(),
+			EventID:    watermill.NewUUID(),
+			Seq:        1,
+			Topic:      TopicReversionCandidate,
 		},
 		Candidate:  candidate,
 		SettleTime: settleTime,
@@ -110,6 +116,7 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 		return nil
 	}
 
+	payload = stampEventTrace(topic, payload)
 	applogger.WithCtx(ctx, r.log).Info("Reversion: Publishing event", slog.String("topic", topic), slog.Any("payload", payload))
 
 	if err := r.bus.Publish(topic, payload); err != nil {
@@ -138,6 +145,77 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 	}
 
 	return nil
+}
+
+func stampEventTrace(topic string, payload any) any {
+	copyVal, base, ok := mutableBaseReversionEvent(payload)
+	if !ok {
+		return payload
+	}
+
+	setStringFieldIfEmpty(base, "EventID", watermill.NewUUID())
+	setStringField(base, "Topic", topic)
+
+	return copyVal.Interface()
+}
+
+func mutableBaseReversionEvent(payload any) (reflect.Value, reflect.Value, bool) {
+	v := reflect.ValueOf(payload)
+	if !v.IsValid() {
+		return reflect.Value{}, reflect.Value{}, false
+	}
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() || v.Elem().Kind() != reflect.Struct {
+			return reflect.Value{}, reflect.Value{}, false
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return reflect.Value{}, reflect.Value{}, false
+	}
+
+	copyVal := reflect.New(v.Type()).Elem()
+	copyVal.Set(v)
+	base := copyVal.FieldByName("BaseReversionEvent")
+	if !base.IsValid() || !base.CanSet() {
+		return reflect.Value{}, reflect.Value{}, false
+	}
+	return copyVal, base, true
+}
+
+func setStringField(base reflect.Value, name, value string) {
+	field := base.FieldByName(name)
+	if field.IsValid() && field.CanSet() {
+		field.SetString(value)
+	}
+}
+
+func setStringFieldIfEmpty(base reflect.Value, name, value string) {
+	field := base.FieldByName(name)
+	if field.IsValid() && field.CanSet() && field.String() == "" {
+		field.SetString(value)
+	}
+}
+
+func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Time) BaseReversionEvent {
+	seq := int64(0)
+	if prev.Seq > 0 {
+		seq = prev.Seq + 1
+	}
+	return BaseReversionEvent{
+		Flow:          FlowReversion,
+		ReqID:         prev.ReqID,
+		Symbol:        symbol,
+		Timestamp:     timestamp,
+		Seq:           seq,
+		PreviousTopic: prev.Topic,
+	}
+}
+
+func nextNotifyReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Time) BaseReversionEvent {
+	base := nextReversionBase(prev, symbol, timestamp)
+	base.SendNotify = true
+	return base
 }
 
 func (r *StatelessRunner) WaitUntil(ctx context.Context, symbol string, target time.Time) bool {
@@ -179,6 +257,14 @@ func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, reason strin
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }
 
+func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEvent, symbol, reason string) {
+	evt := AbortEvent{
+		BaseReversionEvent: nextReversionBase(prev, symbol, r.deps.Clock.Now()),
+		Reason:             reason,
+	}
+	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
+}
+
 func (r *StatelessRunner) RetryWithBackoff(ctx context.Context, attempts int, fn func() error) (int, error) {
 	return r.RetryWithBackoffOpts(ctx, attempts, 100*time.Millisecond, 5*time.Second, fn)
 }
@@ -209,7 +295,7 @@ func (r *StatelessRunner) RetryWithBackoffOpts(ctx context.Context, attempts int
 	return attempts, err
 }
 
-func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, reqID string) {
+func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
 	r.log.Debug("Position update received", slog.Any("pos", pos))
 
 	fillPrice := pos.OpenAvgPrice
@@ -231,41 +317,29 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 
 	if pos.HoldVol > 0 {
 		evt := OrderFilledEvent{
-			BaseReversionEvent: BaseReversionEvent{
-				Flow:       FlowReversion,
-				ReqID:      reqID,
-				Symbol:     pos.Symbol,
-				Timestamp:  r.deps.Clock.Now(),
-				SendNotify: true,
-			},
-			OrderID:   "", // Stateless matches purely by symbol
-			Side:      side,
-			CloseSide: closeSide,
-			FillPrice: fillPrice,
-			FillVol:   pos.HoldVol,
+			BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
+			OrderID:            "", // Stateless matches purely by symbol
+			Side:               side,
+			CloseSide:          closeSide,
+			FillPrice:          fillPrice,
+			FillVol:            pos.HoldVol,
 		}
 		go func() {
 			_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
 		}()
 	} else if pos.HoldVol == 0 {
 		evt := PositionClosedEvent{
-			BaseReversionEvent: BaseReversionEvent{
-				Flow:       FlowReversion,
-				ReqID:      reqID,
-				Symbol:     pos.Symbol,
-				Timestamp:  r.deps.Clock.Now(),
-				SendNotify: true,
-			},
-			EntryPrice:  fillPrice,
-			ClosePrice:  fillPrice, // Fallback exit price matches open avg if no specific close avg price exists
-			CloseVol:    pos.CloseVol,
-			Reason:      "exchange_push",
-			GrossProfit: pos.CloseProfitLoss,
-			NetProfit:   pos.CloseProfitLoss - pos.Fee,
-			Fee:         pos.Fee,
-			HoldFee:     pos.HoldFee,
-			Direction:   side,
-			Method:      "watcher",
+			BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
+			EntryPrice:         fillPrice,
+			ClosePrice:         fillPrice, // Fallback exit price matches open avg if no specific close avg price exists
+			CloseVol:           pos.CloseVol,
+			Reason:             "exchange_push",
+			GrossProfit:        pos.CloseProfitLoss,
+			NetProfit:          pos.CloseProfitLoss - pos.Fee,
+			Fee:                pos.Fee,
+			HoldFee:            pos.HoldFee,
+			Direction:          side,
+			Method:             "watcher",
 		}
 		if pos.CloseAvgPrice > 0 {
 			evt.ClosePrice = pos.CloseAvgPrice
