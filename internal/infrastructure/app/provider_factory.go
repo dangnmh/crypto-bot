@@ -12,6 +12,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
+	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
@@ -43,6 +44,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		GateProviderFactory{},
 		BybitStandardProviderFactory{},
 		BybitUnifiedProviderFactory{},
+		BinanceProviderFactory{},
 	}
 }
 
@@ -118,6 +120,43 @@ func (GateProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (
 		WS:       wsPool,
 		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeGate, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeGate)),
+	}, nil
+}
+
+// BinanceProviderFactory builds Binance infrastructure.
+type BinanceProviderFactory struct{}
+
+func (BinanceProviderFactory) Name() string { return exchange.ExchangeBinance }
+
+func (BinanceProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Binance.Future.BaseURL != ""
+}
+
+func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Binance
+	client := exchange.Client(binance.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := binance.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeBinance, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeBinance,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBinance, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBinance)),
 	}, nil
 }
 

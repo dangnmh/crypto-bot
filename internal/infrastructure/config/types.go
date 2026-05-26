@@ -50,9 +50,14 @@ type SystemConfig struct {
 }
 
 type ExchangeConfig struct {
-	Mexc  APIConfig `json:"mexc"`
-	Gate  APIConfig `json:"gate"`
-	Bybit APIConfig `json:"bybit"`
+	Mexc        APIConfig `json:"mexc"`
+	Gate        APIConfig `json:"gate"`
+	Bybit       APIConfig `json:"bybit"`
+	Binance     APIConfig `json:"binance"`
+	Okx         APIConfig `json:"okx"`
+	Hyperliquid APIConfig `json:"hyperliquid"`
+	Bitget      APIConfig `json:"bitget"`
+	Kucoin      APIConfig `json:"kucoin"`
 }
 
 type NotiConfig struct {

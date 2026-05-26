@@ -1,12 +1,21 @@
 {
   // ══════════════════════════════════════════════════════════════
-  // API — Kết nối MEXC Exchange
+  // API — Kết nối Exchanges
   // ══════════════════════════════════════════════════════════════
   "exchange": {
     "mexc": {
       "future": { "baseURL": "https://api.mexc.com" },
-      "websocket": { "wsURL": "wss://contract.mexc.com/edge" },
+      "websocket": { "wsURL": "wss://contract.mexc.com/edge" }
     },
+    "gate": {
+      "future": { "baseURL": "https://api.gateio.ws/api/v4" },
+      "websocket": { "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt" }
+    },
+    "bybit": {
+      "future": { "baseURL": "https://api-testnet.bybit.com" },
+      "websocket": { "wsURL": "wss://stream-testnet.bybit.com/v5/private" },
+      "accountType": "standard"
+    }
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -16,7 +25,7 @@
     "time": "60s", // Đồng bộ đồng hồ local ↔ server (cho fire chính xác tại T-Nms)
     "ticker": "300s", // Refresh bảng giá tổng quan qua REST (WS bổ sung real-time)
     "contract": "3600s", // Refresh thông số hợp đồng (PriceUnit, MinVol, Fee — hiếm đổi)
-    "funding": "30s", // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
+    "funding": "30s" // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -25,18 +34,18 @@
   "logging": {
     "level": "info",
     "ws": { "ticker": false, "order": true, "position": true },
-    "http": true,
+    "http": true
   },
 
   // ══════════════════════════════════════════════════════════════
   // Safety — Ngưỡng bảo vệ hệ thống
   // ══════════════════════════════════════════════════════════════
   "safety": {
-    "minVol24USD": 1000000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
-    "maxImpactRatio": 10, // Tự giảm notional xuống tối đa 5% thanh khoản trung bình 1 phút (amount24h / 1440)
+    "minVol24USD": 100000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
+    "maxImpactRatio": 5 // Tự giảm notional xuống tối đa 5% thanh khoản trung bình 1 phút (amount24h / 1440)
   },
   "notifier": {
-    "enable": true,
+    "enable": true
   },
 
   // ══════════════════════════════════════════════════════════════
@@ -51,10 +60,10 @@
     // ── 2. Position ──────────────────────────────────────────────
     "leverage": 5,
     "openType": "ISOLATED", // ISOLATED (an toàn) | CROSS (rủi ro cao)
-    "positionMode": "HEDGE", // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
+    "positionMode": "HEDGE" // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
 
     // Strategy defaults live in sibling files:
     // - reversion.jsonc -> tradingDefaults.fundingReversion
     // - trap.jsonc      -> tradingDefaults.fundingTrap
-  },
+  }
 }
