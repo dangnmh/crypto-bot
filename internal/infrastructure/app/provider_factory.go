@@ -9,6 +9,7 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/timesync"
@@ -17,6 +18,8 @@ import (
 	"crypto-bot/pkg/eventbus"
 	pkgws "crypto-bot/pkg/ws"
 )
+
+const bybitUnifiedName = "bybit-unified"
 
 // ProviderFactory builds one exchange provider from system configuration.
 type ProviderFactory interface {
@@ -38,6 +41,8 @@ func DefaultProviderFactories() []ProviderFactory {
 	return []ProviderFactory{
 		MexcProviderFactory{},
 		GateProviderFactory{},
+		BybitStandardProviderFactory{},
+		BybitUnifiedProviderFactory{},
 	}
 }
 
@@ -153,4 +158,80 @@ func validateProviderFactoryConfig(cfg ProviderFactoryConfig) error {
 		return fmt.Errorf("event bus is required")
 	}
 	return nil
+}
+
+// BybitStandardProviderFactory builds Standard Classic Bybit infrastructure.
+type BybitStandardProviderFactory struct{}
+
+func (BybitStandardProviderFactory) Name() string { return exchange.ExchangeBybit }
+
+func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Bybit.Future.BaseURL != "" && (cfg.ExchangeConfig.Bybit.AccountType == "" || cfg.ExchangeConfig.Bybit.AccountType == "standard")
+}
+
+func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Bybit
+	client := exchange.Client(bybit.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		"standard",
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := bybit.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeBybit, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeBybit,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBybit, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBybit)),
+	}, nil
+}
+
+// BybitUnifiedProviderFactory builds Unified Bybit infrastructure (UTA).
+type BybitUnifiedProviderFactory struct{}
+
+func (BybitUnifiedProviderFactory) Name() string { return bybitUnifiedName }
+
+func (BybitUnifiedProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Bybit.Future.BaseURL != "" && cfg.ExchangeConfig.Bybit.AccountType == "unified"
+}
+
+func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Bybit
+	client := exchange.Client(bybit.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		"unified",
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := bybit.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeBybit, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     bybitUnifiedName,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBybit, cfg.Logger.With("component", "order_watcher", "exchange", "bybit-unified")),
+	}, nil
 }

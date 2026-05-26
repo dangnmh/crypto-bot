@@ -12,6 +12,7 @@ import (
 	"time"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/pkg/httpclient"
@@ -37,12 +38,13 @@ type Opportunity struct {
 }
 
 func main() {
-	fmt.Println("🔍 Scanning MEXC & Gate.io Futures markets for top funding rates...")
+	fmt.Println("🔍 Scanning MEXC, Gate.io & Bybit Futures markets for top funding rates...")
 
 	// Create exchange clients. No API keys needed for public market data.
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
 	mexcClient := mexc.NewClient(httpPool, "https://contract.mexc.com", "", "", sysconfig.LoggingConfig{})
 	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", sysconfig.LoggingConfig{})
+	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", sysconfig.LoggingConfig{})
 
 	// Give a timeout context
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -64,6 +66,14 @@ func main() {
 		fmt.Printf("🔴 Failed to fetch Gate.io data: %v\n", err)
 	} else {
 		opportunities = append(opportunities, gateOpps...)
+	}
+
+	// ── 3. Fetch Bybit Data ───────────────────────────────────────────────
+	bybitOpps, err := fetchBybitOpportunities(ctx, bybitClient)
+	if err != nil {
+		fmt.Printf("🔴 Failed to fetch Bybit data: %v\n", err)
+	} else {
+		opportunities = append(opportunities, bybitOpps...)
 	}
 
 	// Sort by absolute funding rate descending
@@ -178,6 +188,28 @@ func fetchGateOpportunities(ctx context.Context, client *gate.Client) ([]Opportu
 			Symbol:         t.Symbol,
 			FundingRate:    t.FundingRate,
 			NextSettleTime: gateNextSettle,
+			Volume24h:      t.Amount24,
+		})
+	}
+	return opportunities, nil
+}
+
+func fetchBybitOpportunities(ctx context.Context, client *bybit.Client) ([]Opportunity, error) {
+	tickers, err := client.GetTickers(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("fetch tickers: %w", err)
+	}
+
+	var opportunities []Opportunity
+	for _, t := range tickers {
+		if t.FundingRate == 0 || t.Amount24 < 100000 {
+			continue
+		}
+		opportunities = append(opportunities, Opportunity{
+			Exchange:       "bybit",
+			Symbol:         t.Symbol,
+			FundingRate:    t.FundingRate,
+			NextSettleTime: t.NextSettleTime,
 			Volume24h:      t.Amount24,
 		})
 	}

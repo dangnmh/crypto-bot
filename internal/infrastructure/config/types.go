@@ -20,10 +20,11 @@ type RESTConfig struct {
 
 // APIConfig holds API connection parameters.
 type APIConfig struct {
-	Future    RESTConfig      `json:"future"`
-	WebSocket WebSocketConfig `json:"websocket"`
-	APIKey    string          `json:"-"`
-	APISecret string          `json:"-"`
+	Future      RESTConfig      `json:"future"`
+	WebSocket   WebSocketConfig `json:"websocket"`
+	APIKey      string          `json:"-"`
+	APISecret   string          `json:"-"`
+	AccountType string          `json:"accountType,omitempty"`
 }
 
 type LogWSConfig struct {
@@ -49,8 +50,9 @@ type SystemConfig struct {
 }
 
 type ExchangeConfig struct {
-	Mexc APIConfig `json:"mexc"`
-	Gate APIConfig `json:"gate"`
+	Mexc  APIConfig `json:"mexc"`
+	Gate  APIConfig `json:"gate"`
+	Bybit APIConfig `json:"bybit"`
 }
 
 type NotiConfig struct {

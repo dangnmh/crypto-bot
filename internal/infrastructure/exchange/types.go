@@ -31,8 +31,9 @@ type DepthCommit struct {
 
 // Exchange name constants.
 const (
-	ExchangeMexc = "mexc"
-	ExchangeGate = "gate"
+	ExchangeMexc  = "mexc"
+	ExchangeGate  = "gate"
+	ExchangeBybit = "bybit"
 )
 
 // Side constants — delegate to domain for backward compat.
