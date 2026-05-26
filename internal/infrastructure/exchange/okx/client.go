@@ -120,7 +120,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		req.Header.Set("OK-ACCESS-PASSPHRASE", c.passphrase)
 	}
 
-	return c.doRequest(req)
+	return c.doRequest(ctx, req)
 }
 
 // Post makes a signed POST request.
@@ -159,21 +159,21 @@ func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]
 		req.Header.Set("OK-ACCESS-PASSPHRASE", c.passphrase)
 	}
 
-	return c.doRequest(req)
+	return c.doRequest(ctx, req)
 }
 
-func (c *Client) doRequest(req *http.Request) ([]byte, error) {
+func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			if !connInfo.Reused {
-				applogger.WithCtx(req.Context(), c.logger).Debug("HTTP new connection",
+				applogger.WithCtx(ctx, c.logger).Debug("HTTP new connection",
 					"was_idle", connInfo.WasIdle,
 					"idle_time", connInfo.IdleTime,
 				)
 			}
 		},
 	}
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	req = req.WithContext(httptrace.WithClientTrace(ctx, trace))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

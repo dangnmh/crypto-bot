@@ -109,10 +109,10 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
 	params := map[string]string{
-		"instType": "SWAP",
+		paramInstType: instTypeSwap,
 	}
 	if symbol != "" {
-		params["instId"] = symbol
+		params[paramInstId] = symbol
 	}
 
 	body, err := c.GetCtx(ctx, pathOpenPositions, params)

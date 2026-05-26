@@ -36,9 +36,11 @@ type okxOrder struct {
 }
 
 // CreateOrder submits a new order and returns the order ID.
+//
+//nolint:cyclop // order mapping requires multi-branch mapping
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
 	// Map order type
-	ordType := "limit"
+	ordType := paramLimit
 	switch req.Type {
 	case exchange.OrderTypeMarket:
 		ordType = "market"
@@ -86,11 +88,11 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	bodyMap := map[string]interface{}{
-		"instId":  req.Symbol,
-		"tdMode":  tdMode,
-		"side":    side,
-		"ordType": ordType,
-		"sz":      fmt.Sprintf("%g", req.Vol),
+		paramInstId: req.Symbol,
+		"tdMode":    tdMode,
+		"side":      side,
+		"ordType":   ordType,
+		"sz":        fmt.Sprintf("%g", req.Vol),
 	}
 
 	if isHedge {
@@ -145,8 +147,8 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 	}
 
 	bodyMap := map[string]interface{}{
-		"instId": symbol,
-		"ordId":  orderID,
+		paramInstId: symbol,
+		"ordId":     orderID,
 	}
 
 	body, err := c.PostCtx(ctx, pathCancelOrder, bodyMap)
@@ -204,7 +206,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
 	// As OKX V5 trade/order GET requires instId, we search active and history orders
 	// 1. Search pending orders
-	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, map[string]string{"instType": "SWAP"})
+	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, map[string]string{paramInstType: instTypeSwap})
 	if err == nil {
 		pendingList, parseErr := ParseResponse[okxOrder](pendingBody, "pending_orders")
 		if parseErr == nil {
@@ -219,7 +221,7 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderI
 	}
 
 	// 2. Search history orders
-	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", map[string]string{"instType": "SWAP"})
+	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", map[string]string{paramInstType: instTypeSwap})
 	if err == nil {
 		historyList, parseErr := ParseResponse[okxOrder](historyBody, "orders_history")
 		if parseErr == nil {
@@ -239,10 +241,10 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderI
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
 	params := map[string]string{
-		"instType": "SWAP",
+		paramInstType: instTypeSwap,
 	}
 	if symbol != "" {
-		params["instId"] = symbol
+		params[paramInstId] = symbol
 	}
 
 	body, err := c.GetCtx(ctx, pathPendingOrders, params)

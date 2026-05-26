@@ -19,9 +19,10 @@ func TestClient_GetServerTime(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/fapi/v1/ping" {
+		switch r.URL.Path {
+		case "/fapi/v1/ping":
 			_, _ = w.Write([]byte(`{}`))
-		} else if r.URL.Path == "/fapi/v1/time" {
+		case "/fapi/v1/time":
 			_, _ = w.Write([]byte(`{"serverTime": 1672531200000}`))
 		}
 	}))
@@ -250,6 +251,7 @@ func TestClient_CreateOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "POST", r.Method)
 				assert.Contains(t, r.URL.Path, "/fapi/v1/order")

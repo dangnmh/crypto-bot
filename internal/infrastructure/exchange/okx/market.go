@@ -37,7 +37,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 // GetContractDetails returns specifications for all swap/futures contracts.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
 	params := map[string]string{
-		"instType": "SWAP",
+		paramInstType: instTypeSwap,
 	}
 
 	body, err := c.GetCtx(ctx, pathInstruments, params)
@@ -63,7 +63,8 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	}
 
 	details := make([]exchange.ContractDetail, 0, len(instruments))
-	for _, inst := range instruments {
+	for i := range instruments {
+		inst := &instruments[i]
 		ctVal, _ := strconv.ParseFloat(inst.CtVal, 64)
 		lever, _ := strconv.Atoi(inst.Lever)
 		priceUnit, _ := strconv.ParseFloat(inst.TickSz, 64)
@@ -101,10 +102,10 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 // GetTickers returns ticker data for all SWAP contracts or a specific instrument.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	params := map[string]string{
-		"instType": "SWAP",
+		paramInstType: instTypeSwap,
 	}
 	if symbol != "" {
-		params["instId"] = symbol
+		params[paramInstId] = symbol
 	}
 
 	body, err := c.GetCtx(ctx, pathTickers, params)
@@ -158,7 +159,7 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 	}
 
 	params := map[string]string{
-		"instId": symbol,
+		paramInstId: symbol,
 	}
 
 	body, err := c.GetCtx(ctx, pathFundingRate, params)
@@ -201,9 +202,9 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	}
 
 	params := map[string]string{
-		"instId": symbol,
-		"bar":    bar,
-		"limit":  "100",
+		paramInstId: symbol,
+		"bar":       bar,
+		paramLimit:  "100",
 	}
 
 	if start > 0 {
@@ -272,8 +273,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 	}
 
 	params := map[string]string{
-		"instId": symbol,
-		"sz":     sz,
+		paramInstId: symbol,
+		"sz":        sz,
 	}
 
 	body, err := c.GetCtx(ctx, pathBooks, params)

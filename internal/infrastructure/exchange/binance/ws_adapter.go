@@ -16,17 +16,6 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 )
 
-const (
-	posSideLong  = "LONG"
-	posSideShort = "SHORT"
-	sideBuy      = "BUY"
-	sideSell     = "SELL"
-	statusNew    = "NEW"
-	statusPart   = "PARTIALLY_FILLED"
-	statusFilled = "FILLED"
-	statusCancel = "CANCELED"
-)
-
 // WsAdapter implements ws.ExchangeAdapter for Binance Futures.
 type WsAdapter struct {
 	pool      *pkgws.Pool
@@ -47,9 +36,9 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"method": "SUBSCRIBE",
-		"params": []string{strings.ToLower(symbol) + "@ticker"},
-		"id":     time.Now().UnixMilli(),
+		paramMethod: opSubscribe,
+		paramParams: []string{strings.ToLower(symbol) + "@ticker"},
+		"id":        time.Now().UnixMilli(),
 	}
 	topic := symbol + ":ticker"
 	return a.pool.SubscribePublic(ctx, topic, msg)
@@ -58,9 +47,9 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 // UnsubscribeTicker unsubscribes from ticker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"method": "UNSUBSCRIBE",
-		"params": []string{strings.ToLower(symbol) + "@ticker"},
-		"id":     time.Now().UnixMilli(),
+		paramMethod: opUnsubscribe,
+		paramParams: []string{strings.ToLower(symbol) + "@ticker"},
+		"id":        time.Now().UnixMilli(),
 	}
 	topic := symbol + ":ticker"
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
@@ -69,9 +58,9 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"method": "SUBSCRIBE",
-		"params": []string{strings.ToLower(symbol) + "@kline_1m"},
-		"id":     time.Now().UnixMilli(),
+		paramMethod: opSubscribe,
+		paramParams: []string{strings.ToLower(symbol) + "@kline_1m"},
+		"id":        time.Now().UnixMilli(),
 	}
 	topic := symbol + ":kline"
 	return a.pool.SubscribePublic(ctx, topic, msg)
@@ -80,9 +69,9 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"method": "UNSUBSCRIBE",
-		"params": []string{strings.ToLower(symbol) + "@kline_1m"},
-		"id":     time.Now().UnixMilli(),
+		paramMethod: opUnsubscribe,
+		paramParams: []string{strings.ToLower(symbol) + "@kline_1m"},
+		"id":        time.Now().UnixMilli(),
 	}
 	topic := symbol + ":kline"
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
@@ -91,9 +80,9 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 // SubscribeDepth subscribes to orderbook depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	msg := map[string]interface{}{
-		"method": "SUBSCRIBE",
-		"params": []string{strings.ToLower(symbol) + "@depth20@100ms"},
-		"id":     time.Now().UnixMilli(),
+		paramMethod: opSubscribe,
+		paramParams: []string{strings.ToLower(symbol) + "@depth20@100ms"},
+		"id":        time.Now().UnixMilli(),
 	}
 	topic := symbol + ":depth:" + step
 	return a.pool.SubscribePublic(ctx, topic, msg)
@@ -102,9 +91,9 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 // UnsubscribeDepth unsubscribes from orderbook depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	msg := map[string]interface{}{
-		"method": "UNSUBSCRIBE",
-		"params": []string{strings.ToLower(symbol) + "@depth20@100ms"},
-		"id":     time.Now().UnixMilli(),
+		paramMethod: opUnsubscribe,
+		paramParams: []string{strings.ToLower(symbol) + "@depth20@100ms"},
+		"id":        time.Now().UnixMilli(),
 	}
 	topic := symbol + ":depth:" + step
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
@@ -120,7 +109,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 // GetPingConfig returns application ping and interval.
 func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
 	return map[string]interface{}{
-		"method": "PING",
+		paramMethod: "PING",
 	}, 3 * time.Minute
 }
 
@@ -145,7 +134,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			if strings.HasSuffix(msg.Stream, "@depth20@100ms") || msg.Event == "depthUpdate" {
 				return "depth"
 			}
-			if strings.HasSuffix(msg.Stream, "@kline_1m") || msg.Event == "kline" {
+			if strings.HasSuffix(msg.Stream, "@kline_1m") || msg.Event == msgKline {
 				return "kline"
 			}
 			if msg.Event == "ORDER_TRADE_UPDATE" {
@@ -341,19 +330,20 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 	}
 
 	// Map Side & Position mode
-	if raw.PositionSide == posSideLong {
+	switch raw.PositionSide {
+	case posSideLong:
 		deal.Side = exchange.SideOpenLong
 		if raw.Side == sideSell {
 			deal.Side = exchange.SideCloseLong
 		}
 		deal.PositionMode = 1
-	} else if raw.PositionSide == posSideShort {
+	case posSideShort:
 		deal.Side = exchange.SideOpenShort
 		if raw.Side == sideBuy {
 			deal.Side = exchange.SideCloseShort
 		}
 		deal.PositionMode = 1
-	} else {
+	default:
 		if raw.Side == sideBuy {
 			deal.Side = exchange.SideOpenLong
 		} else {
@@ -369,7 +359,7 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 		deal.State = exchange.OrderStatePartial
 	case statusFilled:
 		deal.State = exchange.OrderStateFilled
-	case statusCancel, "EXPIRED":
+	case statusCancel, statusExpired:
 		deal.State = exchange.OrderStateCanceled
 	}
 
@@ -414,7 +404,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	if amt < 0 {
 		posType = 2
 	}
-	if raw.PositionSide == "SHORT" {
+	if raw.PositionSide == posSideShort {
 		posType = 2
 	}
 

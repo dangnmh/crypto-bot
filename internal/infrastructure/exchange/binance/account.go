@@ -130,7 +130,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			openType = 2
 		}
 
-		if raw.GetPositionSide() == "SHORT" {
+		if raw.GetPositionSide() == posSideShort {
 			posType = 2
 		}
 

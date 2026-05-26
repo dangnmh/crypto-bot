@@ -46,4 +46,5 @@ const (
 	fieldArgs     = "args"
 	fieldChannel  = "channel"
 	msgPong       = "pong"
+	paramInstType = "instType"
 )

@@ -84,6 +84,8 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 }
 
 // GetTickers returns ticker data for all symbols or a single symbol.
+//
+//nolint:cyclop // standard SDK mapping logic contains branch complexity
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	// 1. Fetch 24h Ticker statistics (to get volumes)
 	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
@@ -225,10 +227,10 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		binanceInterval = "1m"
 	case "Min5", "5m":
 		binanceInterval = "5m"
-	case "Min15", "15m":
-		binanceInterval = "15m"
-	case "Min30", "30m":
-		binanceInterval = "30m"
+	case "Min15", interval15m:
+		binanceInterval = interval15m
+	case "Min30", interval30m:
+		binanceInterval = interval30m
 	case "Hour1", "1h":
 		binanceInterval = "1h"
 	case "Hour4", "4h":

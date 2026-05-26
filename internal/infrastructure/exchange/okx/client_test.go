@@ -76,6 +76,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, 1, details[0].PriceScale)
 }
 
+//nolint:dupl // standard mock setup contains high structural similarity
 func TestClient_GetTickers(t *testing.T) {
 	t.Parallel()
 
@@ -243,6 +244,7 @@ func TestClient_GetAssets(t *testing.T) {
 	assert.Equal(t, 800.0, assets[0].AvailableBalance)
 }
 
+//nolint:dupl // standard mock setup contains high structural similarity
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
 

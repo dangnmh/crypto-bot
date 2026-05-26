@@ -33,9 +33,9 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 // SubscribeTicker subscribes to ticker stream.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"op": "subscribe",
-		"args": []map[string]string{
-			{"channel": channelTicker, "instId": symbol},
+		"op": opSubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelTicker, paramInstId: symbol},
 		},
 	}
 	topic := symbol + ":tickers"
@@ -45,9 +45,9 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 // UnsubscribeTicker unsubscribes from ticker stream.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"op": "unsubscribe",
-		"args": []map[string]string{
-			{"channel": channelTicker, "instId": symbol},
+		"op": opUnsubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelTicker, paramInstId: symbol},
 		},
 	}
 	topic := symbol + ":tickers"
@@ -57,9 +57,9 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"op": "subscribe",
-		"args": []map[string]string{
-			{"channel": channelKline, "instId": symbol},
+		"op": opSubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelKline, paramInstId: symbol},
 		},
 	}
 	topic := symbol + ":kline"
@@ -69,9 +69,9 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	msg := map[string]interface{}{
-		"op": "unsubscribe",
-		"args": []map[string]string{
-			{"channel": channelKline, "instId": symbol},
+		"op": opUnsubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelKline, paramInstId: symbol},
 		},
 	}
 	topic := symbol + ":kline"
@@ -81,9 +81,9 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 // SubscribeDepth subscribes to depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	msg := map[string]interface{}{
-		"op": "subscribe",
-		"args": []map[string]string{
-			{"channel": channelDepth, "instId": symbol},
+		"op": opSubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelDepth, paramInstId: symbol},
 		},
 	}
 	topic := symbol + ":depth"
@@ -93,9 +93,9 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 // UnsubscribeDepth unsubscribes from depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	msg := map[string]interface{}{
-		"op": "unsubscribe",
-		"args": []map[string]string{
-			{"channel": channelDepth, "instId": symbol},
+		"op": opUnsubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelDepth, paramInstId: symbol},
 		},
 	}
 	topic := symbol + ":depth"
@@ -105,10 +105,10 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 // SubscribePersonal subscribes to OKX private channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	msg := map[string]interface{}{
-		"op": "subscribe",
-		"args": []map[string]string{
-			{"channel": channelOrders, "instType": "SWAP"},
-			{"channel": channelPositions, "instType": "SWAP"},
+		"op": opSubscribe,
+		fieldArgs: []map[string]string{
+			{fieldChannel: channelOrders, paramInstType: instTypeSwap},
+			{fieldChannel: channelPositions, paramInstType: instTypeSwap},
 		},
 	}
 	return a.pool.SendPrivate(ctx, msg)
@@ -146,8 +146,8 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 // GetChannelExtractor maps OKX events to channels.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
-		if string(data) == "pong" {
-			return "pong"
+		if string(data) == msgPong {
+			return msgPong
 		}
 
 		channel, err := jsonparser.GetString(data, "arg", "channel")

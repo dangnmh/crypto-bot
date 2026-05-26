@@ -15,25 +15,25 @@ import (
 
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
-	sdkSide := models.NewAlgoOrderSideParameter("BUY")
+	sdkSide := models.NewAlgoOrderSideParameter(sideBuy)
 	if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseLong {
-		sdkSide = models.NewAlgoOrderSideParameter("SELL")
+		sdkSide = models.NewAlgoOrderSideParameter(sideSell)
 	}
 
-	sdkType := "LIMIT"
+	sdkType := orderTypeLimit
 	sdkTif := models.NewAlgoOrderTimeInForceParameter("GTC")
 
 	switch req.Type {
 	case exchange.OrderTypeMarket:
-		sdkType = "MARKET"
+		sdkType = orderTypeMarket
 	case exchange.OrderTypePostOnly:
-		sdkType = "LIMIT"
+		sdkType = orderTypeLimit
 		sdkTif = models.NewAlgoOrderTimeInForceParameter("GTX")
 	case exchange.OrderTypeIOC:
-		sdkType = "LIMIT"
+		sdkType = orderTypeLimit
 		sdkTif = models.NewAlgoOrderTimeInForceParameter("IOC")
 	case exchange.OrderTypeFOK:
-		sdkType = "LIMIT"
+		sdkType = orderTypeLimit
 		sdkTif = models.NewAlgoOrderTimeInForceParameter("FOK")
 	}
 
@@ -43,15 +43,15 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		Type(sdkType).
 		Quantity(float32(req.Vol))
 
-	if sdkType != "MARKET" {
+	if sdkType != orderTypeMarket {
 		orderReq = orderReq.Price(float32(req.Price)).TimeInForce(sdkTif)
 	}
 
 	// Position side for hedge mode
 	if req.PositionMode == 1 {
-		posSide := models.NewAlgoOrderPositionSideParameter("LONG")
+		posSide := models.NewAlgoOrderPositionSideParameter(posSideLong)
 		if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseShort {
-			posSide = models.NewAlgoOrderPositionSideParameter("SHORT")
+			posSide = models.NewAlgoOrderPositionSideParameter(posSideShort)
 		}
 		orderReq = orderReq.PositionSide(posSide)
 	}
@@ -215,6 +215,8 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // mapOrder maps a Binance QueryOrderResponse model to exchange.OrderInfo struct.
+//
+//nolint:cyclop // standard SDK mapping logic contains branch complexity
 func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 	id := ""
 	if raw.OrderId != nil {
@@ -258,21 +260,21 @@ func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 	}
 
 	switch raw.GetPositionSide() {
-	case "LONG":
+	case posSideLong:
 		info.Side = exchange.SideOpenLong
-		if raw.GetSide() == "SELL" {
+		if raw.GetSide() == sideSell {
 			info.Side = exchange.SideCloseLong
 		}
 		info.PositionMode = 1
-	case "SHORT":
+	case posSideShort:
 		info.Side = exchange.SideOpenShort
-		if raw.GetSide() == "BUY" {
+		if raw.GetSide() == sideBuy {
 			info.Side = exchange.SideCloseShort
 		}
 		info.PositionMode = 1
 	default:
 		// One-way mode mapping
-		if raw.GetSide() == "BUY" {
+		if raw.GetSide() == sideBuy {
 			info.Side = exchange.SideOpenLong
 		} else {
 			info.Side = exchange.SideOpenShort
@@ -281,13 +283,13 @@ func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 
 	// Status mapping
 	switch raw.GetStatus() {
-	case "NEW":
+	case statusNew:
 		info.State = exchange.OrderStatePartial
-	case "PARTIALLY_FILLED":
+	case statusPart:
 		info.State = exchange.OrderStatePartial
-	case "FILLED":
+	case statusFilled:
 		info.State = exchange.OrderStateFilled
-	case "CANCELED", "EXPIRED":
+	case statusCancel, statusExpired:
 		info.State = exchange.OrderStateCanceled
 	}
 
@@ -302,6 +304,8 @@ func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 }
 
 // mapAllOrder maps models.AllOrdersResponseInner to exchange.OrderInfo.
+//
+//nolint:cyclop // standard SDK mapping logic contains branch complexity
 func mapAllOrder(raw models.AllOrdersResponseInner) exchange.OrderInfo {
 	id := ""
 	if raw.OrderId != nil {
@@ -345,20 +349,20 @@ func mapAllOrder(raw models.AllOrdersResponseInner) exchange.OrderInfo {
 	}
 
 	switch raw.GetPositionSide() {
-	case "LONG":
+	case posSideLong:
 		info.Side = exchange.SideOpenLong
-		if raw.GetSide() == "SELL" {
+		if raw.GetSide() == sideSell {
 			info.Side = exchange.SideCloseLong
 		}
 		info.PositionMode = 1
-	case "SHORT":
+	case posSideShort:
 		info.Side = exchange.SideOpenShort
-		if raw.GetSide() == "BUY" {
+		if raw.GetSide() == sideBuy {
 			info.Side = exchange.SideCloseShort
 		}
 		info.PositionMode = 1
 	default:
-		if raw.GetSide() == "BUY" {
+		if raw.GetSide() == sideBuy {
 			info.Side = exchange.SideOpenLong
 		} else {
 			info.Side = exchange.SideOpenShort

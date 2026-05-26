@@ -12,6 +12,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/timesync"
@@ -47,6 +48,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		BybitUnifiedProviderFactory{},
 		BinanceProviderFactory{},
 		OkxProviderFactory{},
+		HyperliquidProviderFactory{},
 	}
 }
 
@@ -59,6 +61,7 @@ func (MexcProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Mexc.Future.BaseURL != ""
 }
 
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (MexcProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Mexc
@@ -134,6 +137,7 @@ func (BinanceProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Binance.Future.BaseURL != ""
 }
 
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Binance
@@ -171,6 +175,7 @@ func (OkxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Okx.Future.BaseURL != ""
 }
 
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Okx
@@ -197,6 +202,44 @@ func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*
 		WS:       wsPool,
 		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeOkx, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeOkx)),
+	}, nil
+}
+
+// HyperliquidProviderFactory builds Hyperliquid infrastructure.
+type HyperliquidProviderFactory struct{}
+
+func (HyperliquidProviderFactory) Name() string { return exchange.ExchangeHyperliquid }
+
+func (HyperliquidProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Hyperliquid.Future.BaseURL != ""
+}
+
+//nolint:dupl,contextcheck // boilerplate bootstrap builder has structural similarity with other factories, client initialization uses background context
+func (HyperliquidProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Hyperliquid
+	client := exchange.Client(hyperliquid.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := hyperliquid.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeHyperliquid, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeHyperliquid,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeHyperliquid, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeHyperliquid)),
 	}, nil
 }
 
@@ -248,6 +291,7 @@ func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bybit.Future.BaseURL != "" && (cfg.ExchangeConfig.Bybit.AccountType == "" || cfg.ExchangeConfig.Bybit.AccountType == "standard")
 }
 
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with unified factory
 func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bybit
