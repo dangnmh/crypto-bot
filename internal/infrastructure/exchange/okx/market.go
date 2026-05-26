@@ -128,6 +128,33 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, err
 	}
 
+	// Fetch mark prices in bulk to populate funding rates & next settle times without separate API calls
+	mpMap := make(map[string]float64)
+	mpSettleMap := make(map[string]int64)
+	mpParams := map[string]string{
+		paramInstType: instTypeSwap,
+	}
+	if symbol != "" {
+		mpParams[paramInstId] = symbol
+	}
+	mpBody, err := c.GetCtx(ctx, "/api/v5/public/mark-price", mpParams)
+	if err == nil {
+		type okxMarkPrice struct {
+			InstID          string `json:"instId"`
+			FundingRate     string `json:"fundingRate"`
+			NextFundingTime string `json:"nextFundingTime"`
+		}
+		mpList, err := ParseResponse[okxMarkPrice](mpBody, "mark_price")
+		if err == nil {
+			for i := range mpList {
+				fr, _ := strconv.ParseFloat(mpList[i].FundingRate, 64)
+				ns, _ := strconv.ParseInt(mpList[i].NextFundingTime, 10, 64)
+				mpMap[mpList[i].InstID] = fr
+				mpSettleMap[mpList[i].InstID] = ns
+			}
+		}
+	}
+
 	exchangeTickers := make([]exchange.Ticker, 0, len(tickers))
 	for _, t := range tickers {
 		last, _ := strconv.ParseFloat(t.Last, 64)
@@ -137,15 +164,20 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
 
+		fr := mpMap[t.InstID]
+		ns := mpSettleMap[t.InstID]
+
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:    t.InstID,
-			LastPrice: last,
-			Bid1:      bid,
-			Ask1:      ask,
-			Volume24:  vol,
-			Amount24:  amt,
-			FairPrice: last,
-			Timestamp: ts,
+			Symbol:         t.InstID,
+			LastPrice:      last,
+			Bid1:           bid,
+			Ask1:           ask,
+			Volume24:       vol,
+			Amount24:       amt,
+			FairPrice:      last,
+			FundingRate:    fr,
+			NextSettleTime: ns,
+			Timestamp:      ts,
 		})
 	}
 

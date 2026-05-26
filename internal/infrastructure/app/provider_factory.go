@@ -10,10 +10,12 @@ import (
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
+	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/timesync"
@@ -51,6 +53,8 @@ func DefaultProviderFactories() []ProviderFactory {
 		OkxProviderFactory{},
 		HyperliquidProviderFactory{},
 		BitgetProviderFactory{},
+		BingxProviderFactory{},
+		KucoinProviderFactory{},
 	}
 }
 
@@ -304,6 +308,15 @@ func newWSPool(
 		wsClientOpts = append(wsClientOpts, pkgws.WithOnConnected(hook))
 	}
 
+	type PreprocessorProvider interface {
+		GetPreprocessor() func([]byte) ([]byte, error)
+	}
+	if pp, ok := adapter.(PreprocessorProvider); ok {
+		if preprocessor := pp.GetPreprocessor(); preprocessor != nil {
+			wsClientOpts = append(wsClientOpts, pkgws.WithPreprocessor(preprocessor))
+		}
+	}
+
 	return pkgws.NewPool(apiCfg.WebSocket.WSURL, apiCfg.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
 }
 
@@ -397,5 +410,95 @@ func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryC
 		WS:       wsPool,
 		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBybit, cfg.Logger.With("component", "order_watcher", "exchange", "bybit-unified")),
+	}, nil
+}
+
+// BingxProviderFactory builds BingX infrastructure.
+type BingxProviderFactory struct{}
+
+func (BingxProviderFactory) Name() string { return exchange.ExchangeBingx }
+
+func (BingxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Bingx.Future.BaseURL != ""
+}
+
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
+func (BingxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Bingx
+	client := exchange.Client(bingx.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		sysCfg.Logging,
+	))
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := bingx.NewWsAdapter()
+	wsPool := newWSPool(exchange.ExchangeBingx, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeBingx,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBingx, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBingx)),
+	}, nil
+}
+
+// KucoinProviderFactory builds KuCoin infrastructure.
+type KucoinProviderFactory struct{}
+
+func (KucoinProviderFactory) Name() string { return exchange.ExchangeKucoin }
+
+func (KucoinProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Kucoin.Future.BaseURL != ""
+}
+
+//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
+func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Kucoin
+	kucoinClient := kucoin.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		"", // Passphrase from environment variables or config
+		sysCfg.Logging,
+	)
+	client := exchange.Client(kucoinClient)
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	adapter := kucoin.NewWsAdapter()
+	urlFunc := kucoin.GetURLFunc(ctx, kucoinClient)
+
+	wsLogger := cfg.Logger.With("subsystem", "websocket", "exchange", exchange.ExchangeKucoin)
+	wsClientOpts := []pkgws.ClientOption{
+		pkgws.WithURLFunc(urlFunc),
+	}
+	if payload, interval := adapter.GetPingConfig(); payload != nil && interval > 0 {
+		wsClientOpts = append(wsClientOpts, pkgws.WithPing(payload, interval))
+	}
+	if extractor := adapter.GetChannelExtractor(); extractor != nil {
+		wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
+	}
+	wsPool := pkgws.NewPool("", apiCfg.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
+	adapter.SetPool(wsPool)
+
+	return &ExchangeProvider{
+		Name:     exchange.ExchangeKucoin,
+		Client:   client,
+		Adapter:  adapter,
+		WS:       wsPool,
+		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeKucoin, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeKucoin)),
 	}, nil
 }

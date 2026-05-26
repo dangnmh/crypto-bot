@@ -82,24 +82,38 @@ func TestClient_GetTickers(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/market/tickers", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"instId": "BTC-USDT-SWAP",
-					"last": "50000.5",
-					"bidPx": "50000.0",
-					"askPx": "50001.0",
-					"vol24h": "1000",
-					"volCcy24h": "50000000",
-					"ts": "1597026383085"
-				}
-			]
-		}`))
+		switch r.URL.Path {
+		case "/api/v5/market/tickers":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"last": "50000.5",
+						"bidPx": "50000.0",
+						"askPx": "50001.0",
+						"vol24h": "1000",
+						"volCcy24h": "50000000",
+						"ts": "1597026383085"
+					}
+				]
+			}`))
+		case "/api/v5/public/mark-price":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"fundingRate": "0.0001",
+						"nextFundingTime": "1597055183085"
+					}
+				]
+			}`))
+		}
 	}))
 	defer server.Close()
 
