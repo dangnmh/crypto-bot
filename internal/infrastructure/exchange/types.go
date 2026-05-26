@@ -38,6 +38,8 @@ const (
 	ExchangeOkx         = "okx"
 	ExchangeHyperliquid = "hyperliquid"
 	ExchangeBitget      = "bitget"
+	ExchangeBingx       = "bingx"
+	ExchangeKucoin      = "kucoin"
 )
 
 // Side constants — delegate to domain for backward compat.

@@ -58,6 +58,7 @@ type ExchangeConfig struct {
 	Hyperliquid APIConfig `json:"hyperliquid"`
 	Bitget      APIConfig `json:"bitget"`
 	Kucoin      APIConfig `json:"kucoin"`
+	Bingx       APIConfig `json:"bingx"`
 }
 
 type NotiConfig struct {

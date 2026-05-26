@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ type Client struct {
 	pingPayload      interface{}   // Payload to send periodically. If nil, no ping is sent.
 	pingPeriod       time.Duration
 	channelExtractor func([]byte) string // Extracts routing key (channel/topic) from raw JSON
+	urlFunc          func() (string, error)
+	preprocessor     func([]byte) ([]byte, error)
 }
 
 // ClientOption configures the generic WebSocket client.
@@ -70,6 +73,20 @@ func WithPing(payload interface{}, period time.Duration) ClientOption {
 	return func(c *Client) {
 		c.pingPayload = payload
 		c.pingPeriod = period
+	}
+}
+
+// WithURLFunc sets a function used to dynamically generate the WebSocket URL before dial.
+func WithURLFunc(urlFunc func() (string, error)) ClientOption {
+	return func(c *Client) {
+		c.urlFunc = urlFunc
+	}
+}
+
+// WithPreprocessor sets a function to preprocess (e.g. decompress) raw messages after they are read.
+func WithPreprocessor(preprocessor func([]byte) ([]byte, error)) ClientOption {
+	return func(c *Client) {
+		c.preprocessor = preprocessor
 	}
 }
 
@@ -157,7 +174,15 @@ func (c *Client) Connect(ctx context.Context) {
 
 // dial establishes the WebSocket connection.
 func (c *Client) dial() error {
-	conn, resp, err := websocket.DefaultDialer.Dial(c.url, nil)
+	u := c.url
+	if c.urlFunc != nil {
+		var err error
+		u, err = c.urlFunc()
+		if err != nil {
+			return fmt.Errorf("dynamic ws url gen: %w", err)
+		}
+	}
+	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
@@ -220,12 +245,30 @@ func (c *Client) readLoop(ctx context.Context) {
 			return
 		}
 
+		if c.preprocessor != nil {
+			decompressed, err := c.preprocessor(data)
+			if err != nil {
+				applogger.WithCtx(ctx, c.logger).Warn("Preprocess message failed", "error", err)
+				continue
+			}
+			data = decompressed
+		}
+
 		c.processMessage(data)
 	}
 }
 
 // processMessage parses and dispatches a single WebSocket message.
 func (c *Client) processMessage(data []byte) {
+	if string(data) == "Ping" {
+		c.mu.Lock()
+		if c.conn != nil {
+			_ = c.conn.WriteMessage(websocket.TextMessage, []byte("Pong"))
+		}
+		c.mu.Unlock()
+		return
+	}
+
 	if c.channelExtractor == nil {
 		c.mu.Lock()
 		gh := c.globalHandler
