@@ -3,12 +3,14 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 
 	"crypto-bot/pkg/types"
 
 	"github.com/bitwarden/sdk-go/v2"
+	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 )
 
@@ -37,15 +39,18 @@ func InitializeBase(c *SystemConfig) error {
 		return err
 	}
 
-	if err := validateCredentials(c); err != nil {
-		return err
-	}
-
-	if err := validateEndpoints(c); err != nil {
-		return err
-	}
-
 	applySystemDefaults(c)
+
+	// Ensure at least one active exchange is enabled
+	if !c.ExchangeConfig.Mexc.Enable && !c.ExchangeConfig.Gate.Enable && !c.ExchangeConfig.Okx.Enable && !c.ExchangeConfig.Binance.Enable {
+		return fmt.Errorf("at least one active exchange must be enabled")
+	}
+
+	validate := validator.New()
+	_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
+	if err := validate.Struct(c); err != nil {
+		return fmt.Errorf("system config validation failed: %w", err)
+	}
 
 	return nil
 }
@@ -65,16 +70,16 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	}
 
 	// Only fill missing values (keep env vars priority)
-	if c.ExchangeConfig.Mexc.Future.BaseURL != "" && c.ExchangeConfig.Mexc.APIKey == "" {
+	if c.ExchangeConfig.Mexc.Enable && c.ExchangeConfig.Mexc.APIKey == "" {
 		c.ExchangeConfig.Mexc.APIKey = creds.APIKey
 	}
-	if c.ExchangeConfig.Mexc.Future.BaseURL != "" && c.ExchangeConfig.Mexc.APISecret == "" {
+	if c.ExchangeConfig.Mexc.Enable && c.ExchangeConfig.Mexc.APISecret == "" {
 		c.ExchangeConfig.Mexc.APISecret = creds.APISecret
 	}
-	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.APIKey == "" {
+	if c.ExchangeConfig.Gate.Enable && c.ExchangeConfig.Gate.APIKey == "" {
 		c.ExchangeConfig.Gate.APIKey = creds.GateKey
 	}
-	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.APISecret == "" {
+	if c.ExchangeConfig.Gate.Enable && c.ExchangeConfig.Gate.APISecret == "" {
 		c.ExchangeConfig.Gate.APISecret = creds.GateSecret
 	}
 	if c.NotiConfig.TelegramChatID == "" {
@@ -94,7 +99,7 @@ func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 }
 
 func exchangeCredentialsComplete(c APIConfig) bool {
-	if c.Future.BaseURL == "" {
+	if !c.Enable {
 		return true
 	}
 	return c.APIKey != "" && c.APISecret != ""
@@ -190,65 +195,31 @@ func newBitwardenLoader() (*BitwardenLoader, error) {
 	}, nil
 }
 
-func validateCredentials(c *SystemConfig) error {
-	if c.ExchangeConfig.Mexc.Future.BaseURL != "" {
-		if c.ExchangeConfig.Mexc.APIKey == "" {
-			return fmt.Errorf("MEXC_API_KEY is required (set in .env, environment, or Bitwarden)")
-		}
-		if c.ExchangeConfig.Mexc.APISecret == "" {
-			return fmt.Errorf("MEXC_API_SECRET is required (set in .env, environment, or Bitwarden)")
-		}
+// ValidateAPIConfigField validates an APIConfig struct field using the api_config tag.
+func ValidateAPIConfigField(fl validator.FieldLevel) bool {
+	cfg, ok := fl.Field().Interface().(APIConfig)
+	if !ok {
+		return false
 	}
-	if c.ExchangeConfig.Gate.Future.BaseURL != "" {
-		if c.ExchangeConfig.Gate.APIKey == "" {
-			return fmt.Errorf("GATE_API_KEY is required (set in .env, environment, or Bitwarden)")
-		}
-		if c.ExchangeConfig.Gate.APISecret == "" {
-			return fmt.Errorf("GATE_API_SECRET is required (set in .env, environment, or Bitwarden)")
-		}
+	if !cfg.Enable {
+		return true
 	}
-	if c.ExchangeConfig.Okx.Future.BaseURL != "" {
-		if c.ExchangeConfig.Okx.APIKey == "" {
-			return fmt.Errorf("OKX_API_KEY is required (set in .env, environment, or Bitwarden)")
-		}
-		if c.ExchangeConfig.Okx.APISecret == "" {
-			return fmt.Errorf("OKX_API_SECRET is required (set in .env, environment, or Bitwarden)")
-		}
+	if cfg.Future.BaseURL == "" {
+		return false
 	}
-	return nil
-}
-
-func validateEndpoints(c *SystemConfig) error {
-	mexcEnabled := c.ExchangeConfig.Mexc.Future.BaseURL != ""
-	gateEnabled := c.ExchangeConfig.Gate.Future.BaseURL != ""
-	okxEnabled := c.ExchangeConfig.Okx.Future.BaseURL != ""
-	binanceEnabled := c.ExchangeConfig.Binance.Future.BaseURL != ""
-
-	if !mexcEnabled && !gateEnabled && !okxEnabled && !binanceEnabled {
-		return fmt.Errorf("api.future.baseURL is required for at least one active exchange")
+	if _, err := url.ParseRequestURI(cfg.Future.BaseURL); err != nil {
+		return false
 	}
-
-	if mexcEnabled {
-		if c.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
-			return fmt.Errorf("mexc api.websocket.wsURL is required when mexc is enabled")
-		}
+	if cfg.WebSocket.WSURL == "" {
+		return false
 	}
-	if gateEnabled {
-		if c.ExchangeConfig.Gate.WebSocket.WSURL == "" {
-			return fmt.Errorf("gate api.websocket.wsURL is required when gate is enabled")
-		}
+	if _, err := url.ParseRequestURI(cfg.WebSocket.WSURL); err != nil {
+		return false
 	}
-	if okxEnabled {
-		if c.ExchangeConfig.Okx.WebSocket.WSURL == "" {
-			return fmt.Errorf("okx api.websocket.wsURL is required when okx is enabled")
-		}
+	if cfg.APIKey == "" || cfg.APISecret == "" {
+		return false
 	}
-	if binanceEnabled {
-		if c.ExchangeConfig.Binance.WebSocket.WSURL == "" {
-			return fmt.Errorf("binance api.websocket.wsURL is required when binance is enabled")
-		}
-	}
-	return nil
+	return true
 }
 
 func applySystemDefaults(c *SystemConfig) {

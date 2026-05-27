@@ -33,6 +33,7 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 		},
 		"exchange": {
 			"mexc": {
+				"enable": true,
 				"future": {
 					"baseURL": "https://test.api.com"
 				},
@@ -85,6 +86,7 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 		"safety": {},
 		"exchange": {
 			"mexc": {
+				"enable": true,
 				"future": {
 					"baseURL": "https://test.api.com"
 				},
@@ -117,6 +119,7 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 		"safety": {},
 		"exchange": {
 			"mexc": {
+				"enable": true,
 				"future": {"baseURL": "https://test.api.com"},
 				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
 			}
@@ -129,8 +132,12 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	}`
 	reversionContent := `{
 		"enabled": true,
-		"takeProfitPct": 3,
-		"stopLossPct": 2
+		"exchanges": {
+			"mexc": {
+				"takeProfitPct": 3,
+				"stopLossPct": 2
+			}
+		}
 	}`
 	trapContent := `{
 		"enabled": true,
@@ -154,7 +161,7 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 
 	assert.Equal(t, 5, defaults.Leverage)
 	assert.True(t, defaults.FundingReversion.Enabled)
-	assert.Equal(t, 3.0, defaults.FundingReversion.TakeProfitPct)
+	assert.Equal(t, 3.0, defaults.FundingReversion.Exchanges["mexc"].TakeProfitPct)
 	assert.True(t, defaults.FundingTrap.Enabled)
 	assert.Equal(t, 2.5, defaults.FundingTrap.DepthPct)
 	assert.True(t, defaults.FundingTrap.Trailing.Enabled)
@@ -170,6 +177,7 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 		"safety": {},
 		"exchange": {
 			"mexc": {
+				"enable": true,
 				"future": {"baseURL": "https://test.api.com"},
 				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
 			}

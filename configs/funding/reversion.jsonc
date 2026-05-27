@@ -1,11 +1,64 @@
 {
   // Funding Reversion (Dao chieu sau Funding)
-  "enabled":       true,
-  "takeProfitPct": 1.5,
-  "stopLossPct":   3,
-  "maxLatency":    "300ms", // Abort if RTT > 200ms
-  "bufferTime":    "50ms",  // Fire at T - (Latency/2 + Buffer) the bigger the earlier
-  "postSettleTimeout": "300s", // Force close if reversion lifecycle does not terminally close
+  "enabled":    true,
+  "maxLatency": "300ms", // Abort if RTT > 200ms
+
+  "exchanges": {
+    "mexc": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",  // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "postSettleTimeout": "300s" // Force close if reversion lifecycle does not terminally close
+    },
+    "gate": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "bybit": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "binance": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "okx": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "hyperliquid": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "bitget": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "bingx": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "kucoin": {
+      "takeProfitPct": 1.5,
+      "stopLossPct":   3,
+      "bufferTime":    "30ms",
+      "postSettleTimeout": "300s"
+    }
+  }
 
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
   // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.

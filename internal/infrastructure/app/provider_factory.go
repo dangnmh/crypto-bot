@@ -64,7 +64,7 @@ type MexcProviderFactory struct{}
 func (MexcProviderFactory) Name() string { return exchange.ExchangeMexc }
 
 func (MexcProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Mexc.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Mexc.Enable
 }
 
 func (MexcProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -88,7 +88,7 @@ type GateProviderFactory struct{}
 func (GateProviderFactory) Name() string { return exchange.ExchangeGate }
 
 func (GateProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Gate.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Gate.Enable
 }
 
 func (GateProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -112,7 +112,7 @@ type BinanceProviderFactory struct{}
 func (BinanceProviderFactory) Name() string { return exchange.ExchangeBinance }
 
 func (BinanceProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Binance.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Binance.Enable
 }
 
 func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -136,7 +136,7 @@ type OkxProviderFactory struct{}
 func (OkxProviderFactory) Name() string { return exchange.ExchangeOkx }
 
 func (OkxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Okx.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Okx.Enable
 }
 
 func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -161,7 +161,7 @@ type BitgetProviderFactory struct{}
 func (BitgetProviderFactory) Name() string { return exchange.ExchangeBitget }
 
 func (BitgetProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bitget.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Bitget.Enable
 }
 
 func (BitgetProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -186,7 +186,7 @@ type HyperliquidProviderFactory struct{}
 func (HyperliquidProviderFactory) Name() string { return exchange.ExchangeHyperliquid }
 
 func (HyperliquidProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Hyperliquid.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Hyperliquid.Enable
 }
 
 func (HyperliquidProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -285,7 +285,7 @@ type BybitStandardProviderFactory struct{}
 func (BybitStandardProviderFactory) Name() string { return exchange.ExchangeBybit }
 
 func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bybit.Future.BaseURL != "" && (cfg.ExchangeConfig.Bybit.AccountType == "" || cfg.ExchangeConfig.Bybit.AccountType == "standard")
+	return cfg.ExchangeConfig.Bybit.Enable && (cfg.ExchangeConfig.Bybit.AccountType == "" || cfg.ExchangeConfig.Bybit.AccountType == "standard")
 }
 
 func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -310,7 +310,7 @@ type BybitUnifiedProviderFactory struct{}
 func (BybitUnifiedProviderFactory) Name() string { return bybitUnifiedName }
 
 func (BybitUnifiedProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bybit.Future.BaseURL != "" && cfg.ExchangeConfig.Bybit.AccountType == "unified"
+	return cfg.ExchangeConfig.Bybit.Enable && cfg.ExchangeConfig.Bybit.AccountType == "unified"
 }
 
 func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -335,7 +335,7 @@ type BingxProviderFactory struct{}
 func (BingxProviderFactory) Name() string { return exchange.ExchangeBingx }
 
 func (BingxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bingx.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Bingx.Enable
 }
 
 func (BingxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -359,7 +359,7 @@ type KucoinProviderFactory struct{}
 func (KucoinProviderFactory) Name() string { return exchange.ExchangeKucoin }
 
 func (KucoinProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Kucoin.Future.BaseURL != ""
+	return cfg.ExchangeConfig.Kucoin.Enable
 }
 
 func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {

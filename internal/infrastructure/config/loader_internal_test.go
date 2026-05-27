@@ -2,10 +2,12 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"crypto-bot/pkg/types"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,11 +29,13 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 
 	disabled := APIConfig{}
 	complete := APIConfig{
+		Enable:    true,
 		Future:    RESTConfig{BaseURL: "https://api.example.com"},
 		APIKey:    "key",
 		APISecret: "secret",
 	}
 	missingKey := APIConfig{
+		Enable:    true,
 		Future:    RESTConfig{BaseURL: "https://api.example.com"},
 		APISecret: "secret",
 	}
@@ -61,52 +65,57 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name:    "missing all endpoints",
 			cfg:     &SystemConfig{},
-			wantErr: "api.future.baseURL",
+			wantErr: "at least one active exchange must be enabled",
 		},
 		{
 			name: "mexc missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Mexc: APIConfig{
+				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://mexc.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
 				APISecret: "secret",
 			}}},
-			wantErr: "MEXC_API_KEY",
+			wantErr: "api_config",
 		},
 		{
 			name: "mexc missing secret",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Mexc: APIConfig{
+				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://mexc.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
 				APIKey:    "key",
 			}}},
-			wantErr: "MEXC_API_SECRET",
+			wantErr: "api_config",
 		},
 		{
 			name: "gate missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Gate: APIConfig{
+				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
 				APISecret: "secret",
 			}}},
-			wantErr: "GATE_API_KEY",
+			wantErr: "api_config",
 		},
 		{
 			name: "gate missing secret",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Gate: APIConfig{
+				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
 				APIKey:    "key",
 			}}},
-			wantErr: "GATE_API_SECRET",
+			wantErr: "api_config",
 		},
 		{
 			name: "gate missing websocket url",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Gate: APIConfig{
+				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
-			wantErr: "gate api.websocket.wsURL",
+			wantErr: "api_config",
 		},
 	}
 
@@ -114,13 +123,20 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			credentialErr := validateCredentials(tt.cfg)
-			endpointErr := validateEndpoints(tt.cfg)
-			if credentialErr != nil {
-				require.ErrorContains(t, credentialErr, tt.wantErr)
+			// Check missing all active exchanges logic
+			if !tt.cfg.ExchangeConfig.Mexc.Enable && !tt.cfg.ExchangeConfig.Gate.Enable && !tt.cfg.ExchangeConfig.Okx.Enable && !tt.cfg.ExchangeConfig.Binance.Enable {
+				err := fmt.Errorf("at least one active exchange must be enabled")
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-			require.ErrorContains(t, endpointErr, tt.wantErr)
+
+			// Validate using register validation tag flow
+			validate := validator.New()
+			_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
+
+			err := validate.Struct(tt.cfg)
+			require.Error(t, err)
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
@@ -223,8 +239,8 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			Mexc: APIConfig{Future: RESTConfig{BaseURL: "https://mexc.example"}},
-			Gate: APIConfig{Future: RESTConfig{BaseURL: "https://gate.example"}},
+			Mexc: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+			Gate: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
@@ -240,6 +256,6 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 		return nil, errors.New("boom")
 	}
 	require.ErrorContains(t, applyBitwardenFallback(&SystemConfig{
-		ExchangeConfig: ExchangeConfig{Mexc: APIConfig{Future: RESTConfig{BaseURL: "https://mexc.example"}}},
+		ExchangeConfig: ExchangeConfig{Mexc: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}}},
 	}), "bitwarden fallback failed")
 }

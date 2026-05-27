@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/types"
 
@@ -44,14 +45,17 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	return cfg, nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) parseTradingDefaults() (TradingDefaults, error) {
 	var defaults TradingDefaults
 	if c.System.TradingDefaults != nil {
 		if err := json.Unmarshal(c.System.TradingDefaults, &defaults); err != nil {
-			return fmt.Errorf("parse trading defaults: %w", err)
+			return defaults, fmt.Errorf("parse trading defaults: %w", err)
 		}
 	}
+	return defaults, nil
+}
 
+func (c *Config) validateSymbols(defaults *TradingDefaults) error {
 	for i := range c.Symbols {
 		sc := &c.Symbols[i]
 
@@ -63,9 +67,21 @@ func (c *Config) validate() error {
 			return fmt.Errorf("symbols[%d].exchange %q is not configured", i, sc.Exchange)
 		}
 
-		c.applyDefaults(sc, &defaults)
+		c.applyDefaults(sc, defaults)
 		c.normalizeSymbolMetrics(sc)
 		c.defaultSymbolModes(sc)
+	}
+	return nil
+}
+
+func (c *Config) validate() error {
+	defaults, err := c.parseTradingDefaults()
+	if err != nil {
+		return err
+	}
+
+	if err := c.validateSymbols(&defaults); err != nil {
+		return err
 	}
 
 	validate := validator.New()
@@ -77,6 +93,8 @@ func (c *Config) validate() error {
 		return name
 	})
 
+	_ = validate.RegisterValidation("api_config", sysconfig.ValidateAPIConfigField)
+
 	if err := validate.Struct(c); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
@@ -87,9 +105,23 @@ func (c *Config) validate() error {
 func (c *Config) exchangeConfigured(name string) bool {
 	switch name {
 	case exchange.ExchangeMexc:
-		return c.System.ExchangeConfig.Mexc.Future.BaseURL != ""
+		return c.System.ExchangeConfig.Mexc.Enable
 	case exchange.ExchangeGate:
-		return c.System.ExchangeConfig.Gate.Future.BaseURL != ""
+		return c.System.ExchangeConfig.Gate.Enable
+	case exchange.ExchangeBybit:
+		return c.System.ExchangeConfig.Bybit.Enable
+	case exchange.ExchangeBinance:
+		return c.System.ExchangeConfig.Binance.Enable
+	case exchange.ExchangeOkx:
+		return c.System.ExchangeConfig.Okx.Enable
+	case exchange.ExchangeHyperliquid:
+		return c.System.ExchangeConfig.Hyperliquid.Enable
+	case exchange.ExchangeBitget:
+		return c.System.ExchangeConfig.Bitget.Enable
+	case exchange.ExchangeKucoin:
+		return c.System.ExchangeConfig.Kucoin.Enable
+	case exchange.ExchangeBingx:
+		return c.System.ExchangeConfig.Bingx.Enable
 	default:
 		return false
 	}
@@ -102,14 +134,23 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 	defaultStr((*string)(&sc.OpenType), d.OpenType)
 	defaultStr((*string)(&sc.PositionMode), d.PositionMode)
 
+	// 1. Resolve raw nested reversion config from defaults for the symbol's exchange
+	exchName := sc.Exchange
+	exchDefault := d.FundingReversion.Exchanges[exchName]
+
 	if !sc.FundingReversion.Enabled && d.FundingReversion.Enabled {
-		sc.FundingReversion = d.FundingReversion
+		sc.FundingReversion.Enabled = true
+		sc.FundingReversion.MaxLatency = d.FundingReversion.MaxLatency
+		sc.FundingReversion.TakeProfitPct = exchDefault.TakeProfitPct
+		sc.FundingReversion.StopLossPct = exchDefault.StopLossPct
+		sc.FundingReversion.BufferTime = exchDefault.BufferTime
+		sc.FundingReversion.PostSettleTimeout = exchDefault.PostSettleTimeout
 	} else if sc.FundingReversion.Enabled {
-		defaultFloat(&sc.FundingReversion.TakeProfitPct, d.FundingReversion.TakeProfitPct)
-		defaultFloat(&sc.FundingReversion.StopLossPct, d.FundingReversion.StopLossPct)
 		defaultDuration(&sc.FundingReversion.MaxLatency, d.FundingReversion.MaxLatency)
-		defaultDuration(&sc.FundingReversion.BufferTime, d.FundingReversion.BufferTime)
-		defaultDuration(&sc.FundingReversion.PostSettleTimeout, d.FundingReversion.PostSettleTimeout)
+		defaultFloat(&sc.FundingReversion.TakeProfitPct, exchDefault.TakeProfitPct)
+		defaultFloat(&sc.FundingReversion.StopLossPct, exchDefault.StopLossPct)
+		defaultDuration(&sc.FundingReversion.BufferTime, exchDefault.BufferTime)
+		defaultDuration(&sc.FundingReversion.PostSettleTimeout, exchDefault.PostSettleTimeout)
 	}
 
 	if !sc.FundingTrap.Enabled && d.FundingTrap.Enabled {

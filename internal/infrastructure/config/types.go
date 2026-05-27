@@ -20,6 +20,7 @@ type RESTConfig struct {
 
 // APIConfig holds API connection parameters.
 type APIConfig struct {
+	Enable      bool            `json:"enable"`
 	Future      RESTConfig      `json:"future"`
 	WebSocket   WebSocketConfig `json:"websocket"`
 	APIKey      string          `json:"-"`
@@ -50,15 +51,15 @@ type SystemConfig struct {
 }
 
 type ExchangeConfig struct {
-	Mexc        APIConfig `json:"mexc"`
-	Gate        APIConfig `json:"gate"`
-	Bybit       APIConfig `json:"bybit"`
-	Binance     APIConfig `json:"binance"`
-	Okx         APIConfig `json:"okx"`
-	Hyperliquid APIConfig `json:"hyperliquid"`
-	Bitget      APIConfig `json:"bitget"`
-	Kucoin      APIConfig `json:"kucoin"`
-	Bingx       APIConfig `json:"bingx"`
+	Mexc        APIConfig `json:"mexc" validate:"api_config"`
+	Gate        APIConfig `json:"gate" validate:"api_config"`
+	Bybit       APIConfig `json:"bybit" validate:"api_config"`
+	Binance     APIConfig `json:"binance" validate:"api_config"`
+	Okx         APIConfig `json:"okx" validate:"api_config"`
+	Hyperliquid APIConfig `json:"hyperliquid" validate:"api_config"`
+	Bitget      APIConfig `json:"bitget" validate:"api_config"`
+	Kucoin      APIConfig `json:"kucoin" validate:"api_config"`
+	Bingx       APIConfig `json:"bingx" validate:"api_config"`
 }
 
 type NotiConfig struct {

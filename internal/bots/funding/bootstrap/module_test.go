@@ -40,6 +40,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 		"safety": {},
 		"exchange": {
 			"mexc": {
+				"enable": true,
 				"future": {"baseURL": "https://example.test"},
 				"websocket": {"wsURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
 			}

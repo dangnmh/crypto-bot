@@ -64,43 +64,19 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	})
 }
 
-// validateConfig checks for mandatory config values for enabled exchanges.
+// validateConfig checks if at least one exchange is enabled.
 func (b *EngineBuilder) validateConfig() {
-	mexcEnabled := b.cfg.ExchangeConfig.Mexc.Future.BaseURL != ""
-	gateEnabled := b.cfg.ExchangeConfig.Gate.Future.BaseURL != ""
+	mexcEnabled := b.cfg.ExchangeConfig.Mexc.Enable
+	gateEnabled := b.cfg.ExchangeConfig.Gate.Enable
+	bybitEnabled := b.cfg.ExchangeConfig.Bybit.Enable
+	binanceEnabled := b.cfg.ExchangeConfig.Binance.Enable
+	okxEnabled := b.cfg.ExchangeConfig.Okx.Enable
+	hyperliquidEnabled := b.cfg.ExchangeConfig.Hyperliquid.Enable
+	bitgetEnabled := b.cfg.ExchangeConfig.Bitget.Enable
+	kucoinEnabled := b.cfg.ExchangeConfig.Kucoin.Enable
+	bingxEnabled := b.cfg.ExchangeConfig.Bingx.Enable
 
-	if !mexcEnabled && !gateEnabled {
-		b.errors = append(b.errors, "at least one exchange must be configured (mexc or gate)")
-		return
-	}
-
-	if mexcEnabled {
-		if b.cfg.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
-			b.errors = append(b.errors, "MEXC API.WebSocket.WSURL is required")
-		}
-		if b.cfg.ExchangeConfig.Mexc.APIKey == "" {
-			b.errors = append(b.errors, "MEXC APIKey is required")
-		}
-		if b.cfg.ExchangeConfig.Mexc.APISecret == "" {
-			b.errors = append(b.errors, "MEXC APISecret is required")
-		}
-		if b.cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
-			b.errors = append(b.errors, "MEXC MaxPairsPerWSConn must be greater than 0")
-		}
-	}
-
-	if gateEnabled {
-		if b.cfg.ExchangeConfig.Gate.WebSocket.WSURL == "" {
-			b.errors = append(b.errors, "Gate API.WebSocket.WSURL is required")
-		}
-		if b.cfg.ExchangeConfig.Gate.APIKey == "" {
-			b.errors = append(b.errors, "Gate APIKey is required")
-		}
-		if b.cfg.ExchangeConfig.Gate.APISecret == "" {
-			b.errors = append(b.errors, "Gate APISecret is required")
-		}
-		if b.cfg.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn <= 0 {
-			b.errors = append(b.errors, "Gate MaxPairsPerWSConn must be greater than 0")
-		}
+	if !mexcEnabled && !gateEnabled && !bybitEnabled && !binanceEnabled && !okxEnabled && !hyperliquidEnabled && !bitgetEnabled && !kucoinEnabled && !bingxEnabled {
+		b.errors = append(b.errors, "at least one exchange must be enabled")
 	}
 }

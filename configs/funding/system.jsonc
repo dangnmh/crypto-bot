@@ -4,20 +4,56 @@
   // ══════════════════════════════════════════════════════════════
   "exchange": {
     "mexc": {
-      "future": { "baseURL": "https://api.mexc.com" },
-      "websocket": { "wsURL": "wss://contract.mexc.com/edge" }
+      "enable": true,
+      "future": {
+        "baseURL": "https://api.mexc.com"
+      },
+      "websocket": {
+        "wsURL": "wss://contract.mexc.com/edge"
+      }
     },
     "gate": {
+      "enable": false,
       "future": { "baseURL": "https://api.gateio.ws/api/v4" },
       "websocket": { "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt" }
     },
     "bybit": {
+      "enable": false,
       "future": { "baseURL": "https://api-testnet.bybit.com" },
       "websocket": { "wsURL": "wss://stream-testnet.bybit.com/v5/private" },
       "accountType": "standard"
+    },
+    "binance": {
+      "enable": false,
+      "future": { "baseURL": "https://fapi.binance.com" },
+      "websocket": { "wsURL": "wss://fstream.binance.com/ws" }
+    },
+    "okx": {
+      "enable": false,
+      "future": { "baseURL": "https://aws.okx.com" },
+      "websocket": { "wsURL": "wss://ws.okx.com:8443/ws/v5/private" }
+    },
+    "hyperliquid": {
+      "enable": false,
+      "future": { "baseURL": "https://api.hyperliquid.xyz" },
+      "websocket": { "wsURL": "wss://api.hyperliquid.xyz/ws" }
+    },
+    "bitget": {
+      "enable": false,
+      "future": { "baseURL": "https://api.bitget.com" },
+      "websocket": { "wsURL": "wss://ws.bitget.com/v2/ws/private" }
+    },
+    "kucoin": {
+      "enable": false,
+      "future": { "baseURL": "https://api-futures.kucoin.com" },
+      "websocket": { "wsURL": "wss://ws-api-futures.kucoin.com/endpoint" }
+    },
+    "bingx": {
+      "enable": false,
+      "future": { "baseURL": "https://open-api.bingx.com" },
+      "websocket": { "wsURL": "wss://open-api-ws.bingx.com/market" }
     }
   },
-
   // ══════════════════════════════════════════════════════════════
   // Sync — Tần suất đồng bộ dữ liệu
   // ══════════════════════════════════════════════════════════════
@@ -27,16 +63,18 @@
     "contract": "3600s", // Refresh thông số hợp đồng (PriceUnit, MinVol, Fee — hiếm đổi)
     "funding": "30s" // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
   },
-
   // ══════════════════════════════════════════════════════════════
   // Logging
   // ══════════════════════════════════════════════════════════════
   "logging": {
     "level": "info",
-    "ws": { "ticker": false, "order": true, "position": true },
+    "ws": {
+      "ticker": false,
+      "order": true,
+      "position": true
+    },
     "http": true
   },
-
   // ══════════════════════════════════════════════════════════════
   // Safety — Ngưỡng bảo vệ hệ thống
   // ══════════════════════════════════════════════════════════════
@@ -47,7 +85,6 @@
   "notifier": {
     "enable": true
   },
-
   // ══════════════════════════════════════════════════════════════
   // Trading Defaults — Giá trị mặc định cho TẤT CẢ symbol
   // Mỗi field có thể override per-symbol trong funding.jsonc
@@ -56,12 +93,10 @@
     // ── 1. Entry Filter ──────────────────────────────────────────
     "minFundingRate": 0.3, // FR tối thiểu (%). < 0.3% → phí ăn hết lời → skip
     "maxPriceDiffPercent": 0.8, // Slippage tĩnh fallback (%)
-
     // ── 2. Position ──────────────────────────────────────────────
     "leverage": 5,
     "openType": "ISOLATED", // ISOLATED (an toàn) | CROSS (rủi ro cao)
     "positionMode": "HEDGE" // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
-
     // Strategy defaults live in sibling files:
     // - reversion.jsonc -> tradingDefaults.fundingReversion
     // - trap.jsonc      -> tradingDefaults.fundingTrap

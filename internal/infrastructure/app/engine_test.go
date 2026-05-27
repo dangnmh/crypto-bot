@@ -104,12 +104,14 @@ func TestNewEngine_Success(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.mexc.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
 				APIKey:    "mexc-key",
 				APISecret: "mexc-secret",
 			},
 			Gate: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.gate.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
 				APIKey:    "gate-key",
@@ -255,6 +257,7 @@ func TestNewEngine_OnlyMexc(t *testing.T) {
 
 	assertSingleProviderEngine(t, exchange.ExchangeMexc, sysconfig.ExchangeConfig{
 		Mexc: sysconfig.APIConfig{
+			Enable:    true,
 			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 		},
@@ -266,6 +269,7 @@ func TestNewEngine_OnlyGate(t *testing.T) {
 
 	assertSingleProviderEngine(t, exchange.ExchangeGate, sysconfig.ExchangeConfig{
 		Gate: sysconfig.APIConfig{
+			Enable:    true,
 			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 		},

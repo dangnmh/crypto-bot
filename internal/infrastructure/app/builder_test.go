@@ -28,6 +28,7 @@ func TestEngineBuilder_WithOptionalDependenciesBuilds(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				APIKey:    "key",
@@ -52,6 +53,7 @@ func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: ""},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				APIKey:    "key",
@@ -72,6 +74,7 @@ func TestEngineBuilder_MissingWSURL(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "", MaxPairsPerWSConn: 10},
 				APIKey:    "key",
@@ -92,6 +95,7 @@ func TestEngineBuilder_InvalidMaxPairs(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
 				APIKey:    "key",
@@ -112,6 +116,7 @@ func TestEngineBuilder_MissingAPIKey(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				APIKey:    "",
@@ -132,6 +137,7 @@ func TestEngineBuilder_MissingAPISecret(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			Mexc: sysconfig.APIConfig{
+				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				APIKey:    "key",

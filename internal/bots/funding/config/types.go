@@ -1,6 +1,9 @@
 package config
 
-import "crypto-bot/internal/bots/funding/domain"
+import (
+	"crypto-bot/internal/bots/funding/domain"
+	"crypto-bot/pkg/types"
+)
 
 // OpenType specifies the margin mode for a position.
 type OpenType string
@@ -21,7 +24,7 @@ const (
 // SymbolConfig represents per-symbol trading settings loaded from funding.json.
 type SymbolConfig struct {
 	Symbol              string       `json:"symbol" validate:"required"`
-	Exchange            string       `json:"exchange" validate:"required,oneof=mexc gate"`
+	Exchange            string       `json:"exchange" validate:"required,oneof=mexc gate bybit binance okx hyperliquid bitget kucoin bingx"`
 	SimulateSettle      string       `json:"simulateSettle"`
 	MaxPriceDiffPercent float64      `json:"maxPriceDiffPercent"`
 	MarginUSDT          float64      `json:"marginUSDT" validate:"gt=0"`
@@ -44,6 +47,19 @@ type Config struct {
 	Symbols []SymbolConfig `json:"symbols" validate:"required,gt=0,dive"`
 }
 
+type RawFundingReversionConfig struct {
+	Enabled    bool                               `json:"enabled"`
+	MaxLatency types.Duration                     `json:"maxLatency"`
+	Exchanges  map[string]ExchangeReversionConfig `json:"exchanges"`
+}
+
+type ExchangeReversionConfig struct {
+	TakeProfitPct     float64        `json:"takeProfitPct"`
+	StopLossPct       float64        `json:"stopLossPct"`
+	BufferTime        types.Duration `json:"bufferTime"`
+	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
+}
+
 // TradingDefaults is a temporary parsing struct to extract the opaque tradingDefaults
 // block from system config and merge into per-symbol configs.
 type TradingDefaults struct {
@@ -53,7 +69,7 @@ type TradingDefaults struct {
 	OpenType            string  `json:"openType"`
 	PositionMode        string  `json:"positionMode"`
 
-	// Reuses domain types directly.
-	FundingReversion domain.FundingReversionConfig `json:"fundingReversion"`
-	FundingTrap      domain.FundingTrapConfig      `json:"fundingTrap"`
+	// Raw parsed defaults
+	FundingReversion RawFundingReversionConfig `json:"fundingReversion"`
+	FundingTrap      domain.FundingTrapConfig  `json:"fundingTrap"`
 }

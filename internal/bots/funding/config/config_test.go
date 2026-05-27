@@ -35,7 +35,13 @@ func sysWithDefaults(defaults config.TradingDefaults) *config.SystemConfig {
 	return &config.SystemConfig{
 		SystemConfig: sysconfig.SystemConfig{
 			ExchangeConfig: sysconfig.ExchangeConfig{
-				Mexc: sysconfig.APIConfig{Future: sysconfig.RESTConfig{BaseURL: "https://mexc.test"}},
+				Mexc: sysconfig.APIConfig{
+					Enable:    true,
+					Future:    sysconfig.RESTConfig{BaseURL: "https://mexc.test"},
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
+					APIKey:    "mock-key",
+					APISecret: "mock-secret",
+				},
 			},
 		},
 		TradingDefaults: json.RawMessage(raw),
@@ -141,12 +147,16 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 		Leverage:            10,
 		OpenType:            "ISOLATED",
 		PositionMode:        "HEDGE",
-		FundingReversion: domain.FundingReversionConfig{
-			Enabled:       true,
-			TakeProfitPct: 15,
-			StopLossPct:   3,
-			MaxLatency:    types.Duration(200 * time.Millisecond),
-			BufferTime:    types.Duration(10 * time.Millisecond),
+		FundingReversion: config.RawFundingReversionConfig{
+			Enabled:    true,
+			MaxLatency: types.Duration(200 * time.Millisecond),
+			Exchanges: map[string]config.ExchangeReversionConfig{
+				"mexc": {
+					TakeProfitPct: 15,
+					StopLossPct:   3,
+					BufferTime:    types.Duration(10 * time.Millisecond),
+				},
+			},
 		},
 		FundingTrap: domain.FundingTrapConfig{
 			Enabled:           true,
@@ -217,7 +227,7 @@ func TestLoad_NormalizesPercentages(t *testing.T) {
 func TestLoad_DefaultTPSL_WhenZero(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, sysWithDefaults(config.TradingDefaults{FundingReversion: domain.FundingReversionConfig{Enabled: true}}),
+	cfg := loadWith(t, sysWithDefaults(config.TradingDefaults{FundingReversion: config.RawFundingReversionConfig{Enabled: true}}),
 		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5}]`)
 	sc := cfg.Symbols[0]
 

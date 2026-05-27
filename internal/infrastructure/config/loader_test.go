@@ -18,6 +18,7 @@ func TestInitializeBase_Success(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
 			},
@@ -38,6 +39,7 @@ func TestInitializeBase_Defaults(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
 			},
@@ -63,6 +65,7 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 50},
 			},
@@ -86,6 +89,7 @@ func TestInitializeBase_MissingAPIKey(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
 			},
@@ -103,6 +107,7 @@ func TestInitializeBase_MissingAPISecret(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
 			},
@@ -120,6 +125,7 @@ func TestInitializeBase_MissingBaseURL(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: ""},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
 			},
@@ -137,6 +143,7 @@ func TestInitializeBase_MissingWSURL(t *testing.T) {
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
+				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: ""},
 			},
