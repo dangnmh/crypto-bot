@@ -10,6 +10,7 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	bybitsdk "github.com/bybit-exchange/bybit.go.api"
+	transportlog "github.com/dangnmh/transport"
 )
 
 // Client is the Bybit V5 Perpetual Futures REST API client.
@@ -27,6 +28,30 @@ type Client struct {
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "bybit")
 
+	var clientCopy http.Client
+	if httpClient != nil {
+		clientCopy = *httpClient
+	}
+
+	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
+		rt = transportlog.NewTransportLog(rt,
+			transportlog.LogOptionLogger(logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"}, // match all paths
+				BlackListPaths: []string{
+					"GET|/v5/market/tickers",
+					"GET|/v5/market/time",
+					"GET|/v5/market/instruments-info",
+				}, // match everything cleanly
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+		)
+		clientCopy.Transport = rt
+	}
+
 	sdkOpts := []bybitsdk.ClientOption{}
 	if baseURL != "" {
 		sdkOpts = append(sdkOpts, bybitsdk.WithBaseURL(baseURL))
@@ -34,7 +59,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 
 	sdkClient := bybitsdk.NewBybitHttpClient(apiKey, apiSecret, sdkOpts...)
 	if httpClient != nil {
-		sdkClient.HTTPClient = httpClient
+		sdkClient.HTTPClient = &clientCopy
 	}
 
 	return &Client{

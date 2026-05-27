@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/ticker"
 
+	transportlog "github.com/dangnmh/transport"
 	"github.com/gateio/gateapi-go/v7"
 )
 
@@ -27,8 +28,25 @@ type Client struct {
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "gate")
 
+	clientCopy := *httpClient
+
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
+		rt = transportlog.NewTransportLog(rt,
+			transportlog.LogOptionLogger(logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"}, // match all paths
+				BlackListPaths: []string{},    // match everything cleanly
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+		)
+		clientCopy.Transport = rt
+	}
+
 	cfg := gateapi.NewConfiguration()
-	cfg.HTTPClient = httpClient
+	cfg.HTTPClient = &clientCopy
 	if baseURL != "" {
 		cfg.BasePath = strings.TrimRight(baseURL, "/")
 	}

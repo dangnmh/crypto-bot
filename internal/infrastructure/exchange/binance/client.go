@@ -9,6 +9,8 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/ticker"
 
+	transportlog "github.com/dangnmh/transport"
+
 	"github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures"
 	binancecommon "github.com/binance/binance-connector-go/common/v2/common"
 )
@@ -28,6 +30,28 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	logger := slog.Default().With("component", "exchange", "exchange", "binance")
 
 	restOpts := []binancecommon.ConfigurationRestAPIOption{}
+
+	var rt http.RoundTripper
+	if httpClient != nil && httpClient.Transport != nil {
+		rt = httpClient.Transport
+	}
+
+	if logCfg.HTTP && rt != nil {
+		rt = transportlog.NewTransportLog(rt,
+			transportlog.LogOptionLogger(logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"},
+				BlackListPaths: []string{},
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{}),
+		)
+	}
+
+	if rt != nil {
+		restOpts = append(restOpts, binancecommon.WithHTTPSAgent(rt))
+	}
 	if baseURL != "" {
 		restOpts = append(restOpts, binancecommon.WithBasePath(baseURL))
 	}

@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/ticker"
 
+	transportlog "github.com/dangnmh/transport"
 	"github.com/ethereum/go-ethereum/crypto"
 	hl "github.com/sonirico/go-hyperliquid"
 )
@@ -26,6 +27,23 @@ type Client struct {
 // NewClient creates a new Hyperliquid API Client.
 func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "hyperliquid")
+
+	clientCopy := *httpClient
+
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
+		rt = transportlog.NewTransportLog(rt,
+			transportlog.LogOptionLogger(logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"}, // match all paths
+				BlackListPaths: []string{},    // match everything cleanly
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+		)
+		clientCopy.Transport = rt
+	}
 
 	var meta *hl.Meta
 	var spotMeta *hl.SpotMeta
@@ -62,7 +80,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 				"",       // Account Address
 				spotMeta, // SpotMeta
 				nil,      // PerpDexs
-				hl.ExchangeOptClientOptions(hl.ClientOptHTTPClient(httpClient)),
+				hl.ExchangeOptClientOptions(hl.ClientOptHTTPClient(&clientCopy)),
 			)
 		}
 	}
@@ -74,7 +92,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 		meta,      // Meta
 		spotMeta,  // SpotMeta
 		spotState, // SpotState
-		hl.InfoOptClientOptions(hl.ClientOptHTTPClient(httpClient)),
+		hl.InfoOptClientOptions(hl.ClientOptHTTPClient(&clientCopy)),
 	)
 
 	return &Client{

@@ -302,3 +302,39 @@ func TestEngine_Shutdown_NilWS(t *testing.T) {
 		_ = e.Shutdown(context.Background())
 	})
 }
+
+func TestNewEngine_FilterByActiveExchanges(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			Mexc: sysconfig.APIConfig{
+				Enable:    true,
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.mexc.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
+			},
+			Gate: sysconfig.APIConfig{
+				Enable:    true,
+				Future:    sysconfig.RESTConfig{BaseURL: "https://api.gate.com"},
+				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
+			},
+		},
+	}
+
+	engineCfg := app.EngineConfig{
+		SystemConfig:    cfg,
+		Logger:          testLogger(),
+		ActiveExchanges: []string{"mexc"}, // only Mexc is active in funding.jsonc
+	}
+
+	e, err := app.NewEngine(context.Background(), engineCfg)
+	require.NoError(t, err)
+	require.NotNil(t, e)
+
+	// Mexc provider should be loaded, but Gate should be skipped despite being enabled in system config!
+	assert.Len(t, e.Providers, 1)
+	assert.Contains(t, e.Providers, "mexc")
+	assert.NotContains(t, e.Providers, "gate")
+
+	_ = e.Shutdown(context.Background())
+}

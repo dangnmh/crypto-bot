@@ -49,6 +49,7 @@ type EngineConfig struct {
 	HTTPClient        *http.Client
 	Logger            *slog.Logger
 	ProviderFactories []ProviderFactory
+	ActiveExchanges   []string
 }
 
 // NewEngine dynamically instantiates exchange providers based on configured credentials and endpoints.
@@ -78,6 +79,11 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 		}
 	}
 
+	activeMap := make(map[string]bool)
+	for _, exch := range cfg.ActiveExchanges {
+		activeMap[strings.ToLower(strings.TrimSpace(exch))] = true
+	}
+
 	factories := cfg.ProviderFactories
 	if len(factories) == 0 {
 		factories = DefaultProviderFactories()
@@ -94,6 +100,15 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 	for _, factory := range factories {
 		if !factory.Enabled(sysCfg) {
 			continue
+		}
+		if len(cfg.ActiveExchanges) > 0 {
+			name := strings.ToLower(factory.Name())
+			if name == "bybit-unified" {
+				name = "bybit"
+			}
+			if !activeMap[name] {
+				continue
+			}
 		}
 		engineLogger.Info("initializing exchange provider", slog.String("exchange", factory.Name()))
 		prov, err := factory.Build(ctx, factoryCfg)

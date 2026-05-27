@@ -34,9 +34,11 @@ type Client struct {
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "mexc")
 
+	clientCopy := *httpClient
+
 	// If HTTP logging is enabled, wrap the underlying transport of the injected client
-	if logCfg.HTTP && httpClient.Transport != nil {
-		rt := httpClient.Transport
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
@@ -53,11 +55,11 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
 		)
-		httpClient.Transport = rt
+		clientCopy.Transport = rt
 	}
 
 	return &Client{
-		httpClient: httpClient,
+		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,

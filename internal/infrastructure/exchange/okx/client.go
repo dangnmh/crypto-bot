@@ -39,29 +39,25 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		passphrase = os.Getenv("OKX_PASSPHRASE")
 	}
 
-	if logCfg.HTTP && httpClient.Transport != nil {
-		rt := httpClient.Transport
+	clientCopy := *httpClient
+
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/api/v5/public/time",
-					"GET|/api/v5/market/tickers",
-					"GET|/api/v5/public/instruments",
-					"GET|/api/v5/public/funding-rate",
-					"GET|/api/v5/market/candles",
-				},
+				BlackListPaths: []string{},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"OK-ACCESS-KEY", "OK-ACCESS-PASSPHRASE"}),
 		)
-		httpClient.Transport = rt
+		clientCopy.Transport = rt
 	}
 
 	return &Client{
-		httpClient: httpClient,
+		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,

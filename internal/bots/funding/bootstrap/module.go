@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/reversion"
@@ -95,11 +96,24 @@ func provideHTTPClient() *http.Client {
 	return httpclient.NewPool(httpclient.DefaultPoolConfig())
 }
 
-func provideEngine(cfg *fundingconfig.SystemConfig, httpClient *http.Client, log *slog.Logger) (*infraapp.Engine, error) {
+func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config, httpClient *http.Client, log *slog.Logger) (*infraapp.Engine, error) {
+	var activeExchanges []string
+	if fundingCfg != nil {
+		seen := make(map[string]bool)
+		for i := range fundingCfg.Symbols {
+			exch := strings.ToLower(strings.TrimSpace(fundingCfg.Symbols[i].Exchange))
+			if exch != "" && !seen[exch] {
+				seen[exch] = true
+				activeExchanges = append(activeExchanges, exch)
+			}
+		}
+	}
+
 	return infraapp.NewEngine(context.Background(), infraapp.EngineConfig{
-		SystemConfig: &cfg.SystemConfig,
-		HTTPClient:   httpClient,
-		Logger:       log,
+		SystemConfig:    &cfg.SystemConfig,
+		HTTPClient:      httpClient,
+		Logger:          log,
+		ActiveExchanges: activeExchanges,
 	})
 }
 

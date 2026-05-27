@@ -41,24 +41,21 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		passphrase = os.Getenv("KUCOIN_PASSPHRASE")
 	}
 
-	if logCfg.HTTP && httpClient.Transport != nil {
-		rt := httpClient.Transport
+	clientCopy := *httpClient
+
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/api/v1/timestamp",
-					"GET|/api/v1/allTickers",
-					"GET|/api/v1/contracts/active",
-					"GET|/api/ua/v1/market/funding-rate",
-				},
+				BlackListPaths: []string{},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey, headerAuthPhrase}),
 		)
-		httpClient.Transport = rt
+		clientCopy.Transport = rt
 	}
 
 	if baseURL == "" {
@@ -66,7 +63,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 	}
 
 	return &Client{
-		httpClient: httpClient,
+		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		unifiedURL: defaultUnifiedURL,
 		apiKey:     apiKey,

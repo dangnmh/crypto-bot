@@ -130,62 +130,132 @@ func main() {
 	printOpportunities(opportunities)
 }
 
+type SymbolGroup struct {
+	StandardSymbol string
+	Score          float64
+	ScoreRate      float64
+	Opportunities  []Opportunity
+}
+
+func standardizeSymbol(symbol string) string {
+	s := strings.ToUpper(symbol)
+	s = strings.ReplaceAll(s, "_", "")
+	s = strings.ReplaceAll(s, "-", "")
+	if strings.HasSuffix(s, "USDTM") {
+		s = strings.TrimSuffix(s, "M")
+	}
+	if strings.HasSuffix(s, "USD") {
+		s = strings.TrimSuffix(s, "USD") + "USDT"
+	}
+	if strings.HasSuffix(s, "USDC") {
+		s = strings.TrimSuffix(s, "USDC") + "USDT"
+	}
+	if !strings.HasSuffix(s, "USDT") {
+		s = s + "USDT"
+	}
+	base := strings.TrimSuffix(s, "USDT")
+	return base + "_USDT"
+}
+
 func printOpportunities(opportunities []Opportunity) {
-	// Sort by absolute funding rate descending
-	sort.Slice(opportunities, func(i, j int) bool {
-		return math.Abs(opportunities[i].FundingRate) > math.Abs(opportunities[j].FundingRate)
+	// Group opportunities by standardized symbol
+	groupsMap := make(map[string][]Opportunity)
+	for _, opp := range opportunities {
+		stdSym := standardizeSymbol(opp.Symbol)
+		groupsMap[stdSym] = append(groupsMap[stdSym], opp)
+	}
+
+	// Build the SymbolGroup slice
+	groups := make([]SymbolGroup, 0, len(groupsMap))
+	for stdSym, opps := range groupsMap {
+		maxAbsFR := 0.0
+		var bestRate float64
+		for _, o := range opps {
+			absFR := math.Abs(o.FundingRate)
+			if absFR > maxAbsFR {
+				maxAbsFR = absFR
+				bestRate = o.FundingRate
+			}
+		}
+
+		// Sort opportunities inside this symbol group by Volume24h descending
+		sort.Slice(opps, func(i, j int) bool {
+			return opps[i].Volume24h > opps[j].Volume24h
+		})
+
+		groups = append(groups, SymbolGroup{
+			StandardSymbol: stdSym,
+			Score:          maxAbsFR,
+			ScoreRate:      bestRate,
+			Opportunities:  opps,
+		})
+	}
+
+	// Sort groups by absolute funding rate score descending
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].Score > groups[j].Score
 	})
 
-	fmt.Printf("✅ Scanned %d active pairs. Top 20 opportunities:\n\n", len(opportunities))
+	displayCount := 15
+	if len(groups) < displayCount {
+		displayCount = len(groups)
+	}
 
-	// Print a formatted table
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', tabwriter.AlignRight|tabwriter.Debug)
-	_, _ = fmt.Fprintln(w, "EXCHANGE\t SYMBOL\t FUNDING RATE (%)\t NEXT SETTLE IN\t TRADE DIRECTION\t 24H VOL (USDT)\t")
-	_, _ = fmt.Fprintln(w, "--------\t ------\t ----------------\t --------------\t ---------------\t --------------\t")
+	fmt.Printf("✅ Scanned %d active pairs across exchanges. Displaying top %d opportunity groups:\n\n", len(opportunities), displayCount)
 
 	now := time.Now()
-	displayCount := 20
-	if len(opportunities) < displayCount {
-		displayCount = len(opportunities)
-	}
-
 	for i := 0; i < displayCount; i++ {
-		r := opportunities[i]
-
-		// 1. Calculate Countdown
-		settleTime := time.UnixMilli(r.NextSettleTime)
-		countdown := settleTime.Sub(now).Round(time.Second)
-		if countdown < 0 {
-			countdown = 0
+		g := groups[i]
+		scorePct := g.ScoreRate * 100
+		scoreSign := ""
+		if scorePct > 0 {
+			scoreSign = "+"
 		}
+		fmt.Printf("💎 GROUP %d: %s | Peak Rate: %s%.4f%%\n", i+1, g.StandardSymbol, scoreSign, scorePct)
 
-		// 2. Formatting Funding Rate with sign and color conceptually
-		frPct := r.FundingRate * 100
-		frStr := fmt.Sprintf("%.4f%%", frPct)
-		if frPct > 0 {
-			frStr = "+" + frStr
+		// Print a formatted table for opportunities within the group
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', tabwriter.AlignRight|tabwriter.Debug)
+		_, _ = fmt.Fprintln(w, "   EXCHANGE\t SYMBOL\t FUNDING RATE (%)\t NEXT SETTLE IN\t TRADE DIRECTION\t 24H VOL (USDT)\t")
+		_, _ = fmt.Fprintln(w, "   --------\t ------\t ----------------\t --------------\t ---------------\t --------------\t")
+
+		for _, r := range g.Opportunities {
+			// 1. Calculate Countdown
+			settleTime := time.UnixMilli(r.NextSettleTime)
+			countdown := settleTime.Sub(now).Round(time.Second)
+			if countdown < 0 {
+				countdown = 0
+			}
+
+			// 2. Formatting Funding Rate
+			frPct := r.FundingRate * 100
+			frStr := fmt.Sprintf("%.4f%%", frPct)
+			if frPct > 0 {
+				frStr = "+" + frStr
+			}
+
+			// 3. Trade Direction
+			direction := "LONG"
+			if r.FundingRate < 0 {
+				direction = "SHORT"
+			}
+
+			// 4. Volume formatted
+			volStr := formatVolume(r.Volume24h)
+
+			_, _ = fmt.Fprintf(w, "   %s\t %s\t %s\t %s\t %s\t %s\t\n",
+				strings.ToUpper(r.Exchange),
+				r.Symbol,
+				frStr,
+				countdown.String(),
+				direction,
+				volStr,
+			)
 		}
-
-		// 3. Trade Direction based on Reversion strategy
-		direction := "LONG"
-		if r.FundingRate < 0 {
-			direction = "SHORT"
-		}
-
-		// 4. Volume formatted
-		volStr := formatVolume(r.Volume24h)
-
-		_, _ = fmt.Fprintf(w, "%s\t %s\t %s\t %s\t %s\t %s\t\n",
-			strings.ToUpper(r.Exchange),
-			r.Symbol,
-			frStr,
-			countdown.String(), // This will now properly format like "1h30m45s"
-			direction,
-			volStr,
-		)
+		_ = w.Flush()
+		fmt.Println("   " + strings.Repeat("-", 85) + "\n")
 	}
-	_ = w.Flush()
-	fmt.Println("\n💡 Tip: Direction indicates what to open to ride the post-settlement reversion pump/dump.")
+
+	fmt.Println("💡 Tip: Direction indicates what to open to ride the post-settlement reversion pump/dump.")
 }
 
 func getGateNextSettleTime() time.Time {

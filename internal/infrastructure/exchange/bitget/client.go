@@ -40,25 +40,21 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		passphrase = os.Getenv("BITGET_PASSPHRASE")
 	}
 
-	if logCfg.HTTP && httpClient.Transport != nil {
-		rt := httpClient.Transport
+	clientCopy := *httpClient
+
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/api/v2/public/time",
-					"GET|/api/v2/mix/market/tickers",
-					"GET|/api/v2/mix/market/contracts",
-					"GET|/api/v2/mix/market/current-funding-rate",
-					"GET|/api/v2/mix/market/candles",
-				},
+				BlackListPaths: []string{},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey, headerPassphrase}),
 		)
-		httpClient.Transport = rt
+		clientCopy.Transport = rt
 	}
 
 	if baseURL == "" {
@@ -66,7 +62,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 	}
 
 	return &Client{
-		httpClient: httpClient,
+		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,

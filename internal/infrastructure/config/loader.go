@@ -12,6 +12,7 @@ import (
 	"github.com/bitwarden/sdk-go/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
+	"github.com/samber/lo"
 )
 
 type bitwardenSecretLoader interface {
@@ -34,7 +35,10 @@ func InitializeBase(c *SystemConfig) error {
 	c.ExchangeConfig.Gate.APISecret = os.Getenv("GATE_API_SECRET")
 	c.ExchangeConfig.Okx.APIKey = os.Getenv("OKX_API_KEY")
 	c.ExchangeConfig.Okx.APISecret = os.Getenv("OKX_API_SECRET")
-
+	c.ExchangeConfig.Bybit.APIKey = os.Getenv("BYBIT_API_KEY")
+	c.ExchangeConfig.Bybit.APISecret = os.Getenv("BYBIT_API_SECRET")
+	c.ExchangeConfig.Binance.APIKey = os.Getenv("BINANCE_API_KEY")
+	c.ExchangeConfig.Binance.APISecret = os.Getenv("BINANCE_API_SECRET")
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
 	}
@@ -42,7 +46,17 @@ func InitializeBase(c *SystemConfig) error {
 	applySystemDefaults(c)
 
 	// Ensure at least one active exchange is enabled
-	if !c.ExchangeConfig.Mexc.Enable && !c.ExchangeConfig.Gate.Enable && !c.ExchangeConfig.Okx.Enable && !c.ExchangeConfig.Binance.Enable {
+	if !lo.Contains([]bool{
+		c.ExchangeConfig.Mexc.Enable,
+		c.ExchangeConfig.Gate.Enable,
+		c.ExchangeConfig.Okx.Enable,
+		c.ExchangeConfig.Binance.Enable,
+		c.ExchangeConfig.Bybit.Enable,
+		c.ExchangeConfig.Kucoin.Enable,
+		c.ExchangeConfig.Bingx.Enable,
+		c.ExchangeConfig.Hyperliquid.Enable,
+		c.ExchangeConfig.Bitget.Enable,
+	}, true) {
 		return fmt.Errorf("at least one active exchange must be enabled")
 	}
 
@@ -70,18 +84,11 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	}
 
 	// Only fill missing values (keep env vars priority)
-	if c.ExchangeConfig.Mexc.Enable && c.ExchangeConfig.Mexc.APIKey == "" {
-		c.ExchangeConfig.Mexc.APIKey = creds.APIKey
-	}
-	if c.ExchangeConfig.Mexc.Enable && c.ExchangeConfig.Mexc.APISecret == "" {
-		c.ExchangeConfig.Mexc.APISecret = creds.APISecret
-	}
-	if c.ExchangeConfig.Gate.Enable && c.ExchangeConfig.Gate.APIKey == "" {
-		c.ExchangeConfig.Gate.APIKey = creds.GateKey
-	}
-	if c.ExchangeConfig.Gate.Enable && c.ExchangeConfig.Gate.APISecret == "" {
-		c.ExchangeConfig.Gate.APISecret = creds.GateSecret
-	}
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Mexc, creds.MEXCAPIKey, creds.MEXCAPISecret)
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Gate, creds.GateAPIKey, creds.GateAPISecret)
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bybit, creds.BybitAPIKey, creds.BybitAPISecret)
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Binance, creds.BinanceAPIKey, creds.BinanceAPISecret)
+
 	if c.NotiConfig.TelegramChatID == "" {
 		c.NotiConfig.TelegramChatID = creds.TelegramChatID
 	}
@@ -92,9 +99,19 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	return nil
 }
 
+func fallbackExchangeAPIConfig(cfg *APIConfig, key, secret string) {
+	if cfg.Enable && cfg.APIKey == "" {
+		cfg.APIKey = key
+	}
+	if cfg.Enable && cfg.APISecret == "" {
+		cfg.APISecret = secret
+	}
+}
+
 func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 	return exchangeCredentialsComplete(c.ExchangeConfig.Mexc) &&
 		exchangeCredentialsComplete(c.ExchangeConfig.Gate) &&
+		exchangeCredentialsComplete(c.ExchangeConfig.Bybit) &&
 		notificationCredentialsComplete(c.NotiConfig)
 }
 
@@ -132,6 +149,12 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	gateKey, _ := loader.GetSecret("GATE_API_KEY")
 	gateSecret, _ := loader.GetSecret("GATE_API_SECRET")
 
+	bybitKey, _ := loader.GetSecret("BYBIT_API_KEY")
+	bybitSecret, _ := loader.GetSecret("BYBIT_API_SECRET")
+
+	binanceKey, _ := loader.GetSecret("BINANCE_API_KEY")
+	binanceSecret, _ := loader.GetSecret("BINANCE_API_SECRET")
+
 	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
 	if err != nil {
 		slog.Error("failed to get TELEGRAM_CHAT_ID from Bitwarden", slog.Any("error", err))
@@ -147,14 +170,22 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	apiSecret = strings.TrimSpace(apiSecret)
 	gateKey = strings.TrimSpace(gateKey)
 	gateSecret = strings.TrimSpace(gateSecret)
+	bybitKey = strings.TrimSpace(bybitKey)
+	bybitSecret = strings.TrimSpace(bybitSecret)
+	binanceKey = strings.TrimSpace(binanceKey)
+	binanceSecret = strings.TrimSpace(binanceSecret)
 	telegramChatID = strings.TrimSpace(telegramChatID)
 	telegramBotToken = strings.TrimSpace(telegramBotToken)
 
 	return &bitwardenCredentials{
-		APIKey:           apiKey,
-		APISecret:        apiSecret,
-		GateKey:          gateKey,
-		GateSecret:       gateSecret,
+		MEXCAPIKey:       apiKey,
+		MEXCAPISecret:    apiSecret,
+		GateAPIKey:       gateKey,
+		GateAPISecret:    gateSecret,
+		BybitAPIKey:      bybitKey,
+		BybitAPISecret:   bybitSecret,
+		BinanceAPIKey:    binanceKey,
+		BinanceAPISecret: binanceSecret,
 		TelegramChatID:   telegramChatID,
 		TelegramBotToken: telegramBotToken,
 	}, nil
@@ -251,10 +282,14 @@ func applySystemDefaults(c *SystemConfig) {
 
 // bitwardenCredentials holds API credentials from Bitwarden.
 type bitwardenCredentials struct {
-	APIKey           string
-	APISecret        string
-	GateKey          string
-	GateSecret       string
+	MEXCAPIKey       string
+	MEXCAPISecret    string
+	GateAPIKey       string
+	GateAPISecret    string
+	BybitAPIKey      string
+	BybitAPISecret   string
+	BinanceAPIKey    string
+	BinanceAPISecret string
 	TelegramChatID   string
 	TelegramBotToken string
 }

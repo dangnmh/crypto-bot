@@ -33,24 +33,21 @@ type Client struct {
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "bingx")
 
-	if logCfg.HTTP && httpClient.Transport != nil {
-		rt := httpClient.Transport
+	clientCopy := *httpClient
+
+	if logCfg.HTTP && clientCopy.Transport != nil {
+		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/openApi/swap/v2/server/time",
-					"GET|/openApi/swap/v2/quote/ticker",
-					"GET|/openApi/swap/v2/quote/contracts",
-					"GET|/openApi/swap/v2/quote/premiumIndex",
-				},
+				BlackListPaths: []string{},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey}),
 		)
-		httpClient.Transport = rt
+		clientCopy.Transport = rt
 	}
 
 	if baseURL == "" {
@@ -58,7 +55,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	}
 
 	return &Client{
-		httpClient: httpClient,
+		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
