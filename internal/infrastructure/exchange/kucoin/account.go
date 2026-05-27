@@ -5,25 +5,26 @@ import (
 	"math"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type kucoinAccountOverview struct {
-	Currency         string      `json:"currency"`
-	AccountEquity    interface{} `json:"accountEquity"`
-	AvailableBalance interface{} `json:"availableBalance"`
-	PositionMargin   interface{} `json:"positionMargin"`
-	OrderMargin      interface{} `json:"orderMargin"`
-	UnrealisedPNL    interface{} `json:"unrealisedPNL"`
+	Currency         string `json:"currency"`
+	AccountEquity    string `json:"accountEquity"`
+	AvailableBalance string `json:"availableBalance"`
+	PositionMargin   string `json:"positionMargin"`
+	OrderMargin      string `json:"orderMargin"`
+	UnrealisedPNL    string `json:"unrealisedPNL"`
 }
 
 type kucoinPosition struct {
-	Symbol           string      `json:"symbol"`
-	CurrentQty       interface{} `json:"currentQty"`
-	AvgEntryPrice    interface{} `json:"avgEntryPrice"`
-	RealisedPNL      interface{} `json:"realisedPNL"`
-	UnrealisedPNL    interface{} `json:"unrealisedPNL"`
-	Leverage         interface{} `json:"leverage"`
-	LiquidationPrice interface{} `json:"liquidationPrice"`
+	Symbol           string `json:"symbol"`
+	CurrentQty       string `json:"currentQty"`
+	AvgEntryPrice    string `json:"avgEntryPrice"`
+	RealisedPNL      string `json:"realisedPNL"`
+	UnrealisedPNL    string `json:"unrealisedPNL"`
+	Leverage         string `json:"leverage"`
+	LiquidationPrice string `json:"liquidationPrice"`
 }
 
 // GetAssets fetches account balance overview.
@@ -38,9 +39,9 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 		return nil, err
 	}
 
-	eq := parseFloat(overview.AccountEquity)
-	avail := parseFloat(overview.AvailableBalance)
-	upl := parseFloat(overview.UnrealisedPNL)
+	eq := decmath.ParseFloat(overview.AccountEquity)
+	avail := decmath.ParseFloat(overview.AvailableBalance)
+	upl := decmath.ParseFloat(overview.UnrealisedPNL)
 
 	return []exchange.AssetInfo{
 		{
@@ -90,7 +91,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		amt := parseFloat(p.CurrentQty)
+		amt := decmath.ParseFloat(p.CurrentQty)
 		if amt == 0 {
 			continue
 		}
@@ -101,10 +102,10 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		absAmt := math.Abs(amt)
-		lever := int(parseInt64(p.Leverage))
-		avgPx := parseFloat(p.AvgEntryPrice)
-		liqPx := parseFloat(p.LiquidationPrice)
-		realized := parseFloat(p.RealisedPNL)
+		lever := int(decmath.ParseInt64(p.Leverage))
+		avgPx := decmath.ParseFloat(p.AvgEntryPrice)
+		liqPx := decmath.ParseFloat(p.LiquidationPrice)
+		realized := decmath.ParseFloat(p.RealisedPNL)
 
 		openPositions = append(openPositions, exchange.Position{
 			Symbol:         p.Symbol,

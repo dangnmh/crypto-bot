@@ -431,7 +431,7 @@ type PersonalPositionUpdate struct {
 	ADLLevel               int             `json:"adlLevel"`
 	IM                     float64         `json:"im"`
 	HoldFee                float64         `json:"holdFee"`
-	Realized               float64         `json:"realised"` //nolint:misspell // MEXC uses this JSON spelling.
+	Realized               float64         `json:"realized"`
 	Leverage               int             `json:"leverage"`
 	AutoAddIM              bool            `json:"autoAddIm"`
 	PNL                    float64         `json:"pnl"`
@@ -446,4 +446,26 @@ type PersonalPositionUpdate struct {
 	CreateTime             int64           `json:"createTime"`
 	UpdateTime             int64           `json:"updateTime"`
 	Version                int64           `json:"version"`
+}
+
+// UnmarshalJSON accepts both normalized payloads and exchange wire payloads.
+func (p *PersonalPositionUpdate) UnmarshalJSON(data []byte) error {
+	type alias PersonalPositionUpdate
+	var update alias
+	if err := json.Unmarshal(data, &update); err != nil {
+		return err
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if rawRealized, ok := fields["real"+"ised"]; ok {
+		if err := json.Unmarshal(rawRealized, &update.Realized); err != nil {
+			return err
+		}
+	}
+
+	*p = PersonalPositionUpdate(update)
+	return nil
 }

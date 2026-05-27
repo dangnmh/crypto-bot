@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 )
 
@@ -51,9 +50,8 @@ func (ts *TimeSync) WaitReady(ctx context.Context) error {
 // Start begins the continuous time synchronization loop.
 // Exits when ctx is cancelled.
 func (ts *TimeSync) Start(ctx context.Context) {
-	log := applogger.WithCtx(ctx, ts.logger)
-	log.Info("⏱️  Starting time sync service...", "interval", ts.interval)
-	defer log.Info("⏱️  Time sync stopped")
+	ts.logger.InfoContext(ctx, "⏱️  Starting time sync service...", slog.Duration("interval", ts.interval))
+	defer ts.logger.InfoContext(ctx, "⏱️  Time sync stopped")
 
 	ticker.RunImmediate(ctx, ts.interval, func() bool {
 		ts.syncOnce(ctx)
@@ -71,7 +69,7 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 		ts.mu.Lock()
 		ts.healthy = false
 		ts.mu.Unlock()
-		applogger.WithCtx(ctx, ts.logger).Error("🔴 Time sync failed", "error", err)
+		ts.logger.ErrorContext(ctx, "🔴 Time sync failed", slog.Any("error", err))
 		return
 	}
 
@@ -98,18 +96,18 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 	// Signal readiness after first successful sync
 	ts.readyOnce.Do(func() {
 		close(ts.ready)
-		applogger.WithCtx(ctx, ts.logger).Info("🟢 TimeSync ready")
+		ts.logger.InfoContext(ctx, "🟢 TimeSync ready")
 	})
 
 	if healthy {
-		applogger.WithCtx(ctx, ts.logger).Info("🟢 Time sync OK",
-			"offset_ms", offset,
-			"latency_ms", latency,
+		ts.logger.InfoContext(ctx, "🟢 Time sync OK",
+			slog.Int64("offset_ms", offset),
+			slog.Int64("latency_ms", latency),
 		)
 	} else {
-		applogger.WithCtx(ctx, ts.logger).Warn("🟡 Time sync high latency",
-			"offset_ms", offset,
-			"latency_ms", latency,
+		ts.logger.WarnContext(ctx, "🟡 Time sync high latency",
+			slog.Int64("offset_ms", offset),
+			slog.Int64("latency_ms", latency),
 		)
 	}
 }

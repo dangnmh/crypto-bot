@@ -11,6 +11,7 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	"github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures/src/restapi/models"
+	"github.com/samber/lo"
 )
 
 // GetServerTime returns the Binance server timestamp in milliseconds.
@@ -84,8 +85,6 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 }
 
 // GetTickers returns ticker data for all symbols or a single symbol.
-//
-//nolint:cyclop // standard SDK mapping logic contains branch complexity
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	// 1. Fetch 24h Ticker statistics (to get volumes)
 	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
@@ -103,22 +102,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	bestAskMap := make(map[string]float64)
 	lastMap := make(map[string]float64)
 
-	if tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse2 != nil {
-		items := tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse2.Items
-		for i := range items {
-			t := items[i]
-			sym := t.GetSymbol()
-			volMap[sym] = decmath.ParseFloat(t.GetVolume())
-			amountMap[sym] = decmath.ParseFloat(t.GetQuoteVolume())
-			lastMap[sym] = decmath.ParseFloat(t.GetLastPrice())
-		}
-	} else if tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse1 != nil {
-		t := tickerResp.Data.Ticker24hrPriceChangeStatisticsResponse1
-		sym := t.GetSymbol()
-		volMap[sym] = decmath.ParseFloat(t.GetVolume())
-		amountMap[sym] = decmath.ParseFloat(t.GetQuoteVolume())
-		lastMap[sym] = decmath.ParseFloat(t.GetLastPrice())
-	}
+	parseBinance24hStats(tickerResp.Data, volMap, amountMap, lastMap)
 
 	// 2. Fetch Best Book Prices (bid/ask) using SymbolOrderBookTicker
 	bookReq := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTicker(ctx)
@@ -127,18 +111,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 	bookResp, err := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTickerExecute(bookReq)
 	if err == nil {
-		if bookResp.Data.SymbolOrderBookTickerResponse2 != nil {
-			for _, b := range bookResp.Data.SymbolOrderBookTickerResponse2.Items {
-				sym := b.GetSymbol()
-				bestBidMap[sym] = decmath.ParseFloat(b.GetBidPrice())
-				bestAskMap[sym] = decmath.ParseFloat(b.GetAskPrice())
-			}
-		} else if bookResp.Data.SymbolOrderBookTickerResponse1 != nil {
-			b := bookResp.Data.SymbolOrderBookTickerResponse1
-			sym := b.GetSymbol()
-			bestBidMap[sym] = decmath.ParseFloat(b.GetBidPrice())
-			bestAskMap[sym] = decmath.ParseFloat(b.GetAskPrice())
-		}
+		parseBinanceBookTickers(bookResp.Data, bestBidMap, bestAskMap)
 	}
 
 	// 3. Fetch Funding Rates & Mark Prices using PremiumIndex/MarkPrice
@@ -151,19 +124,56 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, fmt.Errorf("binance mark price premium index: %w", err)
 	}
 
-	var tickers []exchange.Ticker
 	now := time.Now().UnixMilli()
+	return buildBinanceTickers(mpResp.Data, volMap, amountMap, lastMap, bestBidMap, bestAskMap, now), nil
+}
 
-	if mpResp.Data.MarkPriceResponse2 != nil {
-		for _, item := range mpResp.Data.MarkPriceResponse2.Items {
+func parseBinance24hStats(data models.Ticker24hrPriceChangeStatisticsResponse, vols, amounts, lasts map[string]float64) {
+	if data.Ticker24hrPriceChangeStatisticsResponse2 != nil {
+		items := data.Ticker24hrPriceChangeStatisticsResponse2.Items
+		for i := range items {
+			t := items[i]
+			sym := t.GetSymbol()
+			vols[sym] = decmath.ParseFloat(t.GetVolume())
+			amounts[sym] = decmath.ParseFloat(t.GetQuoteVolume())
+			lasts[sym] = decmath.ParseFloat(t.GetLastPrice())
+		}
+	} else if data.Ticker24hrPriceChangeStatisticsResponse1 != nil {
+		t := data.Ticker24hrPriceChangeStatisticsResponse1
+		sym := t.GetSymbol()
+		vols[sym] = decmath.ParseFloat(t.GetVolume())
+		amounts[sym] = decmath.ParseFloat(t.GetQuoteVolume())
+		lasts[sym] = decmath.ParseFloat(t.GetLastPrice())
+	}
+}
+
+func parseBinanceBookTickers(data models.SymbolOrderBookTickerResponse, bids, asks map[string]float64) {
+	if data.SymbolOrderBookTickerResponse2 != nil {
+		for _, b := range data.SymbolOrderBookTickerResponse2.Items {
+			sym := b.GetSymbol()
+			bids[sym] = decmath.ParseFloat(b.GetBidPrice())
+			asks[sym] = decmath.ParseFloat(b.GetAskPrice())
+		}
+	} else if data.SymbolOrderBookTickerResponse1 != nil {
+		b := data.SymbolOrderBookTickerResponse1
+		sym := b.GetSymbol()
+		bids[sym] = decmath.ParseFloat(b.GetBidPrice())
+		asks[sym] = decmath.ParseFloat(b.GetAskPrice())
+	}
+}
+
+func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bids, asks map[string]float64, now int64) []exchange.Ticker {
+	var tickers []exchange.Ticker
+	if data.MarkPriceResponse2 != nil {
+		for _, item := range data.MarkPriceResponse2.Items {
 			sym := item.GetSymbol()
 			tickers = append(tickers, exchange.Ticker{
 				Symbol:         sym,
-				LastPrice:      lastMap[sym],
-				Bid1:           bestBidMap[sym],
-				Ask1:           bestAskMap[sym],
-				Volume24:       volMap[sym],
-				Amount24:       amountMap[sym],
+				LastPrice:      lasts[sym],
+				Bid1:           bids[sym],
+				Ask1:           asks[sym],
+				Volume24:       vols[sym],
+				Amount24:       amounts[sym],
 				IndexPrice:     decmath.ParseFloat(item.GetIndexPrice()),
 				FairPrice:      decmath.ParseFloat(item.GetMarkPrice()),
 				FundingRate:    decmath.ParseFloat(item.GetLastFundingRate()),
@@ -171,16 +181,16 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 				Timestamp:      now,
 			})
 		}
-	} else if mpResp.Data.MarkPriceResponse1 != nil {
-		item := mpResp.Data.MarkPriceResponse1
+	} else if data.MarkPriceResponse1 != nil {
+		item := data.MarkPriceResponse1
 		sym := item.GetSymbol()
 		tickers = append(tickers, exchange.Ticker{
 			Symbol:         sym,
-			LastPrice:      lastMap[sym],
-			Bid1:           bestBidMap[sym],
-			Ask1:           bestAskMap[sym],
-			Volume24:       volMap[sym],
-			Amount24:       amountMap[sym],
+			LastPrice:      lasts[sym],
+			Bid1:           bids[sym],
+			Ask1:           asks[sym],
+			Volume24:       vols[sym],
+			Amount24:       amounts[sym],
 			IndexPrice:     decmath.ParseFloat(item.GetIndexPrice()),
 			FairPrice:      decmath.ParseFloat(item.GetMarkPrice()),
 			FundingRate:    decmath.ParseFloat(item.GetLastFundingRate()),
@@ -188,8 +198,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			Timestamp:      now,
 		})
 	}
-
-	return tickers, nil
+	return tickers
 }
 
 // GetFundingRate returns current funding rate details for a specific symbol.
@@ -287,10 +296,10 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 
 func getInt64(inner models.KlineCandlestickDataResponseItemInner) int64 {
 	if inner.Int64 != nil {
-		return *inner.Int64
+		return lo.FromPtr(inner.Int64)
 	}
 	if inner.String != nil {
-		val, _ := strconv.ParseInt(*inner.String, 10, 64)
+		val, _ := strconv.ParseInt(lo.FromPtr(inner.String), 10, 64)
 		return val
 	}
 	return 0
@@ -298,10 +307,10 @@ func getInt64(inner models.KlineCandlestickDataResponseItemInner) int64 {
 
 func getString(inner models.KlineCandlestickDataResponseItemInner) string {
 	if inner.String != nil {
-		return *inner.String
+		return lo.FromPtr(inner.String)
 	}
 	if inner.Int64 != nil {
-		return strconv.FormatInt(*inner.Int64, 10)
+		return strconv.FormatInt(lo.FromPtr(inner.Int64), 10)
 	}
 	return ""
 }

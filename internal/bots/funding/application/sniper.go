@@ -11,8 +11,8 @@ import (
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
-	applogger "crypto-bot/pkg/logger"
 
+	"github.com/samber/lo"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -121,8 +121,6 @@ func NewSniper(
 
 // RunAsBackground launches all required sync and connection routines for all active exchanges.
 func (s *Sniper) RunAsBackground(ctx context.Context) error {
-	log := applogger.WithCtx(ctx, s.log)
-
 	for name, prov := range s.engine.Providers {
 		stores, hasStore := s.stores[name]
 		if !hasStore {
@@ -130,9 +128,7 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 		}
 
 		provLogger := s.log.With("exchange", name)
-		provCtxLog := applogger.WithCtx(ctx, provLogger)
-
-		provCtxLog.Info("🔗 Starting background services...")
+		provLogger.InfoContext(ctx, "🔗 Starting background services...")
 
 		// 1. WarmUp + TimeSync.
 		s.bgWg.Add(1)
@@ -174,7 +170,7 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 
 		if prov.Adapter != nil {
 			if err := prov.Adapter.SubscribePersonal(ctx); err != nil {
-				provCtxLog.Warn("⚠️ Failed to subscribe personal channels", slog.Any("error", err))
+				provLogger.WarnContext(ctx, "⚠️ Failed to subscribe personal channels", slog.Any("error", err))
 			}
 		}
 
@@ -197,15 +193,15 @@ func (s *Sniper) RunAsBackground(ctx context.Context) error {
 			init(ctx, deps, s.cfg)
 		}
 
-		provCtxLog.Info("🟢 Exchange Background Services Ready")
+		provLogger.InfoContext(ctx, "🟢 Exchange Background Services Ready")
 	}
 
-	log.Info("🟢 Funding Reversion Background Services Ready")
+	s.log.InfoContext(ctx, "🟢 Funding Reversion Background Services Ready")
 	return nil
 }
 
 func (s *Sniper) wirePersonalWSForProvider(ctx context.Context, prov *app.ExchangeProvider) {
-	log := applogger.WithCtx(ctx, s.log.With("exchange", prov.Name))
+	log := s.log.With("exchange", prov.Name)
 	if prov.WS == nil || prov.Adapter == nil || prov.Watcher == nil {
 		return
 	}
@@ -213,19 +209,18 @@ func (s *Sniper) wirePersonalWSForProvider(ctx context.Context, prov *app.Exchan
 	prov.WS.On("personal.position", func(data []byte) {
 		update, err := prov.Adapter.ParsePosition(data)
 		if err != nil {
-			log.Warn("🟡 Failed to parse personal position WS", slog.Any("error", err))
+			log.WarnContext(ctx, "🟡 Failed to parse personal position WS", slog.Any("error", err))
 			return
 		}
 		if update != nil {
-			prov.Watcher.PublishPosition(*update)
+			prov.Watcher.PublishPosition(lo.FromPtr(update))
 		}
 	})
 }
 
 // Run starts all symbol workers. Blocks until all stop or context is cancelled.
 func (s *Sniper) Run(ctx context.Context) error {
-	log := applogger.WithCtx(ctx, s.log)
-	log.Info("🚀 Sniper — launching per-symbol workers", slog.Int("symbols", len(s.cfg.Symbols)))
+	s.log.InfoContext(ctx, "🚀 Sniper — launching per-symbol workers", slog.Int("symbols", len(s.cfg.Symbols)))
 
 	g, workerCtx := errgroup.WithContext(ctx)
 	for i := range s.cfg.Symbols {
@@ -233,14 +228,14 @@ func (s *Sniper) Run(ctx context.Context) error {
 	}
 
 	err := g.Wait()
-	log.Info("🛑 All workers stopped")
+	s.log.InfoContext(ctx, "🛑 All workers stopped")
 	return err
 }
 
 // Stop implements the app.Bot interface. It executes any explicit teardown.
 // The primary graceful shutdown is handled by the context passed to Run().
 func (s *Sniper) Stop(ctx context.Context) error {
-	applogger.WithCtx(ctx, s.log).Info("🛑 Sniper explicit stop invoked")
+	s.log.InfoContext(ctx, "🛑 Sniper explicit stop invoked")
 	s.bgWg.Wait()
 	return nil
 }
@@ -251,35 +246,34 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 		exchName := symCfg.Exchange
 		prov, err := s.engine.GetProvider(exchName)
 		if err != nil {
-			s.log.Error("🔴 Failed to locate exchange provider", slog.String("exchange", exchName), slog.Any("error", err))
+			s.log.ErrorContext(ctx, "🔴 Failed to locate exchange provider", slog.String("exchange", exchName), slog.Any("error", err))
 			return nil
 		}
 
 		stores := s.stores[exchName]
 		if stores == nil {
-			s.log.Error("🔴 Failed to locate central store for exchange", slog.String("exchange", exchName))
+			s.log.ErrorContext(ctx, "🔴 Failed to locate central store for exchange", slog.String("exchange", exchName))
 			return nil
 		}
 
 		baseLog := s.log.With("sym", symCfg.Symbol, "exchange", exchName)
-		log := applogger.WithCtx(ctx, baseLog)
-		log.Info("🚀 Worker started")
-		defer log.Info("🛑 Worker stopped")
+		baseLog.InfoContext(ctx, "🚀 Worker started")
+		defer baseLog.InfoContext(ctx, "🛑 Worker stopped")
 
 		if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
-			log.Warn("🔴 Symbol disabled in-memory", slog.String("reason", reason))
+			baseLog.WarnContext(ctx, "🔴 Symbol disabled in-memory", slog.String("reason", reason))
 			return nil
 		}
 
 		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, stores.Funding())
 		if err != nil {
-			log.Error("🔴 No settle time", slog.Any("error", err))
+			baseLog.ErrorContext(ctx, "🔴 No settle time", slog.Any("error", err))
 			return nil
 		}
 
 		// Wait until T-5m before actively entering the cycle.
 		if d := prov.TimeSync.Until(settle.Add(-5 * time.Minute)); d > 0 {
-			log.Debug("😴 Waiting for funding window", slog.Time("settle", settle), slog.Duration("wait", d))
+			baseLog.DebugContext(ctx, "😴 Waiting for funding window", slog.Time("settle", settle), slog.Duration("wait", d))
 			if err := prov.TimeSync.Sleep(ctx, d); err != nil {
 				return nil
 			}
@@ -287,7 +281,7 @@ func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) fu
 
 		// If we are already past the firing deadline (T-5s), skip.
 		if prov.TimeSync.Until(settle.Add(-5*time.Second)) <= 0 {
-			log.Warn("🔴 Settle time passed or missed", slog.Time("settle", settle))
+			baseLog.WarnContext(ctx, "🔴 Settle time passed or missed", slog.Time("settle", settle))
 			return nil
 		}
 

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	"github.com/gorilla/websocket"
@@ -121,27 +120,26 @@ func (c *Client) SetGlobalHandler(handler Handler) {
 // Connect establishes the WebSocket connection and starts the read loop.
 // Reconnects automatically on disconnect.
 func (c *Client) Connect(ctx context.Context) {
-	log := applogger.WithCtx(ctx, c.logger)
-	log.Debug("📡 Connecting WebSocket...", "url", c.url)
+	c.logger.DebugContext(ctx, "📡 Connecting WebSocket...", slog.String("url", c.url))
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug("📡 WebSocket stopped")
+			c.logger.DebugContext(ctx, "📡 WebSocket stopped")
 			return
 		default:
 		}
 
 		err := c.dial()
 		if err != nil {
-			log.Error("🔴 WebSocket connection failed", "error", err)
+			c.logger.ErrorContext(ctx, "🔴 WebSocket connection failed", slog.Any("error", err))
 			if !waitContext(ctx, 2*time.Second) {
 				return
 			}
 			continue
 		}
 
-		log.Debug("🟢 WebSocket connected")
+		c.logger.DebugContext(ctx, "🟢 WebSocket connected")
 
 		if c.onConnected != nil {
 			c.onConnected(c)
@@ -165,7 +163,7 @@ func (c *Client) Connect(ctx context.Context) {
 		c.connected = false
 		c.mu.Unlock()
 
-		log.Warn("🟡 WebSocket disconnected, reconnecting in 2s...")
+		c.logger.WarnContext(ctx, "🟡 WebSocket disconnected, reconnecting in 2s...")
 		if !waitContext(ctx, 2*time.Second) {
 			return
 		}
@@ -214,7 +212,7 @@ func (c *Client) heartbeat(ctx context.Context) {
 		if c.conn != nil {
 			err := c.conn.WriteJSON(c.pingPayload)
 			if err != nil {
-				applogger.WithCtx(ctx, c.logger).Warn("🟡 Heartbeat ping failed", "error", err)
+				c.logger.WarnContext(ctx, "🟡 Heartbeat ping failed", slog.Any("error", err))
 			}
 		}
 		c.mu.Unlock()
@@ -241,14 +239,14 @@ func (c *Client) readLoop(ctx context.Context) {
 
 		_, data, err := conn.ReadMessage()
 		if err != nil {
-			applogger.WithCtx(ctx, c.logger).Warn("🟡 WebSocket read error", "error", err)
+			c.logger.WarnContext(ctx, "🟡 WebSocket read error", slog.Any("error", err))
 			return
 		}
 
 		if c.preprocessor != nil {
 			decompressed, err := c.preprocessor(data)
 			if err != nil {
-				applogger.WithCtx(ctx, c.logger).Warn("Preprocess message failed", "error", err)
+				c.logger.WarnContext(ctx, "Preprocess message failed", slog.Any("error", err))
 				continue
 			}
 			data = decompressed

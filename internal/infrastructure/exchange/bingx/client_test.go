@@ -134,14 +134,21 @@ func TestClient_GetKlines(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/openApi/swap/v2/quote/klines", r.URL.Path)
+		assert.Equal(t, "/openApi/swap/v3/quote/klines", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"code": 0,
 			"msg": "success",
 			"data": [
-				[1695812285000, "50000.0", "50001.0", "49999.0", "50000.5", "10"]
+				{
+					"open": "50000.0",
+					"close": "50000.5",
+					"high": "50001.0",
+					"low": "49999.0",
+					"volume": "10",
+					"time": 1695812285000
+				}
 			]
 		}`))
 	}))

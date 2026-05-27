@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
@@ -184,10 +185,10 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	}
 
 	type wsTicker struct {
-		Symbol       string      `json:"symbol"`
-		Price        interface{} `json:"price"`
-		BestBidPrice interface{} `json:"bestBidPrice"`
-		BestAskPrice interface{} `json:"bestAskPrice"`
+		Symbol       string `json:"symbol"`
+		Price        string `json:"price"`
+		BestBidPrice string `json:"bestBidPrice"`
+		BestAskPrice string `json:"bestAskPrice"`
 	}
 
 	var raw wsTicker
@@ -195,9 +196,17 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		return "", nil, err
 	}
 
-	last := parseFloat(raw.Price)
-	bid := parseFloat(raw.BestBidPrice)
-	ask := parseFloat(raw.BestAskPrice)
+	bid := decmath.ParseFloat(raw.BestBidPrice)
+	ask := decmath.ParseFloat(raw.BestAskPrice)
+	last := decmath.ParseFloat(raw.Price)
+	if last == 0 && bid > 0 && ask > 0 {
+		last = (bid + ask) / 2.0
+	} else if last == 0 {
+		last = bid
+		if last == 0 {
+			last = ask
+		}
+	}
 
 	pd = &store.PriceData{
 		Symbol:    raw.Symbol,
@@ -227,14 +236,14 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 	}
 
 	type wsDepthLevel struct {
-		Price  interface{} `json:"price"`
-		Volume interface{} `json:"volume"`
+		Price  string `json:"price"`
+		Volume string `json:"volume"`
 	}
 
 	type wsDepth struct {
 		Asks []wsDepthLevel `json:"asks"`
 		Bids []wsDepthLevel `json:"bids"`
-		Ts   interface{}    `json:"ts"`
+		Ts   int64          `json:"ts"`
 	}
 
 	var raw wsDepth
@@ -250,15 +259,15 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 
 	for _, level := range raw.Asks {
 		book.Asks = append(book.Asks, domain.OrderBookEntry{
-			Price:  parseFloat(level.Price),
-			Volume: parseFloat(level.Volume),
+			Price:  decmath.ParseFloat(level.Price),
+			Volume: decmath.ParseFloat(level.Volume),
 		})
 	}
 
 	for _, level := range raw.Bids {
 		book.Bids = append(book.Bids, domain.OrderBookEntry{
-			Price:  parseFloat(level.Price),
-			Volume: parseFloat(level.Volume),
+			Price:  decmath.ParseFloat(level.Price),
+			Volume: decmath.ParseFloat(level.Volume),
 		})
 	}
 

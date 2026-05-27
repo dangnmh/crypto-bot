@@ -8,6 +8,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 
+	"github.com/samber/lo"
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
@@ -52,7 +53,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	if status.Error != nil {
-		return "", fmt.Errorf("hyperliquid order placement failed: %s", *status.Error)
+		return "", fmt.Errorf("hyperliquid order placement failed: %s", lo.FromPtr(status.Error))
 	}
 
 	var oid int64
@@ -195,7 +196,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 	}
 
 	if status.Error != nil {
-		return fmt.Errorf("close position order failed: %s", *status.Error)
+		return fmt.Errorf("close position order failed: %s", lo.FromPtr(status.Error))
 	}
 
 	return nil

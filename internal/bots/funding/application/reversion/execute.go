@@ -9,7 +9,6 @@ import (
 	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/pkg/eventbus"
-	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -64,7 +63,7 @@ func InitGlobalSubscriptions(ctx context.Context, deps application.Deps, globalC
 func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger, topic string, handler func(context.Context, *message.Message) error) {
 	ch, err := bus.Subscribe(ctx, topic)
 	if err != nil {
-		applogger.WithCtx(ctx, logger).Error("Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
+		logger.ErrorContext(ctx, "Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
 		return
 	}
 
@@ -78,7 +77,7 @@ func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger,
 					return
 				}
 				if err := handler(ctx, msg); err != nil {
-					applogger.WithCtx(ctx, logger).Error("Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+					logger.ErrorContext(ctx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
 				}
 				msg.Ack()
 			}

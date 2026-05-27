@@ -53,7 +53,7 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.sdkClient.NewUtaBybitServiceNoParams().GetServerTime(ctx)
 		if err != nil {
-			c.logger.Debug("Bybit warmup ping failed", "error", err)
+			c.logger.Debug("Bybit warmup ping failed", slog.Any("error", err))
 		}
 		return true
 	})

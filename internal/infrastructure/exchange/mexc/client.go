@@ -15,7 +15,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -69,12 +68,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 
 // WarmUp pre-establishes connection pool and maintains it via periodic ping requests.
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	applogger.WithCtx(ctx, c.logger).Info("🔗 Warming up connection pool...", "interval", interval)
+	c.logger.InfoContext(ctx, "🔗 Warming up connection pool...", slog.Duration("interval", interval))
 
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.GetCtx(ctx, "/api/v1/contract/ping", nil)
 		if err != nil {
-			applogger.WithCtx(ctx, c.logger).Debug("Warmup ping failed", "error", err)
+			c.logger.DebugContext(ctx, "Warmup ping failed", slog.Any("error", err))
 		}
 		return true
 	})
@@ -111,7 +110,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		req.Header.Set("Signature", sig)
 	}
 
-	return c.doRequest(req)
+	return c.doRequest(ctx, req)
 }
 
 // Post makes a signed POST request to a private endpoint.
@@ -146,24 +145,22 @@ func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]
 	req.Header.Set("Request-Time", ts)
 	req.Header.Set("Signature", sig)
 
-	return c.doRequest(req)
+	return c.doRequest(ctx, req)
 }
 
 // doRequest executes the HTTP request and returns the response body.
-//
-//nolint:contextcheck // httptrace callbacks run from the request context; log calls use req.Context().
-func (c *Client) doRequest(req *http.Request) ([]byte, error) {
+func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			if !connInfo.Reused {
-				applogger.WithCtx(req.Context(), c.logger).Debug("HTTP new connection",
+				c.logger.DebugContext(ctx, "HTTP new connection",
 					"was_idle", connInfo.WasIdle,
 					"idle_time", connInfo.IdleTime,
 				)
 			}
 		},
 	}
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	req = req.WithContext(httptrace.WithClientTrace(ctx, trace))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -187,7 +184,7 @@ func (c *Client) doRequest(req *http.Request) ([]byte, error) {
 			}
 		}
 
-		applogger.WithCtx(req.Context(), c.logger).Warn("🟡 Non-200 response",
+		c.logger.WarnContext(ctx, "🟡 Non-200 response",
 			"status", resp.StatusCode,
 			"path", path,
 			"body", string(body),

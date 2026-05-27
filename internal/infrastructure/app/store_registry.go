@@ -9,7 +9,6 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/types"
 )
 
@@ -89,7 +88,7 @@ func (r *StoreRegistry) WaitReady(ctx context.Context) error {
 	}()
 	select {
 	case <-readyChan:
-		applogger.WithCtx(ctx, slog.Default()).Info("🟢 Store data fully synchronized")
+		slog.Default().InfoContext(ctx, "🟢 Store data fully synchronized")
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

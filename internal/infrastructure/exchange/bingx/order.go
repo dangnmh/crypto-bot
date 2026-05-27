@@ -7,26 +7,27 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type bingxOrderResult struct {
-	OrderID   interface{} `json:"orderId"`
-	ClientOid string      `json:"clientOid"`
+	OrderID   string `json:"orderId"`
+	ClientOid string `json:"clientOid"`
 }
 
 type bingxOrder struct {
-	OrderID      interface{} `json:"orderId"`
-	ClientOid    string      `json:"clientOid"`
-	Symbol       string      `json:"symbol"`
-	Side         string      `json:"side"`
-	PositionSide string      `json:"positionSide"`
-	Type         string      `json:"type"`
-	Quantity     interface{} `json:"quantity"`
-	Price        interface{} `json:"price"`
-	Status       string      `json:"status"`
-	ExecutedQty  interface{} `json:"executedQty"`
-	AvgPrice     interface{} `json:"avgPrice"`
-	Time         interface{} `json:"time"`
+	OrderID      string `json:"orderId"`
+	ClientOid    string `json:"clientOid"`
+	Symbol       string `json:"symbol"`
+	Side         string `json:"side"`
+	PositionSide string `json:"positionSide"`
+	Type         string `json:"type"`
+	Quantity     string `json:"quantity"`
+	Price        string `json:"price"`
+	Status       string `json:"status"`
+	ExecutedQty  string `json:"executedQty"`
+	AvgPrice     string `json:"avgPrice"`
+	Time         string `json:"time"`
 }
 
 func mapOrderType(t int) string {
@@ -107,7 +108,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return "", err
 	}
 
-	return fmt.Sprintf("%v", res.OrderID), nil
+	return res.OrderID, nil
 }
 
 // CreateTrackOrder is a placeholder.
@@ -285,13 +286,13 @@ func (c *Client) toOrderInfo(o *bingxOrder) *exchange.OrderInfo {
 		}
 	}
 
-	price := parseFloat(o.Price)
-	qty := parseFloat(o.Quantity)
-	exec := parseFloat(o.ExecutedQty)
-	avg := parseFloat(o.AvgPrice)
+	price := decmath.ParseFloat(o.Price)
+	qty := decmath.ParseFloat(o.Quantity)
+	exec := decmath.ParseFloat(o.ExecutedQty)
+	avg := decmath.ParseFloat(o.AvgPrice)
 
 	return &exchange.OrderInfo{
-		OrderID:      fmt.Sprintf("%v", o.OrderID),
+		OrderID:      o.OrderID,
 		Symbol:       o.Symbol,
 		Price:        price,
 		Vol:          qty,

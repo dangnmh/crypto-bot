@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 )
 
@@ -36,9 +35,9 @@ func NewContractStore(wg *sync.WaitGroup) *ContractStore {
 
 // StartContractSync periodically fetches contract details and updates the store.
 func (s *ContractStore) StartContractSync(ctx context.Context, client exchange.Client, interval time.Duration) {
-	applogger.WithCtx(ctx, s.logger).Debug("🔄 Starting contract sync", "interval", interval)
+	s.logger.DebugContext(ctx, "🔄 Starting contract sync", slog.Duration("interval", interval))
 
-	defer applogger.WithCtx(ctx, s.logger).Debug("🔄 Contract sync stopped")
+	defer s.logger.DebugContext(ctx, "🔄 Contract sync stopped")
 	ticker.RunImmediate(ctx, interval, func() bool {
 		s.syncContracts(ctx, client)
 		return true
@@ -48,7 +47,7 @@ func (s *ContractStore) StartContractSync(ctx context.Context, client exchange.C
 func (s *ContractStore) syncContracts(ctx context.Context, client exchange.Client) {
 	details, err := client.GetContractDetails(ctx)
 	if err != nil {
-		applogger.WithCtx(ctx, s.logger).Error("🔴 Contract sync failed", "error", err)
+		s.logger.ErrorContext(ctx, "🔴 Contract sync failed", slog.Any("error", err))
 		return
 	}
 
@@ -58,7 +57,7 @@ func (s *ContractStore) syncContracts(ctx context.Context, client exchange.Clien
 	}
 	s.mu.Unlock()
 
-	applogger.WithCtx(ctx, s.logger).Debug("store.SyncContracts", "count", len(details))
+	s.logger.DebugContext(ctx, "store.SyncContracts", slog.Int("count", len(details)))
 	s.contractReadyOnce.Do(func() { s.readyWG.Done() })
 }
 

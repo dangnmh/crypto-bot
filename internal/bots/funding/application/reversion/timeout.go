@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"time"
-
-	applogger "crypto-bot/pkg/logger"
 )
 
 func (r *StatelessRunner) scheduleTimeoutGuard(ctx context.Context, evt IOCOutcomeCheckedEvent) error {
@@ -52,7 +50,7 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 	}
 
 	settleTime := evt.IOCEvent.SettleTime
-	applogger.WithCtx(ctx, r.log).Info("Reversion timeout guard started",
+	r.log.InfoContext(ctx, "Reversion timeout guard started",
 		slog.String("symbol", evt.Symbol),
 		slog.Duration("timeout", timeout),
 	)
@@ -70,7 +68,7 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 	errText := ""
 	if err != nil {
 		errText = err.Error()
-		r.log.Error("Timeout guard failed to query position", slog.String("symbol", evt.Symbol), slog.Any("error", err))
+		r.log.ErrorContext(ctx, "Timeout guard failed to query position", slog.String("symbol", evt.Symbol), slog.Any("error", err))
 	}
 
 	next := TimeoutPositionCheckedEvent{

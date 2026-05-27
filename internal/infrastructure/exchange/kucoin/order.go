@@ -9,27 +9,28 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type kucoinOrderResult struct {
-	OrderID   interface{} `json:"orderId"`
-	ClientOid string      `json:"clientOid"`
+	OrderID   string `json:"orderId"`
+	ClientOid string `json:"clientOid"`
 }
 
 type kucoinOrder struct {
-	OrderID     interface{} `json:"orderId"`
-	ClientOid   string      `json:"clientOid"`
-	Symbol      string      `json:"symbol"`
-	Side        string      `json:"side"`
-	Type        string      `json:"type"`
-	Size        interface{} `json:"size"`
-	Price       interface{} `json:"price"`
-	Status      string      `json:"status"`
-	DealSize    interface{} `json:"dealSize"`
-	StatusVal   string      `json:"statusVal"`
-	CreatedAt   interface{} `json:"createdAt"`
-	FilledValue interface{} `json:"filledValue"`
-	IsActive    bool        `json:"isActive"`
+	OrderID     string `json:"orderId"`
+	ClientOid   string `json:"clientOid"`
+	Symbol      string `json:"symbol"`
+	Side        string `json:"side"`
+	Type        string `json:"type"`
+	Size        int64  `json:"size"`
+	Price       string `json:"price"`
+	Status      string `json:"status"`
+	DealSize    int64  `json:"dealSize"`
+	StatusVal   string `json:"statusVal"`
+	CreatedAt   int64  `json:"createdAt"`
+	FilledValue string `json:"filledValue"`
+	IsActive    bool   `json:"isActive"`
 }
 
 // CreateOrder submits a new order and returns the order ID.
@@ -69,7 +70,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return "", err
 	}
 
-	return fmt.Sprintf("%v", res.OrderID), nil
+	return res.OrderID, nil
 }
 
 // CreateTrackOrder is a placeholder.
@@ -94,7 +95,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		req.Header.Set(headerKey, c.apiKey)
 		req.Header.Set(headerSign, sig)
 		req.Header.Set(headerTimestamp, ts)
-		req.Header.Set(headerPassphrase, SignPassphrase(c.apiSecret, c.passphrase))
+		req.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
 		req.Header.Set(headerVersion, "2")
 	}
 
@@ -248,18 +249,18 @@ func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 		sideVal = exchange.SideOpenShort
 	}
 
-	price := parseFloat(o.Price)
-	qty := parseFloat(o.Size)
-	exec := parseFloat(o.DealSize)
+	price := decmath.ParseFloat(o.Price)
+	qty := float64(o.Size)
+	exec := float64(o.DealSize)
 
 	var avg float64
-	val := parseFloat(o.FilledValue)
+	val := decmath.ParseFloat(o.FilledValue)
 	if exec > 0 {
 		avg = val / exec
 	}
 
 	return &exchange.OrderInfo{
-		OrderID:      fmt.Sprintf("%v", o.OrderID),
+		OrderID:      o.OrderID,
 		Symbol:       o.Symbol,
 		Price:        price,
 		Vol:          qty,

@@ -11,28 +11,27 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
-	applogger "crypto-bot/pkg/logger"
 )
 
 func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
-	r.log.Info("handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
+	r.log.InfoContext(ctx, "handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
 	c := startEvt.Candidate
 	maxWait := 5 * time.Second
 
 	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
-		applogger.WithCtx(ctx, r.log).Error("Failed to subscribe WS channels", slog.Any("error", err))
+		r.log.ErrorContext(ctx, "Failed to subscribe WS channels", slog.Any("error", err))
 		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "WS subscribe failed: "+err.Error())
 		return fmt.Errorf("WS subscribe failed: %w", err)
 	}
 
 	if err := r.waitForFreshPrice(ctx, c.Symbol, maxWait); err != nil {
-		applogger.WithCtx(ctx, r.log).Warn("Price data wait failed", slog.Any("error", err))
+		r.log.WarnContext(ctx, "Price data wait failed", slog.Any("error", err))
 		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "fresh price wait failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
 	if err := r.refreshPrice(ctx, &c); err != nil {
-		applogger.WithCtx(ctx, r.log).Warn("Refresh price failed", slog.Any("error", err))
+		r.log.WarnContext(ctx, "Refresh price failed", slog.Any("error", err))
 		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "refresh price failed: "+err.Error())
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
@@ -54,7 +53,7 @@ func (r *StatelessRunner) handleArmMarketReady(ctx context.Context, evt ArmMarke
 	c := evt.Candidate
 	ioc, err := c.CalculateIOCPrice()
 	if err != nil {
-		applogger.WithCtx(ctx, r.log).Warn("IOC calc failed", slog.Any("error", err))
+		r.log.WarnContext(ctx, "IOC calc failed", slog.Any("error", err))
 		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "IOC calc failed: "+err.Error())
 		return fmt.Errorf("IOC calc failed: %w", err)
 	}
@@ -111,12 +110,12 @@ func (r *StatelessRunner) handleArmPlanCalculated(ctx context.Context, evt ArmPl
 func (r *StatelessRunner) handleSafetyChecked(ctx context.Context, safetyEvt SafetyCheckedEvent) error {
 	c := safetyEvt.Candidate
 	if !safetyEvt.Passed {
-		applogger.WithCtx(ctx, r.log).Warn("Safety FAIL", slog.String("reason", safetyEvt.RejectReason))
+		r.log.WarnContext(ctx, "Safety FAIL", slog.String("reason", safetyEvt.RejectReason))
 		r.abortAfter(ctx, safetyEvt.BaseReversionEvent, c.Symbol, "safety fail: "+safetyEvt.RejectReason)
 		return fmt.Errorf("safety fail: %s", safetyEvt.RejectReason)
 	}
 
-	applogger.WithCtx(ctx, r.log).Info("Ready",
+	r.log.InfoContext(ctx, "Ready",
 		slog.String("side", c.Side.String()),
 		slog.Float64("fr", c.FundingRate*100),
 		slog.Float64("ioc", safetyEvt.IOCPrice),

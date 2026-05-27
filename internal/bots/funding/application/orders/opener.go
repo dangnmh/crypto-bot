@@ -11,7 +11,6 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-	applogger "crypto-bot/pkg/logger"
 )
 
 // OrderResult holds the result of an order attempt (IOC or Trap).
@@ -32,12 +31,12 @@ func (r *OrderResult) IsSuccess() bool {
 }
 
 func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
-	log := applogger.WithCtx(ctx, logger)
+	log := logger
 	extOID := ExternalOrderID("ioc", candidate.Symbol)
 
 	iocPrice, err := candidate.CalculateIOCPrice()
 	if err != nil {
-		log.Error("🔴 IOC calc failed at FireIOC", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
+		log.ErrorContext(ctx, "🔴 IOC calc failed at FireIOC", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
 		return OrderResult{Candidate: *candidate, Error: err}
 	}
 
@@ -50,23 +49,23 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 	slPrice := candidate.CalculateStopLossPrice(candidate.GetPeakPrice())
 	if candidate.Side == shared.SideOpenLong {
 		if tpPrice > 0 && tpPrice <= iocPrice {
-			log.Warn("🟡 TP below IOC price (LONG), dropping TP",
+			log.WarnContext(ctx, "🟡 TP below IOC price (LONG), dropping TP",
 				slog.Float64("tp", tpPrice), slog.Float64("ioc", iocPrice))
 			tpPrice = 0
 		}
 		if slPrice > 0 && slPrice >= iocPrice {
-			log.Warn("🟡 SL above IOC price (LONG), dropping SL",
+			log.WarnContext(ctx, "🟡 SL above IOC price (LONG), dropping SL",
 				slog.Float64("sl", slPrice), slog.Float64("ioc", iocPrice))
 			slPrice = 0
 		}
 	} else {
 		if tpPrice > 0 && tpPrice >= iocPrice {
-			log.Warn("🟡 TP above IOC price (SHORT), dropping TP",
+			log.WarnContext(ctx, "🟡 TP above IOC price (SHORT), dropping TP",
 				slog.Float64("tp", tpPrice), slog.Float64("ioc", iocPrice))
 			tpPrice = 0
 		}
 		if slPrice > 0 && slPrice <= iocPrice {
-			log.Warn("🟡 SL below IOC price (SHORT), dropping SL",
+			log.WarnContext(ctx, "🟡 SL below IOC price (SHORT), dropping SL",
 				slog.Float64("sl", slPrice), slog.Float64("ioc", iocPrice))
 			slPrice = 0
 		}
@@ -88,7 +87,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 
 	spread := decmath.CalcSpreadPct(candidate.BestBid, candidate.BestAsk)
 	actualNotional := candidate.NotionalForVolume(candidate.Volume, iocPrice)
-	log.Info("🎯 FIRE IOC",
+	log.InfoContext(ctx, "🎯 FIRE IOC",
 		slog.String("symbol", candidate.Symbol),
 		slog.Float64("price", iocPrice),
 		slog.Float64("vol", candidate.Volume),
@@ -114,21 +113,21 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 		Error:           err,
 	}
 	if err != nil {
-		log.Error("🔴 IOC order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
+		log.ErrorContext(ctx, "🔴 IOC order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
 		return result
 	}
 
-	log.Info("📨 IOC submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
+	log.InfoContext(ctx, "📨 IOC submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
 	return result
 }
 
 func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
-	log := applogger.WithCtx(ctx, logger)
+	log := logger
 	extOID := ExternalOrderID("trp", candidate.Symbol)
 
 	trapPrice := candidate.CalculateTrapPrice()
 	if trapPrice <= 0 {
-		log.Warn("🟡 Trap price invalid, skipping", slog.String("symbol", candidate.Symbol))
+		log.WarnContext(ctx, "🟡 Trap price invalid, skipping", slog.String("symbol", candidate.Symbol))
 		return OrderResult{Candidate: *candidate, Error: fmt.Errorf("trap price <= 0")}
 	}
 
@@ -143,7 +142,7 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 	trapCandidate.CloseSide = trapCloseSide
 	trapCandidate.Volume = trapCandidate.CalculateTrapVolume(trapPrice)
 	if trapCandidate.Volume <= 0 {
-		log.Warn("🟡 Trap volume invalid, skipping", slog.String("symbol", candidate.Symbol))
+		log.WarnContext(ctx, "🟡 Trap volume invalid, skipping", slog.String("symbol", candidate.Symbol))
 		return OrderResult{Candidate: trapCandidate, Error: fmt.Errorf("trap volume <= 0")}
 	}
 	tpPrice := trapCandidate.CalculateTrapTPPrice(trapPrice)
@@ -163,7 +162,7 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		StopLossPrice:   slPrice,
 	}
 
-	log.Info("🩤 FIRE TRAP",
+	log.InfoContext(ctx, "🩤 FIRE TRAP",
 		slog.String("symbol", candidate.Symbol),
 		slog.Float64("peakPrice", candidate.GetPeakPrice()),
 		slog.Float64("trapPrice", trapPrice),
@@ -185,10 +184,10 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		Error:           err,
 	}
 	if err != nil {
-		log.Error("🔴 TRAP order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
+		log.ErrorContext(ctx, "🔴 TRAP order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
 		return result
 	}
 
-	log.Info("📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
+	log.InfoContext(ctx, "📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
 	return result
 }

@@ -13,6 +13,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
@@ -177,10 +178,10 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	}
 
 	type wsTicker struct {
-		LastPrice interface{} `json:"lastPrice"`
-		BidPrice  interface{} `json:"bidPrice"`
-		AskPrice  interface{} `json:"askPrice"`
-		Volume    interface{} `json:"volume"`
+		LastPrice string `json:"lastPrice"`
+		BidPrice  string `json:"bidPrice"`
+		AskPrice  string `json:"askPrice"`
+		Volume    string `json:"volume"`
 	}
 
 	var raw wsTicker
@@ -188,10 +189,10 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		return "", nil, fmt.Errorf("unmarshal ticker push: %w", err)
 	}
 
-	last := parseFloat(raw.LastPrice)
-	bid := parseFloat(raw.BidPrice)
-	ask := parseFloat(raw.AskPrice)
-	vol := parseFloat(raw.Volume)
+	last := decmath.ParseFloat(raw.LastPrice)
+	bid := decmath.ParseFloat(raw.BidPrice)
+	ask := decmath.ParseFloat(raw.AskPrice)
+	vol := decmath.ParseFloat(raw.Volume)
 
 	pd = &store.PriceData{
 		Symbol:    sym,
@@ -225,8 +226,8 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 	}
 
 	type wsDepth struct {
-		Asks [][]interface{} `json:"asks"`
-		Bids [][]interface{} `json:"bids"`
+		Asks [][]string `json:"asks"`
+		Bids [][]string `json:"bids"`
 	}
 
 	var raw wsDepth
@@ -245,8 +246,8 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 			continue
 		}
 		book.Asks = append(book.Asks, domain.OrderBookEntry{
-			Price:  parseFloat(level[0]),
-			Volume: parseFloat(level[1]),
+			Price:  decmath.ParseFloat(level[0]),
+			Volume: decmath.ParseFloat(level[1]),
 		})
 	}
 
@@ -255,8 +256,8 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 			continue
 		}
 		book.Bids = append(book.Bids, domain.OrderBookEntry{
-			Price:  parseFloat(level[0]),
-			Volume: parseFloat(level[1]),
+			Price:  decmath.ParseFloat(level[0]),
+			Volume: decmath.ParseFloat(level[1]),
 		})
 	}
 

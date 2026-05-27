@@ -57,7 +57,7 @@ func (r *BotRunner) shutdown(err error) {
 		return
 	}
 	if shutdownErr := r.shutdowner.Shutdown(); shutdownErr != nil {
-		slog.Default().Error("failed to trigger Fx shutdown", "error", shutdownErr)
+		slog.Default().Error("failed to trigger Fx shutdown", slog.Any("error", shutdownErr))
 	}
 }
 
@@ -75,7 +75,7 @@ func (r *BotRunner) Stop(ctx context.Context) error {
 		}
 		return err
 	case <-ctx.Done():
-		slog.Default().Warn("bot runner stop timed out", "error", ctx.Err())
+		slog.Default().Warn("bot runner stop timed out", slog.Any("error", ctx.Err()))
 		return ctx.Err()
 	}
 }

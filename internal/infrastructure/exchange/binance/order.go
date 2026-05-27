@@ -215,38 +215,62 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // mapOrder maps a Binance QueryOrderResponse model to exchange.OrderInfo struct.
-//
-//nolint:cyclop // standard SDK mapping logic contains branch complexity
 func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
+	return mapBinanceOrder(&raw)
+}
+
+// mapAllOrder maps models.AllOrdersResponseInner to exchange.OrderInfo.
+func mapAllOrder(raw models.AllOrdersResponseInner) exchange.OrderInfo {
+	return mapBinanceOrder(&raw)
+}
+
+type binanceOrderModel interface {
+	GetOrderIdOk() (*int64, bool)
+	GetPriceOk() (*string, bool)
+	GetOrigQtyOk() (*string, bool)
+	GetAvgPriceOk() (*string, bool)
+	GetExecutedQtyOk() (*string, bool)
+	GetClientOrderIdOk() (*string, bool)
+	GetPositionSide() string
+	GetSide() string
+	GetSymbol() string
+	GetStatus() string
+	GetTimeOk() (*int64, bool)
+	GetUpdateTimeOk() (*int64, bool)
+}
+
+func mapBinanceOrder(raw binanceOrderModel) exchange.OrderInfo {
 	id := ""
-	if raw.OrderId != nil {
-		id = strconv.FormatInt(*raw.OrderId, 10)
+	if orderID, ok := raw.GetOrderIdOk(); ok {
+		id = strconv.FormatInt(*orderID, 10)
 	}
 
 	price := 0.0
-	if raw.Price != nil {
-		price = decmath.ParseFloat(*raw.Price)
+	if rawPrice, ok := raw.GetPriceOk(); ok {
+		price = decmath.ParseFloat(*rawPrice)
 	}
 
 	vol := 0.0
-	if raw.OrigQty != nil {
-		vol = decmath.ParseFloat(*raw.OrigQty)
+	if rawVol, ok := raw.GetOrigQtyOk(); ok {
+		vol = decmath.ParseFloat(*rawVol)
 	}
 
 	dealAvg := 0.0
-	if raw.AvgPrice != nil {
-		dealAvg = decmath.ParseFloat(*raw.AvgPrice)
+	if rawAvgPrice, ok := raw.GetAvgPriceOk(); ok {
+		dealAvg = decmath.ParseFloat(*rawAvgPrice)
 	}
 
 	dealVol := 0.0
-	if raw.ExecutedQty != nil {
-		dealVol = decmath.ParseFloat(*raw.ExecutedQty)
+	if rawExecutedQty, ok := raw.GetExecutedQtyOk(); ok {
+		dealVol = decmath.ParseFloat(*rawExecutedQty)
 	}
 
 	clientOID := ""
-	if raw.ClientOrderId != nil {
-		clientOID = *raw.ClientOrderId
+	if rawClientOID, ok := raw.GetClientOrderIdOk(); ok {
+		clientOID = *rawClientOID
 	}
+
+	side, posMode := mapBinanceSideAndMode(raw.GetPositionSide(), raw.GetSide())
 
 	info := exchange.OrderInfo{
 		OrderID:      id,
@@ -256,136 +280,59 @@ func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 		DealAvgPrice: dealAvg,
 		DealVol:      dealVol,
 		ExternalOID:  clientOID,
-		PositionMode: 2, // default OneWay
+		Side:         side,
+		PositionMode: posMode,
+		State:        mapBinanceStatus(raw.GetStatus()),
 	}
 
-	switch raw.GetPositionSide() {
-	case posSideLong:
-		info.Side = exchange.SideOpenLong
-		if raw.GetSide() == sideSell {
-			info.Side = exchange.SideCloseLong
-		}
-		info.PositionMode = 1
-	case posSideShort:
-		info.Side = exchange.SideOpenShort
-		if raw.GetSide() == sideBuy {
-			info.Side = exchange.SideCloseShort
-		}
-		info.PositionMode = 1
-	default:
-		// One-way mode mapping
-		if raw.GetSide() == sideBuy {
-			info.Side = exchange.SideOpenLong
-		} else {
-			info.Side = exchange.SideOpenShort
-		}
+	if createTime, ok := raw.GetTimeOk(); ok {
+		info.CreateTime = *createTime
 	}
-
-	// Status mapping
-	switch raw.GetStatus() {
-	case statusNew:
-		info.State = exchange.OrderStatePartial
-	case statusPart:
-		info.State = exchange.OrderStatePartial
-	case statusFilled:
-		info.State = exchange.OrderStateFilled
-	case statusCancel, statusExpired:
-		info.State = exchange.OrderStateCanceled
-	}
-
-	if raw.Time != nil {
-		info.CreateTime = *raw.Time
-	}
-	if raw.UpdateTime != nil {
-		info.UpdateTime = *raw.UpdateTime
+	if updateTime, ok := raw.GetUpdateTimeOk(); ok {
+		info.UpdateTime = *updateTime
 	}
 
 	return info
 }
 
-// mapAllOrder maps models.AllOrdersResponseInner to exchange.OrderInfo.
-//
-//nolint:cyclop // standard SDK mapping logic contains branch complexity
-func mapAllOrder(raw models.AllOrdersResponseInner) exchange.OrderInfo {
-	id := ""
-	if raw.OrderId != nil {
-		id = strconv.FormatInt(*raw.OrderId, 10)
-	}
+func mapBinanceSideAndMode(positionSide, side string) (int, int) {
+	posMode := 2 // default OneWay
+	var orderSide int
 
-	price := 0.0
-	if raw.Price != nil {
-		price = decmath.ParseFloat(*raw.Price)
-	}
-
-	vol := 0.0
-	if raw.OrigQty != nil {
-		vol = decmath.ParseFloat(*raw.OrigQty)
-	}
-
-	dealAvg := 0.0
-	if raw.AvgPrice != nil {
-		dealAvg = decmath.ParseFloat(*raw.AvgPrice)
-	}
-
-	dealVol := 0.0
-	if raw.ExecutedQty != nil {
-		dealVol = decmath.ParseFloat(*raw.ExecutedQty)
-	}
-
-	clientOID := ""
-	if raw.ClientOrderId != nil {
-		clientOID = *raw.ClientOrderId
-	}
-
-	info := exchange.OrderInfo{
-		OrderID:      id,
-		Symbol:       raw.GetSymbol(),
-		Price:        price,
-		Vol:          vol,
-		DealAvgPrice: dealAvg,
-		DealVol:      dealVol,
-		ExternalOID:  clientOID,
-		PositionMode: 2,
-	}
-
-	switch raw.GetPositionSide() {
+	switch positionSide {
 	case posSideLong:
-		info.Side = exchange.SideOpenLong
-		if raw.GetSide() == sideSell {
-			info.Side = exchange.SideCloseLong
+		orderSide = exchange.SideOpenLong
+		if side == sideSell {
+			orderSide = exchange.SideCloseLong
 		}
-		info.PositionMode = 1
+		posMode = 1
 	case posSideShort:
-		info.Side = exchange.SideOpenShort
-		if raw.GetSide() == sideBuy {
-			info.Side = exchange.SideCloseShort
+		orderSide = exchange.SideOpenShort
+		if side == sideBuy {
+			orderSide = exchange.SideCloseShort
 		}
-		info.PositionMode = 1
+		posMode = 1
 	default:
-		if raw.GetSide() == sideBuy {
-			info.Side = exchange.SideOpenLong
+		if side == sideBuy {
+			orderSide = exchange.SideOpenLong
 		} else {
-			info.Side = exchange.SideOpenShort
+			orderSide = exchange.SideOpenShort
 		}
 	}
+	return orderSide, posMode
+}
 
-	switch raw.GetStatus() {
-	case "NEW":
-		info.State = exchange.OrderStatePartial
-	case "PARTIALLY_FILLED":
-		info.State = exchange.OrderStatePartial
-	case "FILLED":
-		info.State = exchange.OrderStateFilled
-	case "CANCELED", "EXPIRED":
-		info.State = exchange.OrderStateCanceled
+func mapBinanceStatus(status string) int {
+	switch status {
+	case statusNew:
+		return exchange.OrderStatePartial
+	case statusPart:
+		return exchange.OrderStatePartial
+	case statusFilled:
+		return exchange.OrderStateFilled
+	case statusCancel, statusExpired:
+		return exchange.OrderStateCanceled
+	default:
+		return exchange.OrderStatePartial
 	}
-
-	if raw.Time != nil {
-		info.CreateTime = *raw.Time
-	}
-	if raw.UpdateTime != nil {
-		info.UpdateTime = *raw.UpdateTime
-	}
-
-	return info
 }

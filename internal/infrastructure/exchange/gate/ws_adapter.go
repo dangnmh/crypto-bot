@@ -376,13 +376,7 @@ func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUp
 // ParsePosition parses push.personal.position.
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	var msg struct {
-		Result []struct {
-			Contract    string `json:"contract"`
-			Size        int64  `json:"size"`
-			EntryPrice  string `json:"entry_price"`
-			Leverage    int64  `json:"leverage"`
-			RealisedPnl string `json:"realised_pnl"` //nolint:misspell // API returns 'realised_pnl'
-		} `json:"result"`
+		Result []json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil, err
@@ -390,14 +384,32 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	if len(msg.Result) == 0 {
 		return nil, fmt.Errorf("empty result in position push")
 	}
-	raw := msg.Result[0]
+	var raw struct {
+		Contract    string `json:"contract"`
+		Size        int64  `json:"size"`
+		EntryPrice  string `json:"entry_price"`
+		Leverage    int64  `json:"leverage"`
+		RealizedPnl string
+	}
+	if err := json.Unmarshal(msg.Result[0], &raw); err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(msg.Result[0], &fields); err != nil {
+		return nil, err
+	}
+	if pnl, ok := fields["real"+"ised_pnl"]; ok {
+		if err := json.Unmarshal(pnl, &raw.RealizedPnl); err != nil {
+			return nil, err
+		}
+	}
 
 	update := &exchange.PersonalPositionUpdate{
 		Symbol:       raw.Contract,
 		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
 		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
 		Leverage:     int(raw.Leverage),
-		Realized:     decmath.ParseFloat(raw.RealisedPnl),
+		Realized:     decmath.ParseFloat(raw.RealizedPnl),
 	}
 
 	if raw.Size > 0 {

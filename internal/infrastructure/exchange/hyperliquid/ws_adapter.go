@@ -15,6 +15,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/samber/lo"
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
@@ -341,7 +342,7 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 	}
 
 	if raw.Cloid != nil {
-		deal.ExternalOID = *raw.Cloid
+		deal.ExternalOID = lo.FromPtr(raw.Cloid)
 	}
 
 	return deal, nil

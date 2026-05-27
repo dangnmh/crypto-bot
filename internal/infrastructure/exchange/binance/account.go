@@ -8,6 +8,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"github.com/samber/lo"
 )
 
 // GetAssets returns all account assets and balances.
@@ -23,18 +25,9 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 
 	for _, item := range items {
 		asset := item.GetAsset()
-		balance := 0.0
-		if item.Balance != nil {
-			balance = decmath.ParseFloat(*item.Balance)
-		}
-		crossUnPnl := 0.0
-		if item.CrossUnPnl != nil {
-			crossUnPnl = decmath.ParseFloat(*item.CrossUnPnl)
-		}
-		available := 0.0
-		if item.AvailableBalance != nil {
-			available = decmath.ParseFloat(*item.AvailableBalance)
-		}
+		balance := decmath.ParseFloat(lo.FromPtr(item.Balance))
+		crossUnPnl := decmath.ParseFloat(lo.FromPtr(item.CrossUnPnl))
+		available := decmath.ParseFloat(lo.FromPtr(item.AvailableBalance))
 
 		assets = append(assets, exchange.AssetInfo{
 			Currency:         asset,
@@ -91,34 +84,16 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 	for i := range items {
 		raw := items[i]
-		amt := 0.0
-		if raw.PositionAmt != nil {
-			amt = decmath.ParseFloat(*raw.PositionAmt)
-		}
+		amt := decmath.ParseFloat(lo.FromPtr(raw.PositionAmt))
 
 		if math.Abs(amt) == 0 {
 			continue
 		}
 
-		entryPrice := 0.0
-		if raw.EntryPrice != nil {
-			entryPrice = decmath.ParseFloat(*raw.EntryPrice)
-		}
-
-		liqPrice := 0.0
-		if raw.LiquidationPrice != nil {
-			liqPrice = decmath.ParseFloat(*raw.LiquidationPrice)
-		}
-
-		unrealized := 0.0
-		if raw.UnRealizedProfit != nil {
-			unrealized = decmath.ParseFloat(*raw.UnRealizedProfit)
-		}
-
-		lev := 1
-		if raw.Leverage != nil {
-			lev = decmath.ParseInt(*raw.Leverage)
-		}
+		entryPrice := decmath.ParseFloat(lo.FromPtr(raw.EntryPrice))
+		liqPrice := decmath.ParseFloat(lo.FromPtr(raw.LiquidationPrice))
+		unrealized := decmath.ParseFloat(lo.FromPtr(raw.UnRealizedProfit))
+		lev := decmath.ParseInt(lo.FromPtrOr(raw.Leverage, "1"))
 
 		posType := 1
 		if amt < 0 {

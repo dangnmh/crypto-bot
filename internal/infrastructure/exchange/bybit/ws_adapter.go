@@ -142,7 +142,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 			},
 		}
 		if err := client.SendJSON(authMsg); err != nil {
-			slog.Error("Bybit private websocket auth send failed", "error", err)
+			slog.Error("Bybit private websocket auth send failed", slog.Any("error", err))
 		}
 	}
 }

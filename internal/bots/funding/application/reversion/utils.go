@@ -15,7 +15,6 @@ import (
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/pkg/eventbus"
-	applogger "crypto-bot/pkg/logger"
 
 	"github.com/ThreeDotsLabs/watermill"
 )
@@ -63,7 +62,7 @@ func (s *Strategy) Execute(ctx context.Context, settleTime time.Time, candidate 
 	// Ensure global subscriptions are registered (lazy-loaded if not initialized at startup, e.g. in tests)
 	InitGlobalSubscriptions(ctx, s.deps, s.global)
 
-	applogger.WithCtx(ctx, s.log).Info("🚀 Triggering event-driven reversion bot lifecycle execution", slog.String("symbol", candidate.Symbol))
+	s.log.InfoContext(ctx, "🚀 Triggering event-driven reversion bot lifecycle execution", slog.String("symbol", candidate.Symbol))
 
 	startEvt := CandidateFoundEvent{
 		BaseReversionEvent: BaseReversionEvent{
@@ -86,7 +85,7 @@ func (s *Strategy) Execute(ctx context.Context, settleTime time.Time, candidate 
 func (s *Strategy) CleanupOpenExposure(ctx context.Context) error {
 	err := s.deps.Client.CloseAllPositions(ctx, s.cfg.Symbol)
 	if err != nil {
-		s.log.Error("Reversion fallback close all failed during cleanup",
+		s.log.ErrorContext(ctx, "Reversion fallback close all failed during cleanup",
 			slog.Any("error", err),
 			slog.String("symbol", s.cfg.Symbol),
 		)
@@ -117,10 +116,10 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 	}
 
 	payload = stampEventTrace(topic, payload)
-	applogger.WithCtx(ctx, r.log).Info("Reversion: Publishing event", slog.String("topic", topic), slog.Any("payload", payload))
+	r.log.InfoContext(ctx, "Reversion: Publishing event", slog.String("topic", topic), slog.Any("payload", payload))
 
 	if err := r.bus.Publish(topic, payload); err != nil {
-		r.log.Error("Failed to publish event", slog.String("topic", topic), slog.Any("error", err))
+		r.log.ErrorContext(ctx, "Failed to publish event", slog.String("topic", topic), slog.Any("error", err))
 		return err
 	}
 
@@ -220,7 +219,7 @@ func nextNotifyReversionBase(prev BaseReversionEvent, symbol string, timestamp t
 
 func (r *StatelessRunner) WaitUntil(ctx context.Context, symbol string, target time.Time) bool {
 	if d := r.deps.Clock.Until(target); d > 0 {
-		applogger.WithCtx(ctx, r.log).Debug("⏱️ wait", slog.String("symbol", symbol), slog.Time("target", target), slog.Duration("wait", d))
+		r.log.DebugContext(ctx, "⏱️ wait", slog.String("symbol", symbol), slog.Time("target", target), slog.Duration("wait", d))
 		return r.deps.Clock.Sleep(ctx, d) == nil
 	}
 	return ctx.Err() == nil
@@ -232,7 +231,7 @@ func (r *StatelessRunner) subscribeWS(ctx context.Context, symbol string) error 
 
 func (r *StatelessRunner) unsubscribeWS(ctx context.Context, symbol string) {
 	if err := r.deps.WsSub.UnsubscribeTicker(ctx, symbol); err != nil {
-		applogger.WithCtx(ctx, r.log).Warn("⚠️ Failed to unsubscribe ticker", slog.String("symbol", symbol), slog.Any("error", err))
+		r.log.WarnContext(ctx, "⚠️ Failed to unsubscribe ticker", slog.String("symbol", symbol), slog.Any("error", err))
 	}
 }
 

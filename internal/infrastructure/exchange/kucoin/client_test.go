@@ -87,10 +87,10 @@ func TestClient_GetTickers(t *testing.T) {
 				"data": [
 					{
 						"symbol": "XBTUSDTM",
-						"bestBidPrice": 50000.0,
-						"bestAskPrice": 50001.0,
-						"price": 50000.5,
-						"volume": 1000,
+						"bestBidPrice": "50000.0",
+						"bestAskPrice": "50001.0",
+						"price": "50000.5",
+						"volume": "1000",
 						"ts": 1695812285073
 					}
 				]
@@ -102,8 +102,8 @@ func TestClient_GetTickers(t *testing.T) {
 				"data": [
 					{
 						"symbol": "XBTUSDTM",
-						"fundingRate": 0.0001,
-						"nextFundingRateTime": 1695841085073
+						"fundingFeeRate": 0.0001,
+						"nextFundingRateDateTime": 1695841085073
 					}
 				]
 			}`))

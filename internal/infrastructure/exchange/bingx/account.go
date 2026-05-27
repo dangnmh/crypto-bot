@@ -7,23 +7,24 @@ import (
 	"math"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type bingxBalance struct {
-	Asset           string      `json:"asset"`
-	Balance         interface{} `json:"balance"`
-	Equity          interface{} `json:"equity"`
-	AvailableMargin interface{} `json:"availableMargin"`
+	Asset           string `json:"asset"`
+	Balance         string `json:"balance"`
+	Equity          string `json:"equity"`
+	AvailableMargin string `json:"availableMargin"`
 }
 
 type bingxPosition struct {
-	Symbol           string      `json:"symbol"`
-	PositionSide     string      `json:"positionSide"`
-	PositionAmt      interface{} `json:"positionAmt"`
-	EntryPrice       interface{} `json:"entryPrice"`
-	UnrealizedProfit interface{} `json:"unrealizedProfit"`
-	Leverage         interface{} `json:"leverage"`
-	Isolated         bool        `json:"isolated"`
+	Symbol           string `json:"symbol"`
+	PositionSide     string `json:"positionSide"`
+	PositionAmt      string `json:"positionAmt"`
+	EntryPrice       string `json:"entryPrice"`
+	UnrealizedProfit string `json:"unrealizedProfit"`
+	Leverage         string `json:"leverage"`
+	Isolated         bool   `json:"isolated"`
 }
 
 // GetAssets fetches all active margin balances.
@@ -55,9 +56,9 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 	assets := make([]exchange.AssetInfo, 0, len(res))
 	for i := range res {
 		b := &res[i]
-		bal := parseFloat(b.Balance)
-		eq := parseFloat(b.Equity)
-		avail := parseFloat(b.AvailableMargin)
+		bal := decmath.ParseFloat(b.Balance)
+		eq := decmath.ParseFloat(b.Equity)
+		avail := decmath.ParseFloat(b.AvailableMargin)
 
 		assets = append(assets, exchange.AssetInfo{
 			Currency:         b.Asset,
@@ -109,7 +110,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	for i := range res {
 		p := &res[i]
 
-		amt := parseFloat(p.PositionAmt)
+		amt := decmath.ParseFloat(p.PositionAmt)
 		if amt == 0 {
 			continue
 		}
@@ -120,9 +121,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		absAmt := math.Abs(amt)
-		lev := int(parseInt64(p.Leverage))
-		entry := parseFloat(p.EntryPrice)
-		pnl := parseFloat(p.UnrealizedProfit)
+		lev := decmath.ParseInt(p.Leverage)
+		entry := decmath.ParseFloat(p.EntryPrice)
+		pnl := decmath.ParseFloat(p.UnrealizedProfit)
 
 		marginMode := 1 // isolated
 		if !p.Isolated {

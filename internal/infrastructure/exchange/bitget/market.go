@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 // GetServerTime returns the Bitget server timestamp in milliseconds.
@@ -88,7 +88,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		}
 
 		if priceScale <= 0 && inst.PriceEndStep != "" {
-			priceScale = getDecimals(inst.PriceEndStep)
+			priceScale = decmath.DecimalPlaces(inst.PriceEndStep)
 		}
 
 		details = append(details, exchange.ContractDetail{
@@ -304,11 +304,11 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, err
 	}
 
-	type bitgetDepthLevel []interface{}
+	type bitgetDepthLevel []float64
 	type bitgetDepth struct {
 		Asks []bitgetDepthLevel `json:"asks"`
 		Bids []bitgetDepthLevel `json:"bids"`
-		Ts   interface{}        `json:"ts"`
+		Ts   string             `json:"ts"`
 	}
 
 	book, err := ParseResponse[bitgetDepth](body, "depth_snapshot")
@@ -326,8 +326,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		if len(level) < 2 {
 			continue
 		}
-		p := parseFloat(level[0])
-		v := parseFloat(level[1])
+		p := level[0]
+		v := level[1]
 		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -335,8 +335,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		if len(level) < 2 {
 			continue
 		}
-		p := parseFloat(level[0])
-		v := parseFloat(level[1])
+		p := level[0]
+		v := level[1]
 		ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -346,30 +346,4 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 // GetDepthCommits is not supported on Bitget REST.
 func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
 	return nil, fmt.Errorf("GetDepthCommits not supported on Bitget REST")
-}
-
-func parseFloat(v interface{}) float64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case float64:
-		return val
-	case string:
-		f, _ := strconv.ParseFloat(val, 64)
-		return f
-	case int64:
-		return float64(val)
-	case int:
-		return float64(val)
-	}
-	return 0
-}
-
-func getDecimals(s string) int {
-	parts := strings.Split(s, ".")
-	if len(parts) < 2 {
-		return 0
-	}
-	return len(parts[1])
 }

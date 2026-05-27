@@ -36,51 +36,10 @@ type okxOrder struct {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-//
-//nolint:cyclop // order mapping requires multi-branch mapping
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
-	// Map order type
-	ordType := paramLimit
-	switch req.Type {
-	case exchange.OrderTypeMarket:
-		ordType = "market"
-	case exchange.OrderTypePostOnly:
-		ordType = "post_only"
-	case exchange.OrderTypeIOC:
-		ordType = "ioc"
-	case exchange.OrderTypeFOK:
-		ordType = "fok"
-	}
-
-	// Map side and position side
-	side := sideBuy
-	posSide := posSideLong
+	ordType := mapOKXOrderType(req.Type)
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0
-
-	if isHedge {
-		switch req.Side {
-		case exchange.SideOpenLong:
-			side = sideBuy
-			posSide = posSideLong
-		case exchange.SideCloseLong:
-			side = sideSell
-			posSide = posSideLong
-		case exchange.SideOpenShort:
-			side = sideSell
-			posSide = posSideShort
-		case exchange.SideCloseShort:
-			side = sideBuy
-			posSide = posSideShort
-		}
-	} else {
-		posSide = posSideNet
-		switch req.Side {
-		case exchange.SideOpenLong, exchange.SideCloseShort:
-			side = sideBuy
-		case exchange.SideOpenShort, exchange.SideCloseLong:
-			side = sideSell
-		}
-	}
+	side, posSide := mapOKXOrderSide(req.Side, isHedge)
 
 	tdMode := modeIsolated
 	if req.OpenType == exchange.OpenTypeCross {
@@ -128,6 +87,48 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	return res.OrdID, nil
+}
+
+func mapOKXOrderType(t int) string {
+	switch t {
+	case exchange.OrderTypeMarket:
+		return "market"
+	case exchange.OrderTypePostOnly:
+		return "post_only"
+	case exchange.OrderTypeIOC:
+		return "ioc"
+	case exchange.OrderTypeFOK:
+		return "fok"
+	default:
+		return paramLimit
+	}
+}
+
+func mapOKXOrderSide(s int, isHedge bool) (string, string) {
+	if isHedge {
+		switch s {
+		case exchange.SideOpenLong:
+			return sideBuy, posSideLong
+		case exchange.SideCloseLong:
+			return sideSell, posSideLong
+		case exchange.SideOpenShort:
+			return sideSell, posSideShort
+		case exchange.SideCloseShort:
+			return sideBuy, posSideShort
+		default:
+			return sideBuy, posSideLong
+		}
+	}
+
+	posSide := posSideNet
+	side := sideBuy
+	switch s {
+	case exchange.SideOpenLong, exchange.SideCloseShort:
+		side = sideBuy
+	case exchange.SideOpenShort, exchange.SideCloseLong:
+		side = sideSell
+	}
+	return side, posSide
 }
 
 // CreateTrackOrder submits a trailing stop order (stubbed/not implemented).

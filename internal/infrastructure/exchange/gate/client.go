@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	"github.com/gateio/gateapi-go/v7"
@@ -56,7 +55,7 @@ func (c *Client) authCtx(ctx context.Context) context.Context {
 
 // WarmUp maintaining connection pool via periodic ping requests (GetSystemTime).
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	applogger.WithCtx(ctx, c.logger).Info("🔗 Warming up Gate.io connection pool...", "interval", interval)
+	c.logger.InfoContext(ctx, "🔗 Warming up Gate.io connection pool...", slog.Duration("interval", interval))
 
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, httpResp, err := c.apiClient.SpotApi.GetSystemTime(ctx)
@@ -64,7 +63,7 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 			_ = httpResp.Body.Close()
 		}
 		if err != nil {
-			applogger.WithCtx(ctx, c.logger).Debug("Gate.io warmup ping failed", "error", err)
+			c.logger.DebugContext(ctx, "Gate.io warmup ping failed", slog.Any("error", err))
 		}
 		return true
 	})

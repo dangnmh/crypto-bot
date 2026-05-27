@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 // GetServerTime returns the BingX server timestamp in milliseconds.
@@ -101,13 +102,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	type bingxTicker struct {
-		Symbol      string      `json:"symbol"`
-		LastPrice   interface{} `json:"lastPrice"`
-		BidPrice    interface{} `json:"bidPrice"`
-		AskPrice    interface{} `json:"askPrice"`
-		Volume      interface{} `json:"volume"`
-		QuoteVolume interface{} `json:"quoteVolume"`
-		Time        interface{} `json:"time"`
+		Symbol      string `json:"symbol"`
+		LastPrice   string `json:"lastPrice"`
+		BidPrice    string `json:"bidPrice"`
+		AskPrice    string `json:"askPrice"`
+		Volume      string `json:"volume"`
+		QuoteVolume string `json:"quoteVolume"`
+		Time        string `json:"time"`
 	}
 
 	var rawTickers []bingxTicker
@@ -129,10 +130,10 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	type bingxPremiumIndex struct {
-		Symbol          string      `json:"symbol"`
-		MarkPrice       interface{} `json:"markPrice"`
-		LastFundingRate interface{} `json:"lastFundingRate"`
-		NextFundingTime interface{} `json:"nextFundingTime"`
+		Symbol          string `json:"symbol"`
+		MarkPrice       string `json:"markPrice"`
+		LastFundingRate string `json:"lastFundingRate"`
+		NextFundingTime int64  `json:"nextFundingTime"`
 	}
 
 	var rawIndexes []bingxPremiumIndex
@@ -158,21 +159,21 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	for i := range rawTickers {
 		t := &rawTickers[i]
 
-		last := parseFloat(t.LastPrice)
-		bid := parseFloat(t.BidPrice)
-		ask := parseFloat(t.AskPrice)
-		vol := parseFloat(t.Volume)
-		amt := parseFloat(t.QuoteVolume)
-		ts := parseInt64(t.Time)
+		last := decmath.ParseFloat(t.LastPrice)
+		bid := decmath.ParseFloat(t.BidPrice)
+		ask := decmath.ParseFloat(t.AskPrice)
+		vol := decmath.ParseFloat(t.Volume)
+		amt := decmath.ParseFloat(t.QuoteVolume)
+		ts := decmath.ParseInt64(t.Time)
 
 		mark := last
 		var fr float64
 		var nextSettle int64
 
 		if idx, ok := indexMap[t.Symbol]; ok {
-			mark = parseFloat(idx.MarkPrice)
-			fr = parseFloat(idx.LastFundingRate)
-			nextSettle = parseInt64(idx.NextFundingTime)
+			mark = decmath.ParseFloat(idx.MarkPrice)
+			fr = decmath.ParseFloat(idx.LastFundingRate)
+			nextSettle = idx.NextFundingTime
 		}
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
@@ -208,9 +209,9 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 	}
 
 	type bingxPremiumIndex struct {
-		Symbol          string      `json:"symbol"`
-		LastFundingRate interface{} `json:"lastFundingRate"`
-		NextFundingTime interface{} `json:"nextFundingTime"`
+		Symbol          string `json:"symbol"`
+		LastFundingRate string `json:"lastFundingRate"`
+		NextFundingTime int64  `json:"nextFundingTime"`
 	}
 
 	var rawIndexes []bingxPremiumIndex
@@ -230,8 +231,8 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 	}
 
 	idx := &rawIndexes[0]
-	fr := parseFloat(idx.LastFundingRate)
-	nextSettle := parseInt64(idx.NextFundingTime)
+	fr := decmath.ParseFloat(idx.LastFundingRate)
+	nextSettle := idx.NextFundingTime
 
 	return &exchange.FundingRateDetail{
 		Symbol:         idx.Symbol,
@@ -239,94 +240,6 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 		NextSettleTime: nextSettle,
 		Timestamp:      nextSettle - 8*3600*1000,
 	}, nil
-}
-
-type bingxKlineObj struct {
-	OpenTime interface{} `json:"openTime"`
-	Open     interface{} `json:"open"`
-	High     interface{} `json:"high"`
-	Low      interface{} `json:"low"`
-	Close    interface{} `json:"close"`
-	Volume   interface{} `json:"volume"`
-	Time     interface{} `json:"time"`
-	O        interface{} `json:"o"`
-	H        interface{} `json:"h"`
-	L        interface{} `json:"l"`
-	C        interface{} `json:"c"`
-	V        interface{} `json:"v"`
-	T        interface{} `json:"t"`
-}
-
-func parseSingleKlineRow(row json.RawMessage) (*exchange.Kline, error) {
-	var listRow []interface{}
-	if err := json.Unmarshal(row, &listRow); err == nil && len(listRow) >= 6 {
-		ts := parseInt64(listRow[0])
-		o := parseFloat(listRow[1])
-		h := parseFloat(listRow[2])
-		l := parseFloat(listRow[3])
-		cVal := parseFloat(listRow[4])
-		v := parseFloat(listRow[5])
-
-		return &exchange.Kline{
-			Timestamp: ts,
-			Open:      o,
-			High:      h,
-			Low:       l,
-			Close:     cVal,
-			Volume:    v,
-		}, nil
-	}
-
-	var objRow bingxKlineObj
-	if err := json.Unmarshal(row, &objRow); err == nil {
-		var ts int64
-		switch {
-		case objRow.Time != nil:
-			ts = parseInt64(objRow.Time)
-		case objRow.OpenTime != nil:
-			ts = parseInt64(objRow.OpenTime)
-		default:
-			ts = parseInt64(objRow.T)
-		}
-
-		var o, h, l, cVal, v float64
-		if objRow.Open != nil {
-			o = parseFloat(objRow.Open)
-		} else {
-			o = parseFloat(objRow.O)
-		}
-		if objRow.High != nil {
-			h = parseFloat(objRow.High)
-		} else {
-			h = parseFloat(objRow.H)
-		}
-		if objRow.Low != nil {
-			l = parseFloat(objRow.Low)
-		} else {
-			l = parseFloat(objRow.L)
-		}
-		if objRow.Close != nil {
-			cVal = parseFloat(objRow.Close)
-		} else {
-			cVal = parseFloat(objRow.C)
-		}
-		if objRow.Volume != nil {
-			v = parseFloat(objRow.Volume)
-		} else {
-			v = parseFloat(objRow.V)
-		}
-
-		return &exchange.Kline{
-			Timestamp: ts,
-			Open:      o,
-			High:      h,
-			Low:       l,
-			Close:     cVal,
-			Volume:    v,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("failed to parse kline row")
 }
 
 // GetKlines returns candlestick data for a symbol. Supports both array-of-arrays and array-of-objects formats.
@@ -358,19 +271,37 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		return nil, err
 	}
 
-	var rawData []json.RawMessage
-	parsedData, err := ParseResponse[[]json.RawMessage](body, "klines")
+	type bingxKlineV3 struct {
+		Open   string `json:"open"`
+		Close  string `json:"close"`
+		High   string `json:"high"`
+		Low    string `json:"low"`
+		Volume string `json:"volume"`
+		Time   int64  `json:"time"`
+	}
+
+	klinesParsed, err := ParseResponse[[]bingxKlineV3](body, "klines")
 	if err != nil {
 		return nil, err
 	}
-	rawData = parsedData
 
-	klines := make([]exchange.Kline, 0, len(rawData))
-	for _, row := range rawData {
-		k, err := parseSingleKlineRow(row)
-		if err == nil && k != nil {
-			klines = append(klines, *k)
-		}
+	klines := make([]exchange.Kline, 0, len(klinesParsed))
+	for _, row := range klinesParsed {
+		o := decmath.ParseFloat(row.Open)
+		cVal := decmath.ParseFloat(row.Close)
+		h := decmath.ParseFloat(row.High)
+		l := decmath.ParseFloat(row.Low)
+		v := decmath.ParseFloat(row.Volume)
+		ts := row.Time
+
+		klines = append(klines, exchange.Kline{
+			Timestamp: ts,
+			Open:      o,
+			High:      h,
+			Low:       l,
+			Close:     cVal,
+			Volume:    v,
+		})
 	}
 
 	return klines, nil
@@ -398,9 +329,9 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 	}
 
 	type bingxDepth struct {
-		Asks [][]interface{} `json:"asks"`
-		Bids [][]interface{} `json:"bids"`
-		Ts   interface{}     `json:"ts"`
+		Asks [][]string `json:"asks"`
+		Bids [][]string `json:"bids"`
+		Ts   string     `json:"ts"`
 	}
 
 	book, err := ParseResponse[bingxDepth](body, "depth_snapshot")
@@ -418,8 +349,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		if len(level) < 2 {
 			continue
 		}
-		p := parseFloat(level[0])
-		v := parseFloat(level[1])
+		p := decmath.ParseFloat(level[0])
+		v := decmath.ParseFloat(level[1])
 		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -427,8 +358,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		if len(level) < 2 {
 			continue
 		}
-		p := parseFloat(level[0])
-		v := parseFloat(level[1])
+		p := decmath.ParseFloat(level[0])
+		v := decmath.ParseFloat(level[1])
 		ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -438,40 +369,4 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 // GetDepthCommits is not supported on BingX REST.
 func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
 	return nil, fmt.Errorf("GetDepthCommits not supported on BingX REST")
-}
-
-func parseFloat(v interface{}) float64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case float64:
-		return val
-	case string:
-		f, _ := strconv.ParseFloat(val, 64)
-		return f
-	case int64:
-		return float64(val)
-	case int:
-		return float64(val)
-	}
-	return 0
-}
-
-func parseInt64(v interface{}) int64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case float64:
-		return int64(val)
-	case int64:
-		return val
-	case int:
-		return int64(val)
-	case string:
-		i, _ := strconv.ParseInt(val, 10, 64)
-		return i
-	}
-	return 0
 }

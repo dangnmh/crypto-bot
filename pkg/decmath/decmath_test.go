@@ -265,9 +265,26 @@ func TestParseFloat(t *testing.T) {
 	assert.Equal(t, 0.0, decmath.ParseFloat("invalid"))
 }
 
+func TestDecimalPlaces(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 0, decmath.DecimalPlaces("1"))
+	assert.Equal(t, 2, decmath.DecimalPlaces("1.23"))
+	assert.Equal(t, 4, decmath.DecimalPlaces("0.0100"))
+	assert.Equal(t, 0, decmath.DecimalPlaces(""))
+}
+
 func TestParseInt(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, 42, decmath.ParseInt("42"))
 	assert.Equal(t, 0, decmath.ParseInt(""))
 	assert.Equal(t, 0, decmath.ParseInt("invalid"))
+}
+
+func TestParseInt64(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, int64(42), decmath.ParseInt64("42"))
+	assert.Equal(t, int64(42), decmath.ParseInt64(" 42 "))
+	assert.Equal(t, int64(0), decmath.ParseInt64(""))
+	assert.Equal(t, int64(0), decmath.ParseInt64("invalid"))
+	assert.Equal(t, int64(0), decmath.ParseInt64("42x"))
 }

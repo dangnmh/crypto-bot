@@ -67,7 +67,6 @@ func (MexcProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Mexc.Future.BaseURL != ""
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (MexcProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Mexc
@@ -78,22 +77,9 @@ func (MexcProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (
 		apiCfg.APISecret,
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := mexc.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeMexc, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeMexc,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeMexc, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeMexc)),
-	}, nil
+	return buildProvider(exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, adapter), nil
 }
 
 // GateProviderFactory builds Gate.io infrastructure.
@@ -115,23 +101,9 @@ func (GateProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (
 		apiCfg.APISecret,
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := gate.NewWsAdapter()
-	adapter.GetAuthHook(apiCfg.APIKey, apiCfg.APISecret)
-	wsPool := newWSPool(exchange.ExchangeGate, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeGate,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeGate, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeGate)),
-	}, nil
+	return buildProvider(exchange.ExchangeGate, exchange.ExchangeGate, cfg, apiCfg, client, adapter), nil
 }
 
 // BinanceProviderFactory builds Binance infrastructure.
@@ -143,7 +115,6 @@ func (BinanceProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Binance.Future.BaseURL != ""
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Binance
@@ -154,22 +125,9 @@ func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig
 		apiCfg.APISecret,
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := binance.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeBinance, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeBinance,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBinance, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBinance)),
-	}, nil
+	return buildProvider(exchange.ExchangeBinance, exchange.ExchangeBinance, cfg, apiCfg, client, adapter), nil
 }
 
 // OkxProviderFactory builds OKX infrastructure.
@@ -181,7 +139,6 @@ func (OkxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Okx.Future.BaseURL != ""
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Okx
@@ -193,22 +150,9 @@ func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*
 		"", // Passphrase from environment variables in okx.NewClient
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := okx.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeOkx, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeOkx,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeOkx, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeOkx)),
-	}, nil
+	return buildProvider(exchange.ExchangeOkx, exchange.ExchangeOkx, cfg, apiCfg, client, adapter), nil
 }
 
 // BitgetProviderFactory builds Bitget infrastructure.
@@ -220,7 +164,6 @@ func (BitgetProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bitget.Future.BaseURL != ""
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (BitgetProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bitget
@@ -232,22 +175,9 @@ func (BitgetProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig)
 		"", // Passphrase from environment variables or config
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := bitget.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeBitget, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeBitget,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBitget, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBitget)),
-	}, nil
+	return buildProvider(exchange.ExchangeBitget, exchange.ExchangeBitget, cfg, apiCfg, client, adapter), nil
 }
 
 // HyperliquidProviderFactory builds Hyperliquid infrastructure.
@@ -259,33 +189,46 @@ func (HyperliquidProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Hyperliquid.Future.BaseURL != ""
 }
 
-//nolint:dupl,contextcheck // boilerplate bootstrap builder has structural similarity with other factories, client initialization uses background context
-func (HyperliquidProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (HyperliquidProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Hyperliquid
 	client := exchange.Client(hyperliquid.NewClient(
+		ctx,
 		cfg.HTTPClient,
 		apiCfg.Future.BaseURL,
 		apiCfg.APIKey,
 		apiCfg.APISecret,
 		sysCfg.Logging,
 	))
+
+	adapter := hyperliquid.NewWsAdapter()
+	return buildProvider(exchange.ExchangeHyperliquid, exchange.ExchangeHyperliquid, cfg, apiCfg, client, adapter), nil
+}
+
+func buildProvider(
+	providerName string,
+	watcherExchangeName string,
+	cfg ProviderFactoryConfig,
+	apiCfg sysconfig.APIConfig,
+	client exchange.Client,
+	adapter ws.ExchangeAdapter,
+) *ExchangeProvider {
+	sysCfg := cfg.SystemConfig
 	if sysCfg.DryRun {
 		client = exchange.NewDryRunClient(client)
 	}
 
-	adapter := hyperliquid.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeHyperliquid, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	wsPool := newWSPool(watcherExchangeName, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
 	adapter.SetPool(wsPool)
 
 	return &ExchangeProvider{
-		Name:     exchange.ExchangeHyperliquid,
+		Name:     providerName,
 		Client:   client,
 		Adapter:  adapter,
 		WS:       wsPool,
 		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeHyperliquid, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeHyperliquid)),
-	}, nil
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, watcherExchangeName, cfg.Logger.With("component", "order_watcher", "exchange", providerName)),
+	}
 }
 
 func newWSPool(
@@ -345,7 +288,6 @@ func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bybit.Future.BaseURL != "" && (cfg.ExchangeConfig.Bybit.AccountType == "" || cfg.ExchangeConfig.Bybit.AccountType == "standard")
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with unified factory
 func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bybit
@@ -357,22 +299,9 @@ func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactory
 		"standard",
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := bybit.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeBybit, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeBybit,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBybit, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBybit)),
-	}, nil
+	return buildProvider(exchange.ExchangeBybit, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
 }
 
 // BybitUnifiedProviderFactory builds Unified Bybit infrastructure (UTA).
@@ -395,22 +324,9 @@ func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryC
 		"unified",
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := bybit.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeBybit, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     bybitUnifiedName,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBybit, cfg.Logger.With("component", "order_watcher", "exchange", "bybit-unified")),
-	}, nil
+	return buildProvider(bybitUnifiedName, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
 }
 
 // BingxProviderFactory builds BingX infrastructure.
@@ -422,7 +338,6 @@ func (BingxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bingx.Future.BaseURL != ""
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (BingxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bingx
@@ -433,22 +348,9 @@ func (BingxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) 
 		apiCfg.APISecret,
 		sysCfg.Logging,
 	))
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := bingx.NewWsAdapter()
-	wsPool := newWSPool(exchange.ExchangeBingx, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
-	adapter.SetPool(wsPool)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeBingx,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeBingx, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeBingx)),
-	}, nil
+	return buildProvider(exchange.ExchangeBingx, exchange.ExchangeBingx, cfg, apiCfg, client, adapter), nil
 }
 
 // KucoinProviderFactory builds KuCoin infrastructure.
@@ -460,7 +362,6 @@ func (KucoinProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Kucoin.Future.BaseURL != ""
 }
 
-//nolint:dupl // boilerplate bootstrap builder has structural similarity with other factories
 func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Kucoin

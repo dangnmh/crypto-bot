@@ -17,7 +17,6 @@ import (
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
-	applogger "crypto-bot/pkg/logger"
 )
 
 // Deps holds all external dependencies for a funding cycle.
@@ -96,44 +95,43 @@ func (o *Orchestrator) Run(ctx context.Context, settle time.Time) {
 	if observability.CorrelationID(ctx) == "" {
 		ctx = observability.WithCorrelationID(ctx)
 	}
-	log := applogger.WithCtx(ctx, o.log)
 
-	log.Info("━━━ Run start ━━━", slog.Time("settle", settle))
+	o.log.InfoContext(ctx, "━━━ Run start ━━━", slog.Time("settle", settle))
 
 	candidate, ok := o.doScan(ctx)
 	if !ok {
-		log.Info("━━━ Run end (No candidate) ━━━")
+		o.log.InfoContext(ctx, "━━━ Run end (No candidate) ━━━")
 		return
 	}
 
 	err := o.strategies.ExecuteAll(ctx, settle, o.cfg, candidate)
 
 	if err != nil {
-		log.Error("🔴 Run execution error", slog.Any("error", err))
+		o.log.ErrorContext(ctx, "🔴 Run execution error", slog.Any("error", err))
 		o.strategies.CleanupOpenExposure(ctx, o.cfg)
 	}
 
-	log.Info("━━━ Run end ━━━")
+	o.log.InfoContext(ctx, "━━━ Run end ━━━")
 }
 
 func (o *Orchestrator) doScan(ctx context.Context) (domain.Candidate, bool) {
 	if o.deps.TickerStore == nil {
-		applogger.WithCtx(ctx, o.log).Warn("No ticker store")
+		o.log.WarnContext(ctx, "No ticker store")
 		return domain.Candidate{}, false
 	}
 	td, err := o.deps.TickerStore.GetTicker(ctx, o.cfg.Symbol)
 	if err != nil {
-		applogger.WithCtx(ctx, o.log).Warn("No ticker", slog.Any("error", err))
+		o.log.WarnContext(ctx, "No ticker", slog.Any("error", err))
 		return domain.Candidate{}, false
 	}
 
 	if math.Abs(td.FundingRate) < o.cfg.MinFundingRate {
-		applogger.WithCtx(ctx, o.log).Info("FR below threshold", slog.Float64("fr", td.FundingRate*100))
+		o.log.InfoContext(ctx, "FR below threshold", slog.Float64("fr", td.FundingRate*100))
 		return domain.Candidate{}, false
 	}
 
 	if minVol24USD := o.global.System.Safety.MinVol24USD; minVol24USD > 0 && td.Amount24 < minVol24USD {
-		applogger.WithCtx(ctx, o.log).Info("24h volume below threshold",
+		o.log.InfoContext(ctx, "24h volume below threshold",
 			slog.Float64("amount24_usd", td.Amount24),
 			slog.Float64("minVol24USD", minVol24USD),
 		)
@@ -175,7 +173,7 @@ func (o *Orchestrator) BuildCandidate(td *store.TickerData) domain.Candidate {
 func (o *Orchestrator) Enrich(ctx context.Context, c *domain.Candidate) bool {
 	cd, err := o.deps.ContractStore.GetContract(ctx, c.Symbol)
 	if err != nil {
-		applogger.WithCtx(ctx, o.log).Warn("🟡 No contract data — skip")
+		o.log.WarnContext(ctx, "🟡 No contract data — skip")
 		return false
 	}
 	c.ContractSpec = domain.ContractSpec{

@@ -10,7 +10,7 @@ const (
 	pathContracts      = "/openApi/swap/v2/quote/contracts"
 	pathTickers        = "/openApi/swap/v2/quote/ticker"
 	pathFundingRate    = "/openApi/swap/v2/quote/premiumIndex"
-	pathKlines         = "/openApi/swap/v2/quote/klines"
+	pathKlines         = "/openApi/swap/v3/quote/klines"
 	pathDepth          = "/openApi/swap/v2/quote/depth"
 	pathPlaceOrder     = "/openApi/swap/v2/trade/order"
 	pathCancelOrder    = "/openApi/swap/v2/trade/cancel"

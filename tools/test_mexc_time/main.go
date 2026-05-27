@@ -28,7 +28,7 @@ func main() {
 	// Load Configuration with Bitwarden fallback
 	cfg, err := toolconfig.Load("configs/funding/system.jsonc")
 	if err != nil {
-		slog.Error("Failed to load config", "error", err)
+		slog.Error("Failed to load config", slog.Any("error", err))
 		os.Exit(1)
 	}
 

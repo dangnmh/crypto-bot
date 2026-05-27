@@ -16,7 +16,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -57,7 +56,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey, headerPassphrase}),
+			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey, headerAuthPhrase}),
 		)
 		httpClient.Transport = rt
 	}
@@ -80,12 +79,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 
 // WarmUp pre-establishes connection pool and maintains it via periodic public calls.
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	applogger.WithCtx(ctx, c.logger).Info("🔗 Warming up KuCoin connection pool...", "interval", interval)
+	c.logger.InfoContext(ctx, "🔗 Warming up KuCoin connection pool...", slog.Duration("interval", interval))
 
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.GetCtx(ctx, pathServerTime, nil)
 		if err != nil {
-			applogger.WithCtx(ctx, c.logger).Debug("Warmup server time call failed", "error", err)
+			c.logger.DebugContext(ctx, "Warmup server time call failed", slog.Any("error", err))
 		}
 		return true
 	})
@@ -127,6 +126,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		!strings.Contains(path, "/kline/query") &&
 		!strings.Contains(path, "/level2/snapshot") &&
 		!strings.Contains(path, "/bullet-public") &&
+		!strings.Contains(path, "/funding-rate/") &&
 		!strings.Contains(path, "/ua/v1/")
 
 	if isPrivate && c.apiKey != "" {
@@ -135,7 +135,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		req.Header.Set(headerKey, c.apiKey)
 		req.Header.Set(headerSign, sig)
 		req.Header.Set(headerTimestamp, ts)
-		req.Header.Set(headerPassphrase, SignPassphrase(c.apiSecret, c.passphrase))
+		req.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
 		req.Header.Set(headerVersion, "2")
 	}
 
@@ -176,7 +176,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]
 		req.Header.Set(headerKey, c.apiKey)
 		req.Header.Set(headerSign, sig)
 		req.Header.Set(headerTimestamp, ts)
-		req.Header.Set(headerPassphrase, SignPassphrase(c.apiSecret, c.passphrase))
+		req.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
 		req.Header.Set(headerVersion, "2")
 	}
 
@@ -187,7 +187,7 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, erro
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			if !connInfo.Reused {
-				applogger.WithCtx(ctx, c.logger).Debug("HTTP new connection",
+				c.logger.DebugContext(ctx, "HTTP new connection",
 					"was_idle", connInfo.WasIdle,
 					"idle_time", connInfo.IdleTime,
 				)

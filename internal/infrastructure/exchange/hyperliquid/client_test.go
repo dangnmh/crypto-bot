@@ -18,7 +18,7 @@ import (
 func TestClient_GetServerTime(t *testing.T) {
 	t.Parallel()
 
-	client := hyperliquid.NewClient(http.DefaultClient, "https://api.hyperliquid.xyz", "", "", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), http.DefaultClient, "https://api.hyperliquid.xyz", "", "", config.LoggingConfig{})
 	ts, err := client.GetServerTime(context.Background())
 	require.NoError(t, err)
 	assert.Greater(t, ts, int64(0))
@@ -49,7 +49,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
 	details, err := client.GetContractDetails(context.Background())
 	require.NoError(t, err)
 	require.Len(t, details, 1)
@@ -97,7 +97,7 @@ func TestClient_GetTickers(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
 	tickers, err := client.GetTickers(context.Background(), "")
 	require.NoError(t, err)
 	require.Len(t, tickers, 1)
@@ -128,7 +128,7 @@ func TestClient_GetFundingRate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
 	fr, err := client.GetFundingRate(context.Background(), "BTC")
 	require.NoError(t, err)
 	assert.Equal(t, "BTC", fr.Symbol)
@@ -159,7 +159,7 @@ func TestClient_GetKlines(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
 	klines, err := client.GetKlines(context.Background(), "BTC", "1m", 0, 0)
 	require.NoError(t, err)
 	require.Len(t, klines, 1)
@@ -187,7 +187,7 @@ func TestClient_GetDepthSnapshot(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
 	ob, err := client.GetDepthSnapshot(context.Background(), "BTC", 5)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC", ob.Symbol)
@@ -217,7 +217,7 @@ func TestClient_GetAssets(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
 	assets, err := client.GetAssets(context.Background())
 	require.NoError(t, err)
 	require.Len(t, assets, 1)
@@ -266,7 +266,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
 	positions, err := client.GetOpenPositions(context.Background(), "")
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
@@ -320,7 +320,7 @@ func TestClient_ClosePosition(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := hyperliquid.NewClient(server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
 	err := client.ClosePosition(context.Background(), "BTC", domain.SideCloseLong, 0.01, 1)
 	require.NoError(t, err)
 }

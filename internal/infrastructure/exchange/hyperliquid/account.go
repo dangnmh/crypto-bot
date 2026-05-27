@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"github.com/samber/lo"
 )
 
 // GetAssets retrieves account balances.
@@ -74,15 +76,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		entryPrice := 0.0
-		if p.EntryPx != nil {
-			entryPrice, _ = strconv.ParseFloat(*p.EntryPx, 64)
-		}
-
-		liqPrice := 0.0
-		if p.LiquidationPx != nil {
-			liqPrice, _ = strconv.ParseFloat(*p.LiquidationPx, 64)
-		}
+		entryPrice, _ := strconv.ParseFloat(lo.FromPtr(p.EntryPx), 64)
+		liqPrice, _ := strconv.ParseFloat(lo.FromPtr(p.LiquidationPx), 64)
 
 		unrealized, _ := strconv.ParseFloat(p.UnrealizedPnl, 64)
 

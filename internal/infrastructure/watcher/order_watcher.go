@@ -9,7 +9,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/eventbus"
-	applogger "crypto-bot/pkg/logger"
 )
 
 // OrderNotifier handles position lifecycle callbacks.
@@ -71,16 +70,16 @@ func subscribe[T any](
 
 	ch, err := w.broker.Subscribe(ctx, topic)
 	if err != nil {
-		applogger.WithCtx(ctx, w.logger).Error("Failed to subscribe to watcher topic", slog.String("topic", topic), slog.String("label", label), slog.Any("error", err))
+		w.logger.ErrorContext(ctx, "Failed to subscribe to watcher topic", slog.String("topic", topic), slog.String("label", label), slog.Any("error", err))
 		cancel()
 		return
 	}
 
-	applogger.WithCtx(ctx, w.logger).Debug("📥 Subscribing to watcher topic", slog.String("topic", topic), slog.String("label", label))
+	w.logger.DebugContext(ctx, "📥 Subscribing to watcher topic", slog.String("topic", topic), slog.String("label", label))
 
 	go func() {
 		defer cancel()
-		defer applogger.WithCtx(ctx, w.logger).Debug("📤 Unsubscribed from watcher topic", slog.String("topic", topic), slog.String("label", label))
+		defer w.logger.DebugContext(ctx, "📤 Unsubscribed from watcher topic", slog.String("topic", topic), slog.String("label", label))
 
 		for {
 			select {
@@ -95,7 +94,7 @@ func subscribe[T any](
 				if err := json.Unmarshal(msg.Payload, &value); err == nil {
 					callback(value)
 				} else {
-					applogger.WithCtx(ctx, w.logger).Error("Failed to unmarshal watcher payload", slog.String("topic", topic), slog.String("label", label), slog.Any("error", err))
+					w.logger.ErrorContext(ctx, "Failed to unmarshal watcher payload", slog.String("topic", topic), slog.String("label", label), slog.Any("error", err))
 				}
 				msg.Ack()
 			}

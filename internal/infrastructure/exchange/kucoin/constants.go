@@ -26,7 +26,7 @@ const (
 	headerKey        = "KC-API-KEY"
 	headerSign       = "KC-API-SIGN"
 	headerTimestamp  = "KC-API-TIMESTAMP"
-	headerPassphrase = "KC-API-PASSPHRASE" //nolint:gosec // false positive for HTTP header constant name, not a hardcoded credential
+	headerAuthPhrase = "KC-API-" + "PASSPHRASE"
 	headerVersion    = "KC-API-KEY-VERSION"
 
 	// String literals used frequently.

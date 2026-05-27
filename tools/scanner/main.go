@@ -2,19 +2,26 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/bingx"
+	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
+	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
+	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/pkg/httpclient"
 )
 
@@ -38,44 +45,92 @@ type Opportunity struct {
 }
 
 func main() {
-	fmt.Println("🔍 Scanning MEXC, Gate.io & Bybit Futures markets for top funding rates...")
+	fmt.Println("🔍 Scanning MEXC, Gate.io, Bybit, Binance, OKX, Hyperliquid, Bitget, BingX & KuCoin Futures markets for top funding rates...")
 
 	// Create exchange clients. No API keys needed for public market data.
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
 	mexcClient := mexc.NewClient(httpPool, "https://contract.mexc.com", "", "", sysconfig.LoggingConfig{})
 	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", sysconfig.LoggingConfig{})
 	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", sysconfig.LoggingConfig{})
+	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", sysconfig.LoggingConfig{})
+	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", sysconfig.LoggingConfig{})
+	bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", sysconfig.LoggingConfig{})
+	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", sysconfig.LoggingConfig{})
+	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", sysconfig.LoggingConfig{})
 
-	// Give a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", sysconfig.LoggingConfig{})
+
+	// Give a timeout context (30 seconds for extra safety)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	clients := map[string]exchange.Client{
+		"mexc":        mexcClient,
+		"gate":        gateClient,
+		"bybit":       bybitClient,
+		"okx":         okxClient,
+		"hyperliquid": hlClient,
+		"bitget":      bitgetClient,
+		"bingx":       bingxClient,
+		"kucoin":      kucoinClient,
+		"binance":     binanceClient,
+	}
+
 	var opportunities []Opportunity
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
-	// ── 1. Fetch MEXC Data ────────────────────────────────────────────────
-	mexcOpps, err := fetchMEXCOpportunities(ctx, mexcClient)
-	if err != nil {
-		fmt.Printf("🔴 Failed to fetch MEXC data: %v\n", err)
-	} else {
-		opportunities = append(opportunities, mexcOpps...)
+	for name, client := range clients {
+		wg.Add(1)
+		go func(exchangeName string, c exchange.Client) {
+			defer wg.Done()
+			tickers, err := c.GetTickers(ctx, "")
+			if err != nil {
+				fmt.Printf("🔴 Failed to fetch %s data: %v\n", strings.ToUpper(exchangeName), err)
+				return
+			}
+
+			var localOpps []Opportunity
+			for _, t := range tickers {
+				vol := t.Amount24
+				if vol == 0 {
+					vol = t.Volume24
+				}
+
+				if vol < 100000 {
+					continue
+				}
+
+				if t.FundingRate == 0 {
+					continue
+				}
+
+				nextSettle := t.NextSettleTime
+				if nextSettle == 0 {
+					nextSettle = getGateNextSettleTime().UnixMilli()
+				}
+
+				localOpps = append(localOpps, Opportunity{
+					Exchange:       exchangeName,
+					Symbol:         t.Symbol,
+					FundingRate:    t.FundingRate,
+					NextSettleTime: nextSettle,
+					Volume24h:      vol,
+				})
+			}
+
+			mu.Lock()
+			opportunities = append(opportunities, localOpps...)
+			mu.Unlock()
+		}(name, client)
 	}
 
-	// ── 2. Fetch Gate.io Data ─────────────────────────────────────────────
-	gateOpps, err := fetchGateOpportunities(ctx, gateClient)
-	if err != nil {
-		fmt.Printf("🔴 Failed to fetch Gate.io data: %v\n", err)
-	} else {
-		opportunities = append(opportunities, gateOpps...)
-	}
+	wg.Wait()
 
-	// ── 3. Fetch Bybit Data ───────────────────────────────────────────────
-	bybitOpps, err := fetchBybitOpportunities(ctx, bybitClient)
-	if err != nil {
-		fmt.Printf("🔴 Failed to fetch Bybit data: %v\n", err)
-	} else {
-		opportunities = append(opportunities, bybitOpps...)
-	}
+	printOpportunities(opportunities)
+}
 
+func printOpportunities(opportunities []Opportunity) {
 	// Sort by absolute funding rate descending
 	sort.Slice(opportunities, func(i, j int) bool {
 		return math.Abs(opportunities[i].FundingRate) > math.Abs(opportunities[j].FundingRate)
@@ -131,89 +186,6 @@ func main() {
 	}
 	_ = w.Flush()
 	fmt.Println("\n💡 Tip: Direction indicates what to open to ride the post-settlement reversion pump/dump.")
-}
-
-func fetchMEXCOpportunities(ctx context.Context, client *mexc.Client) ([]Opportunity, error) {
-	tickers, err := client.GetTickers(ctx, "")
-	if err != nil {
-		return nil, fmt.Errorf("fetch tickers: %w", err)
-	}
-
-	volMap := make(map[string]float64)
-	for _, t := range tickers {
-		volMap[t.Symbol] = t.Amount24
-	}
-
-	body, err := client.GetCtx(ctx, "/api/v1/contract/funding_rate", nil)
-	if err != nil {
-		return nil, fmt.Errorf("fetch funding rates: %w", err)
-	}
-
-	var frResp APIResponse
-	if err := json.Unmarshal(body, &frResp); err != nil {
-		return nil, fmt.Errorf("parse funding rates: %w", err)
-	}
-
-	var opportunities []Opportunity
-	for _, r := range frResp.Data {
-		vol := volMap[r.Symbol]
-		if r.FundingRate == 0 || vol < 100000 {
-			continue
-		}
-		opportunities = append(opportunities, Opportunity{
-			Exchange:       "mexc",
-			Symbol:         r.Symbol,
-			FundingRate:    r.FundingRate,
-			NextSettleTime: r.NextSettleTime,
-			Volume24h:      vol,
-		})
-	}
-	return opportunities, nil
-}
-
-func fetchGateOpportunities(ctx context.Context, client *gate.Client) ([]Opportunity, error) {
-	tickers, err := client.GetTickers(ctx, "")
-	if err != nil {
-		return nil, fmt.Errorf("fetch tickers: %w", err)
-	}
-
-	gateNextSettle := getGateNextSettleTime().UnixMilli()
-	var opportunities []Opportunity
-	for _, t := range tickers {
-		if t.FundingRate == 0 || t.Amount24 < 100000 {
-			continue
-		}
-		opportunities = append(opportunities, Opportunity{
-			Exchange:       "gate",
-			Symbol:         t.Symbol,
-			FundingRate:    t.FundingRate,
-			NextSettleTime: gateNextSettle,
-			Volume24h:      t.Amount24,
-		})
-	}
-	return opportunities, nil
-}
-
-func fetchBybitOpportunities(ctx context.Context, client *bybit.Client) ([]Opportunity, error) {
-	tickers, err := client.GetTickers(ctx, "")
-	if err != nil {
-		return nil, fmt.Errorf("fetch tickers: %w", err)
-	}
-
-	var opportunities []Opportunity
-	for _, t := range tickers {
-		if t.FundingRate == 0 || t.Amount24 < 100000 {
-			continue
-		}
-		opportunities = append(opportunities, Opportunity{
-			Exchange:       "bybit",
-			Symbol:         t.Symbol,
-			FundingRate:    t.FundingRate,
-			NextSettleTime: t.NextSettleTime,
-			Volume24h:      t.Amount24,
-		})
-	}
-	return opportunities, nil
 }
 
 func getGateNextSettleTime() time.Time {

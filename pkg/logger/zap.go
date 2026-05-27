@@ -49,24 +49,17 @@ func (h *TraceHandler) WithGroup(name string) slog.Handler {
 }
 
 // CtxLogger binds a slog logger to a context for log records.
-//
-//nolint:containedctx // This is a short-lived logging adapter created per call site, not a long-lived service struct.
 type CtxLogger struct {
-	ctx  context.Context
-	base *slog.Logger
+	ctxVal any
+	base   *slog.Logger
 }
 
 // WithCtx returns a context-bound logger. If base is nil, slog.Default is used.
-//
-//nolint:contextcheck // This adapter preserves the caller-provided context for immediate log calls.
 func WithCtx(ctx context.Context, base *slog.Logger) *CtxLogger {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if base == nil {
 		base = slog.Default()
 	}
-	return &CtxLogger{ctx: ctx, base: base}
+	return &CtxLogger{ctxVal: ctx, base: base}
 }
 
 func (l *CtxLogger) Debug(msg string, args ...any) {
@@ -86,14 +79,18 @@ func (l *CtxLogger) Error(msg string, args ...any) {
 }
 
 func (l *CtxLogger) log(level slog.Level, msg string, args ...any) {
-	if !l.base.Enabled(l.ctx, level) {
+	ctx, _ := l.ctxVal.(context.Context)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !l.base.Enabled(ctx, level) {
 		return
 	}
 	var pcs [1]uintptr
 	runtime.Callers(3, pcs[:])
 	record := slog.NewRecord(time.Now(), level, msg, pcs[0])
 	record.Add(args...)
-	_ = l.base.Handler().Handle(l.ctx, record)
+	_ = l.base.Handler().Handle(ctx, record)
 }
 
 func (m *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {

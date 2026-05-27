@@ -8,6 +8,7 @@ package decmath
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/shopspring/decimal"
@@ -256,6 +257,15 @@ func ParseFloat(s string) float64 {
 	return f
 }
 
+// DecimalPlaces returns the number of digits after the decimal point.
+func DecimalPlaces(s string) int {
+	parts := strings.Split(s, ".")
+	if len(parts) < 2 {
+		return 0
+	}
+	return len(parts[1])
+}
+
 // ParseInt is a safe int parser helper.
 func ParseInt(s string) int {
 	if s == "" {
@@ -263,6 +273,18 @@ func ParseInt(s string) int {
 	}
 	var i int
 	_, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &i)
+	if err != nil {
+		return 0
+	}
+	return i
+}
+
+// ParseInt64 is a safe int64 parser helper.
+func ParseInt64(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	i, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 	if err != nil {
 		return 0
 	}

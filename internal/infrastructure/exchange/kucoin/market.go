@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 // GetServerTime returns the KuCoin server timestamp in milliseconds.
@@ -38,14 +37,14 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	}
 
 	type kucoinContract struct {
-		Symbol         string      `json:"symbol"`
-		BaseCurrency   string      `json:"baseCurrency"`
-		QuoteCurrency  string      `json:"quoteCurrency"`
-		SettleCurrency string      `json:"settleCurrency"`
-		LotSize        interface{} `json:"lotSize"`
-		TickSize       interface{} `json:"tickSize"`
-		Multiplier     interface{} `json:"multiplier"`
-		Status         string      `json:"status"`
+		Symbol         string  `json:"symbol"`
+		BaseCurrency   string  `json:"baseCurrency"`
+		QuoteCurrency  string  `json:"quoteCurrency"`
+		SettleCurrency string  `json:"settleCurrency"`
+		LotSize        int64   `json:"lotSize"`
+		TickSize       float64 `json:"tickSize"`
+		Multiplier     float64 `json:"multiplier"`
+		Status         string  `json:"status"`
 	}
 
 	instruments, err := ParseResponse[[]kucoinContract](body, "contract_details")
@@ -62,10 +61,10 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			stateVal = 1
 		}
 
-		lotSize := parseFloat(inst.LotSize)
-		tickSize := parseFloat(inst.TickSize)
+		lotSize := float64(inst.LotSize)
+		tickSize := inst.TickSize
 
-		priceScale := getDecimals(fmt.Sprintf("%g", tickSize))
+		priceScale := decmath.DecimalPlaces(fmt.Sprintf("%g", tickSize))
 		if priceScale <= 0 {
 			priceScale = 2
 		}
@@ -104,12 +103,12 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		}
 
 		type kucoinSingleTicker struct {
-			Symbol       string      `json:"symbol"`
-			BestBidPrice interface{} `json:"bestBidPrice"`
-			BestAskPrice interface{} `json:"bestAskPrice"`
-			Price        interface{} `json:"price"`
-			Size         interface{} `json:"size"`
-			Ts           interface{} `json:"ts"`
+			Symbol       string `json:"symbol"`
+			BestBidPrice string `json:"bestBidPrice"`
+			BestAskPrice string `json:"bestAskPrice"`
+			Price        string `json:"price"`
+			Size         string `json:"size"`
+			Ts           string `json:"ts"`
 		}
 
 		raw, err := ParseResponse[kucoinSingleTicker](body, "ticker_single")
@@ -117,10 +116,10 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			return nil, err
 		}
 
-		last := parseFloat(raw.Price)
-		bid := parseFloat(raw.BestBidPrice)
-		ask := parseFloat(raw.BestAskPrice)
-		ts := parseInt64(raw.Ts)
+		last := decmath.ParseFloat(raw.Price)
+		bid := decmath.ParseFloat(raw.BestBidPrice)
+		ask := decmath.ParseFloat(raw.BestAskPrice)
+		ts := decmath.ParseInt64(raw.Ts)
 
 		return []exchange.Ticker{
 			{
@@ -140,14 +139,14 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	type kucoinTicker struct {
-		Symbol       string      `json:"symbol"`
-		BestBidPrice interface{} `json:"bestBidPrice"`
-		BestAskPrice interface{} `json:"bestAskPrice"`
-		LastPrice    interface{} `json:"lastPrice"`
-		Price        interface{} `json:"price"`
-		Volume       interface{} `json:"volume"`
-		Vol          interface{} `json:"vol"`
-		Ts           interface{} `json:"ts"`
+		Symbol       string `json:"symbol"`
+		BestBidPrice string `json:"bestBidPrice"`
+		BestAskPrice string `json:"bestAskPrice"`
+		LastPrice    string `json:"lastPrice"`
+		Price        string `json:"price"`
+		Volume       string `json:"volume"`
+		Vol          string `json:"vol"`
+		Ts           int64  `json:"ts"`
 	}
 
 	tickers, err := ParseResponse[[]kucoinTicker](body, "tickers")
@@ -158,20 +157,26 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	// Fetch active contracts in bulk to populate funding rates & next settle times without separate API calls
 	cMap := make(map[string]float64)
 	cTimeMap := make(map[string]int64)
+	cVolMap := make(map[string]float64)
+	cAmtMap := make(map[string]float64)
 	cBody, err := c.GetCtx(ctx, pathContracts, nil)
 	if err == nil {
 		type kucoinContractFunding struct {
-			Symbol              string      `json:"symbol"`
-			FundingRate         interface{} `json:"fundingRate"`
-			NextFundingRateTime interface{} `json:"nextFundingRateTime"`
+			Symbol                  string  `json:"symbol"`
+			FundingFeeRate          float64 `json:"fundingFeeRate"`
+			NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
+			TurnoverOf24h           float64 `json:"turnoverOf24h"`
+			VolumeOf24h             float64 `json:"volumeOf24h"`
 		}
 		cList, err := ParseResponse[[]kucoinContractFunding](cBody, "contracts_active")
 		if err == nil {
 			for i := range cList {
-				fr := parseFloat(cList[i].FundingRate)
-				ns := parseInt64(cList[i].NextFundingRateTime)
+				fr := cList[i].FundingFeeRate
+				ns := cList[i].NextFundingRateDateTime
 				cMap[cList[i].Symbol] = fr
 				cTimeMap[cList[i].Symbol] = ns
+				cVolMap[cList[i].Symbol] = cList[i].VolumeOf24h
+				cAmtMap[cList[i].Symbol] = cList[i].TurnoverOf24h
 			}
 		}
 	}
@@ -180,18 +185,24 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	for i := range tickers {
 		t := &tickers[i]
 
-		last := parseFloat(t.LastPrice)
+		last := decmath.ParseFloat(t.LastPrice)
 		if last == 0 {
-			last = parseFloat(t.Price)
+			last = decmath.ParseFloat(t.Price)
 		}
 
-		bid := parseFloat(t.BestBidPrice)
-		ask := parseFloat(t.BestAskPrice)
-		vol := parseFloat(t.Volume)
+		bid := decmath.ParseFloat(t.BestBidPrice)
+		ask := decmath.ParseFloat(t.BestAskPrice)
+		ts := t.Ts
+
+		vol := cVolMap[t.Symbol]
+		amt := cAmtMap[t.Symbol]
 		if vol == 0 {
-			vol = parseFloat(t.Vol)
+			vol = decmath.ParseFloat(t.Volume)
+			if vol == 0 {
+				vol = decmath.ParseFloat(t.Vol)
+			}
+			amt = vol * last
 		}
-		ts := parseInt64(t.Ts)
 
 		fr := cMap[t.Symbol]
 		ns := cTimeMap[t.Symbol]
@@ -202,7 +213,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			Bid1:           bid,
 			Ask1:           ask,
 			Volume24:       vol,
-			Amount24:       vol * last, // Estimate amount if not directly provided
+			Amount24:       amt,
 			FairPrice:      last,
 			FundingRate:    fr,
 			NextSettleTime: ns,
@@ -219,19 +230,16 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 		return nil, fmt.Errorf("symbol is required for GetFundingRate")
 	}
 
-	params := map[string]string{
-		paramSymbol: symbol,
-	}
-
-	body, err := c.GetCtx(ctx, pathFundingRate, params)
+	path := fmt.Sprintf("/api/v1/funding-rate/%s/current", symbol)
+	body, err := c.GetCtx(ctx, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	type kucoinFundingRate struct {
-		Symbol          string      `json:"symbol"`
-		FundingRate     interface{} `json:"fundingRate"`
-		NextFundingTime interface{} `json:"nextFundingTime"`
+		Symbol      string  `json:"symbol"`
+		Value       float64 `json:"value"`
+		FundingTime int64   `json:"fundingTime"`
 	}
 
 	raw, err := ParseResponse[kucoinFundingRate](body, "funding_rate")
@@ -239,11 +247,11 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 		return nil, err
 	}
 
-	fr := parseFloat(raw.FundingRate)
-	nextSettle := parseInt64(raw.NextFundingTime)
+	fr := (raw.Value)
+	nextSettle := raw.FundingTime
 
 	return &exchange.FundingRateDetail{
-		Symbol:         raw.Symbol,
+		Symbol:         symbol,
 		FundingRate:    fr,
 		NextSettleTime: nextSettle,
 		Timestamp:      nextSettle - 8*3600*1000,
@@ -278,8 +286,8 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		return nil, err
 	}
 
-	var rawRows [][]interface{}
-	parsedRows, err := ParseResponse[[][]interface{}](body, "klines")
+	var rawRows [][]float64
+	parsedRows, err := ParseResponse[[][]float64](body, "klines")
 	if err != nil {
 		return nil, err
 	}
@@ -293,12 +301,12 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 			continue
 		}
 
-		ts := parseInt64(row[0])
-		o := parseFloat(row[1])
-		h := parseFloat(row[2])
-		l := parseFloat(row[3])
-		cVal := parseFloat(row[4])
-		v := parseFloat(row[5])
+		ts := int64(row[0])
+		o := (row[1])
+		h := (row[2])
+		l := (row[3])
+		cVal := (row[4])
+		v := (row[5])
 
 		klines = append(klines, exchange.Kline{
 			Timestamp: ts,
@@ -329,9 +337,9 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 	}
 
 	type kucoinDepth struct {
-		Asks [][]interface{} `json:"asks"`
-		Bids [][]interface{} `json:"bids"`
-		Ts   interface{}     `json:"ts"`
+		Asks [][]float64 `json:"asks"`
+		Bids [][]float64 `json:"bids"`
+		Ts   int64       `json:"ts"`
 	}
 
 	book, err := ParseResponse[kucoinDepth](body, "depth_snapshot")
@@ -349,8 +357,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		if len(level) < 2 {
 			continue
 		}
-		p := parseFloat(level[0])
-		v := parseFloat(level[1])
+		p := (level[0])
+		v := (level[1])
 		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -358,8 +366,8 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		if len(level) < 2 {
 			continue
 		}
-		p := parseFloat(level[0])
-		v := parseFloat(level[1])
+		p := (level[0])
+		v := (level[1])
 		ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -369,48 +377,4 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 // GetDepthCommits is not supported on KuCoin REST.
 func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
 	return nil, fmt.Errorf("GetDepthCommits not supported on KuCoin REST")
-}
-
-func parseFloat(v interface{}) float64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case float64:
-		return val
-	case string:
-		f, _ := strconv.ParseFloat(val, 64)
-		return f
-	case int64:
-		return float64(val)
-	case int:
-		return float64(val)
-	}
-	return 0
-}
-
-func parseInt64(v interface{}) int64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case float64:
-		return int64(val)
-	case int64:
-		return val
-	case int:
-		return int64(val)
-	case string:
-		i, _ := strconv.ParseInt(val, 10, 64)
-		return i
-	}
-	return 0
-}
-
-func getDecimals(s string) int {
-	parts := strings.Split(s, ".")
-	if len(parts) < 2 {
-		return 0
-	}
-	return len(parts[1])
 }

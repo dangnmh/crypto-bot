@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -25,7 +24,7 @@ type Client struct {
 }
 
 // NewClient creates a new Hyperliquid API Client.
-func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
+func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "hyperliquid")
 
 	var meta *hl.Meta
@@ -51,11 +50,11 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	if apiSecret != "" {
 		pk, err := crypto.HexToECDSA(strings.TrimPrefix(apiSecret, "0x"))
 		if err != nil {
-			logger.Error("Failed to parse Ethereum private key", "error", err)
+			logger.Error("Failed to parse Ethereum private key", slog.Any("error", err))
 		} else {
 			userAddress = crypto.PubkeyToAddress(pk.PublicKey).Hex()
 			exchangeClient = hl.NewExchange(
-				context.Background(),
+				ctx,
 				pk,
 				baseURL,
 				meta,     // Meta
@@ -69,7 +68,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	}
 
 	infoClient := hl.NewInfo(
-		context.Background(),
+		ctx,
 		baseURL,
 		true,      // Skip WS in Info client
 		meta,      // Meta
@@ -89,12 +88,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 
 // WarmUp maintains public connection pool.
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	applogger.WithCtx(ctx, c.logger).Info("🔗 Warming up Hyperliquid connection pool...", "interval", interval)
+	c.logger.InfoContext(ctx, "🔗 Warming up Hyperliquid connection pool...", slog.Duration("interval", interval))
 
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.info.AllMids(ctx)
 		if err != nil {
-			applogger.WithCtx(ctx, c.logger).Debug("Warmup mid prices call failed", "error", err)
+			c.logger.DebugContext(ctx, "Warmup mid prices call failed", slog.Any("error", err))
 		}
 		return true
 	})

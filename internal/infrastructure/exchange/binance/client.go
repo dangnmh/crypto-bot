@@ -64,7 +64,7 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 		req := c.sdkClient.RestApi.MarketDataAPI.TestConnectivity(ctx)
 		_, err := c.sdkClient.RestApi.MarketDataAPI.TestConnectivityExecute(req)
 		if err != nil {
-			c.logger.Debug("Binance warmup connectivity check failed", "error", err)
+			c.logger.Debug("Binance warmup connectivity check failed", slog.Any("error", err))
 		}
 		return true
 	})

@@ -11,6 +11,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
@@ -244,11 +245,11 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 	}
 
 	var dataArr []struct {
-		Symbol string          `json:"symbol"`
-		InstID string          `json:"instId"`
-		Asks   [][]interface{} `json:"asks"`
-		Bids   [][]interface{} `json:"bids"`
-		Ts     interface{}     `json:"ts"`
+		Symbol string     `json:"symbol"`
+		InstID string     `json:"instId"`
+		Asks   [][]string `json:"asks"`
+		Bids   [][]string `json:"bids"`
+		Ts     string     `json:"ts"`
 	}
 	if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
 		return "", nil, fmt.Errorf("parse depth data: %w", err)
@@ -263,7 +264,7 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 		sym = instID
 	}
 
-	tsVal := parseInt(depthItem.Ts)
+	tsVal := decmath.ParseInt64(depthItem.Ts)
 
 	ob = &domain.OrderBook{
 		Symbol:  sym,
@@ -277,8 +278,8 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 		if len(ask) < 2 {
 			continue
 		}
-		p := parseFloat(ask[0])
-		v := parseFloat(ask[1])
+		p := decmath.ParseFloat(ask[0])
+		v := decmath.ParseFloat(ask[1])
 		ob.Asks = append(ob.Asks, domain.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -287,8 +288,8 @@ func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook
 		if len(bid) < 2 {
 			continue
 		}
-		p := parseFloat(bid[0])
-		v := parseFloat(bid[1])
+		p := decmath.ParseFloat(bid[0])
+		v := decmath.ParseFloat(bid[1])
 		ob.Bids = append(ob.Bids, domain.OrderBookEntry{Price: p, Volume: v})
 	}
 
@@ -307,7 +308,7 @@ func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *domain.Kline, err
 		return "", nil, err
 	}
 
-	var dataArr [][]interface{}
+	var dataArr [][]string
 	if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
 		return "", nil, fmt.Errorf("parse kline data: %w", err)
 	}
@@ -317,13 +318,13 @@ func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *domain.Kline, err
 		return "", nil, fmt.Errorf("insufficient kline fields")
 	}
 
-	ts := parseInt(row[0])
-	o := parseFloat(row[1])
-	h := parseFloat(row[2])
-	l := parseFloat(row[3])
-	cVal := parseFloat(row[4])
-	v := parseFloat(row[5])
-	amt := parseFloat(row[6])
+	ts := decmath.ParseInt64(row[0])
+	o := decmath.ParseFloat(row[1])
+	h := decmath.ParseFloat(row[2])
+	l := decmath.ParseFloat(row[3])
+	cVal := decmath.ParseFloat(row[4])
+	v := decmath.ParseFloat(row[5])
+	amt := decmath.ParseFloat(row[6])
 
 	k = &domain.Kline{
 		Timestamp: ts,
@@ -355,8 +356,8 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 	sz, _ := strconv.ParseFloat(o.Size, 64)
 	avgPx, _ := strconv.ParseFloat(o.PriceAvg, 64)
 	fillSz, _ := strconv.ParseFloat(o.BaseVolume, 64)
-	cTime := parseInt(o.CTime)
-	uTime := parseInt(o.UTime)
+	cTime := decmath.ParseInt64(o.CTime)
+	uTime := decmath.ParseInt64(o.UTime)
 
 	deal := &exchange.WsOrderDeal{
 		Symbol:       o.Symbol,

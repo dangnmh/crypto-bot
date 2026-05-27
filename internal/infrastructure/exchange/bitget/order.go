@@ -7,6 +7,7 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type bitgetOrderResult struct {
@@ -15,64 +16,26 @@ type bitgetOrderResult struct {
 }
 
 type bitgetOrder struct {
-	OrderID    string      `json:"orderId"`
-	ClientOid  string      `json:"clientOid"`
-	Symbol     string      `json:"symbol"`
-	Size       string      `json:"size"`
-	Price      string      `json:"price"`
-	PriceAvg   string      `json:"priceAvg"`
-	BaseVolume string      `json:"baseVolume"`
-	State      string      `json:"state"`
-	Side       string      `json:"side"`
-	PosSide    string      `json:"posSide"`
-	Leverage   interface{} `json:"leverage"`
-	CTime      interface{} `json:"cTime"`
-	UTime      interface{} `json:"uTime"`
+	OrderID    string `json:"orderId"`
+	ClientOid  string `json:"clientOid"`
+	Symbol     string `json:"symbol"`
+	Size       string `json:"size"`
+	Price      string `json:"price"`
+	PriceAvg   string `json:"priceAvg"`
+	BaseVolume string `json:"baseVolume"`
+	State      string `json:"state"`
+	Side       string `json:"side"`
+	PosSide    string `json:"posSide"`
+	Leverage   string `json:"leverage"`
+	CTime      string `json:"cTime"`
+	UTime      string `json:"uTime"`
 }
 
 // CreateOrder submits a new order and returns the order ID.
-//
-//nolint:cyclop // order mapping requires multi-branch mapping
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
-	ordType := paramLimit
-	switch req.Type {
-	case exchange.OrderTypeMarket:
-		ordType = "market"
-	case exchange.OrderTypePostOnly:
-		ordType = "post_only"
-	case exchange.OrderTypeIOC:
-		ordType = "ioc"
-	case exchange.OrderTypeFOK:
-		ordType = "fok"
-	}
-
-	side := sideBuy
-	tradeSide := sideOpen
+	ordType := mapBitgetOrderType(req.Type)
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0
-
-	if isHedge {
-		switch req.Side {
-		case exchange.SideOpenLong:
-			side = sideBuy
-			tradeSide = sideOpen
-		case exchange.SideCloseLong:
-			side = sideSell
-			tradeSide = sideClose
-		case exchange.SideOpenShort:
-			side = sideSell
-			tradeSide = sideOpen
-		case exchange.SideCloseShort:
-			side = sideBuy
-			tradeSide = sideClose
-		}
-	} else {
-		switch req.Side {
-		case exchange.SideOpenLong, exchange.SideCloseShort:
-			side = sideBuy
-		case exchange.SideOpenShort, exchange.SideCloseLong:
-			side = sideSell
-		}
-	}
+	side, tradeSide := mapBitgetOrderSide(req.Side, isHedge)
 
 	marginMode := modeIsolated
 	if req.OpenType == exchange.OpenTypeCross {
@@ -306,9 +269,9 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 	avgPx, _ := strconv.ParseFloat(o.PriceAvg, 64)
 	fillSz, _ := strconv.ParseFloat(o.BaseVolume, 64)
 
-	cTimeVal := parseInt(o.CTime)
-	uTimeVal := parseInt(o.UTime)
-	leverageVal := parseInt(o.Leverage)
+	cTimeVal := decmath.ParseInt64(o.CTime)
+	uTimeVal := decmath.ParseInt64(o.UTime)
+	leverageVal := decmath.ParseInt64(o.Leverage)
 
 	info := exchange.OrderInfo{
 		OrderID:      o.OrderID,
@@ -359,20 +322,43 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 	return info
 }
 
-func parseInt(v interface{}) int64 {
-	if v == nil {
-		return 0
+func mapBitgetOrderType(t int) string {
+	switch t {
+	case exchange.OrderTypeMarket:
+		return "market"
+	case exchange.OrderTypePostOnly:
+		return "post_only"
+	case exchange.OrderTypeIOC:
+		return "ioc"
+	case exchange.OrderTypeFOK:
+		return "fok"
+	default:
+		return paramLimit
 	}
-	switch val := v.(type) {
-	case float64:
-		return int64(val)
-	case string:
-		i, _ := strconv.ParseInt(val, 10, 64)
-		return i
-	case int64:
-		return val
-	case int:
-		return int64(val)
+}
+
+func mapBitgetOrderSide(s int, isHedge bool) (string, string) {
+	if isHedge {
+		switch s {
+		case exchange.SideOpenLong:
+			return sideBuy, sideOpen
+		case exchange.SideCloseLong:
+			return sideSell, sideClose
+		case exchange.SideOpenShort:
+			return sideSell, sideOpen
+		case exchange.SideCloseShort:
+			return sideBuy, sideClose
+		default:
+			return sideBuy, sideOpen
+		}
 	}
-	return 0
+
+	switch s {
+	case exchange.SideOpenLong, exchange.SideCloseShort:
+		return sideBuy, sideOpen
+	case exchange.SideOpenShort, exchange.SideCloseLong:
+		return sideSell, sideOpen
+	default:
+		return sideBuy, sideOpen
+	}
 }

@@ -16,7 +16,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
-	applogger "crypto-bot/pkg/logger"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -79,12 +78,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 
 // WarmUp pre-establishes connection pool and maintains it via periodic public calls.
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	applogger.WithCtx(ctx, c.logger).Info("🔗 Warming up Bitget connection pool...", "interval", interval)
+	c.logger.InfoContext(ctx, "🔗 Warming up Bitget connection pool...", slog.Duration("interval", interval))
 
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.GetCtx(ctx, pathServerTime, nil)
 		if err != nil {
-			applogger.WithCtx(ctx, c.logger).Debug("Warmup server time call failed", "error", err)
+			c.logger.DebugContext(ctx, "Warmup server time call failed", slog.Any("error", err))
 		}
 		return true
 	})
@@ -173,7 +172,7 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, erro
 	trace := &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
 			if !connInfo.Reused {
-				applogger.WithCtx(ctx, c.logger).Debug("HTTP new connection",
+				c.logger.DebugContext(ctx, "HTTP new connection",
 					"was_idle", connInfo.WasIdle,
 					"idle_time", connInfo.IdleTime,
 				)

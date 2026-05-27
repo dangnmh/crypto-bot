@@ -55,10 +55,10 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 	}
 
 	s.logger.Debug("store.UpdatePrice",
-		"symbol", symbol,
-		"lastPrice", data.LastPrice,
-		"bid", data.BestBid,
-		"ask", data.BestAsk,
+		slog.String("symbol", symbol),
+		slog.Float64("lastPrice", data.LastPrice),
+		slog.Float64("bid", data.BestBid),
+		slog.Float64("ask", data.BestAsk),
 	)
 }
 

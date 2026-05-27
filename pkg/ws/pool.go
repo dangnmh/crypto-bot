@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"sync"
-
-	applogger "crypto-bot/pkg/logger"
 )
 
 // Pool manages multiple WebSocket clients to bypass subscription limits (e.g., 30 pairs/conn).
@@ -153,7 +151,7 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) (int, error) {
 	p.publicClients = append(p.publicClients, newClient)
 	p.clientSubCount = append(p.clientSubCount, 0)
 
-	applogger.WithCtx(ctx, p.logger).Info("🌊 Spawning new public WS connection", "pool_idx", idx)
+	p.logger.InfoContext(ctx, "🌊 Spawning new public WS connection", slog.Int("pool_idx", idx))
 	go newClient.Connect(ctx)
 	if err := newClient.WaitReady(ctx); err != nil {
 		return 0, err
