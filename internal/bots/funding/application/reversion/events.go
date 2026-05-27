@@ -74,6 +74,7 @@ type ReversionEvent interface {
 	GetFlow() string
 	GetReqID() string
 	GetSymbol() string
+	GetExchange() string
 	GetMessage() string
 	GetDataMap() map[string]interface{}
 	ShouldNotify() bool
@@ -83,6 +84,7 @@ type BaseReversionEvent struct {
 	Flow          string    `json:"flow,omitempty"`
 	ReqID         string    `json:"req_id,omitempty"`
 	Symbol        string    `json:"symbol"`
+	Exchange      string    `json:"exchange,omitempty"`
 	SendNotify    bool      `json:"send_notify,omitempty"`
 	Timestamp     time.Time `json:"timestamp"`
 	EventID       string    `json:"event_id,omitempty"`
@@ -91,10 +93,11 @@ type BaseReversionEvent struct {
 	PreviousTopic string    `json:"previous_topic,omitempty"`
 }
 
-func (b BaseReversionEvent) GetFlow() string    { return b.Flow }
-func (b BaseReversionEvent) GetReqID() string   { return b.ReqID }
-func (b BaseReversionEvent) GetSymbol() string  { return b.Symbol }
-func (b BaseReversionEvent) ShouldNotify() bool { return b.SendNotify }
+func (b BaseReversionEvent) GetFlow() string     { return b.Flow }
+func (b BaseReversionEvent) GetReqID() string    { return b.ReqID }
+func (b BaseReversionEvent) GetSymbol() string   { return b.Symbol }
+func (b BaseReversionEvent) GetExchange() string { return b.Exchange }
+func (b BaseReversionEvent) ShouldNotify() bool  { return b.SendNotify }
 
 type CandidateFoundEvent struct {
 	BaseReversionEvent

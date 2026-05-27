@@ -192,6 +192,7 @@ func (o *Orchestrator) Enrich(ctx context.Context, c *domain.Candidate) bool {
 func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 	return domain.TradeConfig{
 		Symbol:              sc.Symbol,
+		Exchange:            sc.Exchange,
 		SimulateSettle:      sc.SimulateSettle,
 		MaxPriceDiffPercent: sc.MaxPriceDiffPercent,
 		MarginUSDT:          sc.MarginUSDT,

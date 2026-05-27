@@ -129,7 +129,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runner.abort(ctx, "BTC_USDT", "test-req-abort", "not profitable")
+	runner.abort(ctx, "BTC_USDT", "test-req-abort", "mexc", "not profitable")
 
 	final := runner.calculateFinalPnL(PositionClosedEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},

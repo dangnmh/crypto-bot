@@ -33,6 +33,7 @@ type ContractSpec struct {
 // but belongs to the domain, not the config package.
 type TradeConfig struct {
 	Symbol              string
+	Exchange            string
 	SimulateSettle      string
 	MaxPriceDiffPercent float64
 	MarginUSDT          float64
