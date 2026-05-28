@@ -178,16 +178,17 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 // ParseTicker parses raw JSON into generic store.PriceData.
 func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
 	var msg struct {
-		Topic string        `json:"topic"`
-		Data  []bybitTicker `json:"data"`
+		Topic string       `json:"topic"`
+		Data  *bybitTicker `json:"data"`
 	}
 	if err = json.Unmarshal(data, &msg); err != nil {
 		return "", nil, err
 	}
-	if len(msg.Data) == 0 {
+	if msg.Data == nil {
 		return "", nil, fmt.Errorf("empty data in ticker push")
 	}
-	raw := msg.Data[0]
+
+	raw := msg.Data
 	pd = &store.PriceData{
 		Symbol:    raw.Symbol,
 		LastPrice: decmath.ParseFloat(raw.LastPrice),

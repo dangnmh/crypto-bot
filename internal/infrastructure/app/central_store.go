@@ -215,7 +215,12 @@ func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapter) {
 
 	if cs.price != nil {
 		pool.On("ticker", func(data []byte) {
-			if symbol, pd, err := adapter.ParseTicker(data); err == nil && pd != nil {
+			symbol, pd, err := adapter.ParseTicker(data)
+			if err != nil {
+				slog.Error("WireWS ParseTicker error", slog.String("data", string(data)), slog.Any("error", err))
+				return
+			}
+			if pd != nil {
 				cs.price.UpdatePrice(symbol, pd)
 			}
 		})
@@ -223,7 +228,12 @@ func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapter) {
 
 	if cs.depth != nil {
 		pool.On("depth", func(data []byte) {
-			if symbol, ob, err := adapter.ParseDepth(data); err == nil && ob != nil {
+			symbol, ob, err := adapter.ParseDepth(data)
+			if err != nil {
+				slog.Error("WireWS ParseDepth error", slog.String("data", string(data)), slog.Any("error", err))
+				return
+			}
+			if ob != nil {
 				cs.depth.UpdateDepth(symbol, ob)
 			}
 		})
@@ -231,7 +241,12 @@ func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapter) {
 
 	if cs.kline != nil {
 		pool.On("kline", func(data []byte) {
-			if symbol, kl, err := adapter.ParseKline(data); err == nil && kl != nil {
+			symbol, kl, err := adapter.ParseKline(data)
+			if err != nil {
+				slog.Error("WireWS ParseKline error", slog.String("data", string(data)), slog.Any("error", err))
+				return
+			}
+			if kl != nil {
 				cs.kline.AddKline(symbol, *kl)
 			}
 		})

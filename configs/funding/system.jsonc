@@ -18,13 +18,17 @@
       "websocket": { "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt" }
     },
     "bybit": {
-      "enable": false,
-      "future": { "baseURL": "https://api-testnet.bybit.com" },
-      "websocket": { "wsURL": "wss://stream-testnet.bybit.com/v5/private" },
+      "enable": true,
+      "future": { "baseURL": "https://api.bybit.com" },
+      "websocket": {
+        "publicURL": "wss://stream.bybit.com/v5/public/linear",
+        "privateURL": "wss://stream.bybit.com/v5/private",
+        "maxPairsPerWSConn": 30
+      },
       "accountType": "standard"
     },
     "binance": {
-      "enable": false,
+      "enable": true,
       "future": { "baseURL": "https://fapi.binance.com" },
       "websocket": { "wsURL": "wss://fstream.binance.com/ws" }
     },
@@ -67,9 +71,9 @@
   // Logging
   // ══════════════════════════════════════════════════════════════
   "logging": {
-    "level": "info",
+    "level": "debug",
     "ws": {
-      "ticker": false,
+      "ticker": true,
       "order": true,
       "position": true
     },

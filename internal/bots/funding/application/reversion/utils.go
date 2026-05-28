@@ -2,6 +2,7 @@ package reversion
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"time"
@@ -227,6 +228,19 @@ func (r *StatelessRunner) WaitUntil(ctx context.Context, symbol string, target t
 	return ctx.Err() == nil
 }
 
+func (r *StatelessRunner) waitUntilFuture(ctx context.Context, symbol string, target time.Time) error {
+	d := r.deps.Clock.Until(target)
+	if d <= 0 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return fmt.Errorf("timer target already passed for %s at %s", symbol, target.Format(time.RFC3339Nano))
+	}
+
+	r.log.DebugContext(ctx, "⏱️ wait", slog.String("symbol", symbol), slog.Time("target", target), slog.Duration("wait", d))
+	return r.deps.Clock.Sleep(ctx, d)
+}
+
 func (r *StatelessRunner) subscribeWS(ctx context.Context, symbol string) error {
 	return r.deps.WsSub.SubscribeTicker(ctx, symbol)
 }
@@ -241,8 +255,32 @@ func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate)
 	pd, err := r.deps.PriceStore.GetPrice(ctx, c.Symbol, 5*time.Second)
 	if err == nil {
 		c.BestBid, c.BestAsk, c.LastPrice = pd.BestBid, pd.BestAsk, pd.LastPrice
+		return nil
 	}
-	return err
+
+	// Fallback: If price data is stale or missing in PriceStore, query the exchange REST API
+	r.log.WarnContext(ctx, "Price store data stale or missing; querying REST API fallback", slog.String("symbol", c.Symbol), slog.Any("error", err))
+	tickers, apiErr := r.deps.Client.GetTickers(ctx, c.Symbol)
+	if apiErr != nil {
+		r.log.ErrorContext(ctx, "REST API fallback failed", slog.String("symbol", c.Symbol), slog.Any("error", apiErr))
+		return fmt.Errorf("price store stale (%w) and REST API fallback failed (%w)", err, apiErr)
+	}
+	if len(tickers) == 0 {
+		return fmt.Errorf("price store stale (%w) and REST API fallback returned no tickers", err)
+	}
+
+	ticker := tickers[0]
+	c.BestBid = ticker.Bid1
+	c.BestAsk = ticker.Ask1
+	c.LastPrice = ticker.LastPrice
+
+	r.log.InfoContext(ctx, "🟢 REST API fallback succeeded",
+		slog.String("symbol", c.Symbol),
+		slog.Float64("lastPrice", c.LastPrice),
+		slog.Float64("bid", c.BestBid),
+		slog.Float64("ask", c.BestAsk),
+	)
+	return nil
 }
 
 func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, exchangeName, reason string) {

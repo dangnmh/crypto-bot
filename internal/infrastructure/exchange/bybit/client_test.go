@@ -503,6 +503,8 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, 0.1, d.PriceUnit)
 	assert.Equal(t, 1, d.MinVol)
 	assert.Equal(t, 1, d.VolUnit)
+	assert.Equal(t, 1, d.PriceScale)
+	assert.Equal(t, 3, d.VolScale)
 }
 
 func TestClient_GetTickers_And_GetFundingRate(t *testing.T) {
@@ -721,13 +723,13 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	// Check parse ticker
 	rawTicker := []byte(`{
 		"topic": "tickers.BTCUSDT",
-		"data": [{
+		"data": {
 			"symbol": "BTCUSDT",
 			"lastPrice": "50000",
 			"bid1Price": "49999",
 			"ask1Price": "50001",
 			"volume24h": "100"
-		}]
+		}
 	}`)
 	sym, pd, err := adapter.ParseTicker(rawTicker)
 	require.NoError(t, err)

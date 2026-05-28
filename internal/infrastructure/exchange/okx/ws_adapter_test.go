@@ -1,10 +1,13 @@
 package okx_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/okx"
+	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,4 +154,82 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 1.0, update.HoldVol)
 	assert.Equal(t, 10, update.Leverage)
 	assert.Equal(t, 1, update.PositionType)
+}
+
+func TestWsAdapter_SubscriptionAndErrors(t *testing.T) {
+	t.Parallel()
+
+	adapter := okx.NewWsAdapter()
+
+	// 1. GetPingConfig
+	pingMsg, interval := adapter.GetPingConfig()
+	assert.Equal(t, "ping", pingMsg)
+	assert.Equal(t, 20*time.Second, interval)
+
+	// 2. GetAuthHook
+	hook := adapter.GetAuthHook("", "")
+	assert.Nil(t, hook)
+
+	hookWithKey := adapter.GetAuthHook("my_api_key", "my_api_secret")
+	assert.NotNil(t, hookWithKey)
+
+	// 3. ParseOrderDeal (unimplemented fallback)
+	_, err := adapter.ParseOrderDeal(nil)
+	assert.Error(t, err)
+
+	// 4. ParseTrackOrder (unimplemented fallback)
+	_, err = adapter.ParseTrackOrder(nil)
+	assert.Error(t, err)
+
+	// 5. Subscription checks with cancelled context to cover pool routing
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
+	adapter.SetPool(pool)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = adapter.SubscribeTicker(ctx, "BTC-USDT-SWAP")
+	_ = adapter.UnsubscribeTicker(ctx, "BTC-USDT-SWAP")
+	_ = adapter.SubscribeKline(ctx, "BTC-USDT-SWAP")
+	_ = adapter.UnsubscribeKline(ctx, "BTC-USDT-SWAP")
+	_ = adapter.SubscribeDepth(ctx, "BTC-USDT-SWAP", "5")
+	_ = adapter.UnsubscribeDepth(ctx, "BTC-USDT-SWAP", "5")
+	_ = adapter.SubscribePersonal(ctx)
+
+	// 6. Error parsing cases
+	_, _, err = adapter.ParseTicker([]byte(`{}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseTicker([]byte(`{"arg":{"instId":"BTC-USDT-SWAP"}}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseTicker([]byte(`{"arg":{"instId":"BTC-USDT-SWAP"},"data":[]}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseTicker([]byte(`{"arg":{"instId":"BTC-USDT-SWAP"},"data":"invalid"}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseDepth([]byte(`{}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseKline([]byte(`{}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseKline([]byte(`{"arg":{"instId":"BTC-USDT-SWAP"},"data":[]}`))
+	assert.Error(t, err)
+
+	_, _, err = adapter.ParseKline([]byte(`{"arg":{"instId":"BTC-USDT-SWAP"},"data":[["12345"]]}`))
+	assert.Error(t, err)
+
+	_, err = adapter.ParseOrder([]byte(`{}`))
+	assert.Error(t, err)
+
+	_, err = adapter.ParseOrder([]byte(`{"data":[]}`))
+	assert.Error(t, err)
+
+	_, err = adapter.ParsePosition([]byte(`{}`))
+	assert.Error(t, err)
+
+	_, err = adapter.ParsePosition([]byte(`{"data":[]}`))
+	assert.Error(t, err)
 }

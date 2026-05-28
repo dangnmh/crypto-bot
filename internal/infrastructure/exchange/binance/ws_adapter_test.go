@@ -1,11 +1,13 @@
 package binance_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
+	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,4 +123,35 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", pos.Symbol)
 	assert.Equal(t, 0.5, pos.HoldVol)
 	assert.Equal(t, 50000.0, pos.HoldAvgPrice)
+}
+
+func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
+	t.Parallel()
+
+	adapter := binance.NewWsAdapter()
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, nil)
+	defer pool.Close()
+	adapter.SetPool(pool)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = adapter.SubscribeTicker(ctx, "BTCUSDT")
+	_ = adapter.UnsubscribeTicker(ctx, "BTCUSDT")
+	_ = adapter.SubscribeKline(ctx, "BTCUSDT")
+	_ = adapter.UnsubscribeKline(ctx, "BTCUSDT")
+	_ = adapter.SubscribeDepth(ctx, "BTCUSDT", "1")
+	_ = adapter.UnsubscribeDepth(ctx, "BTCUSDT", "1")
+	_ = adapter.SubscribePersonal(ctx)
+
+	hook := adapter.GetAuthHook("apiKey", "apiSecret")
+	assert.Nil(t, hook)
+
+	dealStub, err := adapter.ParseOrderDeal([]byte{})
+	assert.NoError(t, err)
+	assert.Nil(t, dealStub)
+
+	trackStub, err := adapter.ParseTrackOrder([]byte{})
+	assert.NoError(t, err)
+	assert.Nil(t, trackStub)
 }

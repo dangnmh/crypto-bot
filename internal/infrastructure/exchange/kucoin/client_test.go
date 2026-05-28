@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 
 	"github.com/stretchr/testify/assert"
@@ -119,4 +120,389 @@ func TestClient_GetTickers(t *testing.T) {
 	assert.Equal(t, 50000.5, tickers[0].LastPrice)
 	assert.Equal(t, 50000.0, tickers[0].Bid1)
 	assert.Equal(t, 50001.0, tickers[0].Ask1)
+}
+
+func TestClient_CreateOrder(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/api/v1/orders", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success",
+			"data": {
+				"orderId": "123456",
+				"clientOid": "external_123"
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	orderID, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:      "XBTUSDTM",
+		Vol:         0.5,
+		Side:        exchange.SideOpenLong,
+		Type:        exchange.OrderTypeLimit,
+		Price:       50000.0,
+		ExternalOID: "external_123",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "123456", orderID)
+}
+
+func TestClient_CancelOrder(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "DELETE", r.Method)
+		assert.Equal(t, "/api/v1/orders/123456", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success"
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	err := client.CancelOrder(context.Background(), "XBTUSDTM", "123456")
+	require.NoError(t, err)
+}
+
+func TestClient_GetOrder(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/orders/123456", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success",
+			"data": {
+				"orderId": "123456",
+				"symbol": "XBTUSDTM",
+				"side": "buy",
+				"type": "limit",
+				"size": 10,
+				"price": "50000.0",
+				"status": "done",
+				"dealSize": 10,
+				"isActive": false,
+				"filledValue": "500000.0"
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	info, err := client.GetOrder(context.Background(), "123456")
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, "123456", info.OrderID)
+	assert.Equal(t, 50000.0, info.Price)
+}
+
+func TestClient_GetOpenOrders(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/orders", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success",
+			"data": {
+				"items": [
+					{
+						"orderId": "123456",
+						"symbol": "XBTUSDTM",
+						"side": "sell",
+						"type": "limit",
+						"size": 10,
+						"price": "50000.0",
+						"status": "active",
+						"dealSize": 0,
+						"isActive": true
+					}
+				]
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	orders, err := client.GetOpenOrders(context.Background(), "XBTUSDTM")
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+	assert.Equal(t, "123456", orders[0].OrderID)
+}
+
+func TestClient_GetAssets(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/account-overview", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success",
+			"data": {
+				"currency": "USDT",
+				"accountEquity": "1000.0",
+				"availableBalance": "950.0",
+				"unrealisedPNL": "50.0"
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	assets, err := client.GetAssets(context.Background())
+	require.NoError(t, err)
+	require.Len(t, assets, 1)
+	assert.Equal(t, "USDT", assets[0].Currency)
+	assert.Equal(t, 1000.0, assets[0].CashBalance)
+
+	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
+	require.NoError(t, err)
+	assert.Equal(t, "USDT", asset.Currency)
+}
+
+func TestClient_GetOpenPositions(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/positions", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success",
+			"data": [
+				{
+					"symbol": "XBTUSDTM",
+					"currentQty": "-10.0",
+					"avgEntryPrice": "50000.0",
+					"realisedPNL": "10.0",
+					"unrealisedPNL": "5.0",
+					"leverage": "10",
+					"liquidationPrice": "45000.0"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	positions, err := client.GetOpenPositions(context.Background(), "XBTUSDTM")
+	require.NoError(t, err)
+	require.Len(t, positions, 1)
+	assert.Equal(t, "XBTUSDTM", positions[0].Symbol)
+	assert.Equal(t, 10.0, positions[0].HoldVol)
+}
+
+func TestClient_ChangeLeverage(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/api/v1/position/leverage", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success"
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	err := client.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{
+		Symbol:   "XBTUSDTM",
+		Leverage: 10,
+	})
+	require.NoError(t, err)
+}
+
+func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v1/orders":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success",
+				"data": {
+					"items": [
+						{
+							"orderId": "123456",
+							"symbol": "XBTUSDTM",
+							"side": "buy",
+							"type": "limit",
+							"size": 10,
+							"price": "50000.0",
+							"status": "active",
+							"dealSize": 0,
+							"isActive": true
+						}
+					]
+				}
+			}`))
+		case "DELETE /api/v1/orders/123456":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success"
+			}`))
+		case "GET /api/v1/positions":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success",
+				"data": [
+					{
+						"symbol": "XBTUSDTM",
+						"currentQty": "10.0",
+						"avgEntryPrice": "50000.0",
+						"realisedPNL": "10.0",
+						"unrealisedPNL": "5.0",
+						"leverage": "10",
+						"liquidationPrice": "45000.0"
+					}
+				]
+			}`))
+		case "POST /api/v1/orders":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success",
+				"data": {
+					"orderId": "1234567"
+				}
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	err := client.CancelAllOpenOrders(context.Background(), "XBTUSDTM")
+	require.NoError(t, err)
+
+	err = client.CloseAllPositions(context.Background(), "XBTUSDTM")
+	require.NoError(t, err)
+}
+
+func TestClient_ErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	// 1. CreateTrackOrder unimplemented
+	client := kucoin.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
+	_, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
+	assert.ErrorContains(t, err, "CreateTrackOrder not implemented")
+
+	// 2. CancelOrders unimplemented
+	err = client.CancelOrders(context.Background(), []string{"1"})
+	assert.ErrorContains(t, err, "batch CancelOrders not implemented")
+}
+
+func TestClient_GetFundingRate(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Contains(t, r.URL.Path, "/api/v1/funding-rate/XBTUSDTM/current")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"data": {
+				"symbol": "XBTUSDTM",
+				"value": 0.0001,
+				"fundingTime": 1672531200000
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	fr, err := client.GetFundingRate(context.Background(), "XBTUSDTM")
+	require.NoError(t, err)
+	assert.Equal(t, "XBTUSDTM", fr.Symbol)
+	assert.Equal(t, 0.0001, fr.FundingRate)
+	assert.Equal(t, int64(1672531200000), fr.NextSettleTime)
+}
+
+func TestClient_GetKlines(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Contains(t, r.URL.Path, "/api/v1/kline/query")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"data": [
+				[1672531200000, 50000.0, 50001.0, 49999.0, 50000.5, 10.5]
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	klines, err := client.GetKlines(context.Background(), "XBTUSDTM", "1m", 0, 0)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
+	assert.Equal(t, int64(1672531200000), klines[0].Timestamp)
+	assert.Equal(t, 50000.0, klines[0].Open)
+	assert.Equal(t, 50000.5, klines[0].Close)
+}
+
+func TestClient_GetDepthSnapshot(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Contains(t, r.URL.Path, "/api/v1/level2/snapshot")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"data": {
+				"asks": [[50001.0, 1.5]],
+				"bids": [[50000.0, 2.0]],
+				"ts": 1672531200000
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	ob, err := client.GetDepthSnapshot(context.Background(), "XBTUSDTM", 5)
+	require.NoError(t, err)
+	assert.Equal(t, "XBTUSDTM", ob.Symbol)
+	require.Len(t, ob.Asks, 1)
+	require.Len(t, ob.Bids, 1)
+	assert.Equal(t, 50001.0, ob.Asks[0].Price)
+	assert.Equal(t, 1.5, ob.Asks[0].Volume)
+}
+
+func TestClient_GetDepthCommits(t *testing.T) {
+	t.Parallel()
+
+	client := kucoin.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
+	_, err := client.GetDepthCommits(context.Background(), "XBTUSDTM", 5)
+	assert.ErrorContains(t, err, "GetDepthCommits not supported")
 }

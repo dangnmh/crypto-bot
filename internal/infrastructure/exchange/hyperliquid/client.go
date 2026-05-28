@@ -28,9 +28,12 @@ type Client struct {
 func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "hyperliquid")
 
-	clientCopy := *httpClient
+	var clientCopy http.Client
+	if httpClient != nil {
+		clientCopy = *httpClient
+	}
 
-	if logCfg.HTTP && clientCopy.Transport != nil {
+	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
 		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
@@ -43,6 +46,13 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
 		)
 		clientCopy.Transport = rt
+	}
+
+	var finalClient *http.Client
+	if httpClient != nil {
+		finalClient = &clientCopy
+	} else {
+		finalClient = &http.Client{}
 	}
 
 	var meta *hl.Meta
@@ -80,7 +90,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 				"",       // Account Address
 				spotMeta, // SpotMeta
 				nil,      // PerpDexs
-				hl.ExchangeOptClientOptions(hl.ClientOptHTTPClient(&clientCopy)),
+				hl.ExchangeOptClientOptions(hl.ClientOptHTTPClient(finalClient)),
 			)
 		}
 	}
@@ -92,7 +102,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 		meta,      // Meta
 		spotMeta,  // SpotMeta
 		spotState, // SpotState
-		hl.InfoOptClientOptions(hl.ClientOptHTTPClient(&clientCopy)),
+		hl.InfoOptClientOptions(hl.ClientOptHTTPClient(finalClient)),
 	)
 
 	return &Client{

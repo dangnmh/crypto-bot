@@ -137,8 +137,8 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			PriceUnit:     decmath.ParseFloat(raw.PriceFilter.TickSize),
 			VolUnit:       volUnit,
 			MinVol:        minVol,
-			PriceScale:    8, // price precision scale fallback
-			VolScale:      4, // vol precision scale fallback
+			PriceScale:    decmath.DecimalPlaces(raw.PriceFilter.TickSize),
+			VolScale:      decmath.DecimalPlaces(raw.LotSizeFilter.QtyStep),
 			State:         1, // active trading
 		})
 	}

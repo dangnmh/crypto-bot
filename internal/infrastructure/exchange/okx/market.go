@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 // GetServerTime returns the OKX server timestamp in milliseconds.
@@ -74,8 +74,8 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			stateVal = 1
 		}
 
-		priceScale := getDecimals(inst.TickSz)
-		volScale := getDecimals(inst.LotSz)
+		priceScale := decmath.DecimalPlaces(inst.TickSz)
+		volScale := decmath.DecimalPlaces(inst.LotSz)
 
 		details = append(details, exchange.ContractDetail{
 			Symbol:           inst.InstID,
@@ -356,12 +356,4 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 // GetDepthCommits is not supported on OKX.
 func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
 	return nil, fmt.Errorf("GetDepthCommits not supported on OKX")
-}
-
-func getDecimals(s string) int {
-	parts := strings.Split(s, ".")
-	if len(parts) < 2 {
-		return 0
-	}
-	return len(parts[1])
 }

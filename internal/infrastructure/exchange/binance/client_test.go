@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
@@ -368,4 +369,135 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, 100.0, p.Realised)
 	assert.Equal(t, 10, p.Leverage)
 	assert.Equal(t, 1, p.PositionType) // Long
+}
+
+func TestClient_ExtendedPrivateMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == "DELETE" && r.URL.Path == "/fapi/v1/allOpenOrders" {
+			_, _ = w.Write([]byte(`{"code": 200, "msg": "success"}`))
+			return
+		}
+
+		if r.Method == "DELETE" && r.URL.Path == "/fapi/v1/order" {
+			_, _ = w.Write([]byte(`{
+				"orderId": 1234567,
+				"status": "CANCELED"
+			}`))
+			return
+		}
+
+		if r.Method == "GET" && r.URL.Path == "/fapi/v1/order" {
+			_, _ = w.Write([]byte(`{
+				"orderId": 1234567,
+				"symbol": "BTCUSDT",
+				"price": "50000.0",
+				"origQty": "0.5",
+				"avgPrice": "50000.0",
+				"executedQty": "0.5",
+				"clientOrderId": "external_123",
+				"positionSide": "LONG",
+				"side": "BUY",
+				"status": "FILLED",
+				"time": 1672531200000,
+				"updateTime": 1672531200000
+			}`))
+			return
+		}
+
+		if r.Method == "GET" && r.URL.Path == "/fapi/v1/openOrders" {
+			_, _ = w.Write([]byte(`[
+				{
+					"orderId": 1234567,
+					"symbol": "BTCUSDT",
+					"price": "50000.0",
+					"origQty": "0.5",
+					"avgPrice": "50000.0",
+					"executedQty": "0.5",
+					"clientOrderId": "external_123",
+					"positionSide": "LONG",
+					"side": "BUY",
+					"status": "FILLED",
+					"time": 1672531200000,
+					"updateTime": 1672531200000
+				}
+			]`))
+			return
+		}
+
+		if r.Method == "POST" && r.URL.Path == "/fapi/v1/leverage" {
+			_, _ = w.Write([]byte(`{"symbol": "BTCUSDT", "leverage": 20}`))
+			return
+		}
+
+		if r.Method == "POST" && r.URL.Path == "/fapi/v1/order" {
+			_, _ = w.Write([]byte(`{
+				"orderId": 1234567,
+				"symbol": "BTCUSDT",
+				"status": "FILLED"
+			}`))
+			return
+		}
+
+		if r.Method == "GET" && r.URL.Path == "/fapi/v2/positionRisk" {
+			_, _ = w.Write([]byte(`[
+				{
+					"symbol": "BTCUSDT",
+					"positionAmt": "0.5",
+					"entryPrice": "50000.0",
+					"liquidationPrice": "45000.0",
+					"unRealizedProfit": "100.0",
+					"leverage": "10",
+					"positionSide": "LONG",
+					"marginType": "cross"
+				}
+			]`))
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	// 1. CancelAllOpenOrders
+	err := client.CancelAllOpenOrders(context.Background(), "BTCUSDT")
+	assert.NoError(t, err)
+
+	// 2. GetOrder
+	order, err := client.GetOrder(context.Background(), "1234567")
+	require.NoError(t, err)
+	assert.Equal(t, "1234567", order.OrderID)
+	assert.Equal(t, 50000.0, order.Price)
+
+	// 3. GetOpenOrders
+	orders, err := client.GetOpenOrders(context.Background(), "BTCUSDT")
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+	assert.Equal(t, "1234567", orders[0].OrderID)
+
+	// 4. ChangeLeverage
+	err = client.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{
+		Symbol:   "BTCUSDT",
+		Leverage: 20,
+	})
+	assert.NoError(t, err)
+
+	// 5. ClosePosition
+	err = client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 0.5, 1)
+	assert.NoError(t, err)
+
+	// 6. CloseAllPositions
+	err = client.CloseAllPositions(context.Background(), "BTCUSDT")
+	assert.NoError(t, err)
+
+	// 7. CancelOrders
+	err = client.CancelOrders(context.Background(), []string{"1234567"})
+	assert.NoError(t, err)
+
+	// 8. CreateTrackOrder (stub, should fail)
+	_, err = client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
+	assert.Error(t, err)
 }

@@ -124,12 +124,19 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 
 // GetOrder queries order status.
 func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	id, err := strconv.ParseInt(orderID, 10, 64)
+	symbol := "BTCUSDT"
+	idStr := orderID
+	if sym, id, ok := strings.Cut(orderID, ":"); ok {
+		symbol = sym
+		idStr = id
+	}
+
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid orderID for binance: %w", err)
 	}
 
-	req := c.sdkClient.RestApi.TradeAPI.QueryOrder(ctx).OrderId(id)
+	req := c.sdkClient.RestApi.TradeAPI.QueryOrder(ctx).Symbol(symbol).OrderId(id)
 	resp, err := c.sdkClient.RestApi.TradeAPI.QueryOrderExecute(req)
 	if err != nil {
 		return nil, fmt.Errorf("binance query order: %w", err)

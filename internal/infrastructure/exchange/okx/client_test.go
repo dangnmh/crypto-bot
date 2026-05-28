@@ -408,3 +408,184 @@ func TestClient_ChangeLeverage(t *testing.T) {
 	err := client.ChangeLeverage(context.Background(), req)
 	require.NoError(t, err)
 }
+
+func TestClient_GetAssetByCurrency(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v5/account/balance", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "0",
+			"msg": "",
+			"data": [
+				{
+					"details": [
+						{
+							"ccy": "USDT",
+							"eq": "1000.5",
+							"availBal": "800.0",
+							"frozenBal": "200.5",
+							"upl": "10.0"
+						}
+					]
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
+	require.NoError(t, err)
+	assert.Equal(t, "USDT", asset.Currency)
+}
+
+func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v5/trade/orders-pending":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"ordId": "order123",
+						"clOrdId": "client123",
+						"px": "50000.0",
+						"sz": "1.0",
+						"side": "buy",
+						"posSide": "long",
+						"state": "filled",
+						"ordType": "limit",
+						"avgPx": "50000.0",
+						"uTime": "1597026383085",
+						"cTime": "1597026383085",
+						"fillSz": "1.0"
+					}
+				]
+			}`))
+		case "/api/v5/trade/orders-history":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": []
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	info, err := client.GetOrder(context.Background(), "order123")
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, "order123", info.OrderID)
+
+	orders, err := client.GetOpenOrders(context.Background(), "BTC-USDT-SWAP")
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+	assert.Equal(t, "order123", orders[0].OrderID)
+}
+
+func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v5/trade/orders-pending":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"ordId": "order123",
+						"clOrdId": "client123",
+						"px": "50000.0",
+						"sz": "1.0",
+						"side": "buy",
+						"posSide": "long",
+						"state": "filled",
+						"ordType": "limit",
+						"avgPx": "50000.0",
+						"uTime": "1597026383085",
+						"cTime": "1597026383085",
+						"fillSz": "1.0"
+					}
+				]
+			}`))
+		case "POST /api/v5/trade/cancel-order":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"ordId": "order123",
+						"sCode": "0",
+						"sMsg": "success"
+					}
+				]
+			}`))
+		case "GET /api/v5/account/positions":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"pos": "1",
+						"lever": "10",
+						"avgPx": "50000",
+						"liqPx": "45000",
+						"realizedPnl": "5.5",
+						"margin": "5000",
+						"posSide": "long",
+						"mgnMode": "isolated"
+					}
+				]
+			}`))
+		case "POST /api/v5/trade/order":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"ordId": "order1234",
+						"sCode": "0"
+					}
+				]
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	err := client.CancelAllOpenOrders(context.Background(), "BTC-USDT-SWAP")
+	require.NoError(t, err)
+
+	err = client.CloseAllPositions(context.Background(), "BTC-USDT-SWAP")
+	require.NoError(t, err)
+}
+
+func TestClient_ErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	// 1. CreateTrackOrder unimplemented
+	client := okx.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
+	_, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
+	assert.ErrorContains(t, err, "CreateTrackOrder not implemented")
+
+	// 2. CancelOrders unimplemented
+	err = client.CancelOrders(context.Background(), []string{"1"})
+	assert.ErrorContains(t, err, "order not found")
+}

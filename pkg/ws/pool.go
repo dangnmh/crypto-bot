@@ -8,10 +8,12 @@ import (
 
 // Pool manages multiple WebSocket clients to bypass subscription limits (e.g., 30 pairs/conn).
 type Pool struct {
-	url           string
-	maxPairs      int
-	logger        *slog.Logger
-	clientOptions []ClientOption
+	publicURL      string
+	privateURL     string
+	maxPairs       int
+	logger         *slog.Logger
+	publicOptions  []ClientOption
+	privateOptions []ClientOption
 
 	privateClient *Client
 
@@ -34,18 +36,32 @@ type publicSubscription struct {
 
 // NewPool creates a new generic WS connection pool.
 func NewPool(wsURL string, maxPairs int, logger *slog.Logger, opts ...ClientOption) *Pool {
+	return NewPoolWithURLs(wsURL, wsURL, maxPairs, logger, opts, opts)
+}
+
+// NewPoolWithURLs creates a pool with separate public and private endpoints.
+func NewPoolWithURLs(
+	publicURL string,
+	privateURL string,
+	maxPairs int,
+	logger *slog.Logger,
+	publicOpts []ClientOption,
+	privateOpts []ClientOption,
+) *Pool {
 	if logger == nil {
 		logger = slog.Default().With("component", "wspool")
 	}
 
 	return &Pool{
-		url:           wsURL,
-		maxPairs:      maxPairs,
-		handlers:      make(map[string][]Handler),
-		logger:        logger,
-		clientOptions: opts,
-		topicRouting:  make(map[string]int),
-		subscriptions: make(map[string]publicSubscription),
+		publicURL:      publicURL,
+		privateURL:     privateURL,
+		maxPairs:       maxPairs,
+		handlers:       make(map[string][]Handler),
+		logger:         logger,
+		publicOptions:  publicOpts,
+		privateOptions: privateOpts,
+		topicRouting:   make(map[string]int),
+		subscriptions:  make(map[string]publicSubscription),
 	}
 }
 
@@ -53,7 +69,7 @@ func NewPool(wsURL string, maxPairs int, logger *slog.Logger, opts ...ClientOpti
 func (p *Pool) Connect(ctx context.Context) {
 	p.mu.Lock()
 	if p.privateClient == nil {
-		p.privateClient = NewClient(p.url, p.logger, p.clientOptions...)
+		p.privateClient = NewClient(p.privateURL, p.logger, p.privateOptions...)
 		p.attachHandlers(p.privateClient)
 		go p.privateClient.Connect(ctx)
 	}
@@ -142,11 +158,11 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) (int, error) {
 	}
 
 	idx := len(p.publicClients)
-	opts := append([]ClientOption{}, p.clientOptions...)
+	opts := append([]ClientOption{}, p.publicOptions...)
 	opts = append(opts, WithOnReady(func(c *Client) {
 		p.replayPublicSubscriptions(idx, c)
 	}))
-	newClient := NewClient(p.url, p.logger, opts...)
+	newClient := NewClient(p.publicURL, p.logger, opts...)
 	p.attachHandlers(newClient)
 	p.publicClients = append(p.publicClients, newClient)
 	p.clientSubCount = append(p.clientSubCount, 0)

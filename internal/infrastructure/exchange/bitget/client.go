@@ -40,9 +40,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		passphrase = os.Getenv("BITGET_PASSPHRASE")
 	}
 
-	clientCopy := *httpClient
+	var clientCopy http.Client
+	if httpClient != nil {
+		clientCopy = *httpClient
+	}
 
-	if logCfg.HTTP && clientCopy.Transport != nil {
+	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
 		rt := clientCopy.Transport
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
@@ -57,12 +60,19 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		clientCopy.Transport = rt
 	}
 
+	var finalClient *http.Client
+	if httpClient != nil {
+		finalClient = &clientCopy
+	} else {
+		finalClient = &http.Client{}
+	}
+
 	if baseURL == "" {
 		baseURL = defaultRestURL
 	}
 
 	return &Client{
-		httpClient: &clientCopy,
+		httpClient: finalClient,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,

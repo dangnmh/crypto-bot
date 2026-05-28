@@ -19,9 +19,9 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 	}
 
 	target := settleTime.Add(-2 * time.Second)
-	if !r.WaitUntil(ctx, armedEvt.Symbol, target) {
-		r.abortAfter(ctx, armedEvt.BaseReversionEvent, armedEvt.Symbol, "wait period context canceled")
-		return context.Canceled
+	if err := r.waitUntilFuture(ctx, armedEvt.Symbol, target); err != nil {
+		r.abortAfter(ctx, armedEvt.BaseReversionEvent, armedEvt.Symbol, "wait period failed: "+err.Error())
+		return err
 	}
 
 	evt := WaitCompleteEvent{

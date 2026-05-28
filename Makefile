@@ -14,6 +14,8 @@ COVERAGE_HTML   := $(COVERAGE_DIR)/coverage.html
 MIN_COVERAGE    := 80
 GREP_V_MOCKS    := grep -v "mocks"
 TEST_PKGS       := $(shell $(GO) list ./internal/... ./pkg/... | $(GREP_V_MOCKS))
+FUNDING_SYS     := ./configs/funding/system.jsonc
+FUNDING_BOT     := ./configs/funding/funding.jsonc
 
 # ── Build & Generate ───────────────────────────────────────────────────
 .PHONY: gen
@@ -27,6 +29,15 @@ build: ## Build all binaries
 .PHONY: build-funding
 build-funding: ## Build the funding bot
 	$(GO) build -o bin/funding-bot ./cmd/funding
+
+# ── Run ───────────────────────────────────────────────────────────────
+.PHONY: run/funding
+run/funding: ## Run the funding bot
+	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -bot $(FUNDING_BOT)
+
+.PHONY: scan/funding
+scan/funding: ## Scan funding rates across supported futures exchanges
+	$(GO) run ./tools/scanner
 
 # ── Test ─────────────────────────────────────────────────────────────
 .PHONY: test
@@ -148,7 +159,7 @@ help: ## Show available targets
 	@echo ""
 	@echo "  crypto-bot Makefile targets"
 	@echo ""
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_\/-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 
 .DEFAULT_GOAL := help

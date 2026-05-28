@@ -66,9 +66,9 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 
 func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTimingReadyEvent) error {
 	snapshotOffset := time.Duration(evt.SnapshotOffsetMs) * time.Millisecond
-	if !r.WaitUntil(ctx, evt.Symbol, evt.SettleTime.Add(-snapshotOffset)) {
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait snapshot context canceled")
-		return ctx.Err()
+	if err := r.waitUntilFuture(ctx, evt.Symbol, evt.SettleTime.Add(-snapshotOffset)); err != nil {
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait snapshot failed: "+err.Error())
+		return err
 	}
 
 	c := evt.Candidate
@@ -138,9 +138,9 @@ func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePla
 	}
 
 	fireOffset := time.Duration(evt.FireOffsetMs) * time.Millisecond
-	if !r.WaitUntil(ctx, evt.Symbol, evt.SettleTime.Add(-fireOffset)) {
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait fire context canceled")
-		return ctx.Err()
+	if err := r.waitUntilFuture(ctx, evt.Symbol, evt.SettleTime.Add(-fireOffset)); err != nil {
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait fire failed: "+err.Error())
+		return err
 	}
 	fireTime := r.deps.Clock.Now()
 

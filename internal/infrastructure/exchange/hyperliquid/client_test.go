@@ -2,12 +2,15 @@ package hyperliquid_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 
 	"github.com/stretchr/testify/assert"
@@ -322,5 +325,112 @@ func TestClient_ClosePosition(t *testing.T) {
 
 	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
 	err := client.ClosePosition(context.Background(), "BTC", domain.SideCloseLong, 0.01, 1)
+	require.NoError(t, err)
+}
+
+func TestClient_PrivateTrading_and_Orders(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path == "/info" {
+			_, _ = w.Write([]byte(`{
+				"universe": [
+					{
+						"name": "BTC",
+						"szDecimals": 4,
+						"maxLeverage": 50,
+						"marginTableId": 0,
+						"onlyIsolated": false,
+						"isDelisted": false
+					}
+				],
+				"marginTables": []
+			}`))
+			return
+		}
+
+		bodyBytes, _ := io.ReadAll(r.Body)
+		bodyStr := string(bodyBytes)
+		if strings.Contains(bodyStr, "cancel") {
+			_, _ = w.Write([]byte(`{
+				"status": "ok",
+				"response": {
+					"type": "cancel",
+					"data": {
+						"statuses": ["success"]
+					}
+				}
+			}`))
+			return
+		}
+
+		_, _ = w.Write([]byte(`{
+			"status": "ok",
+			"response": {
+				"type": "order",
+				"data": {
+					"statuses": [
+						{
+							"resting": {
+								"oid": 12345,
+								"cloid": null,
+								"status": "resting"
+							}
+						}
+					]
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
+
+	// 1. CreateOrder
+	oid, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:      "BTC",
+		Vol:         0.01,
+		Price:       50000.0,
+		Side:        exchange.SideOpenLong,
+		Type:        exchange.OrderTypeLimit,
+		ExternalOID: "0x00000000000000000000000000000001",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "12345", oid)
+
+	// 2. CancelOrder
+	err = client.CancelOrder(context.Background(), "BTC", "12345")
+	require.NoError(t, err)
+
+	// 3. ChangeLeverage
+	err = client.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{
+		Symbol:   "BTC",
+		Leverage: 20,
+		OpenType: exchange.OpenTypeCross,
+	})
+	require.NoError(t, err)
+}
+
+func TestClient_ErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	// 1. Unimplemented errors
+	client := hyperliquid.NewClient(context.Background(), nil, "http://127.0.0.1", "", "", config.LoggingConfig{})
+	_, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{})
+	assert.ErrorContains(t, err, "exchange signer is not configured")
+
+	err = client.CancelOrder(context.Background(), "BTC", "12345")
+	assert.ErrorContains(t, err, "exchange signer is not configured")
+
+	err = client.CancelOrders(context.Background(), []string{"1"})
+	assert.ErrorContains(t, err, "batch cancel not supported")
+
+	_, err = client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
+	assert.ErrorContains(t, err, "track orders not supported")
+
+	err = client.CloseAllPositions(context.Background(), "BTC")
 	require.NoError(t, err)
 }

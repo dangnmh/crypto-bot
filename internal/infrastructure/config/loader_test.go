@@ -153,3 +153,28 @@ func TestInitializeBase_MissingWSURL(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	assert.Error(t, err)
 }
+
+func TestInitializeBase_SeparatePublicPrivateWSURLs(t *testing.T) {
+	t.Setenv("BYBIT_API_KEY", "key")
+	t.Setenv("BYBIT_API_SECRET", "secret")
+
+	cfg := &config.SystemConfig{
+		ExchangeConfig: config.ExchangeConfig{
+			Bybit: config.APIConfig{
+				Enable: true,
+				Future: config.RESTConfig{BaseURL: "https://api.bybit.com"},
+				WebSocket: config.WebSocketConfig{
+					PublicURL:  "wss://stream.bybit.com/v5/public/linear",
+					PrivateURL: "wss://stream.bybit.com/v5/private",
+				},
+			},
+		},
+	}
+
+	err := config.InitializeBase(cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, "wss://stream.bybit.com/v5/public/linear", cfg.ExchangeConfig.Bybit.WebSocket.PublicEndpoint())
+	assert.Equal(t, "wss://stream.bybit.com/v5/private", cfg.ExchangeConfig.Bybit.WebSocket.PrivateEndpoint())
+	assert.Equal(t, 30, cfg.ExchangeConfig.Bybit.WebSocket.MaxPairsPerWSConn)
+}

@@ -240,15 +240,20 @@ func newWSPool(
 	apiSecret string,
 ) *pkgws.Pool {
 	wsLogger := logger.With("subsystem", "websocket", "exchange", exchangeName)
-	wsClientOpts := []pkgws.ClientOption{}
+	publicOpts := []pkgws.ClientOption{}
+	privateOpts := []pkgws.ClientOption{}
+	appendCommonOpt := func(opt pkgws.ClientOption) {
+		publicOpts = append(publicOpts, opt)
+		privateOpts = append(privateOpts, opt)
+	}
 	if payload, interval := adapter.GetPingConfig(); payload != nil && interval > 0 {
-		wsClientOpts = append(wsClientOpts, pkgws.WithPing(payload, interval))
+		appendCommonOpt(pkgws.WithPing(payload, interval))
 	}
 	if extractor := adapter.GetChannelExtractor(); extractor != nil {
-		wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
+		appendCommonOpt(pkgws.WithChannelExtractor(extractor))
 	}
 	if hook := adapter.GetAuthHook(apiKey, apiSecret); hook != nil {
-		wsClientOpts = append(wsClientOpts, pkgws.WithOnConnected(hook))
+		privateOpts = append(privateOpts, pkgws.WithOnConnected(hook))
 	}
 
 	type PreprocessorProvider interface {
@@ -256,11 +261,18 @@ func newWSPool(
 	}
 	if pp, ok := adapter.(PreprocessorProvider); ok {
 		if preprocessor := pp.GetPreprocessor(); preprocessor != nil {
-			wsClientOpts = append(wsClientOpts, pkgws.WithPreprocessor(preprocessor))
+			appendCommonOpt(pkgws.WithPreprocessor(preprocessor))
 		}
 	}
 
-	return pkgws.NewPool(apiCfg.WebSocket.WSURL, apiCfg.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
+	return pkgws.NewPoolWithURLs(
+		apiCfg.WebSocket.PublicEndpoint(),
+		apiCfg.WebSocket.PrivateEndpoint(),
+		apiCfg.WebSocket.MaxPairsPerWSConn,
+		wsLogger,
+		publicOpts,
+		privateOpts,
+	)
 }
 
 func validateProviderFactoryConfig(cfg ProviderFactoryConfig) error {

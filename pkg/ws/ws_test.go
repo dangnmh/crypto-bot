@@ -15,6 +15,8 @@ import (
 	"crypto-bot/pkg/ws"
 
 	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var upgrader = websocket.Upgrader{
@@ -724,6 +726,60 @@ func TestPool_SubscribePublic(t *testing.T) {
 	p.Close()
 }
 
+func TestPool_UsesSeparatePublicAndPrivateURLs(t *testing.T) {
+	t.Parallel()
+
+	privateConnected := make(chan struct{}, 1)
+	publicConnected := make(chan struct{}, 1)
+
+	privateSrv := startTestWS(t, func(conn *websocket.Conn) {
+		privateConnected <- struct{}{}
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer privateSrv.Close()
+
+	publicSrv := startTestWS(t, func(conn *websocket.Conn) {
+		publicConnected <- struct{}{}
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer publicSrv.Close()
+
+	p := ws.NewPoolWithURLs(wsURL(publicSrv), wsURL(privateSrv), 2, nil, nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	p.Connect(ctx)
+	if err := p.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-privateConnected:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for private connection")
+	}
+
+	if err := p.SubscribePublic(ctx, "BTC:ticker", map[string]string{"method": "sub"}); err != nil {
+		t.Fatalf("SubscribePublic failed: %v", err)
+	}
+
+	select {
+	case <-publicConnected:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for public connection")
+	}
+
+	p.Close()
+}
+
 func TestPool_UnsubscribePublic_NotTracked(t *testing.T) {
 	t.Parallel()
 	p := ws.NewPool("ws://fake", 30, nil)
@@ -830,4 +886,72 @@ func TestClient_ConcurrentSend(t *testing.T) {
 	}
 	wg.Wait()
 	c.Close()
+}
+
+func TestWithURLFunc(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	urlCalled := false
+	c := ws.NewClient("", nil, ws.WithURLFunc(func() (string, error) {
+		urlCalled = true
+		return wsURL(srv), nil
+	}))
+	defer c.Close()
+
+	go c.Connect(ctx)
+	err := c.WaitReady(ctx)
+	require.NoError(t, err)
+
+	assert.True(t, urlCalled)
+	assert.True(t, c.IsConnected())
+}
+
+func TestWithPreprocessor(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("hello-raw"))
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	processedChan := make(chan []byte, 1)
+	c := ws.NewClient(wsURL(srv), nil, ws.WithPreprocessor(func(data []byte) ([]byte, error) {
+		return []byte(string(data) + "-processed"), nil
+	}))
+	defer c.Close()
+
+	c.SetGlobalHandler(func(data []byte) {
+		processedChan <- data
+	})
+
+	go c.Connect(ctx)
+	err := c.WaitReady(ctx)
+	require.NoError(t, err)
+
+	select {
+	case data := <-processedChan:
+		assert.Equal(t, "hello-raw-processed", string(data))
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for preprocessed message")
+	}
 }

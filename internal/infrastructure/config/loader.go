@@ -241,10 +241,13 @@ func ValidateAPIConfigField(fl validator.FieldLevel) bool {
 	if _, err := url.ParseRequestURI(cfg.Future.BaseURL); err != nil {
 		return false
 	}
-	if cfg.WebSocket.WSURL == "" {
+	if cfg.WebSocket.PublicEndpoint() == "" || cfg.WebSocket.PrivateEndpoint() == "" {
 		return false
 	}
-	if _, err := url.ParseRequestURI(cfg.WebSocket.WSURL); err != nil {
+	if _, err := url.ParseRequestURI(cfg.WebSocket.PublicEndpoint()); err != nil {
+		return false
+	}
+	if _, err := url.ParseRequestURI(cfg.WebSocket.PrivateEndpoint()); err != nil {
 		return false
 	}
 	if cfg.APIKey == "" || cfg.APISecret == "" {
@@ -263,20 +266,23 @@ func applySystemDefaults(c *SystemConfig) {
 	if c.Sync.Contract <= 0 {
 		c.Sync.Contract = types.Duration(300 * 1e9) // 5min
 	}
-	if c.ExchangeConfig.Mexc.Future.BaseURL != "" && c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
-		c.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn = 30 // default MEXC limit
-	}
-	if c.ExchangeConfig.Gate.Future.BaseURL != "" && c.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn <= 0 {
-		c.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn = 30 // default Gate limit
-	}
-	if c.ExchangeConfig.Okx.Future.BaseURL != "" && c.ExchangeConfig.Okx.WebSocket.MaxPairsPerWSConn <= 0 {
-		c.ExchangeConfig.Okx.WebSocket.MaxPairsPerWSConn = 30 // default OKX limit
-	}
-	if c.ExchangeConfig.Binance.Future.BaseURL != "" && c.ExchangeConfig.Binance.WebSocket.MaxPairsPerWSConn <= 0 {
-		c.ExchangeConfig.Binance.WebSocket.MaxPairsPerWSConn = 30 // default Binance limit
-	}
+	applyExchangeWSDefaults(&c.ExchangeConfig.Mexc)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Gate)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Bybit)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Binance)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Okx)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Hyperliquid)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Bitget)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Kucoin)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Bingx)
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
+	}
+}
+
+func applyExchangeWSDefaults(cfg *APIConfig) {
+	if cfg.Future.BaseURL != "" && cfg.WebSocket.MaxPairsPerWSConn <= 0 {
+		cfg.WebSocket.MaxPairsPerWSConn = 30
 	}
 }
 

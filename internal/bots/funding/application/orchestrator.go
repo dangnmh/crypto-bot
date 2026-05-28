@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"log/slog"
-	"math"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/strategy"
@@ -122,19 +121,6 @@ func (o *Orchestrator) doScan(ctx context.Context) (domain.Candidate, bool) {
 	td, err := o.deps.TickerStore.GetTicker(ctx, o.cfg.Symbol)
 	if err != nil {
 		o.log.WarnContext(ctx, "No ticker", slog.Any("error", err))
-		return domain.Candidate{}, false
-	}
-
-	if math.Abs(td.FundingRate) < o.cfg.MinFundingRate {
-		o.log.InfoContext(ctx, "FR below threshold", slog.Float64("fr", td.FundingRate*100))
-		return domain.Candidate{}, false
-	}
-
-	if minVol24USD := o.global.System.Safety.MinVol24USD; minVol24USD > 0 && td.Amount24 < minVol24USD {
-		o.log.InfoContext(ctx, "24h volume below threshold",
-			slog.Float64("amount24_usd", td.Amount24),
-			slog.Float64("minVol24USD", minVol24USD),
-		)
 		return domain.Candidate{}, false
 	}
 

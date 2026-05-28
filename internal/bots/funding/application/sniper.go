@@ -10,10 +10,12 @@ import (
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
+	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/infrastructure/watcher"
+	infraws "crypto-bot/internal/infrastructure/ws"
+	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/samber/lo"
-	"golang.org/x/sync/errgroup"
 )
 
 // CloseResult holds the outcome of closing a single position.
@@ -44,13 +46,25 @@ type TrailingStrategyFactory func(config.SymbolConfig, *config.Config, Deps) str
 // SubscriptionInitializer represents a function that initializes global subscriptions for a strategy.
 type SubscriptionInitializer func(ctx context.Context, deps Deps, cfg *config.Config)
 
+type fundingStoreSet interface {
+	Start(ctx context.Context)
+	WaitReady(ctx context.Context) error
+	WireWS(pool *pkgws.Pool, adapter infraws.ExchangeAdapter)
+	Ticker() store.TickerReader
+	Contract() store.ContractReader
+	Price() store.PriceReader
+	Funding() store.FundingReader
+	Depth() store.DepthReader
+	Kline() store.KlineReadWriter
+}
+
 // Sniper spawns one independent worker goroutine per configured symbol.
 type Sniper struct {
 	cfg              *config.Config
 	sysCfg           *config.SystemConfig
 	engine           *app.Engine
 	orderNotifiers   map[string]*watcher.OrderWatcher
-	stores           map[string]*app.CentralStore
+	stores           map[string]fundingStoreSet
 	notifier         notifier.Notifier
 	disabled         map[string]string
 	disabledMu       sync.RWMutex
@@ -60,6 +74,36 @@ type Sniper struct {
 	initializers     []SubscriptionInitializer
 	log              *slog.Logger
 	bgWg             sync.WaitGroup // tracks background goroutines (§5.2)
+}
+
+type fundingScannerJob struct {
+	sniper *Sniper
+}
+
+func newFundingScannerJob(sniper *Sniper) *fundingScannerJob {
+	return &fundingScannerJob{sniper: sniper}
+}
+
+func (j *fundingScannerJob) Run(ctx context.Context) error {
+	j.sniper.log.InfoContext(ctx, "🚀 Funding scanner job started", slog.Int("symbols", len(j.sniper.cfg.Symbols)))
+	defer j.sniper.log.InfoContext(context.WithoutCancel(ctx), "🛑 Funding scanner job stopped")
+
+	j.publishConfiguredSymbols(ctx)
+
+	<-ctx.Done()
+	return nil
+}
+
+func (j *fundingScannerJob) publishConfiguredSymbols(ctx context.Context) {
+	for i := range j.sniper.cfg.Symbols {
+		if ctx.Err() != nil {
+			return
+		}
+
+		symCfg := j.sniper.cfg.Symbols[i]
+		baseLog := j.sniper.log.With("sym", symCfg.Symbol, "exchange", symCfg.Exchange)
+		j.sniper.publishCandidate(ctx, baseLog, symCfg)
+	}
 }
 
 // NewSniper creates a new Sniper instance.
@@ -80,7 +124,7 @@ func NewSniper(
 	}
 
 	// Build map of stores per active exchange
-	storesMap := make(map[string]*app.CentralStore)
+	storesMap := make(map[string]fundingStoreSet)
 
 	for name, prov := range engine.Providers {
 		var symbols []string
@@ -218,99 +262,76 @@ func (s *Sniper) wirePersonalWSForProvider(ctx context.Context, prov *app.Exchan
 	})
 }
 
-// Run starts all symbol workers. Blocks until all stop or context is cancelled.
+// Run starts the funding scanner job and keeps it alive until context is cancelled.
 func (s *Sniper) Run(ctx context.Context) error {
-	s.log.InfoContext(ctx, "🚀 Sniper — launching per-symbol workers", slog.Int("symbols", len(s.cfg.Symbols)))
-
-	g, workerCtx := errgroup.WithContext(ctx)
-	for i := range s.cfg.Symbols {
-		g.Go(s.spawnWorker(workerCtx, s.cfg.Symbols[i]))
-	}
-
-	err := g.Wait()
-	s.log.InfoContext(ctx, "🛑 All workers stopped")
-	return err
+	return newFundingScannerJob(s).Run(ctx)
 }
 
 // Stop implements the app.Bot interface. It executes any explicit teardown.
 // The primary graceful shutdown is handled by the context passed to Run().
 func (s *Sniper) Stop(ctx context.Context) error {
-	s.log.InfoContext(ctx, "🛑 Sniper explicit stop invoked")
 	s.bgWg.Wait()
 	return nil
 }
 
-// spawnWorker creates a closure that runs one complete cycle for a symbol.
-func (s *Sniper) spawnWorker(ctx context.Context, symCfg config.SymbolConfig) func() error {
-	return func() error {
-		exchName := symCfg.Exchange
-		prov, err := s.engine.GetProvider(exchName)
-		if err != nil {
-			s.log.ErrorContext(ctx, "🔴 Failed to locate exchange provider", slog.String("exchange", exchName), slog.Any("error", err))
-			return nil
-		}
-
-		stores := s.stores[exchName]
-		if stores == nil {
-			s.log.ErrorContext(ctx, "🔴 Failed to locate central store for exchange", slog.String("exchange", exchName))
-			return nil
-		}
-
-		baseLog := s.log.With("sym", symCfg.Symbol, "exchange", exchName)
-		baseLog.InfoContext(ctx, "🚀 Worker started")
-		defer baseLog.InfoContext(ctx, "🛑 Worker stopped")
-
-		if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
-			baseLog.WarnContext(ctx, "🔴 Symbol disabled in-memory", slog.String("reason", reason))
-			return nil
-		}
-
-		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, stores.Funding())
-		if err != nil {
-			baseLog.ErrorContext(ctx, "🔴 No settle time", slog.Any("error", err))
-			return nil
-		}
-
-		// Wait until T-5m before actively entering the cycle.
-		if d := prov.TimeSync.Until(settle.Add(-5 * time.Minute)); d > 0 {
-			baseLog.DebugContext(ctx, "😴 Waiting for funding window", slog.Time("settle", settle), slog.Duration("wait", d))
-			if err := prov.TimeSync.Sleep(ctx, d); err != nil {
-				return nil
-			}
-		}
-
-		// If we are already past the firing deadline (T-5s), skip.
-		if prov.TimeSync.Until(settle.Add(-5*time.Second)) <= 0 {
-			baseLog.WarnContext(ctx, "🔴 Settle time passed or missed", slog.Time("settle", settle))
-			return nil
-		}
-
-		// Execute one funding cycle via event-driven orchestrator.
-		deps := Deps{
-			Client:        prov.Client,
-			WsSub:         prov.Adapter,
-			OrderNotifier: prov.Watcher,
-			TickerStore:   stores.Ticker(),
-			ContractStore: stores.Contract(),
-			PriceStore:    stores.Price(),
-			FundingStore:  stores.Funding(),
-			DepthStore:    stores.Depth(),
-			Clock:         prov.TimeSync,
-			Log:           baseLog,
-			Notifier:      s.notifier,
-			EventBus:      s.engine.Bus,
-		}
-		orchestrator := NewOrchestrator(
-			symCfg,
-			s.cfg,
-			deps,
-			s.reversionFactory(symCfg, s.cfg, deps),
-			s.trapFactory(symCfg, s.cfg, deps),
-			s.trailingFactory(symCfg, s.cfg, deps),
-		)
-		orchestrator.Run(ctx, settle)
-		return nil
+// publishCandidate builds one candidate event source message for a symbol.
+func (s *Sniper) publishCandidate(
+	ctx context.Context,
+	baseLog *slog.Logger,
+	symCfg config.SymbolConfig,
+) bool {
+	exchName := symCfg.Exchange
+	prov, err := s.engine.GetProvider(exchName)
+	if err != nil {
+		s.log.ErrorContext(ctx, "🔴 Failed to locate exchange provider", slog.String("exchange", exchName), slog.Any("error", err))
+		return false
 	}
+
+	stores := s.stores[exchName]
+	if stores == nil {
+		s.log.ErrorContext(ctx, "🔴 Failed to locate central store for exchange", slog.String("exchange", exchName))
+		return false
+	}
+
+	if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
+		baseLog.WarnContext(ctx, "🔴 Symbol disabled in-memory", slog.String("reason", reason))
+		return false
+	}
+
+	settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, stores.Funding())
+	if err != nil {
+		baseLog.ErrorContext(ctx, "🔴 No settle time", slog.Any("error", err))
+		return false
+	}
+
+	if ctx.Err() != nil {
+		return false
+	}
+
+	deps := Deps{
+		Client:        prov.Client,
+		WsSub:         prov.Adapter,
+		OrderNotifier: prov.Watcher,
+		TickerStore:   stores.Ticker(),
+		ContractStore: stores.Contract(),
+		PriceStore:    stores.Price(),
+		FundingStore:  stores.Funding(),
+		DepthStore:    stores.Depth(),
+		Clock:         prov.TimeSync,
+		Log:           baseLog,
+		Notifier:      s.notifier,
+		EventBus:      s.engine.Bus,
+	}
+	orchestrator := NewOrchestrator(
+		symCfg,
+		s.cfg,
+		deps,
+		s.reversionFactory(symCfg, s.cfg, deps),
+		s.trapFactory(symCfg, s.cfg, deps),
+		s.trailingFactory(symCfg, s.cfg, deps),
+	)
+	orchestrator.Run(ctx, settle)
+	return true
 }
 
 func (s *Sniper) disabledReason(symbol string) (string, bool) {

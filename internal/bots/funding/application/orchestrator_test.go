@@ -135,23 +135,28 @@ func TestOrchestratorRunSkipsAndCleansUpOnError(t *testing.T) {
 	noTicker.Run(context.Background(), time.Now())
 }
 
-func TestOrchestratorScanSkipsInvalidMarketData(t *testing.T) {
+func TestOrchestratorRunPublishesLowFundingCandidate(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	tickers := mocks.NewMockTickerReader(ctrl)
+	contracts := mocks.NewMockContractReader(ctrl)
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.0001,
 		Amount24:    100000,
 	}, nil)
+	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
+		Symbol: "BTC_USDT",
+	}, nil)
 	testStrategy := &orchestratorStrategy{enabled: true}
 	o := application.NewOrchestrator(symbolConfig(), globalConfig(), application.Deps{
-		TickerStore: tickers,
-		Log:         testAppLogger(),
+		TickerStore:   tickers,
+		ContractStore: contracts,
+		Log:           testAppLogger(),
 	}, testStrategy)
 	o.Run(context.Background(), time.Now())
-	assert.Zero(t, testStrategy.execN)
+	assert.Equal(t, 1, testStrategy.execN)
 }
 
 func symbolConfig() config.SymbolConfig {

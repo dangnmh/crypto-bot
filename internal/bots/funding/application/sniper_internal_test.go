@@ -13,8 +13,10 @@ import (
 	"crypto-bot/internal/infrastructure/app"
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/notifier"
+	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
+	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/internal/testutil/mocks"
 	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/types"
@@ -51,6 +53,59 @@ func sniperTestLogger() *slog.Logger {
 func sniperStrategyFactory(config.SymbolConfig, *config.Config, Deps) strategy.Strategy {
 	return noOpStrategy{}
 }
+
+type disabledStrategy struct{}
+
+func (disabledStrategy) Flow() string { return "disabled" }
+func (disabledStrategy) Enabled(config.SymbolConfig) bool {
+	return false
+}
+func (disabledStrategy) Execute(context.Context, time.Time, fundingdomain.Candidate) error {
+	return nil
+}
+func (disabledStrategy) CleanupOpenExposure(context.Context) error {
+	return nil
+}
+
+type signalStrategy struct {
+	ch chan<- struct{}
+}
+
+func (s signalStrategy) Flow() string { return "signal" }
+func (s signalStrategy) Enabled(config.SymbolConfig) bool {
+	return true
+}
+func (s signalStrategy) Execute(context.Context, time.Time, fundingdomain.Candidate) error {
+	select {
+	case s.ch <- struct{}{}:
+	default:
+	}
+	return nil
+}
+func (s signalStrategy) CleanupOpenExposure(context.Context) error {
+	return nil
+}
+
+type fakeFundingStoreSet struct {
+	ticker   store.TickerReader
+	contract store.ContractReader
+	price    store.PriceReader
+	funding  store.FundingReader
+	depth    store.DepthReader
+	kline    store.KlineReadWriter
+}
+
+func (f fakeFundingStoreSet) Start(context.Context) {}
+func (f fakeFundingStoreSet) WaitReady(context.Context) error {
+	return nil
+}
+func (f fakeFundingStoreSet) WireWS(*pkgws.Pool, infraws.ExchangeAdapter) {}
+func (f fakeFundingStoreSet) Ticker() store.TickerReader                  { return f.ticker }
+func (f fakeFundingStoreSet) Contract() store.ContractReader              { return f.contract }
+func (f fakeFundingStoreSet) Price() store.PriceReader                    { return f.price }
+func (f fakeFundingStoreSet) Funding() store.FundingReader                { return f.funding }
+func (f fakeFundingStoreSet) Depth() store.DepthReader                    { return f.depth }
+func (f fakeFundingStoreSet) Kline() store.KlineReadWriter                { return f.kline }
 
 func TestNewSniperBuildsExchangeScopedResources(t *testing.T) {
 	t.Parallel()
@@ -96,7 +151,7 @@ func TestNewSniperBuildsExchangeScopedResources(t *testing.T) {
 	assert.NotContains(t, s.stores, "gate")
 }
 
-func TestSniperWorkerSkipsMissingResourcesAndDisabledSymbols(t *testing.T) {
+func TestSniperPublishCandidateSkipsMissingResourcesAndDisabledSymbols(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -117,7 +172,7 @@ func TestSniperWorkerSkipsMissingResourcesAndDisabledSymbols(t *testing.T) {
 	s := &Sniper{
 		cfg:              &config.Config{},
 		engine:           engine,
-		stores:           map[string]*app.CentralStore{},
+		stores:           map[string]fundingStoreSet{},
 		disabled:         map[string]string{"BTC_USDT": "paused"},
 		reversionFactory: sniperStrategyFactory,
 		trapFactory:      sniperStrategyFactory,
@@ -126,24 +181,123 @@ func TestSniperWorkerSkipsMissingResourcesAndDisabledSymbols(t *testing.T) {
 		log:              sniperTestLogger(),
 	}
 
-	require.NoError(t, s.spawnWorker(context.Background(), config.SymbolConfig{
+	baseLog := sniperTestLogger()
+	published := s.publishCandidate(context.Background(), baseLog, config.SymbolConfig{
 		Symbol:   "BTC_USDT",
 		Exchange: "missing",
-	})())
+	})
+	assert.False(t, published)
 
-	require.NoError(t, s.spawnWorker(context.Background(), config.SymbolConfig{
+	published = s.publishCandidate(context.Background(), baseLog, config.SymbolConfig{
 		Symbol:   "BTC_USDT",
 		Exchange: "mexc",
-	})())
+	})
+	assert.False(t, published)
 
 	s.stores["mexc"] = app.NewCentralStore()
 	reason, disabled := s.disabledReason("BTC_USDT")
 	assert.True(t, disabled)
 	assert.Equal(t, "paused", reason)
-	require.NoError(t, s.spawnWorker(context.Background(), config.SymbolConfig{
+	published = s.publishCandidate(context.Background(), baseLog, config.SymbolConfig{
 		Symbol:   "BTC_USDT",
 		Exchange: "mexc",
-	})())
+	})
+	assert.False(t, published)
+}
+
+func TestSniperRunPublishesOnceAndKeepsScannerJobAlive(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	tickers := mocks.NewMockTickerReader(ctrl)
+	contracts := mocks.NewMockContractReader(ctrl)
+	funding := mocks.NewMockFundingReader(ctrl)
+
+	settle := time.Now().Add(time.Minute)
+	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.01,
+		LastPrice:   100,
+		BestBid:     99,
+		BestAsk:     101,
+		Amount24:    100000,
+	}, nil)
+	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
+		Symbol: "BTC_USDT",
+	}, nil)
+	funding.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(settle, nil)
+
+	bus := eventbus.New(sniperTestLogger())
+	t.Cleanup(func() { _ = bus.Close() })
+
+	published := make(chan struct{}, 1)
+	s := &Sniper{
+		cfg: &config.Config{
+			System: &config.SystemConfig{},
+			Symbols: []config.SymbolConfig{
+				{Symbol: "BTC_USDT", Exchange: "mexc"},
+			},
+		},
+		engine: &app.Engine{
+			Bus: bus,
+			Providers: map[string]*app.ExchangeProvider{
+				"mexc": {
+					Name:     "mexc",
+					Client:   client,
+					TimeSync: timesync.New(client, time.Second),
+				},
+			},
+		},
+		stores: map[string]fundingStoreSet{
+			"mexc": fakeFundingStoreSet{
+				ticker:   tickers,
+				contract: contracts,
+				funding:  funding,
+			},
+		},
+		disabled: make(map[string]string),
+		reversionFactory: func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy {
+			return signalStrategy{ch: published}
+		},
+		trapFactory: func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy {
+			return disabledStrategy{}
+		},
+		trailingFactory: func(config.SymbolConfig, *config.Config, Deps) strategy.Strategy {
+			return disabledStrategy{}
+		},
+		notifier: noOpNotifier{},
+		log:      sniperTestLogger(),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Run(ctx)
+	}()
+
+	select {
+	case <-published:
+	case <-time.After(time.Second):
+		t.Fatal("scan did not publish event")
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned before shutdown: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	cancel()
+	require.Eventually(t, func() bool {
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestSniperRunAsBackgroundSkipsProvidersWithoutStores(t *testing.T) {
@@ -158,7 +312,7 @@ func TestSniperRunAsBackgroundSkipsProvidersWithoutStores(t *testing.T) {
 				"mexc": {Name: "mexc"},
 			},
 		},
-		stores: map[string]*app.CentralStore{},
+		stores: map[string]fundingStoreSet{},
 		log:    sniperTestLogger(),
 	}
 
@@ -187,7 +341,7 @@ func TestSniperRunAsBackgroundReturnsTimeSyncReadinessError(t *testing.T) {
 				},
 			},
 		},
-		stores: map[string]*app.CentralStore{"mexc": app.NewCentralStore()},
+		stores: map[string]fundingStoreSet{"mexc": app.NewCentralStore()},
 		log:    sniperTestLogger(),
 	}
 

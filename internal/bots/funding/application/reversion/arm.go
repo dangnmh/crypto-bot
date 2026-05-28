@@ -16,7 +16,7 @@ import (
 func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
 	r.log.InfoContext(ctx, "handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
 	c := startEvt.Candidate
-	maxWait := 5 * time.Second
+	maxWait := 2 * time.Second
 
 	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
 		r.log.ErrorContext(ctx, "Failed to subscribe WS channels", slog.Any("error", err))

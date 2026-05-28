@@ -11,7 +11,23 @@ type SyncConfig struct {
 
 type WebSocketConfig struct {
 	WSURL             string `json:"wsURL"`
+	PublicURL         string `json:"publicURL"`
+	PrivateURL        string `json:"privateURL"`
 	MaxPairsPerWSConn int    `json:"maxPairsPerWSConn"`
+}
+
+func (c WebSocketConfig) PublicEndpoint() string {
+	if c.PublicURL != "" {
+		return c.PublicURL
+	}
+	return c.WSURL
+}
+
+func (c WebSocketConfig) PrivateEndpoint() string {
+	if c.PrivateURL != "" {
+		return c.PrivateURL
+	}
+	return c.WSURL
 }
 
 type RESTConfig struct {

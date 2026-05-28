@@ -38,8 +38,30 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 	}
 
 	s.mu.Lock()
-	snapshot := *data
-	s.prices[symbol] = &snapshot
+	var snapshot PriceData
+	if existing, ok := s.prices[symbol]; ok {
+		if data.LastPrice > 0 {
+			existing.LastPrice = data.LastPrice
+		}
+		if data.BestBid > 0 {
+			existing.BestBid = data.BestBid
+		}
+		if data.BestAsk > 0 {
+			existing.BestAsk = data.BestAsk
+		}
+		if data.FairPrice > 0 {
+			existing.FairPrice = data.FairPrice
+		}
+		if data.Volume24 > 0 {
+			existing.Volume24 = data.Volume24
+		}
+		existing.UpdatedAt = data.UpdatedAt
+		snapshot = *existing
+	} else {
+		snapshot = *data
+		s.prices[symbol] = &snapshot
+	}
+
 	subs := make([]chan *PriceData, 0, len(s.subscribers[symbol]))
 	for ch := range s.subscribers[symbol] {
 		subs = append(subs, ch)
@@ -56,9 +78,9 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 
 	s.logger.Debug("store.UpdatePrice",
 		slog.String("symbol", symbol),
-		slog.Float64("lastPrice", data.LastPrice),
-		slog.Float64("bid", data.BestBid),
-		slog.Float64("ask", data.BestAsk),
+		slog.Float64("lastPrice", snapshot.LastPrice),
+		slog.Float64("bid", snapshot.BestBid),
+		slog.Float64("ask", snapshot.BestAsk),
 	)
 }
 
