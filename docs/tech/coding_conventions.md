@@ -7,6 +7,7 @@ This document outlines the standard coding conventions established for the `cryp
 We follow the [Uber Go Style Guide](style.md) as our baseline. This document extends it with project-specific rules and Go best practices that the style guide does not cover.
 
 For testing conventions, please refer to [Testing Conventions](testing_conventions.md).
+For third-party library conventions, please refer to [Community Libraries](community_libraries.md).
 
 ---
 

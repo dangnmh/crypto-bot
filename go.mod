@@ -10,6 +10,7 @@ require (
 	github.com/bitwarden/sdk-go/v2 v2.0.0
 	github.com/buger/jsonparser v1.2.0
 	github.com/bybit-exchange/bybit.go.api v1.1.1
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/dangnmh/transport v0.0.0-20250317091120-3bd599167d13
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/gateio/gateapi-go/v7 v7.1.8
@@ -24,7 +25,6 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.uber.org/fx v1.24.0
 	go.uber.org/mock v0.6.0
-	golang.org/x/sync v0.20.0
 )
 
 require (
@@ -33,7 +33,6 @@ require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.0 // indirect
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/consensys/gnark-crypto v0.19.0 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -76,6 +75,7 @@ require (
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

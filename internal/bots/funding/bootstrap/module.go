@@ -38,9 +38,9 @@ func Module(paths ConfigPaths) fx.Option {
 			provideNotifier,
 			provideHTTPClient,
 			provideEngine,
-			provideReversionStrategyFactory,
-			provideTrapStrategyFactory,
-			provideTrailingStrategyFactory,
+			provideReversionStrategy,
+			provideTrapStrategy,
+			provideTrailingStrategy,
 			provideBot,
 			infraapp.NewBotRunner,
 		),
@@ -117,22 +117,16 @@ func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Co
 	})
 }
 
-func provideReversionStrategyFactory() application.ReversionStrategyFactory {
-	return func(cfg fundingconfig.SymbolConfig, global *fundingconfig.Config, deps application.Deps) strategy.Strategy {
-		return reversion.NewStrategy(cfg, global, deps)
-	}
+func provideReversionStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config, n notifier.Notifier, log *slog.Logger) *reversion.Strategy {
+	return reversion.NewStrategy(engine, cfg, n, log)
 }
 
-func provideTrapStrategyFactory() application.TrapStrategyFactory {
-	return func(cfg fundingconfig.SymbolConfig, global *fundingconfig.Config, deps application.Deps) strategy.Strategy {
-		return trap.NewStrategy(cfg, global, deps)
-	}
+func provideTrapStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config, log *slog.Logger) *trap.Strategy {
+	return trap.NewStrategy(engine, cfg, log)
 }
 
-func provideTrailingStrategyFactory() application.TrailingStrategyFactory {
-	return func(cfg fundingconfig.SymbolConfig, global *fundingconfig.Config, deps application.Deps) strategy.Strategy {
-		return trailing.NewStrategy(cfg, global, deps)
-	}
+func provideTrailingStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config, log *slog.Logger) *trailing.Strategy {
+	return trailing.NewStrategy(engine, cfg, log)
 }
 
 func provideBot(
@@ -140,15 +134,14 @@ func provideBot(
 	sysCfg *fundingconfig.SystemConfig,
 	engine *infraapp.Engine,
 	n notifier.Notifier,
-	reversionFactory application.ReversionStrategyFactory,
-	trapFactory application.TrapStrategyFactory,
-	trailingFactory application.TrailingStrategyFactory,
+	reversionStrategy *reversion.Strategy,
+	trapStrategy *trap.Strategy,
+	trailingStrategy *trailing.Strategy,
 	log *slog.Logger,
 ) infraapp.Bot {
-	return application.NewSniper(
+	return application.NewFundingBot(
 		cfg, sysCfg, engine, n,
-		reversionFactory, trapFactory, trailingFactory,
+		[]strategy.BackgroundStrategy{reversionStrategy, trapStrategy, trailingStrategy},
 		log.With("bot", "funding"),
-		reversion.InitGlobalSubscriptions,
 	)
 }

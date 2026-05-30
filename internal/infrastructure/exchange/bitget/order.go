@@ -42,7 +42,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		marginMode = modeCrossed
 	}
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol:      req.Symbol,
 		paramProductType: productTypeUsdtFutures,
 		paramMarginMode:  marginMode,
@@ -100,7 +100,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		symbol = info.Symbol
 	}
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol:      symbol,
 		paramProductType: productTypeUsdtFutures,
 		"orderId":        orderID,
@@ -142,44 +142,23 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	// Query pending orders
+func (c *Client) getRawPendingOrders(ctx context.Context) ([]bitgetOrder, error) {
 	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, map[string]string{paramProductType: productTypeUsdtFutures})
-	if err == nil {
-		pendingList, parseErr := ParseResponse[[]bitgetOrder](pendingBody, "pending_orders")
-		if parseErr == nil {
-			for i := range pendingList {
-				o := pendingList[i]
-				if o.OrderID == orderID || o.ClientOid == orderID {
-					info := mapBitgetOrder(o)
-					return &info, nil
-				}
-			}
-		}
+	if err != nil {
+		return nil, err
 	}
-
-	// Historical order detail can only be queried if we have the symbol
-	// Since we don't have symbol here, let's fetch orders-history and scan
-	historyBody, err := c.GetCtx(ctx, "/api/v2/mix/order/orders-history", map[string]string{paramProductType: productTypeUsdtFutures})
-	if err == nil {
-		historyList, parseErr := ParseResponse[[]bitgetOrder](historyBody, "orders_history")
-		if parseErr == nil {
-			for i := range historyList {
-				o := historyList[i]
-				if o.OrderID == orderID || o.ClientOid == orderID {
-					info := mapBitgetOrder(o)
-					return &info, nil
-				}
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("order not found: %s", orderID)
+	return ParseResponse[[]bitgetOrder](pendingBody, "pending_orders")
 }
 
-// GetOpenOrders returns all open orders.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+func (c *Client) getRawHistoryOrders(ctx context.Context) ([]bitgetOrder, error) {
+	historyBody, err := c.GetCtx(ctx, "/api/v2/mix/order/orders-history", map[string]string{paramProductType: productTypeUsdtFutures})
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[[]bitgetOrder](historyBody, "orders_history")
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bitgetOrder, error) {
 	params := map[string]string{
 		paramProductType: productTypeUsdtFutures,
 	}
@@ -192,14 +171,48 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, err
 	}
 
-	list, err := ParseResponse[[]bitgetOrder](body, "open_orders")
+	return ParseResponse[[]bitgetOrder](body, "open_orders")
+}
+
+// GetOrder queries a single order by ID.
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+	// Query pending orders
+	pendingList, err := c.getRawPendingOrders(ctx)
+	if err == nil {
+		for i := range pendingList {
+			o := pendingList[i]
+			if o.OrderID == orderID || o.ClientOid == orderID {
+				info := mapBitgetOrder(o)
+				return &info, nil
+			}
+		}
+	}
+
+	// Historical order detail
+	historyList, err := c.getRawHistoryOrders(ctx)
+	if err == nil {
+		for i := range historyList {
+			o := historyList[i]
+			if o.OrderID == orderID || o.ClientOid == orderID {
+				info := mapBitgetOrder(o)
+				return &info, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("order not found: %s", orderID)
+}
+
+// GetOpenOrders returns all open orders.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawList, err := c.getRawOpenOrders(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
 
-	orders := make([]exchange.OrderInfo, 0, len(list))
-	for i := range list {
-		orders = append(orders, mapBitgetOrder(list[i]))
+	orders := make([]exchange.OrderInfo, 0, len(rawList))
+	for i := range rawList {
+		orders = append(orders, mapBitgetOrder(rawList[i]))
 	}
 
 	return orders, nil
@@ -244,7 +257,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 // ChangeLeverage changes the leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol:      req.Symbol,
 		paramProductType: productTypeUsdtFutures,
 		paramMarginCoin:  constantUsdt,
@@ -271,7 +284,6 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 
 	cTimeVal := decmath.ParseInt64(o.CTime)
 	uTimeVal := decmath.ParseInt64(o.UTime)
-	leverageVal := decmath.ParseInt64(o.Leverage)
 
 	info := exchange.OrderInfo{
 		OrderID:      o.OrderID,
@@ -283,7 +295,6 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 		ExternalOID:  o.ClientOid,
 		CreateTime:   cTimeVal,
 		UpdateTime:   uTimeVal,
-		Leverage:     int(leverageVal),
 		PositionMode: 2, // default OneWay
 	}
 

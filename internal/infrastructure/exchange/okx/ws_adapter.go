@@ -32,7 +32,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to ticker stream.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelTicker, paramInstId: symbol},
@@ -44,7 +44,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from ticker stream.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opUnsubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelTicker, paramInstId: symbol},
@@ -56,7 +56,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelKline, paramInstId: symbol},
@@ -68,7 +68,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opUnsubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelKline, paramInstId: symbol},
@@ -80,7 +80,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 
 // SubscribeDepth subscribes to depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelDepth, paramInstId: symbol},
@@ -92,7 +92,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 
 // UnsubscribeDepth unsubscribes from depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opUnsubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelDepth, paramInstId: symbol},
@@ -104,7 +104,7 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to OKX private channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldChannel: channelOrders, paramInstType: instTypeSwap},
@@ -115,7 +115,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns ping message and interval (OKX expects ping string frame).
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 	return "ping", 20 * time.Second
 }
 
@@ -128,9 +128,9 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		ts := strconv.FormatInt(time.Now().Unix(), 10)
 		sig := SignRequest(apiSecret, ts, "GET", "/users/self/verify", "")
 
-		msg := map[string]interface{}{
+		msg := map[string]any{
 			"op": "login",
-			"args": []map[string]interface{}{
+			"args": []map[string]any{
 				{
 					"apiKey":     apiKey,
 					"passphrase": "default_passphrase", // Overridden by runtime OKX_PASSPHRASE env
@@ -413,29 +413,20 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	avgPx, _ := strconv.ParseFloat(p.AvgPx, 64)
 	liqPx, _ := strconv.ParseFloat(p.LiqPx, 64)
 	realized, _ := strconv.ParseFloat(p.RealizedPnl, 64)
-	margin, _ := strconv.ParseFloat(p.Margin, 64)
 
 	posType := 1 // long
 	if p.PosSide == posSideShort {
 		posType = 2
 	}
 
-	openType := 1 // isolated
-	if p.MgnMode == modeCross {
-		openType = 2
-	}
-
 	update := &exchange.PersonalPositionUpdate{
-		Symbol:         p.InstID,
-		HoldVol:        posVal,
-		Leverage:       leverVal,
-		HoldAvgPrice:   avgPx,
-		LiquidatePrice: liqPx,
-		Realized:       realized,
-		IM:             margin,
-		PositionType:   posType,
-		OpenType:       openType,
-		State:          1,
+		Symbol:          p.InstID,
+		HoldVol:         posVal,
+		Leverage:        leverVal,
+		HoldAvgPrice:    avgPx,
+		LiquidatePrice:  liqPx,
+		CloseProfitLoss: realized,
+		PositionType:    posType,
 	}
 
 	return update, nil

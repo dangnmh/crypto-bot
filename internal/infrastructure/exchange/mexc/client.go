@@ -54,6 +54,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
 	}
@@ -82,12 +83,12 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 }
 
 // Get makes a signed GET request to a private or public endpoint.
-func (c *Client) Get(ctx context.Context, path string, params map[string]string) ([]byte, error) {
+func (c *Client) Get(ctx context.Context, path string, params map[string]any) ([]byte, error) {
 	return c.GetCtx(ctx, path, params)
 }
 
 // GetCtx makes a signed GET request with context.
-func (c *Client) GetCtx(ctx context.Context, path string, params map[string]string) ([]byte, error) {
+func (c *Client) GetCtx(ctx context.Context, path string, params map[string]any) ([]byte, error) {
 	url := c.baseURL + path
 	isPrivate := strings.Contains(path, "/private/")
 
@@ -116,12 +117,12 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 }
 
 // Post makes a signed POST request to a private endpoint.
-func (c *Client) Post(ctx context.Context, path string, body interface{}) ([]byte, error) {
+func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error) {
 	return c.PostCtx(ctx, path, body)
 }
 
 // PostCtx makes a signed POST request with context.
-func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]byte, error) {
+func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, error) {
 	url := c.baseURL + path
 
 	var bodyReader io.Reader

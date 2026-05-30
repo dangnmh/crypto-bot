@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const maxExternalOrderIDLen = 32
+const maxExternalOrderIDLen = 30
 
 func ExternalOrderID(prefix, symbol string) string {
 	return externalOrderID(prefix, symbol, time.Now())

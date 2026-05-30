@@ -29,8 +29,8 @@ type Pool struct {
 
 type publicSubscription struct {
 	topic          string
-	subscribeMsg   interface{}
-	unsubscribeMsg interface{}
+	subscribeMsg   any
+	unsubscribeMsg any
 	clientIdx      int
 }
 
@@ -194,7 +194,7 @@ func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
 }
 
 // SubscribePublic tracks a subscription topic and routes it to an available public client.
-func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg interface{}) error {
+func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg any) error {
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
 	if !exists {
@@ -224,7 +224,7 @@ func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg interface{
 }
 
 // UnsubscribePublic removes a topic tracking and routes the unsubscribe message to the correct client.
-func (p *Pool) UnsubscribePublic(ctx context.Context, topic string, msg interface{}) error {
+func (p *Pool) UnsubscribePublic(ctx context.Context, topic string, msg any) error {
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
 	if !exists {
@@ -257,7 +257,7 @@ func (p *Pool) GetPrivateClient() *Client {
 }
 
 // SendPrivate routes a generic JSON payload to the private authenticated client.
-func (p *Pool) SendPrivate(ctx context.Context, msg interface{}) error {
+func (p *Pool) SendPrivate(ctx context.Context, msg any) error {
 	p.mu.RLock()
 	pc := p.privateClient
 	p.mu.RUnlock()

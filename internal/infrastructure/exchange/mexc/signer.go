@@ -16,12 +16,12 @@ import (
 //
 //	GET/DELETE: HMAC-SHA256(apiKey + timestamp + sortedQueryString, apiSecret)
 //	POST:      HMAC-SHA256(apiKey + timestamp + jsonBody, apiSecret)
-func SignRequest(apiKey, apiSecret, timestamp, method string, params interface{}) string {
+func SignRequest(apiKey, apiSecret, timestamp, method string, params any) string {
 	var paramStr string
 
 	switch method {
 	case "GET", "DELETE":
-		if p, ok := params.(map[string]string); ok {
+		if p, ok := params.(map[string]any); ok {
 			paramStr = buildSortedQueryString(p)
 		}
 	case "POST":
@@ -41,7 +41,7 @@ func SignRequest(apiKey, apiSecret, timestamp, method string, params interface{}
 
 // buildSortedQueryString creates a sorted key=value&key=value string from params.
 // Keys are sorted alphabetically (matching MEXC Futures spec).
-func buildSortedQueryString(params map[string]string) string {
+func buildSortedQueryString(params map[string]any) string {
 	if len(params) == 0 {
 		return ""
 	}
@@ -54,7 +54,7 @@ func buildSortedQueryString(params map[string]string) string {
 
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, params[k]))
+		parts = append(parts, fmt.Sprintf("%s=%v", k, params[k]))
 	}
 	return strings.Join(parts, "&")
 }

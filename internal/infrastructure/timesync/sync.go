@@ -138,10 +138,7 @@ func (ts *TimeSync) LatencyMs() int64 {
 func (ts *TimeSync) IsHealthy() bool {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	maxAge := ts.interval * 3
-	if maxAge < 30*time.Second {
-		maxAge = 30 * time.Second
-	}
+	maxAge := max(ts.interval*3, 30*time.Second)
 	return ts.healthy && time.Since(ts.lastSync) < maxAge
 }
 

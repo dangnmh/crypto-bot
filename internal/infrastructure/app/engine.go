@@ -103,9 +103,6 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 		}
 		if len(cfg.ActiveExchanges) > 0 {
 			name := strings.ToLower(factory.Name())
-			if name == "bybit-unified" {
-				name = "bybit"
-			}
 			if !activeMap[name] {
 				continue
 			}

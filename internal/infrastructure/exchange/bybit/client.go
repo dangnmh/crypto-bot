@@ -48,6 +48,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key"}),
+			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
 	}

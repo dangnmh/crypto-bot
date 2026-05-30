@@ -46,7 +46,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		tdMode = modeCross
 	}
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramInstId: req.Symbol,
 		"tdMode":    tdMode,
 		"side":      side,
@@ -147,7 +147,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		symbol = info.Symbol
 	}
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramInstId: symbol,
 		"ordId":     orderID,
 	}
@@ -203,44 +203,23 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	// As OKX V5 trade/order GET requires instId, we search active and history orders
-	// 1. Search pending orders
+func (c *Client) getRawPendingOrders(ctx context.Context) ([]okxOrder, error) {
 	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, map[string]string{paramInstType: instTypeSwap})
-	if err == nil {
-		pendingList, parseErr := ParseResponse[okxOrder](pendingBody, "pending_orders")
-		if parseErr == nil {
-			for i := range pendingList {
-				o := pendingList[i]
-				if o.OrdID == orderID {
-					info := mapOkxOrder(o)
-					return &info, nil
-				}
-			}
-		}
+	if err != nil {
+		return nil, err
 	}
-
-	// 2. Search history orders
-	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", map[string]string{paramInstType: instTypeSwap})
-	if err == nil {
-		historyList, parseErr := ParseResponse[okxOrder](historyBody, "orders_history")
-		if parseErr == nil {
-			for i := range historyList {
-				o := historyList[i]
-				if o.OrdID == orderID {
-					info := mapOkxOrder(o)
-					return &info, nil
-				}
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("order not found: %s", orderID)
+	return ParseResponse[okxOrder](pendingBody, "pending_orders")
 }
 
-// GetOpenOrders returns all open orders.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+func (c *Client) getRawHistoryOrders(ctx context.Context) ([]okxOrder, error) {
+	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", map[string]string{paramInstType: instTypeSwap})
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxOrder](historyBody, "orders_history")
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]okxOrder, error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -253,14 +232,48 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, err
 	}
 
-	list, err := ParseResponse[okxOrder](body, "open_orders")
+	return ParseResponse[okxOrder](body, "open_orders")
+}
+
+// GetOrder queries a single order by ID.
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+	// Query pending orders
+	pendingList, err := c.getRawPendingOrders(ctx)
+	if err == nil {
+		for i := range pendingList {
+			o := pendingList[i]
+			if o.OrdID == orderID {
+				info := mapOkxOrder(o)
+				return &info, nil
+			}
+		}
+	}
+
+	// Query history orders
+	historyList, err := c.getRawHistoryOrders(ctx)
+	if err == nil {
+		for i := range historyList {
+			o := historyList[i]
+			if o.OrdID == orderID {
+				info := mapOkxOrder(o)
+				return &info, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("order not found: %s", orderID)
+}
+
+// GetOpenOrders returns all open orders.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawList, err := c.getRawOpenOrders(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
 
-	orders := make([]exchange.OrderInfo, 0, len(list))
-	for i := range list {
-		orders = append(orders, mapOkxOrder(list[i]))
+	orders := make([]exchange.OrderInfo, 0, len(rawList))
+	for i := range rawList {
+		orders = append(orders, mapOkxOrder(rawList[i]))
 	}
 
 	return orders, nil
@@ -310,7 +323,7 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 		mgnMode = modeCross
 	}
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		"instId":  req.Symbol,
 		"lever":   fmt.Sprintf("%d", req.Leverage),
 		"mgnMode": mgnMode,

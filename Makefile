@@ -82,11 +82,11 @@ cover-check: cover ## Enforce minimum coverage threshold
 
 # ── Lint & Format ────────────────────────────────────────────────────
 .PHONY: lint
-lint: fmt vet ## Run golangci-lint
+lint: mod-tidy fmt vet ## Run golangci-lint
 	$(GOLANGCI_LINT) run ./...
 
 .PHONY: lint-fix
-lint-fix: fmt vet ## Run golangci-lint with auto-fix
+lint-fix: mod-tidy fmt vet ## Run golangci-lint with auto-fix
 	$(GOLANGCI_LINT) run --fix ./...
 
 .PHONY: fmt
@@ -97,6 +97,8 @@ fmt: ## Format all Go files
 .PHONY: vet
 vet: ## Run go vet
 	$(GO) vet ./...
+	$(GO) run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -fix ./...
+# 	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...
 
 # ── Modules ──────────────────────────────────────────────────────────
 .PHONY: mod-tidy

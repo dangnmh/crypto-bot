@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"testing"
 
-	"crypto-bot/internal/bots/funding/application"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/config"
@@ -28,19 +27,18 @@ func TestProviderFactoriesReturnStrategies(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	deps := application.Deps{
-		Client:   mocks.NewMockClient(ctrl),
-		Log:      bootstrapTestLogger(),
-		EventBus: eventbus.New(bootstrapTestLogger()),
+	bus := eventbus.New(bootstrapTestLogger())
+	t.Cleanup(func() { _ = bus.Close() })
+	engine := &infraapp.Engine{
+		Bus: bus,
 	}
-	t.Cleanup(func() { _ = deps.EventBus.Close() })
 
 	global := &fundingconfig.Config{}
-	sym := fundingconfig.SymbolConfig{Symbol: "BTC_USDT"}
+	mockNotifier := mocks.NewMockNotifier(ctrl)
 
-	assert.Equal(t, "reversion", provideReversionStrategyFactory()(sym, global, deps).Flow())
-	assert.Equal(t, "trap", provideTrapStrategyFactory()(sym, global, deps).Flow())
-	assert.Equal(t, "trailing", provideTrailingStrategyFactory()(sym, global, deps).Flow())
+	assert.Equal(t, "reversion", provideReversionStrategy(engine, global, mockNotifier, bootstrapTestLogger()).Flow())
+	assert.Equal(t, "trap", provideTrapStrategy(engine, global, bootstrapTestLogger()).Flow())
+	assert.Equal(t, "trailing", provideTrailingStrategy(engine, global, bootstrapTestLogger()).Flow())
 }
 
 func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
@@ -67,14 +65,19 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 		Providers: map[string]*infraapp.ExchangeProvider{},
 	}
 	t.Cleanup(func() { _ = engine.Bus.Close() })
+
+	revStrat := provideReversionStrategy(engine, &fundingconfig.Config{}, n, bootstrapTestLogger())
+	trapStrat := provideTrapStrategy(engine, &fundingconfig.Config{}, bootstrapTestLogger())
+	trailStrat := provideTrailingStrategy(engine, &fundingconfig.Config{}, bootstrapTestLogger())
+
 	bot := provideBot(
 		&fundingconfig.Config{},
 		&fundingconfig.SystemConfig{},
 		engine,
 		n,
-		provideReversionStrategyFactory(),
-		provideTrapStrategyFactory(),
-		provideTrailingStrategyFactory(),
+		revStrat,
+		trapStrat,
+		trailStrat,
 		bootstrapTestLogger(),
 	)
 	require.NotNil(t, bot)

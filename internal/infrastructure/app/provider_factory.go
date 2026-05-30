@@ -25,7 +25,9 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 )
 
-const bybitUnifiedName = "bybit-unified"
+const (
+	bybitUnifiedName = "bybit"
+)
 
 // ProviderFactory builds one exchange provider from system configuration.
 type ProviderFactory interface {
@@ -297,18 +299,19 @@ type BybitStandardProviderFactory struct{}
 func (BybitStandardProviderFactory) Name() string { return exchange.ExchangeBybit }
 
 func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bybit.Enable && (cfg.ExchangeConfig.Bybit.AccountType == "" || cfg.ExchangeConfig.Bybit.AccountType == "standard")
+	return cfg.ExchangeConfig.Bybit.Enable && sysconfig.NormalizeBybitAccountType(cfg.ExchangeConfig.Bybit.AccountType) != sysconfig.BybitAccountTypeUnified
 }
 
 func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bybit
+	accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
 	client := exchange.Client(bybit.NewClient(
 		cfg.HTTPClient,
 		apiCfg.Future.BaseURL,
 		apiCfg.APIKey,
 		apiCfg.APISecret,
-		"standard",
+		accountType,
 		sysCfg.Logging,
 	))
 
@@ -322,7 +325,7 @@ type BybitUnifiedProviderFactory struct{}
 func (BybitUnifiedProviderFactory) Name() string { return bybitUnifiedName }
 
 func (BybitUnifiedProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bybit.Enable && cfg.ExchangeConfig.Bybit.AccountType == "unified"
+	return cfg.ExchangeConfig.Bybit.Enable && sysconfig.NormalizeBybitAccountType(cfg.ExchangeConfig.Bybit.AccountType) == sysconfig.BybitAccountTypeUnified
 }
 
 func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
@@ -333,7 +336,7 @@ func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryC
 		apiCfg.Future.BaseURL,
 		apiCfg.APIKey,
 		apiCfg.APISecret,
-		"unified",
+		sysconfig.BybitAccountTypeUnified,
 		sysCfg.Logging,
 	))
 

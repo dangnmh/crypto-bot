@@ -369,7 +369,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	update, err := adapter.ParsePosition(rawCrossed)
 	require.NoError(t, err)
 	assert.Equal(t, 2, update.PositionType) // Short
-	assert.Equal(t, 2, update.OpenType)     // Cross
 
 	rawIsolated := []byte(`{
 		"arg": {"channel": "positions"},
@@ -390,5 +389,4 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	update, err = adapter.ParsePosition(rawIsolated)
 	require.NoError(t, err)
 	assert.Equal(t, 1, update.PositionType) // Long
-	assert.Equal(t, 1, update.OpenType)     // Isolated
 }

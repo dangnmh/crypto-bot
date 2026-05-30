@@ -288,3 +288,14 @@ func TestParseInt64(t *testing.T) {
 	assert.Equal(t, int64(0), decmath.ParseInt64("invalid"))
 	assert.Equal(t, int64(0), decmath.ParseInt64("42x"))
 }
+
+func TestFromString_Error(t *testing.T) {
+	t.Parallel()
+
+	_, err := decmath.FromString("invalid")
+	assert.Error(t, err)
+
+	assert.Panics(t, func() {
+		decmath.MustFromString("invalid")
+	})
+}

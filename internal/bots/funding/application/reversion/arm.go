@@ -16,7 +16,7 @@ import (
 func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
 	r.log.InfoContext(ctx, "handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
 	c := startEvt.Candidate
-	maxWait := 2 * time.Second
+	maxWait := 5 * time.Second
 
 	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
 		r.log.ErrorContext(ctx, "Failed to subscribe WS channels", slog.Any("error", err))
@@ -39,7 +39,6 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 	evt := ArmMarketReadyEvent{
 		BaseReversionEvent: nextReversionBase(startEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
-		SettleTime:         startEvt.SettleTime,
 		MaxWaitMs:          maxWait.Milliseconds(),
 		BestBid:            c.BestBid,
 		BestAsk:            c.BestAsk,
@@ -67,7 +66,6 @@ func (r *StatelessRunner) handleArmMarketReady(ctx context.Context, evt ArmMarke
 	next := ArmPlanCalculatedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
-		SettleTime:         evt.SettleTime,
 		IOCPrice:           ioc,
 		RefPrice:           refPrice,
 		Slippage:           c.Slippage,
@@ -94,7 +92,6 @@ func (r *StatelessRunner) handleArmPlanCalculated(ctx context.Context, evt ArmPl
 	next := SafetyCheckedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
-		SettleTime:         evt.SettleTime,
 		IOCPrice:           evt.IOCPrice,
 		RefPrice:           evt.RefPrice,
 		Slippage:           evt.Slippage,
@@ -123,12 +120,11 @@ func (r *StatelessRunner) handleSafetyChecked(ctx context.Context, safetyEvt Saf
 	)
 
 	evt := ArmedEvent{
-		BaseReversionEvent: nextNotifyReversionBase(safetyEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+		BaseReversionEvent: nextReversionBase(safetyEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
 		Volume:             c.Volume,
 		IOCPrice:           safetyEvt.IOCPrice,
 		Slippage:           c.Slippage,
-		SettleTime:         safetyEvt.SettleTime,
 	}
 
 	return r.publishEvent(ctx, TopicReversionArmed, evt)

@@ -141,6 +141,66 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 	}
 }
 
+func TestValidateAPIConfigField_AccountType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		accountType string
+		wantErr     bool
+	}{
+		{name: "empty defaults to standard"},
+		{name: "standard", accountType: BybitAccountTypeStandard},
+		{name: "unified", accountType: BybitAccountTypeUnified},
+		{name: "trimmed uppercase unified", accountType: " UNIFIED "},
+		{name: "unsupported", accountType: "classic", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			validate := validator.New()
+			_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
+
+			cfg := &SystemConfig{ExchangeConfig: ExchangeConfig{Bybit: APIConfig{
+				Enable:      true,
+				Future:      RESTConfig{BaseURL: "https://bybit.example"},
+				WebSocket:   WebSocketConfig{PublicURL: "wss://bybit-public.example", PrivateURL: "wss://bybit-private.example"},
+				APIKey:      "key",
+				APISecret:   "secret",
+				AccountType: tt.accountType,
+			}}}
+
+			err := validate.Struct(cfg)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "api_config")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateAPIConfigField_AccountTypeOnlyAppliesToBybit(t *testing.T) {
+	t.Parallel()
+
+	validate := validator.New()
+	_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
+
+	cfg := &SystemConfig{ExchangeConfig: ExchangeConfig{Mexc: APIConfig{
+		Enable:      true,
+		Future:      RESTConfig{BaseURL: "https://mexc.example"},
+		WebSocket:   WebSocketConfig{WSURL: "wss://mexc.example"},
+		APIKey:      "key",
+		APISecret:   "secret",
+		AccountType: "ignored",
+	}}}
+
+	require.NoError(t, validate.Struct(cfg))
+}
+
 func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
 	t.Parallel()
 

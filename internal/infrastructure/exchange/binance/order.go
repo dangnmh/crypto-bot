@@ -131,13 +131,16 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderI
 		idStr = id
 	}
 
+	orderReq := c.sdkClient.RestApi.TradeAPI.QueryOrder(ctx).Symbol(symbol)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid orderID for binance: %w", err)
+		// Non-numeric ID: treat it as client order ID (origClientOrderId)
+		orderReq = orderReq.OrigClientOrderId(idStr)
+	} else {
+		orderReq = orderReq.OrderId(id)
 	}
 
-	req := c.sdkClient.RestApi.TradeAPI.QueryOrder(ctx).Symbol(symbol).OrderId(id)
-	resp, err := c.sdkClient.RestApi.TradeAPI.QueryOrderExecute(req)
+	resp, err := c.sdkClient.RestApi.TradeAPI.QueryOrderExecute(orderReq)
 	if err != nil {
 		return nil, fmt.Errorf("binance query order: %w", err)
 	}

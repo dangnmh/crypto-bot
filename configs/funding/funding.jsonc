@@ -3,9 +3,21 @@
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
   {
-    "symbol": "DRIFT_USDT",
+    "symbol": "PORTAL_USDT",
     "marginUSDT": 3,
     "exchange": "mexc",
-    // "simulateSettle": "2026-05-24T14:23:00.000+07:00"
+    "simulateSettle": "2026-05-30T22:00:00.000+07:00"
   },
+  {
+    "symbol": "PORTALUSDT",
+    "marginUSDT": 3,
+    "exchange": "bybit",
+    "simulateSettle": "2026-05-30T22:00:00.000+07:00"
+  },
+  // {
+  //   "symbol": "IDUSDT",
+  //   "marginUSDT": 3,
+  //   "exchange": "bybit",
+  //   "simulateSettle": "2026-05-29T22:05:00.000+07:00"
+  // },
 ]

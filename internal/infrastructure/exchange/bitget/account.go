@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -84,8 +85,7 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	return nil, fmt.Errorf("asset balance not found for currency: %s", currency)
 }
 
-// GetOpenPositions returns all open positions.
-func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+func (c *Client) getRawOpenPositions(ctx context.Context) ([]bitgetPosition, error) {
 	params := map[string]string{
 		paramProductType: productTypeUsdtFutures,
 	}
@@ -95,7 +95,12 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		return nil, err
 	}
 
-	positions, err := ParseResponse[[]bitgetPosition](body, "open_positions")
+	return ParseResponse[[]bitgetPosition](body, "open_positions")
+}
+
+// GetOpenPositions returns all open positions.
+func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+	positions, err := c.getRawOpenPositions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,34 +117,113 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		lever, _ := strconv.Atoi(pos.Leverage)
 		avgPx, _ := strconv.ParseFloat(pos.OpenPriceAvg, 64)
-		liqPx, _ := strconv.ParseFloat(pos.LiquidationPrice, 64)
-		realized, _ := strconv.ParseFloat(pos.AchievedProfits, 64)
-		margin, _ := strconv.ParseFloat(pos.MarginSize, 64)
 
 		posType := 1 // long
 		if pos.HoldSide == posSideShort {
 			posType = 2
 		}
 
-		openType := 1 // isolated
-		if pos.MarginMode == modeCrossed || pos.MarginMode == modeCross {
-			openType = 2
-		}
-
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:         pos.Symbol,
-			HoldVol:        holdVol,
-			Leverage:       lever,
-			HoldAvgPrice:   avgPx,
-			LiquidatePrice: liqPx,
-			Realised:       realized,
-			IM:             margin,
-			PositionType:   posType,
-			OpenType:       openType,
+			Symbol:       pos.Symbol,
+			HoldVol:      holdVol,
+			HoldAvgPrice: avgPx,
+			OpenAvgPrice: avgPx,
+			PositionType: posType,
 		})
 	}
 
 	return openPositions, nil
+}
+
+type bitgetTradeFill struct {
+	FillID  string `json:"fillId"`
+	OrderID string `json:"orderId"`
+	Symbol  string `json:"symbol"`
+	Side    string `json:"side"`
+	FillPx  string `json:"fillPx"`
+	FillSz  string `json:"fillSz"`
+	Fee     string `json:"fee"`
+	CTime   string `json:"cTime"`
+}
+
+// GetRecentClosedPnL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	// Look up numeric orderID from client order ID (extOrderID / clientOid)
+	orderInfo, err := c.GetOrder(ctx, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("bitget get order by external ID %s failed: %w", extOrderID, err)
+	}
+	closingOrderId := orderInfo.OrderID
+
+	params := map[string]string{
+		paramProductType: productTypeUsdtFutures,
+		paramLimit:       "10",
+	}
+	if !startTime.IsZero() {
+		params["startTime"] = strconv.FormatInt(startTime.UnixMilli(), 10)
+	}
+	if symbol != "" {
+		params[paramSymbol] = symbol
+	}
+
+	body, err := c.GetCtx(ctx, "/api/v2/mix/order/fills", params)
+	if err != nil {
+		return nil, err
+	}
+
+	fills, err := ParseResponse[[]bitgetTradeFill](body, "fills")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(fills) == 0 {
+		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
+	}
+
+	// Find the latest fill representing the latest closing execution
+	latestFill := &fills[0]
+	for i := range fills {
+		f := &fills[i]
+		cTimeF, _ := strconv.ParseInt(f.CTime, 10, 64)
+		cTimeLatest, _ := strconv.ParseInt(latestFill.CTime, 10, 64)
+		if cTimeF > cTimeLatest {
+			latestFill = f
+		}
+	}
+
+	var totalQty float64
+	var totalCommission float64
+	var weightedPriceSum float64
+
+	for i := range fills {
+		item := &fills[i]
+		if item.OrderID != closingOrderId {
+			continue
+		}
+		qty, _ := strconv.ParseFloat(item.FillSz, 64)
+		price, _ := strconv.ParseFloat(item.FillPx, 64)
+		commission, _ := strconv.ParseFloat(item.Fee, 64)
+
+		totalQty += qty
+		totalCommission += commission
+		weightedPriceSum += price * qty
+	}
+
+	if totalQty == 0 {
+		return nil, fmt.Errorf("zero quantity for closing order %s", closingOrderId)
+	}
+
+	exitPrice := weightedPriceSum / totalQty
+
+	return &exchange.ClosedPnLInfo{
+		Symbol:     latestFill.Symbol,
+		EntryPrice: 0, // Fallback to WS estimation
+		ExitPrice:  exitPrice,
+		ClosedSize: totalQty,
+		GrossPnL:   0, // Fallback to WS estimation
+		Fee:        totalCommission,
+		FundingFee: 0,
+		DurationMs: 0,
+	}, nil
 }

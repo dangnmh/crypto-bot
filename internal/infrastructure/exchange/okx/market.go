@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -263,8 +264,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	}
 
 	klines := make([]exchange.Kline, 0, len(resp.Data))
-	for i := len(resp.Data) - 1; i >= 0; i-- { // OKX returns newest first, so we reverse it
-		row := resp.Data[i]
+	for _, row := range slices.Backward(resp.Data) { // OKX returns newest first, so we reverse it
 		if len(row) < 6 {
 			continue
 		}

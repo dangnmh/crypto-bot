@@ -35,7 +35,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: "sub.ticker",
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
@@ -45,7 +45,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from ticker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: "unsub.ticker",
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
@@ -55,7 +55,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: "sub.kline",
 		paramParam:  map[string]string{paramSymbol: symbol, paramInterval: "Min1"},
 	}
@@ -65,7 +65,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: "unsub.kline",
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
@@ -75,9 +75,9 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 
 // SubscribePersonal subscribes to all private futures channels used by funding flows.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: "personal.filter",
-		paramParam: map[string]interface{}{
+		paramParam: map[string]any{
 			"filters": []map[string]string{
 				{paramFilter: "order"},
 				{paramFilter: "order.deal"},
@@ -92,7 +92,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 // SubscribeDepth subscribes to orderbook depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	method := "sub.depth.full"
-	param := map[string]interface{}{
+	param := map[string]any{
 		paramSymbol: symbol,
 		paramLimit:  20,
 	}
@@ -100,7 +100,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 		method = "sub.depth.step"
 		param["step"] = step
 	}
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: method,
 		paramParam:  param,
 	}
@@ -111,7 +111,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 // UnsubscribeDepth unsubscribes from orderbook depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	method := "unsub.depth.full"
-	param := map[string]interface{}{
+	param := map[string]any{
 		paramSymbol: symbol,
 		paramLimit:  20,
 	}
@@ -119,7 +119,7 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 		method = "unsub.depth.step"
 		param["step"] = step
 	}
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: method,
 		paramParam:  param,
 	}
@@ -128,7 +128,7 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 }
 
 // GetPingConfig returns the ping payload and interval for MEXC.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 	return map[string]string{paramMethod: "ping"}, 15 * time.Second
 }
 
@@ -144,9 +144,9 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		mac.Write([]byte(message))
 		signature := hex.EncodeToString(mac.Sum(nil))
 
-		msg := map[string]interface{}{
+		msg := map[string]any{
 			paramMethod: "login",
-			paramParam: map[string]interface{}{
+			paramParam: map[string]any{
 				"apiKey":    apiKey,
 				"reqTime":   reqTime,
 				"signature": signature,
@@ -180,8 +180,8 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			case "push.personal.position":
 				return "personal.position"
 			default:
-				if strings.HasPrefix(baseMsg.Channel, "push.") {
-					return strings.TrimPrefix(baseMsg.Channel, "push.")
+				if after, ok := strings.CutPrefix(baseMsg.Channel, "push."); ok {
+					return after
 				}
 				return baseMsg.Channel
 			}
@@ -391,10 +391,17 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		return nil, err
 	}
 
-	var update exchange.PersonalPositionUpdate
-	if err := json.Unmarshal(msg.Data, &update); err != nil {
+	type updateAlias exchange.PersonalPositionUpdate
+	var raw struct {
+		updateAlias
+		PositionID json.RawMessage `json:"positionId"`
+	}
+
+	if err := json.Unmarshal(msg.Data, &raw); err != nil {
 		return nil, err
 	}
+
+	update := exchange.PersonalPositionUpdate(raw.updateAlias)
 
 	return &update, nil
 }

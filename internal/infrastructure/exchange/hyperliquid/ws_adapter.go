@@ -37,9 +37,9 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to mid prices using allMids channel.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType: channelAllMids,
 		},
 	}
@@ -49,9 +49,9 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from mid prices.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opUnsubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType: channelAllMids,
 		},
 	}
@@ -61,9 +61,9 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeKline subscribes to candlesticks.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType:     channelCandle,
 			fieldCoin:     symbol,
 			fieldInterval: "1m",
@@ -75,9 +75,9 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 
 // UnsubscribeKline unsubscribes from candlesticks.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opUnsubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType:     channelCandle,
 			fieldCoin:     symbol,
 			fieldInterval: "1m",
@@ -89,9 +89,9 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 
 // SubscribeDepth subscribes to L2 orderbook book.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType: channelL2Book,
 			fieldCoin: symbol,
 		},
@@ -102,9 +102,9 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 
 // UnsubscribeDepth unsubscribes from L2 orderbook.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opUnsubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType: channelL2Book,
 			fieldCoin: symbol,
 		},
@@ -119,9 +119,9 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 		return fmt.Errorf("userAddress is not initialized for WS auth")
 	}
 
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
-		fieldSubscription: map[string]interface{}{
+		fieldSubscription: map[string]any{
 			fieldType: "userEvents",
 			"user":    a.userAddress,
 		},
@@ -130,8 +130,8 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns application ping and interval.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
-	return map[string]interface{}{
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
+	return map[string]any{
 		"method": "ping",
 	}, 30 * time.Second
 }

@@ -3,11 +3,14 @@ package gate
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 
+	"github.com/antihax/optional"
 	"github.com/gateio/gateapi-go/v7"
 )
 
@@ -57,13 +60,10 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 // mapPosition maps a gateapi.Position to exchange.Position.
 func mapPosition(raw gateapi.Position) exchange.Position {
 	pos := exchange.Position{
-		Symbol:         raw.Contract,
-		HoldVol:        float64(decmath.AbsInt64(raw.Size)),
-		HoldAvgPrice:   decmath.ParseFloat(raw.EntryPrice),
-		OpenAvgPrice:   decmath.ParseFloat(raw.EntryPrice),
-		LiquidatePrice: decmath.ParseFloat(raw.LiqPrice),
-		Realised:       decmath.ParseFloat(raw.RealisedPnl),
-		Leverage:       decmath.ParseInt(raw.Leverage),
+		Symbol:       raw.Contract,
+		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
+		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
+		OpenAvgPrice: decmath.ParseFloat(raw.EntryPrice),
 	}
 
 	if raw.Size > 0 {
@@ -115,4 +115,86 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 	}
 	return positions, nil
+}
+
+// GetRecentClosedPnL queries the recent trades from Gate.io for a symbol, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	// Look up numeric orderID from client order ID (extOrderID / text)
+	orderInfo, err := c.GetOrder(ctx, "t-"+extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("gate.io get order by external ID %s failed: %w", extOrderID, err)
+	}
+	closingOrderId := orderInfo.OrderID
+
+	ctx = c.authCtx(ctx)
+	opts := &gateapi.GetMyTradesOpts{
+		Contract: optional.NewString(symbol),
+		Limit:    optional.NewInt32(10),
+	}
+
+	trades, httpResp, err := c.apiClient.FuturesApi.GetMyTrades(ctx, "usdt", opts)
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gate.io get closed trades: %w", err)
+	}
+
+	if !startTime.IsZero() {
+		temp := trades[:0]
+		for i := range trades {
+			if int64(trades[i].CreateTime) >= startTime.Unix() {
+				temp = append(temp, trades[i])
+			}
+		}
+		trades = temp
+	}
+
+	if len(trades) == 0 {
+		return nil, fmt.Errorf("no user trades found for symbol %s", symbol)
+	}
+
+	// Find the latest trade based on ID to identify the latest closing execution
+	latestTrade := &trades[0]
+	for i := range trades {
+		t := &trades[i]
+		if t.Id > latestTrade.Id {
+			latestTrade = t
+		}
+	}
+
+	var totalQty float64
+	var totalCommission float64
+	var weightedPriceSum float64
+
+	for i := range trades {
+		item := &trades[i]
+		if item.OrderId != closingOrderId {
+			continue
+		}
+		qty := math.Abs(float64(item.Size))
+		price := decmath.ParseFloat(item.Price)
+		commission := decmath.ParseFloat(item.Fee)
+
+		totalQty += qty
+		totalCommission += commission
+		weightedPriceSum += price * qty
+	}
+
+	if totalQty == 0 {
+		return nil, fmt.Errorf("zero quantity for closing order %s", closingOrderId)
+	}
+
+	exitPrice := weightedPriceSum / totalQty
+
+	return &exchange.ClosedPnLInfo{
+		Symbol:     latestTrade.Contract,
+		EntryPrice: 0, // Fallback to WS estimation
+		ExitPrice:  exitPrice,
+		ClosedSize: totalQty,
+		GrossPnL:   0, // Fallback to WS estimation
+		Fee:        totalCommission,
+		FundingFee: 0,
+		DurationMs: 0,
+	}, nil
 }

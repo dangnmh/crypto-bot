@@ -44,6 +44,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
 	}

@@ -78,16 +78,14 @@ func runBotWithContext(
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := bot.Run(ctx); err != nil {
 			log.ErrorContext(ctx, "🔴 Bot error", slog.Any("error", err))
 			if onRunError != nil {
 				onRunError(err)
 			}
 		}
-	}()
+	})
 
 	log.InfoContext(ctx, "🟢 All systems running — ready for operations")
 

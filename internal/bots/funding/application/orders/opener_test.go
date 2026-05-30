@@ -26,7 +26,7 @@ func TestExternalOrderID(t *testing.T) {
 
 	id := orders.ExternalOrderID("ioc", "BTC_USDT")
 	assert.True(t, strings.HasPrefix(id, "ioc_"))
-	assert.LessOrEqual(t, len(id), 32)
+	assert.LessOrEqual(t, len(id), 30)
 }
 
 func TestOrderResultIsSuccess(t *testing.T) {
@@ -160,6 +160,7 @@ func testCandidate(side shared.Side) fundingdomain.Candidate {
 			Side:         side,
 			CloseSide:    closeSide,
 			RefPriceType: ref,
+			ExternalID:   "ioc_btc_usdt",
 		},
 		ContractSpec: fundingdomain.ContractSpec{
 			PriceUnit:    0.1,

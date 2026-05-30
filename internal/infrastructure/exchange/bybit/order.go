@@ -38,8 +38,8 @@ type bybitOrderResult struct {
 }
 
 // mapSubmitOrder maps a SubmitOrderRequest to Bybit parameters map.
-func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) map[string]interface{} {
-	params := map[string]interface{}{
+func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) map[string]any {
+	params := map[string]any{
 		categoryKey: categoryLinear,
 		symbolKey:   req.Symbol,
 	}
@@ -209,7 +209,7 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey: categoryLinear,
 		symbolKey:   symbol,
 		orderIDKey:  orderID,
@@ -248,7 +248,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey: categoryLinear,
 		symbolKey:   symbol,
 	}
@@ -263,9 +263,8 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	params := map[string]interface{}{
+func (c *Client) getRawOrder(ctx context.Context, orderID string) (*bybitOrder, error) {
+	params := map[string]any{
 		categoryKey: categoryLinear,
 		orderIDKey:  orderID,
 	}
@@ -287,13 +286,12 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderI
 		return nil, fmt.Errorf("bybit order not found: %s", orderID)
 	}
 
-	info := mapOrderInfo(res.List[0])
-	return &info, nil
+	return &res.List[0], nil
 }
 
-// GetOpenOrders returns all open orders.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	params := map[string]interface{}{
+//nolint:dupl // standard raw REST API helper has structural duplicate
+func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bybitOrder, error) {
+	params := map[string]any{
 		categoryKey: categoryLinear,
 	}
 	if symbol != "" {
@@ -313,9 +311,29 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, fmt.Errorf("bybit decode open orders: %w", err)
 	}
 
-	orders := make([]exchange.OrderInfo, 0, len(res.List))
-	for i := range res.List {
-		orders = append(orders, mapOrderInfo(res.List[i]))
+	return res.List, nil
+}
+
+// GetOrder queries a single order by ID.
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	info := mapOrderInfo(*raw)
+	return &info, nil
+}
+
+// GetOpenOrders returns all open orders.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawList, err := c.getRawOpenOrders(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]exchange.OrderInfo, 0, len(rawList))
+	for i := range rawList {
+		orders = append(orders, mapOrderInfo(rawList[i]))
 	}
 	return orders, nil
 }
@@ -361,7 +379,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 // ChangeLeverage changes the leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey:    categoryLinear,
 		symbolKey:      req.Symbol,
 		"buyLeverage":  fmt.Sprintf("%d", req.Leverage),

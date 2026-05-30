@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application"
+	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/store"
@@ -33,27 +34,18 @@ func reversionTestLogger() *slog.Logger {
 func TestStrategyMetadataAndCleanup(t *testing.T) {
 	t.Parallel()
 
-	ctrl := gomock.NewController(t)
-	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(errors.New("close failed"))
-
-	strategy := NewStrategy(
-		config.SymbolConfig{
-			Symbol: "BTC_USDT",
-			FundingReversion: fundingdomain.FundingReversionConfig{
-				Enabled: true,
-			},
-		},
+	s := NewStrategy(
+		&app.Engine{},
 		&config.Config{},
-		application.Deps{Client: client, Log: reversionTestLogger()},
+		nil,
+		reversionTestLogger(),
 	)
 
-	assert.Equal(t, FlowReversion, strategy.Flow())
-	assert.True(t, strategy.Enabled(config.SymbolConfig{
+	assert.Equal(t, FlowReversion, s.Flow())
+	assert.True(t, s.Enabled(config.SymbolConfig{
 		FundingReversion: fundingdomain.FundingReversionConfig{Enabled: true},
 	}))
-	assert.False(t, strategy.Enabled(config.SymbolConfig{}))
-	require.ErrorContains(t, strategy.CleanupOpenExposure(context.Background()), "close failed")
+	assert.False(t, s.Enabled(config.SymbolConfig{}))
 }
 
 func TestStatelessRunnerRetryWithBackoff(t *testing.T) {
@@ -64,7 +56,7 @@ func TestStatelessRunnerRetryWithBackoff(t *testing.T) {
 	clock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(nil).Times(2)
 
 	runner := &StatelessRunner{
-		deps: application.Deps{Clock: clock},
+		deps: strategy.Deps{Clock: clock},
 		log:  reversionTestLogger(),
 	}
 
@@ -89,7 +81,7 @@ func TestStatelessRunnerRetryWithBackoffContextStopsSleep(t *testing.T) {
 	clock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(context.Canceled)
 
 	runner := &StatelessRunner{
-		deps: application.Deps{Clock: clock},
+		deps: strategy.Deps{Clock: clock},
 		log:  reversionTestLogger(),
 	}
 
@@ -118,7 +110,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 
 	runner := &StatelessRunner{
-		deps: application.Deps{
+		deps: strategy.Deps{
 			WsSub:    ws,
 			Clock:    clock,
 			Notifier: n,
@@ -138,12 +130,16 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 		CloseVol:           2,
 		GrossProfit:        2,
 		NetProfit:          1.8,
+		PnLPct:             1.0,
+		VolumeUSDT:         202,
 		Fee:                -0.1,
 		HoldFee:            -0.1,
 		HoldDurationMs:     250,
 	})
 	assert.Equal(t, "BTC_USDT", final.Symbol)
 	assert.Equal(t, 1.8, final.NetPnL)
+	assert.Equal(t, 1.0, final.PnLPct)
+	assert.Equal(t, 202.0, final.VolumeUSDT)
 
 	payload, err := json.Marshal(PositionClosedEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
@@ -174,7 +170,7 @@ func TestStatelessRunnerHandlePositionUpdateFallbacks(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 
 	runner := &StatelessRunner{
-		deps: application.Deps{
+		deps: strategy.Deps{
 			Clock:      clock,
 			PriceStore: priceStore,
 		},
@@ -199,6 +195,149 @@ func TestStatelessRunnerHandlePositionUpdateFallbacks(t *testing.T) {
 	}, BaseReversionEvent{ReqID: "test-req-2", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
 }
 
+type mockClosedPnLClient struct {
+	exchange.Client
+	closedInfo *exchange.ClosedPnLInfo
+	closedErr  error
+}
+
+func (m *mockClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	return m.closedInfo, m.closedErr
+}
+
+func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	clock := mocks.NewMockClock(ctrl)
+	clock.EXPECT().Now().Return(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)).AnyTimes()
+
+	priceStore := mocks.NewMockPriceReader(ctrl)
+	priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
+		LastPrice: 100,
+		BestBid:   99,
+		BestAsk:   101,
+	}, nil).AnyTimes()
+
+	mockCli := mocks.NewMockClient(ctrl)
+	mockNotifier := mocks.NewMockNotifier(ctrl)
+	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	t.Run("Enrichment success", func(t *testing.T) {
+		t.Parallel()
+		client := &mockClosedPnLClient{
+			Client: mockCli,
+			closedInfo: &exchange.ClosedPnLInfo{
+				Symbol:     "BTC_USDT",
+				EntryPrice: 100,
+				ExitPrice:  105,
+				ClosedSize: 2.0,
+				GrossPnL:   10.0,
+				Fee:        1.0,
+				DurationMs: 60000,
+			},
+		}
+
+		bus := eventbus.New(reversionTestLogger())
+		t.Cleanup(func() { _ = bus.Close() })
+
+		runner := &StatelessRunner{
+			deps: strategy.Deps{
+				Clock:      clock,
+				PriceStore: priceStore,
+				Client:     client,
+				Notifier:   mockNotifier,
+			},
+			bus: bus,
+			log: reversionTestLogger(),
+		}
+
+		var closedEvt PositionClosedEvent
+		ch, err := bus.Subscribe(context.Background(), TopicReversionPositionClosed)
+		require.NoError(t, err)
+
+		runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
+			Symbol:          "BTC_USDT",
+			HoldVol:         0,
+			CloseVol:        1,
+			OpenAvgPrice:    100,
+			CloseAvgPrice:   101,
+			CloseProfitLoss: 1,
+			Fee:             -0.1,
+			HoldFee:         -0.01,
+		}, BaseReversionEvent{ReqID: "test-req-enrich", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
+
+		select {
+		case msg := <-ch:
+			require.NoError(t, json.Unmarshal(msg.Payload, &closedEvt))
+			msg.Ack()
+		case <-time.After(2 * time.Second):
+			t.Fatal("timeout waiting for closed event")
+		}
+
+		assert.Equal(t, 100.0, closedEvt.EntryPrice)
+		assert.Equal(t, 105.0, closedEvt.ClosePrice)
+		assert.Equal(t, 2.0, closedEvt.CloseVol)
+		assert.Equal(t, 10.0, closedEvt.GrossProfit)
+		assert.Equal(t, 1.0, closedEvt.Fee)
+		assert.Equal(t, 9.0, closedEvt.NetProfit)
+		assert.Equal(t, 5.0, closedEvt.PnLPct) // ((105 - 100) / 100) * 100
+		assert.Equal(t, int64(60000), closedEvt.HoldDurationMs)
+	})
+
+	t.Run("Enrichment failure fallback", func(t *testing.T) {
+		t.Parallel()
+		client := &mockClosedPnLClient{
+			Client:    mockCli,
+			closedErr: errors.New("api error"),
+		}
+
+		bus := eventbus.New(reversionTestLogger())
+		t.Cleanup(func() { _ = bus.Close() })
+
+		runner := &StatelessRunner{
+			deps: strategy.Deps{
+				Clock:      clock,
+				PriceStore: priceStore,
+				Client:     client,
+				Notifier:   mockNotifier,
+			},
+			bus: bus,
+			log: reversionTestLogger(),
+		}
+
+		var closedEvt PositionClosedEvent
+		ch, err := bus.Subscribe(context.Background(), TopicReversionPositionClosed)
+		require.NoError(t, err)
+
+		runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
+			Symbol:          "BTC_USDT",
+			HoldVol:         0,
+			CloseVol:        1,
+			OpenAvgPrice:    100,
+			CloseAvgPrice:   101,
+			CloseProfitLoss: 1,
+			Fee:             -0.1,
+			HoldFee:         -0.01,
+		}, BaseReversionEvent{ReqID: "test-req-fallback", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
+
+		select {
+		case msg := <-ch:
+			require.NoError(t, json.Unmarshal(msg.Payload, &closedEvt))
+			msg.Ack()
+		case <-time.After(2 * time.Second):
+			t.Fatal("timeout waiting for closed event")
+		}
+
+		// Check that it falls back gracefully to the original PersonalPositionUpdate/PriceStore metrics
+		assert.Equal(t, 100.0, closedEvt.EntryPrice)
+		assert.Equal(t, 101.0, closedEvt.ClosePrice)
+		assert.Equal(t, 1.0, closedEvt.CloseVol)
+		assert.Equal(t, 1.0, closedEvt.GrossProfit)
+		assert.Equal(t, -0.1, closedEvt.Fee)
+	})
+}
+
 func TestStatelessRunnerGetSymbolAndWaitUntilBranches(t *testing.T) {
 	t.Parallel()
 
@@ -210,7 +349,7 @@ func TestStatelessRunnerGetSymbolAndWaitUntilBranches(t *testing.T) {
 	clock.EXPECT().Until(target).Return(time.Duration(0))
 
 	runner := &StatelessRunner{
-		deps:      application.Deps{Clock: clock},
+		deps:      strategy.Deps{Clock: clock},
 		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{Symbol: "BTC_USDT"}}},
 		log:       reversionTestLogger(),
 	}
@@ -251,6 +390,56 @@ func TestPublishEventWithoutBusOrNotification(t *testing.T) {
 	}))
 }
 
+type captureNotifier struct {
+	events chan notifier.Event
+}
+
+func (n captureNotifier) Send(ctx context.Context, evt notifier.Event) error {
+	select {
+	case n.events <- evt:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (captureNotifier) Start(context.Context) error { return nil }
+func (captureNotifier) Stop(context.Context) error  { return nil }
+
+func TestPublishEventNotificationIncludesExchange(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New(reversionTestLogger())
+	t.Cleanup(func() { _ = bus.Close() })
+
+	notify := captureNotifier{events: make(chan notifier.Event, 1)}
+	runner := &StatelessRunner{
+		deps: strategy.Deps{
+			Clock:    newReversionManualClock(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)),
+			Notifier: notify,
+		},
+		bus: bus,
+		log: reversionTestLogger(),
+	}
+
+	require.NoError(t, runner.publishEvent(context.Background(), TopicReversionArmed, ArmedEvent{
+		BaseReversionEvent: BaseReversionEvent{
+			Symbol:     "BTC_USDT",
+			Exchange:   "bybit",
+			SendNotify: true,
+		},
+		Volume: 1,
+	}))
+
+	select {
+	case evt := <-notify.events:
+		assert.Equal(t, "bybit", evt.Exchange)
+		assert.Equal(t, "BTC_USDT", evt.Symbol)
+	case <-time.After(time.Second):
+		require.Fail(t, "notification was not sent")
+	}
+}
+
 func TestEventTraceSeqAndPreviousTopic(t *testing.T) {
 	t.Parallel()
 
@@ -258,7 +447,7 @@ func TestEventTraceSeqAndPreviousTopic(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 
 	runner := &StatelessRunner{
-		deps: application.Deps{Clock: newReversionManualClock(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC))},
+		deps: strategy.Deps{Clock: newReversionManualClock(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC))},
 		bus:  bus,
 		log:  reversionTestLogger(),
 	}
@@ -317,7 +506,7 @@ func TestPositionWatcherArmedBeforeIOCSubmit(t *testing.T) {
 	)
 
 	runner := &StatelessRunner{
-		deps: application.Deps{
+		deps: strategy.Deps{
 			Client:        client,
 			OrderNotifier: watcher,
 			Clock:         clock,
@@ -334,9 +523,8 @@ func TestPositionWatcherArmedBeforeIOCSubmit(t *testing.T) {
 
 	candidate := reversionTestCandidate()
 	fireEvt := FireWindowReachedEvent{
-		BaseReversionEvent: BaseReversionEvent{ReqID: "trace-req-watcher", Symbol: "BTC_USDT"},
+		BaseReversionEvent: BaseReversionEvent{ReqID: "trace-req-watcher", Symbol: "BTC_USDT", SettleTime: clock.Now().Add(time.Second)},
 		Candidate:          candidate,
-		SettleTime:         clock.Now().Add(time.Second),
 		FireTimestamp:      clock.Now(),
 	}
 	require.NoError(t, runner.handleFireWindowReached(context.Background(), fireEvt))
@@ -359,7 +547,7 @@ func TestWatcherFillBeforeOutcomeDoesNotDuplicateOrderFilled(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 
 	runner := &StatelessRunner{
-		deps: application.Deps{Clock: clock},
+		deps: strategy.Deps{Clock: clock},
 		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{
 			Symbol: "BTC_USDT",
 			FundingReversion: fundingdomain.FundingReversionConfig{
@@ -432,7 +620,7 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 			client.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return(nil, nil)
 
 			runner := &StatelessRunner{
-				deps: application.Deps{
+				deps: strategy.Deps{
 					Client: client,
 					Clock:  clock,
 				},
@@ -463,7 +651,7 @@ func TestIOCPartialFillSchedulesTimeoutGuard(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 
 	runner := &StatelessRunner{
-		deps: application.Deps{Clock: clock},
+		deps: strategy.Deps{Clock: clock},
 		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{
 			Symbol: "BTC_USDT",
 			FundingReversion: fundingdomain.FundingReversionConfig{
@@ -504,7 +692,7 @@ func TestTimeoutForceClosePathCompletes(t *testing.T) {
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	runner := &StatelessRunner{
-		deps: application.Deps{
+		deps: strategy.Deps{
 			Client:   client,
 			Clock:    clock,
 			Notifier: mockNotifier,
@@ -549,11 +737,11 @@ func TestStatelessRunnerHandleWaitBranches(t *testing.T) {
 	clock := mocks.NewMockClock(ctrl)
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	clock.EXPECT().Now().Return(now).AnyTimes()
-	clock.EXPECT().Until(now.Add(-2 * time.Second)).Return(10 * time.Millisecond)
+	clock.EXPECT().Until(now.Add(-5 * time.Second)).Return(10 * time.Millisecond)
 	clock.EXPECT().Sleep(gomock.Any(), 10*time.Millisecond).Return(context.Canceled)
 
 	runner := &StatelessRunner{
-		deps: application.Deps{Clock: clock},
+		deps: strategy.Deps{Clock: clock},
 		bus:  eventbus.New(reversionTestLogger()),
 		log:  reversionTestLogger(),
 	}
@@ -563,8 +751,7 @@ func TestStatelessRunnerHandleWaitBranches(t *testing.T) {
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 	}))
 	require.ErrorIs(t, runner.handleWait(context.Background(), ArmedEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-		SettleTime:         now,
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: now},
 	}), context.Canceled)
 }
 
@@ -579,7 +766,7 @@ func TestStatelessRunnerHandleArmErrorPaths(t *testing.T) {
 	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(errors.New("sub failed"))
 
 	runner := &StatelessRunner{
-		deps: application.Deps{WsSub: ws, Clock: clock},
+		deps: strategy.Deps{WsSub: ws, Clock: clock},
 		bus:  eventbus.New(reversionTestLogger()),
 		log:  reversionTestLogger(),
 	}
@@ -602,7 +789,7 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 
 	runner := &StatelessRunner{
-		deps:      application.Deps{Clock: clock},
+		deps:      strategy.Deps{Clock: clock},
 		globalCfg: &config.Config{},
 		bus:       bus,
 		log:       reversionTestLogger(),
@@ -660,7 +847,7 @@ func TestStatelessRunnerHandleFireIOCEarlyErrors(t *testing.T) {
 	clock.EXPECT().Now().Return(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)).AnyTimes()
 
 	runner := &StatelessRunner{
-		deps:      application.Deps{Clock: clock},
+		deps:      strategy.Deps{Clock: clock},
 		globalCfg: &config.Config{},
 		bus:       eventbus.New(reversionTestLogger()),
 		log:       reversionTestLogger(),
@@ -673,8 +860,7 @@ func TestStatelessRunnerHandleFireIOCEarlyErrors(t *testing.T) {
 	require.ErrorContains(t, err, "settle time not found")
 
 	err = runner.handleFireIOC(context.Background(), ConfirmedEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-		SettleTime:         time.Now().Add(time.Second),
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: time.Now().Add(time.Second)},
 	})
 	require.ErrorContains(t, err, "symbol config not found")
 
@@ -686,8 +872,7 @@ func TestStatelessRunnerHandleFireIOCEarlyErrors(t *testing.T) {
 		},
 	}}
 	err = runner.handleFireIOC(context.Background(), ConfirmedEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-		SettleTime:         time.Now().Add(time.Second),
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: time.Now().Add(time.Second)},
 	})
 	require.ErrorContains(t, err, "latency too high")
 }
@@ -714,7 +899,7 @@ func TestStatelessRunnerTimeoutHelpers(t *testing.T) {
 	n := mocks.NewMockNotifier(ctrl)
 	n.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	runner := &StatelessRunner{
-		deps: application.Deps{
+		deps: strategy.Deps{
 			Client:   client,
 			Clock:    clock,
 			Notifier: n,
@@ -755,7 +940,7 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 	n := mocks.NewMockNotifier(ctrl)
 	n.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	runner := &StatelessRunner{
-		deps: application.Deps{
+		deps: strategy.Deps{
 			Client:   client,
 			Clock:    clock,
 			Notifier: n,
@@ -773,8 +958,7 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 	require.NoError(t, runner.waitTimeoutDeadline(context.Background(), TimeoutGuardScheduledEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		IOCEvent: IOCSubmittedEvent{
-			BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-			SettleTime:         now.Add(-time.Second),
+			BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: now.Add(-time.Second)},
 		},
 		Timeout:   10 * time.Millisecond,
 		StartedAt: now,

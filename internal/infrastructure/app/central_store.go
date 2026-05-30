@@ -220,9 +220,11 @@ func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapter) {
 				slog.Error("WireWS ParseTicker error", slog.String("data", string(data)), slog.Any("error", err))
 				return
 			}
-			if pd != nil {
-				cs.price.UpdatePrice(symbol, pd)
+			if pd == nil {
+				slog.Warn("WireWS CentralStore ticker nil", slog.String("data", string(data)))
+				return
 			}
+			cs.price.UpdatePrice(symbol, pd)
 		})
 	}
 

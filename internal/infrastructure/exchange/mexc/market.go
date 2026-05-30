@@ -34,7 +34,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 // GetTickers returns ticker data for all symbols, or a specific symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	params := map[string]string{}
+	params := map[string]any{}
 	if symbol != "" {
 		params[paramSymbol] = symbol
 	}
@@ -85,10 +85,10 @@ func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.F
 
 // GetFundingRateHistory returns funding rate history for a symbol.
 func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageNum, pageSize int) ([]exchange.FundingRateHistory, error) {
-	params := map[string]string{
+	params := map[string]any{
 		paramSymbol: symbol,
-		"page_num":  fmt.Sprintf("%d", pageNum),
-		"page_size": fmt.Sprintf("%d", pageSize),
+		pageNumKey:  fmt.Sprintf("%d", pageNum),
+		pageSizeKey: fmt.Sprintf("%d", pageSize),
 	}
 
 	body, err := c.GetCtx(ctx, "/api/v1/contract/funding_rate/history", params)
@@ -112,7 +112,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		return nil, fmt.Errorf("symbol is required for GetKlines")
 	}
 
-	params := map[string]string{
+	params := map[string]any{
 		paramInterval: interval,
 	}
 	if start > 0 {
@@ -144,7 +144,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 
 	n := len(data.Time)
 	klines := make([]exchange.Kline, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// Safety check against misaligned arrays.
 		if i >= len(data.Open) || i >= len(data.Close) || i >= len(data.High) || i >= len(data.Low) || i >= len(data.Vol) || i >= len(data.Amount) {
 			break
@@ -170,7 +170,7 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
 	}
 
-	params := map[string]string{}
+	params := map[string]any{}
 	if limit > 0 {
 		params["limit"] = fmt.Sprintf("%d", limit)
 	}

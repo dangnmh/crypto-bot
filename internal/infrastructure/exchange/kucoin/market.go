@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -295,8 +296,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 
 	klines := make([]exchange.Kline, 0, len(rawRows))
 	// KuCoin returns newest first. Let's reverse to ascending.
-	for i := len(rawRows) - 1; i >= 0; i-- {
-		row := rawRows[i]
+	for _, row := range slices.Backward(rawRows) {
 		if len(row) < 6 {
 			continue
 		}

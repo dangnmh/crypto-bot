@@ -67,7 +67,7 @@ func GetURLFunc(ctx context.Context, restClient *Client) func() (string, error) 
 // SubscribeTicker subscribes to ticker stream.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	topic := "/contractMarket/tickerV2:" + symbol
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":                "sub-" + symbol + "-ticker",
 		paramType:           opSubscribe,
 		paramTopic:          topic,
@@ -80,7 +80,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 // UnsubscribeTicker unsubscribes from ticker stream.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	topic := "/contractMarket/tickerV2:" + symbol
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":                "unsub-" + symbol + "-ticker",
 		paramType:           opUnsubscribe,
 		paramTopic:          topic,
@@ -93,7 +93,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	topic := "/contractMarket/kline:" + symbol
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":                "sub-" + symbol + "-kline",
 		paramType:           opSubscribe,
 		paramTopic:          topic,
@@ -106,7 +106,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	topic := "/contractMarket/kline:" + symbol
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":                "unsub-" + symbol + "-kline",
 		paramType:           opUnsubscribe,
 		paramTopic:          topic,
@@ -119,7 +119,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 // SubscribeDepth subscribes to depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	topic := "/contractMarket/level2:" + symbol
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":                "sub-" + symbol + "-depth",
 		paramType:           opSubscribe,
 		paramTopic:          topic,
@@ -132,7 +132,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 // UnsubscribeDepth unsubscribes from depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	topic := "/contractMarket/level2:" + symbol
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":                "unsub-" + symbol + "-depth",
 		paramType:           opUnsubscribe,
 		paramTopic:          topic,
@@ -148,8 +148,8 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns application ping config.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
-	return map[string]interface{}{
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
+	return map[string]any{
 		"id":      paramPing,
 		paramType: paramPing,
 	}, 20 * time.Second

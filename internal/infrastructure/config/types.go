@@ -1,6 +1,10 @@
 package config
 
-import "crypto-bot/pkg/types"
+import (
+	"strings"
+
+	"crypto-bot/pkg/types"
+)
 
 // SyncConfig holds intervals for various background synchronization tasks.
 type SyncConfig struct {
@@ -42,6 +46,28 @@ type APIConfig struct {
 	APIKey      string          `json:"-"`
 	APISecret   string          `json:"-"`
 	AccountType string          `json:"accountType,omitempty"`
+}
+
+const (
+	BybitAccountTypeStandard = "standard"
+	BybitAccountTypeUnified  = "unified"
+)
+
+func NormalizeBybitAccountType(raw string) string {
+	accountType := strings.ToLower(strings.TrimSpace(raw))
+	if accountType == "" {
+		return BybitAccountTypeStandard
+	}
+	return accountType
+}
+
+func IsSupportedBybitAccountType(raw string) bool {
+	switch NormalizeBybitAccountType(raw) {
+	case BybitAccountTypeStandard, BybitAccountTypeUnified:
+		return true
+	default:
+		return false
+	}
 }
 
 type LogWSConfig struct {

@@ -3,6 +3,7 @@ package kucoin
 import (
 	"context"
 	"math"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -72,14 +73,18 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-// GetOpenPositions retrieves currently active futures positions.
-func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+func (c *Client) getRawOpenPositions(ctx context.Context) ([]kucoinPosition, error) {
 	body, err := c.GetCtx(ctx, pathOpenPositions, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	positions, err := ParseResponse[[]kucoinPosition](body, "open_positions")
+	return ParseResponse[[]kucoinPosition](body, "open_positions")
+}
+
+// GetOpenPositions retrieves currently active futures positions.
+func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+	positions, err := c.getRawOpenPositions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -102,22 +107,21 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		absAmt := math.Abs(amt)
-		lever := int(decmath.ParseInt64(p.Leverage))
 		avgPx := decmath.ParseFloat(p.AvgEntryPrice)
-		liqPx := decmath.ParseFloat(p.LiquidationPrice)
-		realized := decmath.ParseFloat(p.RealisedPNL)
 
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:         p.Symbol,
-			HoldVol:        absAmt,
-			Leverage:       lever,
-			HoldAvgPrice:   avgPx,
-			LiquidatePrice: liqPx,
-			Realised:       realized,
-			PositionType:   posType,
-			OpenType:       2, // cross margin is default
+			Symbol:       p.Symbol,
+			HoldVol:      absAmt,
+			HoldAvgPrice: avgPx,
+			OpenAvgPrice: avgPx,
+			PositionType: posType,
 		})
 	}
 
 	return openPositions, nil
+}
+
+// GetRecentClosedPnL is not supported on Kucoin client yet.
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	return nil, exchange.ErrNotSupported
 }

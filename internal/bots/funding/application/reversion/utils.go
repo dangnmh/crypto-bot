@@ -7,14 +7,15 @@ import (
 	"reflect"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
-	"crypto-bot/internal/infrastructure/observability"
+	infrawatcher "crypto-bot/internal/infrastructure/watcher"
+	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -25,29 +26,36 @@ const (
 	reversionMethodFallbackClose = "fallback_close"
 )
 
-// Strategy implements strategy.Strategy interface in a lightweight, stateless manner.
+// Strategy implements strategy.BackgroundStrategy interface in a lightweight, stateless manner.
 type Strategy struct {
-	cfg    config.SymbolConfig
-	global *config.Config
-	deps   application.Deps
-	log    *slog.Logger
+	engine   *app.Engine
+	global   *config.Config
+	notifier notifier.Notifier
+	log      *slog.Logger
+	stores   map[string]strategy.FundingStoreSet
+
+	// Test fallbacks
+	clock         shared.Clock
+	orderNotifier infrawatcher.OrderNotifier
+	wsSub         infraws.Subscriber
 }
 
 func NewStrategy(
-	cfg config.SymbolConfig,
+	engine *app.Engine,
 	global *config.Config,
-	deps application.Deps,
+	n notifier.Notifier,
+	log *slog.Logger,
 ) *Strategy {
-	logger := deps.Log.With("flow", FlowReversion)
+	logger := log.With("flow", FlowReversion)
 	return &Strategy{
-		cfg:    cfg,
-		global: global,
-		deps:   deps,
-		log:    logger,
+		engine:   engine,
+		global:   global,
+		notifier: n,
+		log:      logger,
 	}
 }
 
-var _ strategy.Strategy = (*Strategy)(nil)
+var _ strategy.BackgroundStrategy = (*Strategy)(nil)
 
 func (s *Strategy) Flow() string {
 	return FlowReversion
@@ -57,50 +65,95 @@ func (s *Strategy) Enabled(cfg config.SymbolConfig) bool {
 	return cfg.FundingReversion.Enabled
 }
 
-func (s *Strategy) Execute(ctx context.Context, settleTime time.Time, candidate domain.Candidate) error {
-	ctx = observability.WithReversionID(ctx)
-
-	// Ensure global subscriptions are registered (lazy-loaded if not initialized at startup, e.g. in tests)
-	InitGlobalSubscriptions(ctx, s.deps, s.global)
-
-	s.log.InfoContext(ctx, "🚀 Triggering event-driven reversion bot lifecycle execution", slog.String("symbol", candidate.Symbol))
-
-	startEvt := CandidateFoundEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:       FlowReversion,
-			ReqID:      observability.ReversionID(ctx),
-			Symbol:     candidate.Symbol,
-			Exchange:   candidate.Config.Exchange,
-			SendNotify: false,
-			Timestamp:  s.deps.Clock.Now(),
-			EventID:    watermill.NewUUID(),
-			Seq:        1,
-			Topic:      TopicReversionCandidate,
-		},
-		Candidate:  candidate,
-		SettleTime: settleTime,
+func (s *Strategy) Start(ctx context.Context, stores map[string]strategy.FundingStoreSet) error {
+	s.stores = stores
+	runner := &StatelessRunner{
+		globalCfg: s.global,
+		bus:       s.engine.Bus,
+		log:       s.log,
+		engine:    s.engine,
+		stores:    s.stores,
+		notifier:  s.notifier,
+		// Pass test fallbacks
+		clock:         s.clock,
+		orderNotifier: s.orderNotifier,
+		wsSub:         s.wsSub,
 	}
 
-	return s.deps.EventBus.Publish(TopicReversionCandidate, startEvt)
+	InitGlobalSubscriptions(ctx, runner)
+	return nil
 }
 
-func (s *Strategy) CleanupOpenExposure(ctx context.Context) error {
-	err := s.deps.Client.CloseAllPositions(ctx, s.cfg.Symbol)
-	if err != nil {
-		s.log.ErrorContext(ctx, "Reversion fallback close all failed during cleanup",
-			slog.Any("error", err),
-			slog.String("symbol", s.cfg.Symbol),
-		)
-	}
-	return err
+func (s *Strategy) SetTestFallbacks(clock shared.Clock, orderNotifier infrawatcher.OrderNotifier, wsSub infraws.Subscriber) {
+	s.clock = clock
+	s.orderNotifier = orderNotifier
+	s.wsSub = wsSub
+}
+
+func (s *Strategy) Stop(ctx context.Context) error {
+	return nil
 }
 
 // StatelessRunner handles global, single-instance reversion event subscriptions.
 type StatelessRunner struct {
-	deps      application.Deps
+	deps      strategy.Deps
 	globalCfg *config.Config
 	bus       *eventbus.Bus
 	log       *slog.Logger
+
+	engine   *app.Engine
+	stores   map[string]strategy.FundingStoreSet
+	notifier notifier.Notifier
+
+	// Test fallbacks
+	clock         shared.Clock
+	orderNotifier infrawatcher.OrderNotifier
+	wsSub         infraws.Subscriber
+}
+
+func (r *StatelessRunner) clone(exch, reqID string) *StatelessRunner {
+	prov, err := r.engine.GetProvider(exch)
+	if err != nil {
+		r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
+		return r
+	}
+	stores := r.stores[exch]
+	if stores == nil {
+		r.log.Error("Failed to locate stores for clone", slog.String("exchange", exch))
+		return r
+	}
+
+	var clock shared.Clock = prov.TimeSync
+	if r.clock != nil {
+		clock = r.clock
+	}
+
+	var orderNotifier infrawatcher.OrderNotifier = prov.Watcher
+	if r.orderNotifier != nil {
+		orderNotifier = r.orderNotifier
+	}
+
+	var wsSub infraws.Subscriber = prov.Adapter
+	if r.wsSub != nil {
+		wsSub = r.wsSub
+	}
+
+	local := *r
+	local.deps = strategy.Deps{
+		Client:        prov.Client,
+		WsSub:         wsSub,
+		OrderNotifier: orderNotifier,
+		TickerStore:   stores.Ticker(),
+		ContractStore: stores.Contract(),
+		PriceStore:    stores.Price(),
+		FundingStore:  stores.Funding(),
+		DepthStore:    stores.Depth(),
+		Clock:         clock,
+		Log:           r.log.With("exchange", exch, "req", reqID),
+		Notifier:      r.notifier,
+		EventBus:      r.engine.Bus,
+	}
+	return &local
 }
 
 func (r *StatelessRunner) getSymbolConfig(symbol string) (config.SymbolConfig, bool) {
@@ -127,22 +180,26 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 
 	// Check if the event wants to trigger a notification
 	if revEvt, ok := payload.(ReversionEvent); ok && revEvt.ShouldNotify() {
-		level := notifier.LevelTrading
-		if topic == TopicReversionAbort || topic == TopicReversionError {
-			level = notifier.LevelCritical
-		}
+		if r.deps.Notifier != nil {
+			level := notifier.LevelTrading
+			if topic == TopicReversionAbort || topic == TopicReversionError {
+				level = notifier.LevelCritical
+			}
 
-		evt := notifier.Event{
-			Level:     level,
-			Symbol:    revEvt.GetSymbol(),
-			Message:   revEvt.GetMessage(),
-			Data:      revEvt.GetDataMap(),
-			Timestamp: r.deps.Clock.Now(),
-		}
+			evt := notifier.Event{
+				Level:     level,
+				Exchange:  revEvt.GetExchange(),
+				Symbol:    revEvt.GetSymbol(),
+				Message:   revEvt.GetMessage(),
+				Color:     revEvt.GetColor(),
+				Data:      revEvt.GetDataMap(),
+				Timestamp: r.deps.Clock.Now(),
+			}
 
-		go func() {
-			_ = r.deps.Notifier.Send(ctx, evt)
-		}()
+			go func() {
+				_ = r.deps.Notifier.Send(ctx, evt)
+			}()
+		}
 	}
 
 	return nil
@@ -208,9 +265,13 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		ReqID:         prev.ReqID,
 		Symbol:        symbol,
 		Exchange:      prev.Exchange,
+		Color:         prev.Color,
+		OrderID:       prev.OrderID,
+		ExternalID:    prev.ExternalID,
 		Timestamp:     timestamp,
 		Seq:           seq,
 		PreviousTopic: prev.Topic,
+		SettleTime:    prev.SettleTime,
 	}
 }
 
@@ -338,6 +399,13 @@ func (r *StatelessRunner) RetryWithBackoffOpts(ctx context.Context, attempts int
 func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
 	r.log.Debug("Position update received", slog.Any("pos", pos))
 
+	contractSize := 1.0
+	if r.deps.ContractStore != nil {
+		if cd, err := r.deps.ContractStore.GetContract(ctx, pos.Symbol); err == nil && cd.ContractSize > 0 {
+			contractSize = cd.ContractSize
+		}
+	}
+
 	fillPrice := pos.OpenAvgPrice
 	if fillPrice == 0 {
 		fillPrice = pos.HoldAvgPrice
@@ -357,35 +425,96 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 
 	if pos.HoldVol > 0 {
 		evt := OrderFilledEvent{
-			BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
+			BaseReversionEvent: nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
 			OrderID:            "", // Stateless matches purely by symbol
 			Side:               side,
 			CloseSide:          closeSide,
 			FillPrice:          fillPrice,
 			FillVol:            pos.HoldVol,
+			VolumeUSDT:         fillPrice * pos.HoldVol * contractSize,
 		}
 		go func() {
 			_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
 		}()
 	} else if pos.HoldVol == 0 {
-		evt := PositionClosedEvent{
-			BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
-			EntryPrice:         fillPrice,
-			ClosePrice:         fillPrice, // Fallback exit price matches open avg if no specific close avg price exists
-			CloseVol:           pos.CloseVol,
-			Reason:             "exchange_push",
-			GrossProfit:        pos.CloseProfitLoss,
-			NetProfit:          pos.CloseProfitLoss - pos.Fee,
-			Fee:                pos.Fee,
-			HoldFee:            pos.HoldFee,
-			Direction:          side,
-			Method:             "watcher",
-		}
-		if pos.CloseAvgPrice > 0 {
-			evt.ClosePrice = pos.CloseAvgPrice
-		}
+		evt := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
 		go func() {
 			_ = r.publishEvent(ctx, TopicReversionPositionClosed, evt)
 		}()
 	}
+}
+
+func calculatePnLPct(entry, exit float64, side shared.Side) float64 {
+	if entry <= 0 {
+		return 0
+	}
+	if side == shared.SideOpenLong {
+		return ((exit - entry) / entry) * 100.0
+	}
+	return ((entry - exit) / entry) * 100.0
+}
+
+func (r *StatelessRunner) buildAndEnrichClosedEvent(
+	ctx context.Context,
+	pos exchange.PersonalPositionUpdate,
+	fillPrice float64,
+	side shared.Side,
+	prev BaseReversionEvent,
+	contractSize float64,
+) PositionClosedEvent {
+	closePrice := fillPrice
+	if pos.CloseAvgPrice > 0 {
+		closePrice = pos.CloseAvgPrice
+	}
+
+	evt := PositionClosedEvent{
+		BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
+		EntryPrice:         fillPrice,
+		ClosePrice:         closePrice,
+		CloseVol:           pos.CloseVol,
+		Reason:             "exchange_push",
+		GrossProfit:        pos.CloseProfitLoss,
+		NetProfit:          pos.CloseProfitLoss - pos.Fee + pos.HoldFee,
+		PnLPct:             calculatePnLPct(fillPrice, closePrice, side),
+		VolumeUSDT:         pos.CloseVol * closePrice * contractSize,
+		Fee:                pos.Fee,
+		HoldFee:            pos.HoldFee,
+		Direction:          side,
+		Method:             "watcher",
+	}
+
+	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
+		startTime := prev.SettleTime
+		if !startTime.IsZero() {
+			startTime = startTime.Add(-1 * time.Second)
+		}
+		closedInfo, err := provider.GetRecentClosedPnL(ctx, pos.Symbol, prev.ExternalID, startTime)
+		if err != nil {
+			r.log.WarnContext(ctx, "Failed to query Closed PnL history; falling back to WS estimation",
+				slog.String("symbol", pos.Symbol),
+				slog.Any("error", err),
+			)
+		} else {
+			evt.EntryPrice = closedInfo.EntryPrice
+			evt.ClosePrice = closedInfo.ExitPrice
+			evt.CloseVol = closedInfo.ClosedSize
+			evt.GrossProfit = closedInfo.GrossPnL
+			evt.Fee = closedInfo.Fee
+			evt.HoldFee = closedInfo.FundingFee
+			if closedInfo.NetPnl != 0 {
+				evt.NetProfit = closedInfo.NetPnl
+			} else {
+				evt.NetProfit = closedInfo.GrossPnL - evt.Fee + closedInfo.FundingFee
+			}
+			if closedInfo.PnLRate != 0 {
+				evt.PnLPct = closedInfo.PnLRate
+			} else {
+				evt.PnLPct = calculatePnLPct(closedInfo.EntryPrice, closedInfo.ExitPrice, side)
+			}
+			evt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
+			evt.HoldDurationMs = closedInfo.DurationMs
+		}
+	}
+
+	return evt
 }

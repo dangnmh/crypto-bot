@@ -150,8 +150,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	defer server.Close()
 
 	// 2. Initialize REST Client and test GetURLFunc
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	restClient := kucoin.NewClient(server.Client(), server.URL, "apiKey", "secret", "phrase", config.LoggingConfig{})
 	urlFunc := kucoin.GetURLFunc(ctx, restClient)

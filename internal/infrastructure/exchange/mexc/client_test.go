@@ -22,7 +22,7 @@ func newTestClient(server *httptest.Server) *mexc.Client {
 }
 
 // mustJSON marshals v to JSON or panics.
-func mustJSON(t *testing.T, v interface{}) []byte {
+func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)
 	if err != nil {

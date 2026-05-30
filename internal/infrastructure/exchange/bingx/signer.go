@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 )
 
 // SignParams signs query parameters using HMAC-SHA256 with the API secret.
@@ -18,16 +19,16 @@ func SignParams(secret string, params map[string]string) string {
 	}
 	sort.Strings(keys)
 
-	var query string
+	var query strings.Builder
 	for i, k := range keys {
 		if i > 0 {
-			query += "&"
+			query.WriteString("&")
 		}
 		// BingX requires standard query string formatting (e.g. key=value)
-		query += fmt.Sprintf("%s=%s", k, url.QueryEscape(params[k]))
+		_, _ = fmt.Fprintf(&query, "%s=%s", k, url.QueryEscape(params[k]))
 	}
 
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(query))
+	mac.Write([]byte(query.String()))
 	return hex.EncodeToString(mac.Sum(nil))
 }

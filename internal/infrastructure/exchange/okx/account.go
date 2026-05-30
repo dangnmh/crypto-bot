@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -106,8 +107,7 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-// GetOpenPositions returns all open positions.
-func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]okxPosition, error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -120,7 +120,12 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		return nil, err
 	}
 
-	positions, err := ParseResponse[okxPosition](body, "open_positions")
+	return ParseResponse[okxPosition](body, "open_positions")
+}
+
+// GetOpenPositions returns all open positions.
+func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+	positions, err := c.getRawOpenPositions(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -133,34 +138,80 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		lever, _ := strconv.Atoi(pos.Lever)
 		avgPx, _ := strconv.ParseFloat(pos.AvgPx, 64)
-		liqPx, _ := strconv.ParseFloat(pos.LiqPx, 64)
-		realized, _ := strconv.ParseFloat(pos.RealizedPnl, 64)
-		margin, _ := strconv.ParseFloat(pos.Margin, 64)
 
 		posType := 1 // long
 		if pos.PosSide == posSideShort {
 			posType = 2
 		}
 
-		openType := 1 // isolated
-		if pos.MgnMode == modeCross {
-			openType = 2
-		}
-
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:         pos.InstID,
-			HoldVol:        holdVol,
-			Leverage:       lever,
-			HoldAvgPrice:   avgPx,
-			LiquidatePrice: liqPx,
-			Realised:       realized,
-			IM:             margin,
-			PositionType:   posType,
-			OpenType:       openType,
+			Symbol:       pos.InstID,
+			HoldVol:      holdVol,
+			HoldAvgPrice: avgPx,
+			OpenAvgPrice: avgPx,
+			PositionType: posType,
 		})
 	}
 
 	return openPositions, nil
+}
+
+type okxClosedPosition struct {
+	InstID       string `json:"instId"`
+	CloseAvgPx   string `json:"closeAvgPx"`
+	OpenAvgPx    string `json:"openAvgPx"`
+	Pnl          string `json:"pnl"`
+	CloseTotalSz string `json:"closeTotalSz"`
+	CTime        string `json:"cTime"`
+	UTime        string `json:"uTime"`
+}
+
+// GetRecentClosedPnL queries the historical closed position metrics from OKX.
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	params := map[string]string{
+		paramInstType: instTypeSwap,
+		paramLimit:    "10",
+	}
+	if symbol != "" {
+		params[paramInstId] = symbol
+	}
+	if !startTime.IsZero() {
+		params["begin"] = strconv.FormatInt(startTime.UnixMilli(), 10)
+	}
+
+	body, err := c.GetCtx(ctx, "/api/v5/account/positions-history", params)
+	if err != nil {
+		return nil, err
+	}
+
+	positions, err := ParseResponse[okxClosedPosition](body, "positions_history")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(positions) == 0 {
+		return nil, fmt.Errorf("no closed position history found for symbol %s", symbol)
+	}
+
+	pos := positions[0]
+	entryPrice, _ := strconv.ParseFloat(pos.OpenAvgPx, 64)
+	exitPrice, _ := strconv.ParseFloat(pos.CloseAvgPx, 64)
+	closedSize, _ := strconv.ParseFloat(pos.CloseTotalSz, 64)
+	closedPnl, _ := strconv.ParseFloat(pos.Pnl, 64)
+
+	cTime, _ := strconv.ParseInt(pos.CTime, 10, 64)
+	uTime, _ := strconv.ParseInt(pos.UTime, 10, 64)
+	duration := max(uTime-cTime, 0)
+
+	return &exchange.ClosedPnLInfo{
+		Symbol:     pos.InstID,
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: closedSize,
+		GrossPnL:   closedPnl,
+		Fee:        0,
+		FundingFee: 0,
+		DurationMs: duration,
+	}, nil
 }

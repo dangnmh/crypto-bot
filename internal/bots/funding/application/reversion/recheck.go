@@ -50,7 +50,6 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 		BaseReversionEvent: nextReversionBase(waitEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		FundingRate:        td.FundingRate,
 		Candidate:          c,
-		SettleTime:         waitEvt.SettleTime,
 	}
 
 	return r.publishEvent(ctx, TopicReversionConfirmed, evt)

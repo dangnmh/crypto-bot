@@ -78,3 +78,15 @@ func TestLoad_EmptyJSON(t *testing.T) {
 	assert.Equal(t, "", cfg.Name)
 	assert.Equal(t, 0, cfg.Value)
 }
+
+func TestLoad_InvalidSchema(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad_schema.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"name":"test","value":"not_an_int"}`), 0o600))
+
+	_, err := config.Load[testConfig](path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parse config")
+}

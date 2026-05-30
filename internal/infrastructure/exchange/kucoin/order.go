@@ -45,7 +45,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		side = sideSell
 	}
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol: req.Symbol,
 		"side":      side,
 		paramType:   ordType,
@@ -126,8 +126,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder fetches details of a specific order.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) getRawOrder(ctx context.Context, orderID string) (*kucoinOrder, error) {
 	path := fmt.Sprintf("%s/%s", pathGetOrder, orderID)
 	body, err := c.GetCtx(ctx, path, nil)
 	if err != nil {
@@ -138,12 +137,10 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderI
 	if err != nil {
 		return nil, err
 	}
-
-	return c.toOrderInfo(&res), nil
+	return &res, nil
 }
 
-// GetOpenOrders returns all currently active orders.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]kucoinOrder, error) {
 	params := map[string]string{
 		"status": "active",
 	}
@@ -156,7 +153,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, err
 	}
 
-	// KuCoin Pending Orders can return a paginated object or list
+	// Paginated or direct list
 	type orderListData struct {
 		Items []kucoinOrder `json:"items"`
 	}
@@ -166,13 +163,32 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	if err == nil {
 		rawList = listParsed.Items
 	} else {
-		// Try parsing directly as list
 		directParsed, err := ParseResponse[[]kucoinOrder](body, "open_orders")
 		if err == nil {
 			rawList = directParsed
 		} else {
 			return nil, fmt.Errorf("parse open orders failed: %w", err)
 		}
+	}
+
+	return rawList, nil
+}
+
+// GetOrder fetches details of a specific order.
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.toOrderInfo(raw), nil
+}
+
+// GetOpenOrders returns all currently active orders.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawList, err := c.getRawOpenOrders(ctx, symbol)
+	if err != nil {
+		return nil, err
 	}
 
 	infos := make([]exchange.OrderInfo, 0, len(rawList))
@@ -221,7 +237,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 // ChangeLeverage changes leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol: req.Symbol,
 		"leverage":  strconv.Itoa(req.Leverage),
 	}

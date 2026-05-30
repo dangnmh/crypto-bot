@@ -90,6 +90,7 @@ type TradeIntent struct {
 	Side         shared.Side
 	CloseSide    shared.Side
 	RefPriceType string // "bestBid" or "bestAsk"
+	ExternalID   string `json:"external_id,omitempty"`
 }
 
 // TradePlan holds values calculated after enrichment (contract specs + market data).

@@ -42,6 +42,25 @@ type AccountProvider interface {
 	GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)
 }
 
+// ClosedPnLInfo represents the standardized historical ledger of a closed trade.
+type ClosedPnLInfo struct {
+	Symbol     string
+	EntryPrice float64
+	ExitPrice  float64
+	ClosedSize float64
+	GrossPnL   float64
+	Fee        float64
+	FundingFee float64
+	DurationMs int64
+	NetPnl     float64
+	PnLRate    float64
+}
+
+// ClosedPnLProvider is an optional interface that exchange REST clients can implement.
+type ClosedPnLProvider interface {
+	GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*ClosedPnLInfo, error)
+}
+
 // Client is the generic composite interface for any Exchange provider.
 type Client interface {
 	MarketDataProvider

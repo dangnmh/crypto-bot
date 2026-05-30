@@ -73,6 +73,14 @@ func (d *DryRunClient) GetOpenPositions(ctx context.Context, symbol string) ([]P
 	return d.inner.GetOpenPositions(ctx, symbol)
 }
 
+// GetRecentClosedPnL delegates to the inner client if it implements ClosedPnLProvider.
+func (d *DryRunClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*ClosedPnLInfo, error) {
+	if provider, ok := d.inner.(ClosedPnLProvider); ok {
+		return provider.GetRecentClosedPnL(ctx, symbol, extOrderID, startTime)
+	}
+	return nil, ErrNotSupported
+}
+
 // ── OrderExecutor (intercepted — no real orders) ─────────────────────.
 
 func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (string, error) {

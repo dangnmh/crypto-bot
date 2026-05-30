@@ -19,13 +19,16 @@ Our goal is a **strict minimum of 90% test coverage** for all packages, enforced
   - Use `require.NoError(t, err)` for hard assertions (test aborts on failure).
 - **Mocking:** Use `go.uber.org/mock/gomock` for generating and utilizing mock interfaces. All external I/O (exchange APIs, WebSockets) must be mocked in unit tests.
 
-### 1.2 Blackbox Testing
+### 1.2 Blackbox & Whitebox Testing
 
-- **Always use blackbox testing:** Test packages should be declared with the `_test` suffix (e.g., `package mypkg_test` instead of `package mypkg`). This ensures you only test the public API of the package, exactly as a consumer would use it.
-- **Do not export for testing:** Never export a function, variable, or struct field solely for the purpose of making it accessible to tests. If it is internal logic, it should remain unexported and be tested implicitly through the public API.
+- **Prefer blackbox testing:** Try to use blackbox testing as much as possible. Test packages should be declared with the `_test` suffix (e.g., `package mypkg_test` instead of `package mypkg`). This ensures you only test the public API of the package, exactly as a consumer would use it.
+- **Fallback to whitebox testing:** If a blackbox test is not feasible (e.g., when testing unexported logic, complex internal algorithms, or helper functions that should not be exposed), you may fall back to whitebox testing. To do this:
+  - Keep the majority of your test cases blackbox in `mypkg_test`.
+  - Place whitebox test cases in a file named `mypkg_internal_test.go` (or similar) using `package mypkg`. This grants access to unexported functions, structs, and variables without polluting the public API.
+- **Do not export for testing:** Never export a function, variable, or struct field solely for the purpose of making it accessible to blackbox tests. If it is internal logic, either test it implicitly through public APIs, or use a whitebox test fallback in the same package.
 
 > [!NOTE]
-> **Refactor over workarounds:** If the code is too complicated to write a blackbox test for, do not break these rules. Instead, you must **refactor the code**: split the function, apply clean code principles and design patterns, and strictly follow the [Coding Conventions](coding_conventions.md) to decouple the logic so it can be tested properly.
+> **Refactor over workarounds:** If the code is too complicated to write a blackbox test for, apply clean code principles and design patterns, and strictly follow the [Coding Conventions](coding_conventions.md) to decouple the logic so it can be tested properly.
 
 ### 1.3 Table-Driven Tests
 

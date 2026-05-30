@@ -110,8 +110,8 @@ func mapOrderInfo(raw gateapi.FuturesOrder) exchange.OrderInfo {
 		}
 	}
 
-	if strings.HasPrefix(raw.Text, "t-") {
-		info.ExternalOID = strings.TrimPrefix(raw.Text, "t-")
+	if after, ok := strings.CutPrefix(raw.Text, "t-"); ok {
+		info.ExternalOID = after
 	} else {
 		info.ExternalOID = raw.Text
 	}

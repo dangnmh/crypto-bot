@@ -99,24 +99,36 @@ func parseCancelOrdersResponse(body []byte) ([]cancelOrderResult, error) {
 	return results, nil
 }
 
-// GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) getRawOrder(ctx context.Context, orderID string) (*mexcOrder, error) {
 	path := fmt.Sprintf("/api/v1/private/order/get/%s", orderID)
 	body, err := c.GetCtx(ctx, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := ParseResponse[exchange.OrderInfo](body, "get_order")
+	data, err := ParseResponse[mexcOrder](body, "get_order")
 	if err != nil {
 		return nil, err
 	}
 	return &data, nil
 }
 
-// GetOpenOrders returns all open orders, optionally filtered by symbol.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	params := map[string]string{}
+func (c *Client) getRawOrderByExOrderID(ctx context.Context, symbol, extOrderID string) (*mexcOrder, error) {
+	path := fmt.Sprintf("/api/v1/private/order/external/%s/%s", symbol, extOrderID)
+	body, err := c.GetCtx(ctx, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := ParseResponse[mexcOrder](body, "get_order_by_external")
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]mexcOrder, error) {
+	params := map[string]any{}
 	if symbol != "" {
 		params[paramSymbol] = symbol
 	}
@@ -126,7 +138,30 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, err
 	}
 
-	return ParseResponse[[]exchange.OrderInfo](body, "get_open_orders")
+	return ParseResponse[[]mexcOrder](body, "get_open_orders")
+}
+
+// GetOrder queries a single order by ID.
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return raw.toOrderInfo(), nil
+}
+
+// GetOpenOrders returns all open orders, optionally filtered by symbol.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawOrders, err := c.getRawOpenOrders(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]exchange.OrderInfo, len(rawOrders))
+	for i := range rawOrders {
+		orders[i] = *rawOrders[i].toOrderInfo()
+	}
+	return orders, nil
 }
 
 // CloseAllPositions closes all positions for a symbol.

@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"sync"
 
+	"crypto-bot/pkg/formatutil"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
-
-const telegramInfoPrefix = "🔵 [INFO]"
 
 type TelegramProvider struct {
 	bot    *tgbotapi.BotAPI
@@ -109,25 +109,46 @@ func (p *TelegramProvider) sendTelegram(evt Event) {
 }
 
 func (p *TelegramProvider) formatMessage(evt Event) string {
-	prefix := telegramInfoPrefix
-	switch evt.Level {
-	case LevelCritical:
-		prefix = "🔴 [CRITICAL]"
-	case LevelTrading:
-		prefix = "🟡 [TRADING]"
-	case LevelInfo:
-		prefix = telegramInfoPrefix
+	color := evt.Color
+	if color == "" {
+		color = ColorYellow
 	}
 
-	symbol := ""
+	var emoji string
+	switch color {
+	case ColorGreen:
+		emoji = "🟢"
+	case ColorRed:
+		emoji = "🔴"
+	case ColorBlue:
+		emoji = "🔵"
+	case ColorYellow:
+		emoji = "🟡"
+	default:
+		emoji = "🟡"
+	}
+
+	prefix := fmt.Sprintf("%s [%s]", emoji, evt.Level)
+
+	contextLabel := ""
+	if evt.Exchange != "" {
+		contextLabel = fmt.Sprintf(" [%s]", evt.Exchange)
+	}
 	if evt.Symbol != "" {
-		symbol = fmt.Sprintf(" [%s]", evt.Symbol)
+		contextLabel = fmt.Sprintf("%s [%s]", contextLabel, evt.Symbol)
 	}
 
 	data := ""
 	for k, v := range evt.Data {
-		data = fmt.Sprintf("%s\n%s: %v", data, k, v)
+		valStr := fmt.Sprintf("%v", v)
+		switch val := v.(type) {
+		case float64:
+			valStr = formatutil.FormatFloatMax4(val)
+		case float32:
+			valStr = formatutil.FormatFloatMax4(float64(val))
+		}
+		data = fmt.Sprintf("%s\n%s: %s", data, k, valStr)
 	}
 
-	return fmt.Sprintf("%s%s\n%s\n%s", prefix, symbol, evt.Message, data)
+	return fmt.Sprintf("%s%s\n%s\n%s", prefix, contextLabel, evt.Message, data)
 }

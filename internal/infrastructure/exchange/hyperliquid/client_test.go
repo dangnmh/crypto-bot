@@ -275,7 +275,6 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.Len(t, positions, 1)
 	assert.Equal(t, "BTC", positions[0].Symbol)
 	assert.Equal(t, 0.01, positions[0].HoldVol)
-	assert.Equal(t, 10, positions[0].Leverage)
 	assert.Equal(t, 1, positions[0].PositionType)
 }
 

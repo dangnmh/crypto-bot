@@ -3,10 +3,12 @@ package bybit_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -424,9 +426,6 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", p.Symbol)
 	assert.Equal(t, 1.5, p.HoldVol)
 	assert.Equal(t, 50000.0, p.HoldAvgPrice)
-	assert.Equal(t, 45000.0, p.LiquidatePrice)
-	assert.Equal(t, 200.0, p.Realised)
-	assert.Equal(t, 10, p.Leverage)
 	assert.Equal(t, 1, p.PositionType) // Long
 }
 
@@ -680,7 +679,7 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	// Check extract ping config
 	ping, interval := adapter.GetPingConfig()
 	assert.Equal(t, 20*time.Second, interval)
-	pingMap, ok := ping.(map[string]interface{})
+	pingMap, ok := ping.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "ping", pingMap["op"])
 
@@ -1008,4 +1007,137 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, exchange.OrderStateCanceled, info.State)
 	assert.Equal(t, 0, info.Side) // Unknown side is mapped to 0
+}
+
+func TestClient_GetRecentClosedPnL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		response   string
+		wantErr    string
+		wantSymbol string
+	}{
+		{
+			name: "Successful query",
+			response: `{
+				"retCode": 0,
+				"retMsg": "OK",
+				"result": {
+					"list": [{
+						"symbol": "BTCUSDT",
+						"side": "Buy",
+						"qty": "1.0",
+						"orderPrice": "50000",
+						"orderType": "Limit",
+						"closedSize": "1.0",
+						"avgEntryPrice": "50000",
+						"avgExitPrice": "51000",
+						"closedPnl": "1000",
+						"openFee": "10",
+						"closeFee": "11",
+						"createdTime": "{{CREATED_TIME}}",
+						"updatedTime": "{{UPDATED_TIME}}"
+					}]
+				}
+			}`,
+			wantSymbol: "BTCUSDT",
+		},
+		{
+			name: "Empty response",
+			response: `{
+				"retCode": 0,
+				"retMsg": "OK",
+				"result": {
+					"list": []
+				}
+			}`,
+			wantErr: "no closed pnl records found",
+		},
+		{
+			name: "API Error in Order Lookup",
+			response: `{
+				"retCode": 50002,
+				"retMsg": "Mock error"
+			}`,
+			wantErr: "bybit get order by external ID api error: retCode=50002",
+		},
+		{
+			name: "API Error in Closed PnL",
+			response: `{
+				"retCode": 50002,
+				"retMsg": "Mock error"
+			}`,
+			wantErr: "bybit get closed pnl error: retCode=50002",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.Contains(r.URL.Path, "/v5/order/realtime") {
+					if tt.name == "API Error in Order Lookup" {
+						_, _ = w.Write([]byte(`{
+							"retCode": 50002,
+							"retMsg": "Mock error"
+						}`))
+						return
+					}
+					_, _ = w.Write([]byte(`{
+						"retCode": 0,
+						"retMsg": "OK",
+						"result": {
+							"list": [{
+								"orderId": "bybit-ord-987654",
+								"orderLinkId": "ext-123"
+							}]
+						}
+					}`))
+					return
+				}
+				if strings.Contains(r.URL.Path, "transaction-log") {
+					_, _ = w.Write([]byte(`{
+						"retCode": 0,
+						"retMsg": "OK",
+						"result": {
+							"list": [{
+								"symbol": "BTCUSDT",
+								"type": "FUNDING",
+								"change": "-0.05"
+							}]
+						}
+					}`))
+					return
+				}
+				now := time.Now().UnixMilli()
+				resStr := strings.ReplaceAll(tt.response, "{{UPDATED_TIME}}", fmt.Sprintf("%d", now))
+				resStr = strings.ReplaceAll(resStr, "{{CREATED_TIME}}", fmt.Sprintf("%d", now-5000))
+				_, _ = w.Write([]byte(resStr))
+			}))
+			defer server.Close()
+
+			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+			info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext-123", time.Time{})
+
+			if tt.wantErr != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, info)
+				assert.Equal(t, tt.wantSymbol, info.Symbol)
+				assert.Equal(t, 50000.0, info.EntryPrice)
+				assert.Equal(t, 51000.0, info.ExitPrice)
+				assert.Equal(t, 1.0, info.ClosedSize)
+				assert.Equal(t, 1021.05, info.GrossPnL)
+				assert.Equal(t, 21.0, info.Fee)
+				assert.Equal(t, -0.05, info.FundingFee)
+				assert.Equal(t, int64(5000), info.DurationMs)
+				assert.Equal(t, 1000.0, info.NetPnl)
+			}
+		})
+	}
 }

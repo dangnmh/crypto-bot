@@ -16,4 +16,9 @@ const (
 	wsTopicPosition = "position"
 
 	orderTypeLimit = "Limit"
+	limitKey       = "limit"
+
+	accountTypeContract = "CONTRACT"
+	accountTypeUnified  = "UNIFIED"
+	paramAccountType    = "accountType"
 )

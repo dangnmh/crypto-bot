@@ -30,7 +30,7 @@ func main() {
 		log.Fatalf("Lỗi đọc response: %v", err)
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(body, &data); err != nil {
 		log.Fatalf("Lỗi parse JSON: %v", err)
 	}
@@ -40,12 +40,12 @@ func main() {
 	}
 
 	// data["data"] is usually a struct for the contract
-	detail, ok := data["data"].(map[string]interface{})
+	detail, ok := data["data"].(map[string]any)
 	if !ok {
 		log.Fatalf("Không tìm thấy thông tin contract")
 	}
 
-	if depthSteps, ok := detail["depthStepList"].([]interface{}); ok {
+	if depthSteps, ok := detail["depthStepList"].([]any); ok {
 		fmt.Printf("✅ Các mức gộp sổ lệnh (obStep) hợp lệ cho %s:\n", symbol)
 		for _, step := range depthSteps {
 			fmt.Printf("   - \"%v\"\n", step)

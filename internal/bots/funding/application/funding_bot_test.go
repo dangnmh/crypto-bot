@@ -1,0 +1,103 @@
+package application_test
+
+import (
+	"context"
+	"log/slog"
+	"testing"
+
+	"crypto-bot/internal/bots/funding/application"
+	"crypto-bot/internal/bots/funding/application/reversion"
+	"crypto-bot/internal/bots/funding/application/strategy"
+	"crypto-bot/internal/bots/funding/application/trailing"
+	"crypto-bot/internal/bots/funding/application/trap"
+	"crypto-bot/internal/bots/funding/config"
+	"crypto-bot/internal/infrastructure/app"
+	"crypto-bot/internal/testutil/mocks"
+	"crypto-bot/pkg/eventbus"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+)
+
+func TestNewFundingBot(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Symbols: []config.SymbolConfig{},
+	}
+	sysCfg := &config.SystemConfig{}
+	engine := &app.Engine{
+		Bus: eventbus.New(slog.Default()),
+	}
+
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockNotifier(ctrl)
+
+	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
+	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
+
+	bot := application.NewFundingBot(
+		cfg, sysCfg, engine, m,
+		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		slog.Default(),
+	)
+	require.NotNil(t, bot)
+}
+
+func TestFundingBot_Stop(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{}
+	sysCfg := &config.SystemConfig{}
+	engine := &app.Engine{
+		Bus: eventbus.New(slog.Default()),
+	}
+
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockNotifier(ctrl)
+
+	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
+	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
+
+	bot := application.NewFundingBot(
+		cfg, sysCfg, engine, m,
+		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		slog.Default(),
+	)
+	err := bot.Stop(context.Background())
+	assert.NoError(t, err)
+}
+
+func TestFundingBot_Run_CancelledContext(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Symbols: []config.SymbolConfig{},
+	}
+	sysCfg := &config.SystemConfig{}
+	engine := &app.Engine{
+		Bus: eventbus.New(slog.Default()),
+	}
+
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockNotifier(ctrl)
+
+	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
+	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
+
+	bot := application.NewFundingBot(
+		cfg, sysCfg, engine, m,
+		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		slog.Default(),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := bot.Run(ctx)
+	assert.NoError(t, err)
+}

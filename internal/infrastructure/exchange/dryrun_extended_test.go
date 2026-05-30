@@ -3,6 +3,7 @@ package exchange_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
@@ -15,7 +16,7 @@ func TestWsOrderDeal_GetOrderID(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		orderID interface{}
+		orderID any
 		want    string
 	}{
 		{"string ID", "abc123", "abc123"},
@@ -132,10 +133,41 @@ func TestDryRunClient_UniqueOrderIDs(t *testing.T) {
 	dry := exchange.NewDryRunClient(stub)
 
 	ids := make(map[string]bool)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		id, err := dry.CreateOrder(context.Background(), exchange.SubmitOrderRequest{})
 		require.NoError(t, err)
 		assert.False(t, ids[id], "duplicate order ID: %s", id)
 		ids[id] = true
 	}
+}
+
+type stubClosedPnLClient struct {
+	stubClient
+}
+
+func (s *stubClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	return &exchange.ClosedPnLInfo{Symbol: symbol, EntryPrice: 123}, nil
+}
+
+func TestDryRunClient_GetRecentClosedPnL_Supported(t *testing.T) {
+	t.Parallel()
+
+	inner := &stubClosedPnLClient{}
+	dry := exchange.NewDryRunClient(inner)
+
+	info, err := dry.GetRecentClosedPnL(context.Background(), "BTC", "ord123", time.Time{})
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, "BTC", info.Symbol)
+	assert.Equal(t, 123.0, info.EntryPrice)
+}
+
+func TestDryRunClient_GetRecentClosedPnL_NotSupported(t *testing.T) {
+	t.Parallel()
+
+	inner := &stubClient{}
+	dry := exchange.NewDryRunClient(inner)
+
+	_, err := dry.GetRecentClosedPnL(context.Background(), "BTC", "ord123", time.Time{})
+	require.ErrorIs(t, err, exchange.ErrNotSupported)
 }

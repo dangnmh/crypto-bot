@@ -133,3 +133,35 @@ func TestApplySafetySizing_SizesDownHighImpactRatio(t *testing.T) {
 		t.Errorf("expected capped volume in (0, 35], got %f", c.Volume)
 	}
 }
+
+func TestApplySafetySizing_InvalidRefPrice(t *testing.T) {
+	t.Parallel()
+
+	c := domain.Candidate{
+		Config: domain.TradeConfig{
+			MarginUSDT:          100,
+			Leverage:            10,
+			MaxPriceDiffPercent: 0.5,
+		},
+		TradeIntent: domain.TradeIntent{FundingRate: 0.02},
+		TradePlan:   domain.TradePlan{Volume: 50},
+		MarketData: domain.MarketData{
+			LastPrice: 0, // Invalid refPrice
+			BestAsk:   0,
+			Amount24:  1000000,
+		},
+		ContractSpec: domain.ContractSpec{
+			ContractSize: 0.01,
+			MinVol:       10,
+			TakerFeeRate: 0.0006,
+		},
+	}
+
+	res := c.ApplySafetySizing(domain.SafetyLimits{MaxImpactRatio: 0.05})
+	if res.Passed {
+		t.Fatal("expected safety sizing to fail due to invalid refPrice")
+	}
+	if res.RejectReason != "invalid execution reference price" {
+		t.Errorf("expected reject reason 'invalid execution reference price', got %q", res.RejectReason)
+	}
+}

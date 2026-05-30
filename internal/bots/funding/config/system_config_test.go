@@ -109,6 +109,38 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 	assert.Greater(t, int64(cfg.Sync.FundingSync), int64(0), "FundingSync should be defaulted")
 }
 
+func TestLoadSystemConfig_InvalidBybitAccountType(t *testing.T) {
+	// Cannot run parallel: sets env vars.
+	t.Setenv("BYBIT_API_KEY", "test-key")
+	t.Setenv("BYBIT_API_SECRET", "test-secret")
+
+	content := `{
+		"sync": {},
+		"safety": {},
+		"exchange": {
+			"bybit": {
+				"enable": true,
+				"future": {"baseURL": "https://api.bybit.com"},
+				"websocket": {
+					"publicURL": "wss://stream.bybit.com/v5/public/linear",
+					"privateURL": "wss://stream.bybit.com/v5/private",
+					"maxPairsPerWSConn": 30
+				},
+				"accountType": "classic"
+			}
+		}
+	}`
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "system.jsonc")
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	_, err := config.LoadSystemConfig(path)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "api_config")
+}
+
 func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	// Cannot run parallel: sets env vars.
 	t.Setenv("MEXC_API_KEY", "test-key")

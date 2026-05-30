@@ -33,7 +33,7 @@ type ExchangeAdapter interface {
 	SetPool(pool *pkgws.Pool)
 
 	// Auth & Routing.
-	GetPingConfig() (payload interface{}, interval time.Duration)
+	GetPingConfig() (payload any, interval time.Duration)
 	GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client)
 	GetChannelExtractor() func([]byte) string
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -89,8 +90,7 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-// GetOpenPositions retrieves currently active futures positions.
-func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]bingxPosition, error) {
 	params := map[string]string{}
 	if symbol != "" {
 		params[paramSymbol] = symbol
@@ -101,7 +101,12 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		return nil, err
 	}
 
-	res, err := ParseResponse[[]bingxPosition](body, "open_positions")
+	return ParseResponse[[]bingxPosition](body, "open_positions")
+}
+
+// GetOpenPositions retrieves currently active futures positions.
+func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+	res, err := c.getRawOpenPositions(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -121,25 +126,21 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		absAmt := math.Abs(amt)
-		lev := decmath.ParseInt(p.Leverage)
 		entry := decmath.ParseFloat(p.EntryPrice)
-		pnl := decmath.ParseFloat(p.UnrealizedProfit)
-
-		marginMode := 1 // isolated
-		if !p.Isolated {
-			marginMode = 2 // cross
-		}
 
 		positions = append(positions, exchange.Position{
 			Symbol:       p.Symbol,
 			HoldVol:      absAmt,
-			Leverage:     lev,
 			HoldAvgPrice: entry,
+			OpenAvgPrice: entry,
 			PositionType: sideVal,
-			OpenType:     marginMode,
-			Realised:     pnl,
 		})
 	}
 
 	return positions, nil
+}
+
+// GetRecentClosedPnL is not supported on BingX client yet.
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	return nil, exchange.ErrNotSupported
 }

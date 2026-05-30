@@ -55,6 +55,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{"OK-ACCESS-KEY", "OK-ACCESS-PASSPHRASE"}),
+			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
 	}
@@ -129,12 +130,12 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 }
 
 // Post makes a signed POST request.
-func (c *Client) Post(ctx context.Context, path string, body interface{}) ([]byte, error) {
+func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error) {
 	return c.PostCtx(ctx, path, body)
 }
 
 // PostCtx makes a signed POST request with context.
-func (c *Client) PostCtx(ctx context.Context, path string, body interface{}) ([]byte, error) {
+func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, error) {
 	url := c.baseURL + path
 
 	var bodyReader io.Reader

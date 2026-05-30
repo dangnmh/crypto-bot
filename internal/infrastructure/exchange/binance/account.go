@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -91,18 +93,10 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		entryPrice := decmath.ParseFloat(lo.FromPtr(raw.EntryPrice))
-		liqPrice := decmath.ParseFloat(lo.FromPtr(raw.LiquidationPrice))
-		unrealized := decmath.ParseFloat(lo.FromPtr(raw.UnRealizedProfit))
-		lev := decmath.ParseInt(lo.FromPtrOr(raw.Leverage, "1"))
 
 		posType := 1
 		if amt < 0 {
 			posType = 2
-		}
-
-		openType := 1
-		if strings.EqualFold(raw.GetMarginType(), "cross") {
-			openType = 2
 		}
 
 		if raw.GetPositionSide() == posSideShort {
@@ -110,17 +104,93 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		positions = append(positions, exchange.Position{
-			Symbol:         raw.GetSymbol(),
-			HoldVol:        math.Abs(amt),
-			HoldAvgPrice:   entryPrice,
-			OpenAvgPrice:   entryPrice,
-			LiquidatePrice: liqPrice,
-			Realised:       unrealized,
-			Leverage:       lev,
-			PositionType:   posType,
-			OpenType:       openType,
+			Symbol:       raw.GetSymbol(),
+			HoldVol:      math.Abs(amt),
+			HoldAvgPrice: entryPrice,
+			OpenAvgPrice: entryPrice,
+			PositionType: posType,
 		})
 	}
 
 	return positions, nil
+}
+
+// GetRecentClosedPnL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	// Look up numeric orderID from client order ID (extOrderID / clientOid)
+	orderInfo, err := c.GetOrder(ctx, symbol+":"+extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("binance get order by external ID %s failed: %w", extOrderID, err)
+	}
+	closingOrderId, parseErr := strconv.ParseInt(orderInfo.OrderID, 10, 64)
+	if parseErr != nil {
+		return nil, fmt.Errorf("binance parse numeric order ID %s failed: %w", orderInfo.OrderID, parseErr)
+	}
+
+	req := c.sdkClient.RestApi.TradeAPI.AccountTradeList(ctx).
+		Symbol(symbol).
+		Limit(10)
+
+	if !startTime.IsZero() {
+		req = req.StartTime(startTime.UnixMilli())
+	}
+
+	resp, err := c.sdkClient.RestApi.TradeAPI.AccountTradeListExecute(req)
+	if err != nil {
+		return nil, fmt.Errorf("binance get closed trades: %w", err)
+	}
+
+	items := resp.Data.Items
+	if len(items) == 0 {
+		return nil, fmt.Errorf("no user trades found for symbol %s", symbol)
+	}
+
+	// The list is returned in chronological order; the last item is the latest trade fill.
+	latestTrade := items[len(items)-1]
+
+	var totalQty float64
+	var totalRealizedPnl float64
+	var totalCommission float64
+	var weightedPriceSum float64
+
+	for i := range items {
+		item := &items[i]
+		if item.GetOrderId() == closingOrderId {
+			qty := decmath.ParseFloat(item.GetQty())
+			price := decmath.ParseFloat(item.GetPrice())
+			realizedPnl := decmath.ParseFloat(item.GetRealizedPnl())
+			commission := decmath.ParseFloat(item.GetCommission())
+
+			totalQty += qty
+			totalRealizedPnl += realizedPnl
+			totalCommission += commission
+			weightedPriceSum += price * qty
+		}
+	}
+
+	if totalQty == 0 {
+		return nil, fmt.Errorf("zero quantity for closing order %d", closingOrderId)
+	}
+
+	exitPrice := weightedPriceSum / totalQty
+	var entryPrice float64
+
+	// If the closing execution was SELL, the position was LONG.
+	isLong := strings.EqualFold(latestTrade.GetSide(), "SELL")
+	if isLong {
+		entryPrice = exitPrice - (totalRealizedPnl / totalQty)
+	} else {
+		entryPrice = exitPrice + (totalRealizedPnl / totalQty)
+	}
+
+	return &exchange.ClosedPnLInfo{
+		Symbol:     latestTrade.GetSymbol(),
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: totalQty,
+		GrossPnL:   totalRealizedPnl,
+		Fee:        totalCommission,
+		FundingFee: 0,
+		DurationMs: 0,
+	}, nil
 }

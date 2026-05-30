@@ -88,7 +88,7 @@ func TestPool_ReplaysPublicSubscriptionsOnReconnect(t *testing.T) {
 		t.Fatalf("subscribe public: %v", err)
 	}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case msg := <-received:
 			if !strings.Contains(msg, "sub.ticker") {
@@ -877,12 +877,10 @@ func TestClient_ConcurrentSend(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			_ = c.SendJSON(map[string]string{"method": "test"})
-		}()
+		})
 	}
 	wg.Wait()
 	c.Close()
@@ -953,5 +951,43 @@ func TestWithPreprocessor(t *testing.T) {
 		assert.Equal(t, "hello-raw-processed", string(data))
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for preprocessed message")
+	}
+}
+
+func TestWithPreprocessor_Error(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("hello-raw"))
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	processedChan := make(chan []byte, 1)
+	c := ws.NewClient(wsURL(srv), nil, ws.WithPreprocessor(func(data []byte) ([]byte, error) {
+		return nil, errors.New("mock preprocess error")
+	}))
+	defer c.Close()
+
+	c.SetGlobalHandler(func(data []byte) {
+		processedChan <- data
+	})
+
+	go c.Connect(ctx)
+	err := c.WaitReady(ctx)
+	require.NoError(t, err)
+
+	select {
+	case <-processedChan:
+		t.Fatal("should not receive message because preprocessor failed")
+	case <-time.After(500 * time.Millisecond):
+		// Success: message was ignored/bypassed
 	}
 }

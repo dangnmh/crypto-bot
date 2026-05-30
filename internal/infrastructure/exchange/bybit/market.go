@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -89,9 +90,9 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 
 // GetContractDetails returns all contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey: categoryLinear,
-		"limit":     1000,
+		limitKey:    1000,
 	}
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetInstrumentInfo(ctx)
 	if err != nil {
@@ -147,7 +148,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey: categoryLinear,
 	}
 	if symbol != "" {
@@ -225,7 +226,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 
 	bybitInterval := mapInterval(interval)
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey: categoryLinear,
 		symbolKey:   symbol,
 		"interval":  bybitInterval,
@@ -253,8 +254,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	klines := make([]exchange.Kline, 0, len(res.List))
 	// Bybit returns klines in reverse chronological order (newest first). Let's reverse them if needed,
 	// or parse exactly as Mexc/Gate which standardizes oldest first.
-	for i := len(res.List) - 1; i >= 0; i-- {
-		candle := res.List[i]
+	for _, candle := range slices.Backward(res.List) {
 		if len(candle) < 7 {
 			continue
 		}
@@ -278,12 +278,12 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
 	}
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		categoryKey: categoryLinear,
 		symbolKey:   symbol,
 	}
 	if limit > 0 {
-		params["limit"] = limit
+		params[limitKey] = limit
 	}
 
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(ctx)

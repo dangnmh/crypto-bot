@@ -45,11 +45,14 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalPnLEvent {
 	return FinalPnLEvent{
 		BaseReversionEvent: nextNotifyReversionBase(closeEvt.BaseReversionEvent, closeEvt.Symbol, r.deps.Clock.Now()),
+		Direction:          closeEvt.Direction,
 		EntryPrice:         closeEvt.EntryPrice,
 		ClosePrice:         closeEvt.ClosePrice,
 		MaxVol:             closeEvt.CloseVol,
 		GrossPnL:           closeEvt.GrossProfit,
 		NetPnL:             closeEvt.NetProfit,
+		PnLPct:             closeEvt.PnLPct,
+		VolumeUSDT:         closeEvt.VolumeUSDT,
 		Fees:               closeEvt.Fee,
 		HoldFee:            closeEvt.HoldFee,
 		HoldDurationMs:     closeEvt.HoldDurationMs,

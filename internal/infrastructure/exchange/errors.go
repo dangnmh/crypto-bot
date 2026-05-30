@@ -5,6 +5,9 @@ import (
 	"fmt"
 )
 
+// ErrNotSupported indicates that a method is not supported by the exchange client.
+var ErrNotSupported = errors.New("method not supported by exchange")
+
 // ──────────────────────────────────────────────────────────────────────
 // Structured error types for programmatic error handling
 // ──────────────────────────────────────────────────────────────────────.
@@ -49,8 +52,7 @@ func (e *OrderRejectedError) Error() string {
 // IsAPIError checks if an error is an APIError and returns it.
 // Uses errors.As to support wrapped errors.
 func IsAPIError(err error) (*APIError, bool) {
-	var e *APIError
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*APIError](err); ok {
 		return e, true
 	}
 	return nil, false
@@ -66,8 +68,7 @@ func IsRateLimitError(err error) bool {
 // IsOrderRejectedError checks if an error is an order rejected error.
 // Uses errors.As to support wrapped errors.
 func IsOrderRejectedError(err error) (*OrderRejectedError, bool) {
-	var e *OrderRejectedError
-	if errors.As(err, &e) {
+	if e, ok := errors.AsType[*OrderRejectedError](err); ok {
 		return e, true
 	}
 	return nil, false

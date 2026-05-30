@@ -75,13 +75,6 @@ func (s *PriceStore) UpdatePrice(symbol string, data *PriceData) {
 		default:
 		}
 	}
-
-	s.logger.Debug("store.UpdatePrice",
-		slog.String("symbol", symbol),
-		slog.Float64("lastPrice", snapshot.LastPrice),
-		slog.Float64("bid", snapshot.BestBid),
-		slog.Float64("ask", snapshot.BestAsk),
-	)
 }
 
 // GetPrice returns the latest price for a symbol.

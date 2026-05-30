@@ -18,7 +18,7 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 		return r.publishEvent(ctx, TopicReversionWaitComplete, evt)
 	}
 
-	target := settleTime.Add(-2 * time.Second)
+	target := settleTime.Add(-5 * time.Second)
 	if err := r.waitUntilFuture(ctx, armedEvt.Symbol, target); err != nil {
 		r.abortAfter(ctx, armedEvt.BaseReversionEvent, armedEvt.Symbol, "wait period failed: "+err.Error())
 		return err
@@ -26,7 +26,6 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 
 	evt := WaitCompleteEvent{
 		BaseReversionEvent: nextReversionBase(armedEvt.BaseReversionEvent, armedEvt.Symbol, r.deps.Clock.Now()),
-		SettleTime:         settleTime,
 		Candidate:          armedEvt.Candidate,
 	}
 

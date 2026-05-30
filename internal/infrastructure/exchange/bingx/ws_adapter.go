@@ -37,7 +37,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 // SubscribeTicker subscribes to ticker stream.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	topic := symbol + "@" + channelTicker
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":          "sub-" + symbol + "-ticker",
 		paramReqType:  opSub,
 		paramDataType: topic,
@@ -48,7 +48,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 // UnsubscribeTicker unsubscribes from ticker stream.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	topic := symbol + "@" + channelTicker
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":          "unsub-" + symbol + "-ticker",
 		paramReqType:  opUnsub,
 		paramDataType: topic,
@@ -59,7 +59,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	topic := symbol + "@" + channelKline + "_1m"
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":          "sub-" + symbol + "-kline",
 		paramReqType:  opSub,
 		paramDataType: topic,
@@ -70,7 +70,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	topic := symbol + "@" + channelKline + "_1m"
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":          "unsub-" + symbol + "-kline",
 		paramReqType:  opUnsub,
 		paramDataType: topic,
@@ -81,7 +81,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 // SubscribeDepth subscribes to depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	topic := symbol + "@" + channelDepth + "20"
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":          "sub-" + symbol + "-depth",
 		paramReqType:  opSub,
 		paramDataType: topic,
@@ -92,7 +92,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 // UnsubscribeDepth unsubscribes from depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	topic := symbol + "@" + channelDepth + "20"
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"id":          "unsub-" + symbol + "-depth",
 		paramReqType:  opUnsub,
 		paramDataType: topic,
@@ -106,7 +106,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns application ping config.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 	return msgPing, 30 * time.Second
 }
 

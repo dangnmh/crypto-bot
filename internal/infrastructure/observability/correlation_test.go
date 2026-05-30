@@ -56,7 +56,7 @@ func TestLoggerWithCorrelation_WithoutID(t *testing.T) {
 func TestGenerateID_Unique(t *testing.T) {
 	t.Parallel()
 	ids := make(map[string]struct{}, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		id := observability.GenerateID()
 		assert.NotContains(t, ids, id, "duplicate ID after %d iterations", i)
 		ids[id] = struct{}{}

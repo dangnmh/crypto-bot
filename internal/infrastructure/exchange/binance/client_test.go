@@ -365,9 +365,6 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", p.Symbol)
 	assert.Equal(t, 0.5, p.HoldVol)
 	assert.Equal(t, 50000.0, p.HoldAvgPrice)
-	assert.Equal(t, 45000.0, p.LiquidatePrice)
-	assert.Equal(t, 100.0, p.Realised)
-	assert.Equal(t, 10, p.Leverage)
 	assert.Equal(t, 1, p.PositionType) // Long
 }
 

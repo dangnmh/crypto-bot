@@ -46,6 +46,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{}),
+			transportlog.LogOptionQueryParams(true),
 		)
 	}
 

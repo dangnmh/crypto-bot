@@ -11,9 +11,10 @@ func TestSignRequest_GET(t *testing.T) {
 	apiKey := "testApiKey"
 	apiSecret := "testApiSecret"
 	timestamp := "1609459200000"
-	params := map[string]string{
-		"symbol": "BTC_USDT",
-		"side":   "1",
+	params := map[string]any{
+		"symbol":   "BTC_USDT",
+		"side":     "1",
+		"page_num": 1,
 	}
 
 	sig := mexc.SignRequest(apiKey, apiSecret, timestamp, "GET", params)
@@ -38,7 +39,7 @@ func TestSignRequest_GET_NilParams(t *testing.T) {
 
 func TestSignRequest_GET_WrongParamType(t *testing.T) {
 	t.Parallel()
-	// If params is not map[string]string, paramStr stays empty.
+	// If params is not map[string]any, paramStr stays empty.
 	sig := mexc.SignRequest("key", "secret", "12345", "GET", "not a map")
 	if sig == "" {
 		t.Fatal("signature should not be empty")
@@ -47,7 +48,7 @@ func TestSignRequest_GET_WrongParamType(t *testing.T) {
 
 func TestSignRequest_POST(t *testing.T) {
 	t.Parallel()
-	body := map[string]interface{}{
+	body := map[string]any{
 		"symbol": "BTC_USDT",
 		"vol":    100,
 	}
@@ -68,7 +69,7 @@ func TestSignRequest_POST_NilBody(t *testing.T) {
 
 func TestSignRequest_DELETE(t *testing.T) {
 	t.Parallel()
-	params := map[string]string{"orderId": "123"}
+	params := map[string]any{"orderId": "123"}
 	sig := mexc.SignRequest("key", "secret", "12345", "DELETE", params)
 	if sig == "" {
 		t.Fatal("signature should not be empty for DELETE")

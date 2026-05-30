@@ -46,7 +46,7 @@ func (a *WsAdapter) sign(channel, event string, timestamp int64) string {
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelTickers,
 		gateJSONEvent:   gateEventSubscribe,
@@ -59,7 +59,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 // UnsubscribeTicker unsubscribes from ticker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelTickers,
 		gateJSONEvent:   gateEventUnsubscribe,
@@ -72,7 +72,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelCandlesticks,
 		gateJSONEvent:   gateEventSubscribe,
@@ -85,7 +85,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 	unixSec := time.Now().Unix()
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelCandlesticks,
 		gateJSONEvent:   gateEventUnsubscribe,
@@ -98,7 +98,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 // SubscribeDepth subscribes to orderbook depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	unixSec := time.Now().Unix()
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelOrderBook,
 		gateJSONEvent:   gateEventSubscribe,
@@ -111,7 +111,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 // UnsubscribeDepth unsubscribes from orderbook depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
 	unixSec := time.Now().Unix()
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelOrderBook,
 		gateJSONEvent:   gateEventUnsubscribe,
@@ -127,7 +127,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 
 	// 1. Subscribe to Orders channel
 	ordersSign := a.sign(gateChannelOrders, gateEventSubscribe, unixSec)
-	ordersMsg := map[string]interface{}{
+	ordersMsg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelOrders,
 		gateJSONEvent:   gateEventSubscribe,
@@ -145,7 +145,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 
 	// 2. Subscribe to Positions channel
 	posSign := a.sign(gateChannelPositions, gateEventSubscribe, unixSec)
-	posMsg := map[string]interface{}{
+	posMsg := map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelPositions,
 		gateJSONEvent:   gateEventSubscribe,
@@ -165,10 +165,10 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns application ping and interval.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 	// Gate uses standard ping but some channels support active pings.
 	unixSec := time.Now().Unix()
-	return map[string]interface{}{
+	return map[string]any{
 		gateJSONTime:    unixSec,
 		gateJSONChannel: gateChannelPing,
 	}, 15 * time.Second
@@ -354,8 +354,8 @@ func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
 		deal.State = exchange.OrderStatePartial
 	}
 
-	if strings.HasPrefix(raw.Text, "t-") {
-		deal.ExternalOID = strings.TrimPrefix(raw.Text, "t-")
+	if after, ok := strings.CutPrefix(raw.Text, "t-"); ok {
+		deal.ExternalOID = after
 	} else {
 		deal.ExternalOID = raw.Text
 	}
@@ -405,11 +405,11 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	update := &exchange.PersonalPositionUpdate{
-		Symbol:       raw.Contract,
-		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
-		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
-		Leverage:     int(raw.Leverage),
-		Realized:     decmath.ParseFloat(raw.RealizedPnl),
+		Symbol:          raw.Contract,
+		HoldVol:         float64(decmath.AbsInt64(raw.Size)),
+		HoldAvgPrice:    decmath.ParseFloat(raw.EntryPrice),
+		Leverage:        int(raw.Leverage),
+		CloseProfitLoss: decmath.ParseFloat(raw.RealizedPnl),
 	}
 
 	if raw.Size > 0 {

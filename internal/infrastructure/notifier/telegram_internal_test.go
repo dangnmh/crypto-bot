@@ -72,18 +72,40 @@ func TestTelegramProviderFormatMessage(t *testing.T) {
 	p := &TelegramProvider{logger: testNotifierLogger()}
 
 	trading := p.formatMessage(Event{
-		Level:   LevelTrading,
-		Symbol:  "BTC_USDT",
-		Message: "order filled",
-		Data:    map[string]interface{}{"price": 60000},
+		Level:    LevelTrading,
+		Exchange: "bybit",
+		Symbol:   "BTC_USDT",
+		Message:  "order filled",
+		Data:     map[string]any{"price": 60000, "floatVal": 0.038429, "wholeFloat": 5.0},
 	})
-	assert.Contains(t, trading, "[TRADING] [BTC_USDT]")
+	assert.Contains(t, trading, "[TRADING] [bybit] [BTC_USDT]")
 	assert.Contains(t, trading, "order filled")
 	assert.Contains(t, trading, "price: 60000")
+	assert.Contains(t, trading, "floatVal: 0.0384")
+	assert.Contains(t, trading, "wholeFloat: 5")
+
+	exchangeOnly := p.formatMessage(Event{Level: LevelTrading, Exchange: "mexc", Message: "risk"})
+	assert.Contains(t, exchangeOnly, "[TRADING] [mexc]")
 
 	critical := p.formatMessage(Event{Level: LevelCritical, Message: "risk"})
 	assert.Contains(t, critical, "[CRITICAL]")
 
 	info := p.formatMessage(Event{Level: LevelInfo, Message: "started"})
 	assert.Contains(t, info, "[INFO]")
+
+	// Test color mapping
+	greenEvt := p.formatMessage(Event{Level: LevelInfo, Color: "green", Message: "gain"})
+	assert.Contains(t, greenEvt, "🟢 [INFO]")
+
+	redEvt := p.formatMessage(Event{Level: LevelInfo, Color: "red", Message: "loss"})
+	assert.Contains(t, redEvt, "🔴 [INFO]")
+
+	blueEvt := p.formatMessage(Event{Level: LevelInfo, Color: "blue", Message: "info"})
+	assert.Contains(t, blueEvt, "🔵 [INFO]")
+
+	yellowEvt := p.formatMessage(Event{Level: LevelInfo, Color: "yellow", Message: "warn"})
+	assert.Contains(t, yellowEvt, "🟡 [INFO]")
+
+	defaultEvt := p.formatMessage(Event{Level: LevelInfo, Message: "default"})
+	assert.Contains(t, defaultEvt, "🟡 [INFO]") // Defaults to yellow
 }

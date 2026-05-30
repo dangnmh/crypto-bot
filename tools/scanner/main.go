@@ -144,11 +144,11 @@ func standardizeSymbol(symbol string) string {
 	if strings.HasSuffix(s, "USDTM") {
 		s = strings.TrimSuffix(s, "M")
 	}
-	if strings.HasSuffix(s, "USD") {
-		s = strings.TrimSuffix(s, "USD") + "USDT"
+	if before, ok := strings.CutSuffix(s, "USD"); ok {
+		s = before + "USDT"
 	}
-	if strings.HasSuffix(s, "USDC") {
-		s = strings.TrimSuffix(s, "USDC") + "USDT"
+	if before, ok := strings.CutSuffix(s, "USDC"); ok {
+		s = before + "USDT"
 	}
 	if !strings.HasSuffix(s, "USDT") {
 		s = s + "USDT"
@@ -196,15 +196,12 @@ func printOpportunities(opportunities []Opportunity) {
 		return groups[i].Score > groups[j].Score
 	})
 
-	displayCount := 15
-	if len(groups) < displayCount {
-		displayCount = len(groups)
-	}
+	displayCount := min(len(groups), 15)
 
 	fmt.Printf("✅ Scanned %d active pairs across exchanges. Displaying top %d opportunity groups:\n\n", len(opportunities), displayCount)
 
 	now := time.Now()
-	for i := 0; i < displayCount; i++ {
+	for i := range displayCount {
 		g := groups[i]
 		scorePct := g.ScoreRate * 100
 		scoreSign := ""
@@ -221,10 +218,7 @@ func printOpportunities(opportunities []Opportunity) {
 		for _, r := range g.Opportunities {
 			// 1. Calculate Countdown
 			settleTime := time.UnixMilli(r.NextSettleTime)
-			countdown := settleTime.Sub(now).Round(time.Second)
-			if countdown < 0 {
-				countdown = 0
-			}
+			countdown := max(settleTime.Sub(now).Round(time.Second), 0)
 
 			// 2. Formatting Funding Rate
 			frPct := r.FundingRate * 100

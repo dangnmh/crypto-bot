@@ -25,10 +25,10 @@
         "privateURL": "wss://stream.bybit.com/v5/private",
         "maxPairsPerWSConn": 30
       },
-      "accountType": "standard"
+      "accountType": "unified"
     },
     "binance": {
-      "enable": true,
+      "enable": false,
       "future": { "baseURL": "https://fapi.binance.com" },
       "websocket": { "wsURL": "wss://fstream.binance.com/ws" }
     },

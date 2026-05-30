@@ -35,7 +35,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
 		paramParams: []string{strings.ToLower(symbol) + "@ticker"},
 		"id":        time.Now().UnixMilli(),
@@ -46,7 +46,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from ticker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opUnsubscribe,
 		paramParams: []string{strings.ToLower(symbol) + "@ticker"},
 		"id":        time.Now().UnixMilli(),
@@ -57,7 +57,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
 		paramParams: []string{strings.ToLower(symbol) + "@kline_1m"},
 		"id":        time.Now().UnixMilli(),
@@ -68,7 +68,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opUnsubscribe,
 		paramParams: []string{strings.ToLower(symbol) + "@kline_1m"},
 		"id":        time.Now().UnixMilli(),
@@ -79,7 +79,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 
 // SubscribeDepth subscribes to orderbook depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opSubscribe,
 		paramParams: []string{strings.ToLower(symbol) + "@depth20@100ms"},
 		"id":        time.Now().UnixMilli(),
@@ -90,7 +90,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 
 // UnsubscribeDepth unsubscribes from orderbook depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		paramMethod: opUnsubscribe,
 		paramParams: []string{strings.ToLower(symbol) + "@depth20@100ms"},
 		"id":        time.Now().UnixMilli(),
@@ -107,8 +107,8 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns application ping and interval.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
-	return map[string]interface{}{
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
+	return map[string]any{
 		paramMethod: "PING",
 	}, 3 * time.Minute
 }
@@ -409,11 +409,11 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	update := &exchange.PersonalPositionUpdate{
-		Symbol:       raw.Symbol,
-		HoldVol:      math.Abs(amt),
-		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
-		Realized:     decmath.ParseFloat(raw.Unrealized),
-		PositionType: posType,
+		Symbol:          raw.Symbol,
+		HoldVol:         math.Abs(amt),
+		HoldAvgPrice:    decmath.ParseFloat(raw.EntryPrice),
+		CloseProfitLoss: decmath.ParseFloat(raw.Unrealized),
+		PositionType:    posType,
 	}
 
 	return update, nil

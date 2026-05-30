@@ -37,7 +37,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op":      wsOpSubscribe,
 		wsArgsKey: []string{"tickers." + symbol},
 	}
@@ -47,7 +47,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from ticker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op":      wsOpUnsubscribe,
 		wsArgsKey: []string{"tickers." + symbol},
 	}
@@ -57,7 +57,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op":      wsOpSubscribe,
 		wsArgsKey: []string{"kline.1." + symbol},
 	}
@@ -67,7 +67,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op":      wsOpUnsubscribe,
 		wsArgsKey: []string{"kline.1." + symbol},
 	}
@@ -78,7 +78,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 // SubscribeDepth subscribes to orderbook depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
 	// Standard limit size for Bybit orderbook WS is 50 or 20
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op":      wsOpSubscribe,
 		wsArgsKey: []string{"orderbook.50." + symbol},
 	}
@@ -88,7 +88,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 
 // UnsubscribeDepth unsubscribes from orderbook depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op":      wsOpUnsubscribe,
 		wsArgsKey: []string{"orderbook.50." + symbol},
 	}
@@ -98,9 +98,16 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	msg := map[string]interface{}{
+	// Wait a brief moment to ensure the connection has finished authenticating via the OnConnected hook
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	msg := map[string]any{
 		"op":      wsOpSubscribe,
-		wsArgsKey: []string{wsTopicPosition, wsTopicOrder, "wallet"},
+		wsArgsKey: []string{wsTopicPosition},
 	}
 	err := a.pool.SendPrivate(ctx, msg)
 	if err != nil {
@@ -110,8 +117,8 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns application ping and interval.
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
-	return map[string]interface{}{
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
+	return map[string]any{
 		"op": "ping",
 	}, 20 * time.Second
 }
@@ -133,9 +140,9 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		h.Write([]byte(reqStr))
 		signature := hex.EncodeToString(h.Sum(nil))
 
-		authMsg := map[string]interface{}{
+		authMsg := map[string]any{
 			"op": "auth",
-			wsArgsKey: []interface{}{
+			wsArgsKey: []any{
 				apiKey,
 				expires,
 				signature,
@@ -329,18 +336,49 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	if len(msg.Data) == 0 {
 		return nil, fmt.Errorf("empty data in position push")
 	}
-	raw := msg.Data[0]
+	raw := selectPositionUpdate(msg.Data)
 	pos := mapPosition(raw)
 
+	realisedPnl := raw.CurRealisedPnl
+	if realisedPnl == "" {
+		realisedPnl = raw.CumRealisedPnl
+	}
+	if realisedPnl == "" {
+		realisedPnl = raw.UnrealisedPnl
+	}
+
 	update := &exchange.PersonalPositionUpdate{
-		Symbol:       pos.Symbol,
-		HoldVol:      pos.HoldVol,
-		HoldAvgPrice: pos.HoldAvgPrice,
-		OpenAvgPrice: pos.OpenAvgPrice,
-		Leverage:     pos.Leverage,
-		Realized:     pos.Realised,
-		PositionType: pos.PositionType,
+		Symbol:          pos.Symbol,
+		HoldVol:         pos.HoldVol,
+		HoldAvgPrice:    pos.HoldAvgPrice,
+		OpenAvgPrice:    pos.OpenAvgPrice,
+		Leverage:        decmath.ParseInt(raw.Leverage),
+		CloseProfitLoss: decmath.ParseFloat(realisedPnl),
+		PositionType:    pos.PositionType,
+		LiquidatePrice:  decmath.ParseFloat(raw.LiqPrice),
+		UpdateTime:      decmath.ParseInt64(raw.UpdatedTime),
 	}
 
 	return update, nil
+}
+
+func selectPositionUpdate(positions []bybitPosition) bybitPosition {
+	// 1. If any position has active size > 0, pick it first
+	for i := range positions {
+		if decmath.ParseFloat(positions[i].Size) > 0 {
+			return positions[i]
+		}
+	}
+
+	// 2. Otherwise, select the one that was most recently updated
+	bestIdx := 0
+	maxTime := int64(0)
+	for i := range positions {
+		t := int64(decmath.ParseFloat(positions[i].UpdatedTime))
+		if t > maxTime {
+			maxTime = t
+			bestIdx = i
+		}
+	}
+	return positions[bestIdx]
 }

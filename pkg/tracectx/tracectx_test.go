@@ -31,5 +31,6 @@ func TestContextIDs(t *testing.T) {
 
 	assert.Equal(t, "req-123", tracectx.CorrelationID(ctx))
 	assert.Equal(t, "rev-123", tracectx.ReversionID(ctx))
+	assert.Empty(t, tracectx.ReversionID(context.Background()))
 	assert.NotEmpty(t, tracectx.NewID())
 }

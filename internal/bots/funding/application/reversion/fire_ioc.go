@@ -15,7 +15,7 @@ import (
 
 const (
 	iocOutcomePollTimeout  = 2 * time.Second
-	iocOutcomePollInterval = 100 * time.Millisecond
+	iocOutcomePollInterval = 200 * time.Millisecond
 )
 
 func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
@@ -46,16 +46,14 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	bufferTime := time.Duration(cfg.FundingReversion.BufferTime)
 	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
 
-	snapshotOffset := 50 * time.Millisecond
-	if fireOffset > snapshotOffset {
-		snapshotOffset = fireOffset
-	}
+	// Ensure snapshotOffset is at least fireOffset + 300ms, and at least 500ms overall
+	// to avoid race conditions during the price refresh and safety calculation.
+	snapshotOffset := max(fireOffset+300*time.Millisecond, 500*time.Millisecond)
 
 	evt := FireTimingReadyEvent{
 		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.deps.Clock.Now()),
 		Candidate:          confirmedEvt.Candidate,
 		FundingRate:        confirmedEvt.FundingRate,
-		SettleTime:         settleTime,
 		LatencyRTTMs:       latencyMs,
 		FireOffsetMs:       fireOffset.Milliseconds(),
 		SnapshotOffsetMs:   snapshotOffset.Milliseconds(),
@@ -103,7 +101,6 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 	next := FirePlanCheckedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
-		SettleTime:         evt.SettleTime,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		FireOffsetMs:       evt.FireOffsetMs,
 		BestBid:            c.BestBid,
@@ -129,7 +126,6 @@ func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePla
 			Side:               c.Side,
 			CloseSide:          c.CloseSide,
 			FireTimestamp:      r.deps.Clock.Now(),
-			SettleTime:         evt.SettleTime,
 			Error:              evt.RejectReason,
 		}
 		_ = r.publishEvent(ctx, TopicReversionIOCSubmitted, submitted)
@@ -138,16 +134,19 @@ func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePla
 	}
 
 	fireOffset := time.Duration(evt.FireOffsetMs) * time.Millisecond
-	if err := r.waitUntilFuture(ctx, evt.Symbol, evt.SettleTime.Add(-fireOffset)); err != nil {
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait fire failed: "+err.Error())
-		return err
+	targetTime := evt.SettleTime.Add(-fireOffset)
+	if r.deps.Clock.Until(targetTime) > 0 {
+		if err := r.waitUntilFuture(ctx, evt.Symbol, targetTime); err != nil {
+			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait fire failed: "+err.Error())
+			return err
+		}
 	}
+
 	fireTime := r.deps.Clock.Now()
 
 	next := FireWindowReachedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, fireTime),
 		Candidate:          c,
-		SettleTime:         evt.SettleTime,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		FireTimestamp:      fireTime,
 	}
@@ -169,7 +168,6 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 	next := PositionWatchReadyEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Candidate:          evt.Candidate,
-		SettleTime:         evt.SettleTime,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		FireTimestamp:      evt.FireTimestamp,
 		Timeout:            timeout,
@@ -187,9 +185,13 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 	res := orders.FireIOC(ctx, r.deps.Client, &c, r.deps.Clock, r.log)
 
 	if res.IsSuccess() {
+		base := nextNotifyReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp)
+		base.OrderID = res.OrderID
+		base.ExternalID = res.ExternalID
 		next := IOCSubmittedEvent{
-			BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp),
+			BaseReversionEvent: base,
 			OrderID:            res.OrderID,
+			ExternalID:         res.ExternalID,
 			Side:               c.Side,
 			CloseSide:          c.CloseSide,
 			OrderType:          exchange.OrderTypeIOC,
@@ -197,7 +199,6 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 			Volume:             res.Volume,
 			TPPrice:            res.TakeProfitPrice,
 			SLPrice:            res.StopLossPrice,
-			SettleTime:         evt.SettleTime,
 			FireTimestamp:      evt.FireTimestamp,
 			LatencyRTTMs:       evt.LatencyRTTMs,
 		}
@@ -208,14 +209,17 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 	if res.Error != nil {
 		errText = res.Error.Error()
 	}
+	base := nextReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp)
+	base.OrderID = res.OrderID
+	base.ExternalID = res.ExternalID
 	next := IOCSubmittedEvent{
-		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp),
+		BaseReversionEvent: base,
 		OrderID:            res.OrderID,
+		ExternalID:         res.ExternalID,
 		Side:               c.Side,
 		CloseSide:          c.CloseSide,
 		IntendedPrice:      res.Price,
 		Volume:             res.Volume,
-		SettleTime:         evt.SettleTime,
 		FireTimestamp:      evt.FireTimestamp,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		Error:              errText,

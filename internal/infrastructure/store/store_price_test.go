@@ -115,8 +115,7 @@ func TestPriceStore_SubscribePrice(t *testing.T) {
 	t.Parallel()
 
 	s := store.NewPriceStore()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	btcUpdates := s.SubscribePrice(ctx, "BTC_USDT")
 	ethUpdates := s.SubscribePrice(ctx, "ETH_USDT")
@@ -156,8 +155,7 @@ func TestPriceStore_SubscribePrice_NonBlockingUpdate(t *testing.T) {
 	t.Parallel()
 
 	s := store.NewPriceStore()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_ = s.SubscribePrice(ctx, "BTC_USDT")
 

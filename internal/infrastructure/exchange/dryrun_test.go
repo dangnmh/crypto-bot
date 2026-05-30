@@ -187,4 +187,6 @@ func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {
 
 	_, err = dry.GetOpenOrders(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
+
+	dry.WarmUp(context.Background(), time.Second)
 }

@@ -121,3 +121,26 @@ func TestDumpTimeline(t *testing.T) {
 
 	assert.Len(t, bus.Timeline(), 1)
 }
+
+func TestPublish_MarshalError(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New(slog.Default())
+	defer func() { _ = bus.Close() }()
+
+	// Trigger marshal error by passing an un-marshalable channel
+	err := bus.Publish("topic", make(chan int))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "marshal payload")
+}
+
+func TestPublish_OnClosedBus(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New(slog.Default())
+	require.NoError(t, bus.Close())
+
+	err := bus.Publish("topic", "data")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "publish to")
+}

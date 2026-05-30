@@ -30,7 +30,7 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	// Check ping config
 	ping, interval := adapter.GetPingConfig()
 	assert.Equal(t, 3*time.Minute, interval)
-	pingMap, ok := ping.(map[string]interface{})
+	pingMap, ok := ping.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "PING", pingMap["method"])
 

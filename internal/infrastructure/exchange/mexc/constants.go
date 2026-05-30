@@ -7,6 +7,8 @@ const (
 	paramInterval = "interval"
 	paramFilter   = "filter"
 	paramLimit    = "limit"
+	pageNumKey    = "page_num"
+	pageSizeKey   = "page_size"
 
 	channelTicker = "ticker"
 	channelDepth  = "depth"

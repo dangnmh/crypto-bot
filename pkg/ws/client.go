@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,7 +36,7 @@ type Client struct {
 	// Hooks
 	onConnected      func(*Client) // Used for custom authentication logic immediately after dial
 	onReady          func(*Client) // Called after each successful connection is ready
-	pingPayload      interface{}   // Payload to send periodically. If nil, no ping is sent.
+	pingPayload      any           // Payload to send periodically. If nil, no ping is sent.
 	pingPeriod       time.Duration
 	channelExtractor func([]byte) string // Extracts routing key (channel/topic) from raw JSON
 	urlFunc          func() (string, error)
@@ -68,7 +69,7 @@ func WithOnReady(hook func(*Client)) ClientOption {
 }
 
 // WithPing keeps the connection alive by periodically sending the specified payload.
-func WithPing(payload interface{}, period time.Duration) ClientOption {
+func WithPing(payload any, period time.Duration) ClientOption {
 	return func(c *Client) {
 		c.pingPayload = payload
 		c.pingPeriod = period
@@ -243,6 +244,10 @@ func (c *Client) readLoop(ctx context.Context) {
 			return
 		}
 
+		if strings.Contains(c.url, "private") {
+			c.logger.DebugContext(ctx, "🔍 WS private raw message", slog.String("data", string(data)))
+		}
+
 		if c.preprocessor != nil {
 			decompressed, err := c.preprocessor(data)
 			if err != nil {
@@ -298,7 +303,7 @@ func (c *Client) processMessage(data []byte) {
 }
 
 // SendJSON sends a generic JSON payload.
-func (c *Client) SendJSON(msg interface{}) error {
+func (c *Client) SendJSON(msg any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {

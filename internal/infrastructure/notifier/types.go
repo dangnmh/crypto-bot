@@ -14,12 +14,22 @@ const (
 	LevelInfo     Level = "INFO"
 )
 
+// Supported notification colors.
+const (
+	ColorYellow = "yellow"
+	ColorGreen  = "green"
+	ColorRed    = "red"
+	ColorBlue   = "blue"
+)
+
 // Event represents a notification event.
 type Event struct {
 	Level     Level
+	Exchange  string
 	Symbol    string
 	Message   string
-	Data      map[string]interface{}
+	Color     string
+	Data      map[string]any
 	Timestamp time.Time
 }
 

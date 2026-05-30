@@ -42,7 +42,7 @@ func TestMessage_OmitEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify omitted fields are not present.
-	var raw map[string]interface{}
+	var raw map[string]any
 	err = json.Unmarshal(data, &raw)
 	require.NoError(t, err)
 

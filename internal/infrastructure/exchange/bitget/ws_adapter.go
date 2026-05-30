@@ -36,7 +36,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 
 // SubscribeTicker subscribes to ticker stream.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelTicker, fieldInstId: symbol},
@@ -48,7 +48,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from ticker stream.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opUnsubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelTicker, fieldInstId: symbol},
@@ -60,7 +60,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeKline subscribes to 1-minute klines.
 func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelKline, fieldInstId: symbol},
@@ -72,7 +72,7 @@ func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
 
 // UnsubscribeKline unsubscribes from klines.
 func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opUnsubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelKline, fieldInstId: symbol},
@@ -84,7 +84,7 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 
 // SubscribeDepth subscribes to depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelDepth, fieldInstId: symbol},
@@ -96,7 +96,7 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) err
 
 // UnsubscribeDepth unsubscribes from depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opUnsubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelDepth, fieldInstId: symbol},
@@ -108,7 +108,7 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to Bitget private channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelOrders, fieldInstId: constantDefault},
@@ -119,7 +119,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 }
 
 // GetPingConfig returns ping message and interval (Bitget V2 expects ping string frame).
-func (a *WsAdapter) GetPingConfig() (interface{}, time.Duration) {
+func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 	return "ping", 30 * time.Second
 }
 
@@ -136,9 +136,9 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		// let's grab it from client configuration if available or pass os env.
 		passphrase := os.Getenv("BITGET_PASSPHRASE")
 
-		msg := map[string]interface{}{
+		msg := map[string]any{
 			"op": opSubscribe,
-			fieldArgs: []map[string]interface{}{
+			fieldArgs: []map[string]any{
 				{
 					"apiKey":     apiKey,
 					"passphrase": passphrase,
@@ -435,30 +435,20 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	avgPx, _ := strconv.ParseFloat(p.OpenPriceAvg, 64)
 	liqPx, _ := strconv.ParseFloat(p.LiquidationPrice, 64)
 	realized, _ := strconv.ParseFloat(p.AchievedProfits, 64)
-	margin, _ := strconv.ParseFloat(p.MarginSize, 64)
 
 	posType := 1 // long
 	if p.HoldSide == posSideShort {
 		posType = 2
 	}
 
-	openType := 1 // isolated
-	switch p.MarginMode {
-	case "crossed", modeCross:
-		openType = 2
-	}
-
 	update := &exchange.PersonalPositionUpdate{
-		Symbol:         p.Symbol,
-		HoldVol:        posVal,
-		Leverage:       leverVal,
-		HoldAvgPrice:   avgPx,
-		LiquidatePrice: liqPx,
-		Realized:       realized,
-		IM:             margin,
-		PositionType:   posType,
-		OpenType:       openType,
-		State:          1,
+		Symbol:          p.Symbol,
+		HoldVol:         posVal,
+		Leverage:        leverVal,
+		HoldAvgPrice:    avgPx,
+		LiquidatePrice:  liqPx,
+		CloseProfitLoss: realized,
+		PositionType:    posType,
 	}
 
 	return update, nil

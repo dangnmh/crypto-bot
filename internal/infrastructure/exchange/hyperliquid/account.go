@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/samber/lo"
+	hl "github.com/sonirico/go-hyperliquid"
 )
 
 // GetAssets retrieves account balances.
@@ -77,9 +80,6 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		entryPrice, _ := strconv.ParseFloat(lo.FromPtr(p.EntryPx), 64)
-		liqPrice, _ := strconv.ParseFloat(lo.FromPtr(p.LiquidationPx), 64)
-
-		unrealized, _ := strconv.ParseFloat(p.UnrealizedPnl, 64)
 
 		posSide := 1 // Long
 		if szi < 0 {
@@ -87,15 +87,106 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		positions = append(positions, exchange.Position{
-			Symbol:         p.Coin,
-			HoldVol:        math.Abs(szi),
-			HoldAvgPrice:   entryPrice,
-			OpenAvgPrice:   entryPrice,
-			LiquidatePrice: liqPrice,
-			Realised:       unrealized,
-			Leverage:       p.Leverage.Value,
-			PositionType:   posSide,
+			Symbol:       p.Coin,
+			HoldVol:      math.Abs(szi),
+			HoldAvgPrice: entryPrice,
+			OpenAvgPrice: entryPrice,
+			PositionType: posSide,
 		})
 	}
 	return positions, nil
+}
+
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	if c.userAddress == "" {
+		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
+	}
+
+	// Look up numeric orderID from client order ID (extOrderID / cloid)
+	orderRes, err := c.info.QueryOrderByCloid(ctx, c.userAddress, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid query order by cloid %s failed: %w", extOrderID, err)
+	}
+	closingOrderId := orderRes.Order.Order.Oid
+
+	params := hl.UserFillsParams{
+		Address: c.userAddress,
+	}
+
+	fills, err := c.info.UserFills(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid get user fills: %w", err)
+	}
+
+	// Filter by symbol and startTime
+	var symFills []hl.Fill
+	for i := range fills {
+		f := &fills[i]
+		if strings.EqualFold(f.Coin, symbol) {
+			if !startTime.IsZero() && f.Time < startTime.UnixMilli() {
+				continue
+			}
+			symFills = append(symFills, *f)
+		}
+	}
+
+	if len(symFills) == 0 {
+		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
+	}
+
+	// Find the latest fill by time
+	latestFill := &symFills[0]
+	for i := range symFills {
+		f := &symFills[i]
+		if f.Time > latestFill.Time {
+			latestFill = f
+		}
+	}
+
+	var totalQty float64
+	var totalRealizedPnl float64
+	var totalCommission float64
+	var weightedPriceSum float64
+
+	for i := range symFills {
+		item := &symFills[i]
+		if item.Oid != closingOrderId {
+			continue
+		}
+		qty, _ := strconv.ParseFloat(item.Size, 64)
+		price, _ := strconv.ParseFloat(item.Price, 64)
+		realizedPnl, _ := strconv.ParseFloat(item.ClosedPnl, 64)
+		commission, _ := strconv.ParseFloat(item.Fee, 64)
+
+		totalQty += qty
+		totalRealizedPnl += realizedPnl
+		totalCommission += commission
+		weightedPriceSum += price * qty
+	}
+
+	if totalQty == 0 {
+		return nil, fmt.Errorf("zero quantity for closing order %d", closingOrderId)
+	}
+
+	exitPrice := weightedPriceSum / totalQty
+	var entryPrice float64
+
+	// If closing side was Sell ("S"), the position was Long.
+	isLong := strings.EqualFold(latestFill.Side, "S")
+	if isLong {
+		entryPrice = exitPrice - (totalRealizedPnl / totalQty)
+	} else {
+		entryPrice = exitPrice + (totalRealizedPnl / totalQty)
+	}
+
+	return &exchange.ClosedPnLInfo{
+		Symbol:     latestFill.Coin,
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: totalQty,
+		GrossPnL:   totalRealizedPnl,
+		Fee:        totalCommission,
+		FundingFee: 0,
+		DurationMs: 0,
+	}, nil
 }

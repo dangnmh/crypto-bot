@@ -18,6 +18,7 @@ type OrderResult struct {
 	Candidate       domain.Candidate
 	Order           *exchange.OrderInfo
 	OrderID         string
+	ExternalID      string
 	Price           float64
 	TakeProfitPrice float64
 	StopLossPrice   float64
@@ -32,7 +33,7 @@ func (r *OrderResult) IsSuccess() bool {
 
 func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
 	log := logger
-	extOID := ExternalOrderID("ioc", candidate.Symbol)
+	extOID := candidate.ExternalID
 
 	iocPrice, err := candidate.CalculateIOCPrice()
 	if err != nil {
@@ -106,6 +107,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 	result := OrderResult{
 		Candidate:       *candidate,
 		OrderID:         orderID,
+		ExternalID:      extOID,
 		Price:           iocPrice,
 		TakeProfitPrice: tpPrice,
 		StopLossPrice:   slPrice,
@@ -177,6 +179,7 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 	result := OrderResult{
 		Candidate:       trapCandidate,
 		OrderID:         orderID,
+		ExternalID:      extOID,
 		Price:           trapPrice,
 		TakeProfitPrice: tpPrice,
 		StopLossPrice:   slPrice,

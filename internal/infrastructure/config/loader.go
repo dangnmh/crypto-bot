@@ -235,6 +235,9 @@ func ValidateAPIConfigField(fl validator.FieldLevel) bool {
 	if !cfg.Enable {
 		return true
 	}
+	if fl.StructFieldName() == "Bybit" && !IsSupportedBybitAccountType(cfg.AccountType) {
+		return false
+	}
 	if cfg.Future.BaseURL == "" {
 		return false
 	}

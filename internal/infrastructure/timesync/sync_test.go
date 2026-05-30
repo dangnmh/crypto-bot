@@ -22,8 +22,7 @@ func TestTimeSync_StartAndAccessors(t *testing.T) {
 	}).AnyTimes()
 
 	ts := timesync.New(client, 10*time.Millisecond)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go ts.Start(ctx)
 	assert.NoError(t, ts.WaitReady(ctx))

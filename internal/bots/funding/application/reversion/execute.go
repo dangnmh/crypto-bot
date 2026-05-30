@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"crypto-bot/internal/bots/funding/application"
-	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -16,8 +14,8 @@ import (
 var busRegistrations sync.Map
 
 // InitGlobalSubscriptions registers all reversion topic handlers on the global event bus EXACTLY ONCE per Bus instance.
-func InitGlobalSubscriptions(ctx context.Context, deps application.Deps, globalCfg *config.Config) {
-	bus := deps.EventBus
+func InitGlobalSubscriptions(ctx context.Context, runner *StatelessRunner) {
+	bus := runner.bus
 	if bus == nil {
 		return
 	}
@@ -29,34 +27,171 @@ func InitGlobalSubscriptions(ctx context.Context, deps application.Deps, globalC
 	}
 
 	once.Do(func() {
-		runner := &StatelessRunner{
-			deps:      deps,
-			globalCfg: globalCfg,
-			bus:       bus,
-			log:       deps.Log.With("flow", FlowReversion),
-		}
+		registerStage1Subscriptions(ctx, bus, runner)
+		registerStage2Subscriptions(ctx, bus, runner)
+		registerStage3Subscriptions(ctx, bus, runner)
+	})
+}
 
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionCandidate, runner.handleArmMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionArmMarketReady, runner.handleArmMarketReadyMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionArmPlanCalculated, runner.handleArmPlanCalculatedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionSafetyChecked, runner.handleSafetyCheckedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionArmed, runner.handleWaitMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionWaitComplete, runner.handleRecheckMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionConfirmed, runner.handleFireIOCMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionFireTimingReady, runner.handleFireTimingReadyMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionFirePlanChecked, runner.handleFirePlanCheckedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionFireWindowReached, runner.handleFireWindowReachedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionPositionWatchReady, runner.handlePositionWatchReadyMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionIOCSubmitted, runner.handleIOCSubmittedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionIOCOutcomeChecked, runner.handleIOCOutcomeCheckedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionTimeoutGuardScheduled, runner.handleTimeoutGuardScheduledMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionTimeoutPositionChecked, runner.handleTimeoutPositionCheckedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionForceCloseInitiated, runner.handleForceCloseInitiatedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionForceCloseCompleted, runner.handleForceCloseCompletedMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionTimeout, runner.handleTimeoutMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionPositionClosed, runner.handleCleanupMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionAbort, runner.handleCleanupMessage)
-		subscribeTopic(ctx, bus, deps.Log, TopicReversionError, runner.handleCleanupMessage)
+func registerStage1Subscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
+	subscribeTopic(ctx, bus, runner.log, TopicReversionCandidate, func(ctx context.Context, msg *message.Message) error {
+		var evt CandidateFoundEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleArm(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionArmMarketReady, func(ctx context.Context, msg *message.Message) error {
+		var evt ArmMarketReadyEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleArmMarketReady(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionArmPlanCalculated, func(ctx context.Context, msg *message.Message) error {
+		var evt ArmPlanCalculatedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleArmPlanCalculated(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionSafetyChecked, func(ctx context.Context, msg *message.Message) error {
+		var evt SafetyCheckedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleSafetyChecked(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionArmed, func(ctx context.Context, msg *message.Message) error {
+		var evt ArmedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleWait(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionWaitComplete, func(ctx context.Context, msg *message.Message) error {
+		var evt WaitCompleteEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleRecheck(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionConfirmed, func(ctx context.Context, msg *message.Message) error {
+		var evt ConfirmedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleFireIOC(ctx, evt)
+	})
+}
+
+func registerStage2Subscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
+	subscribeTopic(ctx, bus, runner.log, TopicReversionFireTimingReady, func(ctx context.Context, msg *message.Message) error {
+		var evt FireTimingReadyEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleFireTimingReady(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionFirePlanChecked, func(ctx context.Context, msg *message.Message) error {
+		var evt FirePlanCheckedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleFirePlanChecked(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionFireWindowReached, func(ctx context.Context, msg *message.Message) error {
+		var evt FireWindowReachedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleFireWindowReached(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionPositionWatchReady, func(ctx context.Context, msg *message.Message) error {
+		var evt PositionWatchReadyEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handlePositionWatchReady(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionIOCSubmitted, func(ctx context.Context, msg *message.Message) error {
+		var evt IOCSubmittedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleIOCSubmitted(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionIOCOutcomeChecked, func(ctx context.Context, msg *message.Message) error {
+		var evt IOCOutcomeCheckedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleIOCOutcomeChecked(ctx, evt)
+	})
+}
+
+func registerStage3Subscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
+	subscribeTopic(ctx, bus, runner.log, TopicReversionTimeoutGuardScheduled, func(ctx context.Context, msg *message.Message) error {
+		var evt TimeoutGuardScheduledEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleTimeoutGuardScheduled(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionTimeoutPositionChecked, func(ctx context.Context, msg *message.Message) error {
+		var evt TimeoutPositionCheckedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleTimeoutPositionChecked(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionForceCloseInitiated, func(ctx context.Context, msg *message.Message) error {
+		var evt ForceCloseInitiatedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleForceCloseInitiated(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionForceCloseCompleted, func(ctx context.Context, msg *message.Message) error {
+		var evt ForceCloseCompletedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleForceCloseCompleted(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionTimeout, func(ctx context.Context, msg *message.Message) error {
+		var evt TimeoutEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleTimeout(ctx, evt)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionPositionClosed, func(ctx context.Context, msg *message.Message) error {
+		var evt struct {
+			BaseReversionEvent
+		}
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionAbort, func(ctx context.Context, msg *message.Message) error {
+		var evt struct {
+			BaseReversionEvent
+		}
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
+	})
+	subscribeTopic(ctx, bus, runner.log, TopicReversionError, func(ctx context.Context, msg *message.Message) error {
+		var evt struct {
+			BaseReversionEvent
+		}
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
 	})
 }
 
@@ -76,159 +211,13 @@ func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger,
 				if !ok {
 					return
 				}
-				if err := handler(ctx, msg); err != nil {
-					logger.ErrorContext(ctx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
-				}
-				msg.Ack()
+				go func(m *message.Message) {
+					if err := handler(ctx, m); err != nil {
+						logger.ErrorContext(ctx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+					}
+					m.Ack()
+				}(msg)
 			}
 		}
 	}()
-}
-
-func (r *StatelessRunner) handleArmMessage(ctx context.Context, msg *message.Message) error {
-	var evt CandidateFoundEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleArm(ctx, evt)
-}
-
-func (r *StatelessRunner) handleArmMarketReadyMessage(ctx context.Context, msg *message.Message) error {
-	var evt ArmMarketReadyEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleArmMarketReady(ctx, evt)
-}
-
-func (r *StatelessRunner) handleArmPlanCalculatedMessage(ctx context.Context, msg *message.Message) error {
-	var evt ArmPlanCalculatedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleArmPlanCalculated(ctx, evt)
-}
-
-func (r *StatelessRunner) handleSafetyCheckedMessage(ctx context.Context, msg *message.Message) error {
-	var evt SafetyCheckedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleSafetyChecked(ctx, evt)
-}
-
-func (r *StatelessRunner) handleWaitMessage(ctx context.Context, msg *message.Message) error {
-	var evt ArmedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleWait(ctx, evt)
-}
-
-func (r *StatelessRunner) handleRecheckMessage(ctx context.Context, msg *message.Message) error {
-	var evt WaitCompleteEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleRecheck(ctx, evt)
-}
-
-func (r *StatelessRunner) handleFireIOCMessage(ctx context.Context, msg *message.Message) error {
-	var evt ConfirmedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleFireIOC(ctx, evt)
-}
-
-func (r *StatelessRunner) handleFireTimingReadyMessage(ctx context.Context, msg *message.Message) error {
-	var evt FireTimingReadyEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleFireTimingReady(ctx, evt)
-}
-
-func (r *StatelessRunner) handleFirePlanCheckedMessage(ctx context.Context, msg *message.Message) error {
-	var evt FirePlanCheckedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleFirePlanChecked(ctx, evt)
-}
-
-func (r *StatelessRunner) handleFireWindowReachedMessage(ctx context.Context, msg *message.Message) error {
-	var evt FireWindowReachedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleFireWindowReached(ctx, evt)
-}
-
-func (r *StatelessRunner) handlePositionWatchReadyMessage(ctx context.Context, msg *message.Message) error {
-	var evt PositionWatchReadyEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handlePositionWatchReady(ctx, evt)
-}
-
-func (r *StatelessRunner) handleIOCSubmittedMessage(ctx context.Context, msg *message.Message) error {
-	var evt IOCSubmittedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleIOCSubmitted(ctx, evt)
-}
-
-func (r *StatelessRunner) handleIOCOutcomeCheckedMessage(ctx context.Context, msg *message.Message) error {
-	var evt IOCOutcomeCheckedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleIOCOutcomeChecked(ctx, evt)
-}
-
-func (r *StatelessRunner) handleCleanupMessage(ctx context.Context, msg *message.Message) error {
-	return r.handleCleanup(ctx, msg)
-}
-
-func (r *StatelessRunner) handleTimeoutGuardScheduledMessage(ctx context.Context, msg *message.Message) error {
-	var evt TimeoutGuardScheduledEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleTimeoutGuardScheduled(ctx, evt)
-}
-
-func (r *StatelessRunner) handleTimeoutPositionCheckedMessage(ctx context.Context, msg *message.Message) error {
-	var evt TimeoutPositionCheckedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleTimeoutPositionChecked(ctx, evt)
-}
-
-func (r *StatelessRunner) handleForceCloseInitiatedMessage(ctx context.Context, msg *message.Message) error {
-	var evt ForceCloseInitiatedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleForceCloseInitiated(ctx, evt)
-}
-
-func (r *StatelessRunner) handleForceCloseCompletedMessage(ctx context.Context, msg *message.Message) error {
-	var evt ForceCloseCompletedEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleForceCloseCompleted(ctx, evt)
-}
-
-func (r *StatelessRunner) handleTimeoutMessage(ctx context.Context, msg *message.Message) error {
-	var evt TimeoutEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	return r.handleTimeout(ctx, evt)
 }

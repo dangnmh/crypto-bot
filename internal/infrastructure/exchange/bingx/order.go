@@ -82,7 +82,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	ordType := mapOrderType(req.Type)
 	side, posSide := mapSideAndPosSide(req.Side, req.PositionMode)
 
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol:       req.Symbol,
 		"side":            side,
 		paramPositionSide: posSide,
@@ -118,7 +118,7 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 
 // CancelOrder cancels an existing order by ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	bodyMap := map[string]interface{}{
+	bodyMap := map[string]any{
 		paramSymbol:  symbol,
 		paramOrderId: orderID,
 	}
@@ -150,8 +150,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder fetches details of a specific order.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) getRawOrder(ctx context.Context, orderID string) (*bingxOrder, error) {
 	params := map[string]string{
 		paramOrderId: orderID,
 	}
@@ -165,12 +164,10 @@ func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderI
 	if err != nil {
 		return nil, err
 	}
-
-	return c.toOrderInfo(&res), nil
+	return &res, nil
 }
 
-// GetOpenOrders returns all currently active orders.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bingxOrder, error) {
 	params := map[string]string{}
 	if symbol != "" {
 		params[paramSymbol] = symbol
@@ -181,14 +178,29 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, err
 	}
 
-	res, err := ParseResponse[[]bingxOrder](body, "open_orders")
+	return ParseResponse[[]bingxOrder](body, "open_orders")
+}
+
+// GetOrder fetches details of a specific order.
+func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
 
-	infos := make([]exchange.OrderInfo, 0, len(res))
-	for i := range res {
-		infos = append(infos, *c.toOrderInfo(&res[i]))
+	return c.toOrderInfo(raw), nil
+}
+
+// GetOpenOrders returns all currently active orders.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawList, err := c.getRawOpenOrders(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	infos := make([]exchange.OrderInfo, 0, len(rawList))
+	for i := range rawList {
+		infos = append(infos, *c.toOrderInfo(&rawList[i]))
 	}
 
 	return infos, nil
@@ -233,7 +245,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 // ChangeLeverage changes leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
 	// Set for LONG
-	bodyMapLong := map[string]interface{}{
+	bodyMapLong := map[string]any{
 		paramSymbol:       req.Symbol,
 		paramLeverage:     strconv.Itoa(req.Leverage),
 		paramPositionSide: posSideLong,
@@ -247,7 +259,7 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	}
 
 	// Set for SHORT
-	bodyMapShort := map[string]interface{}{
+	bodyMapShort := map[string]any{
 		paramSymbol:       req.Symbol,
 		paramLeverage:     strconv.Itoa(req.Leverage),
 		paramPositionSide: posSideShort,
