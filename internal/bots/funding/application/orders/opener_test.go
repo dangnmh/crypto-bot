@@ -48,14 +48,14 @@ func TestFireIOC(t *testing.T) {
 	clock.EXPECT().GetServerTime().Return(time.Unix(100, 0).UnixMilli())
 	clock.EXPECT().Offset().Return(int64(7))
 	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req exchange.SubmitOrderRequest) (string, error) {
+		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			assert.Equal(t, "BTC_USDT", req.Symbol)
 			assert.Equal(t, exchange.OrderTypeIOC, req.Type)
 			assert.Equal(t, int(shared.SideOpenLong), req.Side)
 			assert.Equal(t, 2.0, req.Vol)
 			assert.NotZero(t, req.Price)
 			assert.True(t, strings.HasPrefix(req.ExternalOID, "ioc_"))
-			return "order-1", nil
+			return exchange.CreateOrderResult{OrderID: "order-1", TPSLSubmitted: false}, nil
 		},
 	)
 
@@ -82,7 +82,7 @@ func TestFireIOCValidationAndSubmitError(t *testing.T) {
 	clock.EXPECT().GetServerTime().Return(time.Unix(100, 0).UnixMilli())
 	clock.EXPECT().Offset().Return(int64(0))
 	wantErr := errors.New("exchange down")
-	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("", wantErr)
+	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return(exchange.CreateOrderResult{}, wantErr)
 
 	got = orders.FireIOC(context.Background(), client, &valid, clock, testLogger())
 	require.ErrorIs(t, got.Error, wantErr)
@@ -98,13 +98,13 @@ func TestFireLimitTrap(t *testing.T) {
 	candidate := testCandidate(shared.SideOpenLong)
 
 	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req exchange.SubmitOrderRequest) (string, error) {
+		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			assert.Equal(t, exchange.OrderTypeLimit, req.Type)
 			assert.Equal(t, int(shared.SideOpenShort), req.Side)
 			assert.True(t, strings.HasPrefix(req.ExternalOID, "trp_"))
 			assert.NotZero(t, req.TakeProfitPrice)
 			assert.NotZero(t, req.StopLossPrice)
-			return "trap-1", nil
+			return exchange.CreateOrderResult{OrderID: "trap-1", TPSLSubmitted: false}, nil
 		},
 	)
 

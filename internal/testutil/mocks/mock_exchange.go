@@ -272,10 +272,10 @@ func (c *MockClientClosePositionCall) DoAndReturn(f func(context.Context, string
 }
 
 // CreateOrder mocks base method.
-func (m *MockClient) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (m *MockClient) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateOrder", ctx, req)
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].(exchange.CreateOrderResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -293,19 +293,19 @@ type MockClientCreateOrderCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockClientCreateOrderCall) Return(arg0 string, arg1 error) *MockClientCreateOrderCall {
+func (c *MockClientCreateOrderCall) Return(arg0 exchange.CreateOrderResult, arg1 error) *MockClientCreateOrderCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockClientCreateOrderCall) Do(f func(context.Context, exchange.SubmitOrderRequest) (string, error)) *MockClientCreateOrderCall {
+func (c *MockClientCreateOrderCall) Do(f func(context.Context, exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error)) *MockClientCreateOrderCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientCreateOrderCall) DoAndReturn(f func(context.Context, exchange.SubmitOrderRequest) (string, error)) *MockClientCreateOrderCall {
+func (c *MockClientCreateOrderCall) DoAndReturn(f func(context.Context, exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error)) *MockClientCreateOrderCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -701,18 +701,18 @@ func (c *MockClientGetOpenPositionsCall) DoAndReturn(f func(context.Context, str
 }
 
 // GetOrder mocks base method.
-func (m *MockClient) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (m *MockClient) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetOrder", ctx, orderID)
+	ret := m.ctrl.Call(m, "GetOrder", ctx, symbol, orderID)
 	ret0, _ := ret[0].(*exchange.OrderInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetOrder indicates an expected call of GetOrder.
-func (mr *MockClientMockRecorder) GetOrder(ctx, orderID any) *MockClientGetOrderCall {
+func (mr *MockClientMockRecorder) GetOrder(ctx, symbol, orderID any) *MockClientGetOrderCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrder", reflect.TypeOf((*MockClient)(nil).GetOrder), ctx, orderID)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrder", reflect.TypeOf((*MockClient)(nil).GetOrder), ctx, symbol, orderID)
 	return &MockClientGetOrderCall{Call: call}
 }
 
@@ -728,13 +728,13 @@ func (c *MockClientGetOrderCall) Return(arg0 *exchange.OrderInfo, arg1 error) *M
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockClientGetOrderCall) Do(f func(context.Context, string) (*exchange.OrderInfo, error)) *MockClientGetOrderCall {
+func (c *MockClientGetOrderCall) Do(f func(context.Context, string, string) (*exchange.OrderInfo, error)) *MockClientGetOrderCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientGetOrderCall) DoAndReturn(f func(context.Context, string) (*exchange.OrderInfo, error)) *MockClientGetOrderCall {
+func (c *MockClientGetOrderCall) DoAndReturn(f func(context.Context, string, string) (*exchange.OrderInfo, error)) *MockClientGetOrderCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

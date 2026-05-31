@@ -188,7 +188,7 @@ func TestClient_GetOrder_APIError(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(srv)
-	_, err := client.GetOrder(context.Background(), "nonexistent")
+	_, err := client.GetOrder(context.Background(), "BTC_USDT", "nonexistent")
 	assert.Error(t, err)
 }
 

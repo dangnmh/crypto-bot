@@ -40,6 +40,7 @@ const (
 	TopicReversionError                  = "funding.reversion.error"
 	TopicReversionFinalPnL               = "funding.reversion.final_pnl"
 	TopicReversionCompleted              = "funding.reversion.completed"
+	TopicReversionTPSLRequired           = "funding.reversion.tpsl_required"
 )
 
 const (
@@ -292,6 +293,7 @@ type IOCSubmittedEvent struct {
 	Volume        float64     `json:"volume"`
 	TPPrice       float64     `json:"tp_price,omitempty"`
 	SLPrice       float64     `json:"sl_price,omitempty"`
+	TPSLSubmitted bool        `json:"tpsl_submitted"`
 	FireTimestamp time.Time   `json:"fire_timestamp"`
 	LatencyRTTMs  int64       `json:"latency_rtt_ms,omitempty"`
 	Error         string      `json:"error,omitempty"`
@@ -608,4 +610,26 @@ type ReversionCompletedEvent struct {
 func (e ReversionCompletedEvent) GetMessage() string { return "Reversion completed for " + e.Symbol }
 func (e ReversionCompletedEvent) GetDataMap() map[string]any {
 	return map[string]any{keySymbol: e.Symbol, keyReason: e.Reason}
+}
+
+type TPSLRequiredEvent struct {
+	BaseReversionEvent
+	OrderID         string  `json:"order_id"`
+	Side            int     `json:"side"`
+	PositionMode    int     `json:"position_mode"`
+	TakeProfitPrice float64 `json:"take_profit_price,omitempty"`
+	StopLossPrice   float64 `json:"stop_loss_price,omitempty"`
+	Volume          float64 `json:"volume,omitempty"`
+}
+
+func (e TPSLRequiredEvent) GetMessage() string {
+	return "Immediate TP/SL placement required for " + e.Symbol
+}
+func (e TPSLRequiredEvent) GetDataMap() map[string]any {
+	return map[string]any{
+		keySymbol:  e.Symbol,
+		keyOrderID: e.OrderID,
+		"tp":       e.TakeProfitPrice,
+		"sl":       e.StopLossPrice,
+	}
 }

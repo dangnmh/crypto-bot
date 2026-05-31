@@ -2,6 +2,7 @@ package reversion
 
 import (
 	"context"
+	"log/slog"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -23,7 +24,7 @@ func (r *StatelessRunner) handleIOCSubmitted(ctx context.Context, evt IOCSubmitt
 }
 
 func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmittedEvent) IOCOutcomeCheckedEvent {
-	poll := r.pollIOCOrder(ctx, evt.OrderID)
+	poll := r.pollIOCOrder(ctx, evt.Symbol, evt.OrderID)
 
 	holdVol, err := r.getHoldVolume(ctx, evt.Symbol)
 	if err != nil {
@@ -46,12 +47,12 @@ func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmitte
 	}
 }
 
-func (r *StatelessRunner) pollIOCOrder(ctx context.Context, orderID string) iocOrderPollResult {
+func (r *StatelessRunner) pollIOCOrder(ctx context.Context, symbol, orderID string) iocOrderPollResult {
 	deadline := r.deps.Clock.Now().Add(iocOutcomePollTimeout)
 	var result iocOrderPollResult
 
 	for {
-		got, err := r.deps.Client.GetOrder(ctx, orderID)
+		got, err := r.deps.Client.GetOrder(ctx, symbol, orderID)
 		if err != nil {
 			result.reason = err.Error()
 		} else if got != nil {
@@ -105,5 +106,36 @@ func (r *StatelessRunner) handleIOCOutcomeChecked(ctx context.Context, evt IOCOu
 	default:
 		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, reversionReasonIOCUnknownNoPosition)
 	}
+	return nil
+}
+
+func (r *StatelessRunner) handleTPSLRequired(ctx context.Context, evt TPSLRequiredEvent) error {
+	provider, ok := r.deps.Client.(exchange.TPSLProvider)
+	if !ok {
+		r.log.WarnContext(ctx, "Exchange client does not support PlaceTPSL", slog.String("symbol", evt.Symbol))
+		return nil
+	}
+
+	req := exchange.TPSLRequest{
+		Symbol:          evt.Symbol,
+		PositionMode:    evt.PositionMode,
+		Side:            evt.Side,
+		TakeProfitPrice: evt.TakeProfitPrice,
+		StopLossPrice:   evt.StopLossPrice,
+		Volume:          evt.Volume,
+	}
+
+	r.log.InfoContext(ctx, "Placing immediate post-fill TP/SL trigger orders",
+		slog.String("symbol", evt.Symbol),
+		slog.Float64("tp", evt.TakeProfitPrice),
+		slog.Float64("sl", evt.StopLossPrice),
+		slog.Float64("vol", evt.Volume),
+	)
+
+	if err := provider.PlaceTPSL(ctx, req); err != nil {
+		r.log.ErrorContext(ctx, "Failed to place post-fill TP/SL orders", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+		return nil
+	}
+
 	return nil
 }

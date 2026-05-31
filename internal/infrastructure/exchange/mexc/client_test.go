@@ -384,14 +384,14 @@ func TestClient_CreateOrder(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(srv)
-	orderID, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
 		Symbol: "BTC_USDT", Price: 50000, Vol: 1, Side: 1, Type: 3,
 	})
 	if err != nil {
 		t.Fatalf("CreateOrder failed: %v", err)
 	}
-	if orderID != "order123" {
-		t.Errorf("OrderID: want 'order123', got %q", orderID)
+	if res.OrderID != "order123" {
+		t.Errorf("OrderID: want 'order123', got %q", res.OrderID)
 	}
 }
 
@@ -504,7 +504,7 @@ func TestClient_GetOrder(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(srv)
-	got, err := client.GetOrder(context.Background(), "ord1")
+	got, err := client.GetOrder(context.Background(), "BTC_USDT", "ord1")
 	if err != nil {
 		t.Fatalf("GetOrder failed: %v", err)
 	}

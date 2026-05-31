@@ -184,7 +184,7 @@ func TestClient_CreateOrder(t *testing.T) {
 	defer server.Close()
 
 	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-	orderID, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
 		Symbol:       "BTC-USDT",
 		Vol:          0.5,
 		Side:         exchange.SideOpenLong,
@@ -194,7 +194,7 @@ func TestClient_CreateOrder(t *testing.T) {
 		ExternalOID:  "external_123",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "123456", orderID)
+	assert.Equal(t, "123456", res.OrderID)
 }
 
 func TestClient_CancelOrder(t *testing.T) {
@@ -245,7 +245,7 @@ func TestClient_GetOrder(t *testing.T) {
 	defer server.Close()
 
 	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-	info, err := client.GetOrder(context.Background(), "123456")
+	info, err := client.GetOrder(context.Background(), "BTC-USDT", "123456")
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, "123456", info.OrderID)

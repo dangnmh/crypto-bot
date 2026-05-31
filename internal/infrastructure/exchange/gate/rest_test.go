@@ -99,7 +99,7 @@ func TestClient_OrderEndpoints(t *testing.T) {
 	require.NoError(t, client.CancelOrders(ctx, []string{"42", "43"}))
 	require.NoError(t, client.CancelAllOpenOrders(ctx, "BTC_USDT"))
 
-	order, err := client.GetOrder(ctx, "42")
+	order, err := client.GetOrder(ctx, "BTC_USDT", "42")
 	require.NoError(t, err)
 	require.NotNil(t, order)
 	assert.Equal(t, "42", order.OrderID)
@@ -173,7 +173,7 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 	require.Error(t, errClient.CancelOrder(context.Background(), "BTC_USDT", "42"))
 	require.Error(t, errClient.CancelOrders(context.Background(), []string{"42"}))
 	require.Error(t, errClient.CancelAllOpenOrders(context.Background(), "BTC_USDT"))
-	_, err = errClient.GetOrder(context.Background(), "42")
+	_, err = errClient.GetOrder(context.Background(), "BTC_USDT", "42")
 	require.Error(t, err)
 	_, err = errClient.GetOpenOrders(context.Background(), "BTC_USDT")
 	require.Error(t, err)

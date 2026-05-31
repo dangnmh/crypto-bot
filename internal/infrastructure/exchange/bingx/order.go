@@ -78,7 +78,7 @@ func mapSideAndPosSide(side, posMode int) (string, string) {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ordType := mapOrderType(req.Type)
 	side, posSide := mapSideAndPosSide(req.Side, req.PositionMode)
 
@@ -100,15 +100,18 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	res, err := ParseResponse[bingxOrderResult](body, "create_order")
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
-	return res.OrderID, nil
+	return exchange.CreateOrderResult{
+		OrderID:       res.OrderID,
+		TPSLSubmitted: false,
+	}, nil
 }
 
 // CreateTrackOrder is a placeholder.
@@ -150,8 +153,9 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-func (c *Client) getRawOrder(ctx context.Context, orderID string) (*bingxOrder, error) {
+func (c *Client) getRawOrder(ctx context.Context, symbol, orderID string) (*bingxOrder, error) {
 	params := map[string]string{
+		paramSymbol:  symbol,
 		paramOrderId: orderID,
 	}
 
@@ -182,8 +186,8 @@ func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bingxOr
 }
 
 // GetOrder fetches details of a specific order.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, orderID)
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, err
 	}

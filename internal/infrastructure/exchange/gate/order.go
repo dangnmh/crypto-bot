@@ -120,7 +120,7 @@ func mapOrderInfo(raw gateapi.FuturesOrder) exchange.OrderInfo {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ctx = c.authCtx(ctx)
 	order := c.mapSubmitOrder(req)
 
@@ -129,10 +129,10 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		defer func() { _ = httpResp.Body.Close() }()
 	}
 	if err != nil {
-		return "", fmt.Errorf("gate.io create order: %w", err)
+		return exchange.CreateOrderResult{}, fmt.Errorf("gate.io create order: %w", err)
 	}
 
-	return strconv.FormatInt(resp.Id, 10), nil
+	return exchange.CreateOrderResult{OrderID: strconv.FormatInt(resp.Id, 10), TPSLSubmitted: false}, nil
 }
 
 // CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
@@ -182,7 +182,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 }
 
 // GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	ctx = c.authCtx(ctx)
 	resp, httpResp, err := c.apiClient.FuturesApi.GetFuturesOrder(ctx, "usdt", orderID)
 	if httpResp != nil && httpResp.Body != nil {

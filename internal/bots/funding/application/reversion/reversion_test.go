@@ -239,8 +239,8 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}, nil)
 
 	// 3. FireIOC expectations
-	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return("ord_123", nil)
-	mockClient.EXPECT().GetOrder(gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
+	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return(exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil)
+	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
 		OrderID:      "ord_123",
 		Symbol:       "BTC_USDT",
 		State:        exchange.OrderStateFilled,
@@ -448,14 +448,14 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	// Capture the ExternalOID that is passed to CreateOrder
 	var capturedExtOID string
 	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+		func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			capturedExtOID = req.ExternalOID
 			close(createOrderCalled)
-			return "ord_123", nil
+			return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
 		},
 	)
 
-	mockClient.EXPECT().GetOrder(gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
+	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
 		OrderID:      "ord_123",
 		Symbol:       "BTC_USDT",
 		State:        exchange.OrderStateFilled,

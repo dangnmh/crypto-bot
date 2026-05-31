@@ -12,14 +12,11 @@
         "wsURL": "wss://contract.mexc.com/edge"
       }
     },
-    "gate": {
-      "enable": false,
-      "future": { "baseURL": "https://api.gateio.ws/api/v4" },
-      "websocket": { "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt" }
-    },
     "bybit": {
       "enable": true,
-      "future": { "baseURL": "https://api.bybit.com" },
+      "future": {
+        "baseURL": "https://api.bybit.com"
+      },
       "websocket": {
         "publicURL": "wss://stream.bybit.com/v5/public/linear",
         "privateURL": "wss://stream.bybit.com/v5/private",
@@ -28,34 +25,70 @@
       "accountType": "unified"
     },
     "binance": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://fapi.binance.com"
+      },
+      "websocket": {
+        "wsURL": "wss://fstream.binance.com/ws",
+        "publicURL": "wss://fstream.binance.com/public/ws",
+        "marketURL": "wss://fstream.binance.com/market/ws",
+        "privateURL": "wss://fstream.binance.com/private/ws"
+      }
+    },
+    "gate": {
       "enable": false,
-      "future": { "baseURL": "https://fapi.binance.com" },
-      "websocket": { "wsURL": "wss://fstream.binance.com/ws" }
+      "future": {
+        "baseURL": "https://api.gateio.ws/api/v4"
+      },
+      "websocket": {
+        "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt"
+      }
     },
     "okx": {
       "enable": false,
-      "future": { "baseURL": "https://aws.okx.com" },
-      "websocket": { "wsURL": "wss://ws.okx.com:8443/ws/v5/private" }
+      "future": {
+        "baseURL": "https://aws.okx.com"
+      },
+      "websocket": {
+        "wsURL": "wss://ws.okx.com:8443/ws/v5/private"
+      }
     },
     "hyperliquid": {
       "enable": false,
-      "future": { "baseURL": "https://api.hyperliquid.xyz" },
-      "websocket": { "wsURL": "wss://api.hyperliquid.xyz/ws" }
+      "future": {
+        "baseURL": "https://api.hyperliquid.xyz"
+      },
+      "websocket": {
+        "wsURL": "wss://api.hyperliquid.xyz/ws"
+      }
     },
     "bitget": {
       "enable": false,
-      "future": { "baseURL": "https://api.bitget.com" },
-      "websocket": { "wsURL": "wss://ws.bitget.com/v2/ws/private" }
+      "future": {
+        "baseURL": "https://api.bitget.com"
+      },
+      "websocket": {
+        "wsURL": "wss://ws.bitget.com/v2/ws/private"
+      }
     },
     "kucoin": {
       "enable": false,
-      "future": { "baseURL": "https://api-futures.kucoin.com" },
-      "websocket": { "wsURL": "wss://ws-api-futures.kucoin.com/endpoint" }
+      "future": {
+        "baseURL": "https://api-futures.kucoin.com"
+      },
+      "websocket": {
+        "wsURL": "wss://ws-api-futures.kucoin.com/endpoint"
+      }
     },
     "bingx": {
       "enable": false,
-      "future": { "baseURL": "https://open-api.bingx.com" },
-      "websocket": { "wsURL": "wss://open-api-ws.bingx.com/market" }
+      "future": {
+        "baseURL": "https://open-api.bingx.com"
+      },
+      "websocket": {
+        "wsURL": "wss://open-api-ws.bingx.com/market"
+      }
     }
   },
   // ══════════════════════════════════════════════════════════════

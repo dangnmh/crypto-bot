@@ -150,7 +150,7 @@ type bitgetTradeFill struct {
 // GetRecentClosedPnL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// Look up numeric orderID from client order ID (extOrderID / clientOid)
-	orderInfo, err := c.GetOrder(ctx, extOrderID)
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("bitget get order by external ID %s failed: %w", extOrderID, err)
 	}

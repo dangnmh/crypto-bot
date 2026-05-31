@@ -3,6 +3,7 @@ package reversion
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"time"
@@ -165,6 +166,20 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 		timeout = 60 * time.Second
 	}
 
+	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
+	if cfg.Leverage > 0 {
+		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", cfg.Leverage))
+		err := r.deps.Client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
+			Symbol:   evt.Symbol,
+			Leverage: cfg.Leverage,
+		})
+		if err != nil {
+			r.log.ErrorContext(ctx, "Failed to adjust leverage", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "change leverage failed: "+err.Error())
+			return fmt.Errorf("change leverage failed: %w", err)
+		}
+	}
+
 	next := PositionWatchReadyEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Candidate:          evt.Candidate,
@@ -199,9 +214,24 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 			Volume:             res.Volume,
 			TPPrice:            res.TakeProfitPrice,
 			SLPrice:            res.StopLossPrice,
+			TPSLSubmitted:      res.TPSLSubmitted,
 			FireTimestamp:      evt.FireTimestamp,
 			LatencyRTTMs:       evt.LatencyRTTMs,
 		}
+
+		if !res.TPSLSubmitted && (res.TakeProfitPrice > 0 || res.StopLossPrice > 0) {
+			tpslEvt := TPSLRequiredEvent{
+				BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+				OrderID:            res.OrderID,
+				Side:               int(c.Side),
+				PositionMode:       c.Config.ParsedPositionMode,
+				TakeProfitPrice:    res.TakeProfitPrice,
+				StopLossPrice:      res.StopLossPrice,
+				Volume:             res.Volume,
+			}
+			go r.publishTPSLBackground(ctx, tpslEvt)
+		}
+
 		return r.publishEvent(ctx, TopicReversionIOCSubmitted, next)
 	}
 
@@ -227,4 +257,11 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 	_ = r.publishEvent(ctx, TopicReversionIOCSubmitted, next)
 	r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, errText)
 	return errors.New(errText)
+}
+
+func (r *StatelessRunner) publishTPSLBackground(ctx context.Context, evt TPSLRequiredEvent) {
+	detached := context.WithoutCancel(ctx)
+	if err := r.publishEvent(detached, TopicReversionTPSLRequired, evt); err != nil {
+		r.log.Error("Failed to publish TopicReversionTPSLRequired", slog.Any("error", err))
+	}
 }

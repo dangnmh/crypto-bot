@@ -389,7 +389,7 @@ func TestClient_PrivateTrading_and_Orders(t *testing.T) {
 	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
 
 	// 1. CreateOrder
-	oid, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
 		Symbol:      "BTC",
 		Vol:         0.01,
 		Price:       50000.0,
@@ -398,7 +398,7 @@ func TestClient_PrivateTrading_and_Orders(t *testing.T) {
 		ExternalOID: "0x00000000000000000000000000000001",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "12345", oid)
+	assert.Equal(t, "12345", res.OrderID)
 
 	// 2. CancelOrder
 	err = client.CancelOrder(context.Background(), "BTC", "12345")

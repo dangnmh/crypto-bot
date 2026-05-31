@@ -16,6 +16,7 @@ type SyncConfig struct {
 type WebSocketConfig struct {
 	WSURL             string `json:"wsURL"`
 	PublicURL         string `json:"publicURL"`
+	MarketURL         string `json:"marketURL"`
 	PrivateURL        string `json:"privateURL"`
 	MaxPairsPerWSConn int    `json:"maxPairsPerWSConn"`
 }
@@ -25,6 +26,13 @@ func (c WebSocketConfig) PublicEndpoint() string {
 		return c.PublicURL
 	}
 	return c.WSURL
+}
+
+func (c WebSocketConfig) MarketEndpoint() string {
+	if c.MarketURL != "" {
+		return c.MarketURL
+	}
+	return c.PublicEndpoint()
 }
 
 func (c WebSocketConfig) PrivateEndpoint() string {

@@ -64,7 +64,6 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 	localBefore := time.Now().UnixMilli()
 	serverTime, err := ts.client.GetServerTime(ctx)
 	localAfter := time.Now().UnixMilli()
-
 	if err != nil {
 		ts.mu.Lock()
 		ts.healthy = false

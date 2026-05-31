@@ -189,9 +189,9 @@ func TestClient_CreateOrder(t *testing.T) {
 		PositionMode: 1, // Hedge
 	}
 
-	orderID, err := client.CreateOrder(context.Background(), req)
+	res, err := client.CreateOrder(context.Background(), req)
 	require.NoError(t, err)
-	assert.Equal(t, "987654", orderID)
+	assert.Equal(t, "987654", res.OrderID)
 }
 
 func TestClient_CancelOrder(t *testing.T) {
@@ -483,7 +483,7 @@ func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	info, err := client.GetOrder(context.Background(), "order123")
+	info, err := client.GetOrder(context.Background(), "BTC-USDT-SWAP", "order123")
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, "order123", info.OrderID)

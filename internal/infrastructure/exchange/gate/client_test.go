@@ -165,9 +165,9 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 			// Create client pointed to our mock server.
 			client := gate.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
 
-			orderID, err := client.CreateOrder(context.Background(), tt.req)
+			res, err := client.CreateOrder(context.Background(), tt.req)
 			require.NoError(t, err)
-			assert.Equal(t, "987654", orderID)
+			assert.Equal(t, "987654", res.OrderID)
 		})
 	}
 }

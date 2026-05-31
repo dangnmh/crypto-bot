@@ -16,11 +16,6 @@ import (
 
 // GetServerTime returns the Binance server timestamp in milliseconds.
 func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	req := c.sdkClient.RestApi.MarketDataAPI.TestConnectivity(ctx)
-	_, err := c.sdkClient.RestApi.MarketDataAPI.TestConnectivityExecute(req)
-	if err != nil {
-		return 0, fmt.Errorf("binance test connectivity: %w", err)
-	}
 	reqTime := c.sdkClient.RestApi.MarketDataAPI.CheckServerTime(ctx)
 	resp, err := c.sdkClient.RestApi.MarketDataAPI.CheckServerTimeExecute(reqTime)
 	if err != nil {

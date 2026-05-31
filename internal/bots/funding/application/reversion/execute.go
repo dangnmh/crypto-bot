@@ -27,171 +27,164 @@ func InitGlobalSubscriptions(ctx context.Context, runner *StatelessRunner) {
 	}
 
 	once.Do(func() {
-		registerStage1Subscriptions(ctx, bus, runner)
-		registerStage2Subscriptions(ctx, bus, runner)
-		registerStage3Subscriptions(ctx, bus, runner)
+		registerAllSubscriptions(ctx, bus, runner)
 	})
 }
 
-func registerStage1Subscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
-	subscribeTopic(ctx, bus, runner.log, TopicReversionCandidate, func(ctx context.Context, msg *message.Message) error {
-		var evt CandidateFoundEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleArm(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionArmMarketReady, func(ctx context.Context, msg *message.Message) error {
-		var evt ArmMarketReadyEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleArmMarketReady(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionArmPlanCalculated, func(ctx context.Context, msg *message.Message) error {
-		var evt ArmPlanCalculatedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleArmPlanCalculated(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionSafetyChecked, func(ctx context.Context, msg *message.Message) error {
-		var evt SafetyCheckedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleSafetyChecked(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionArmed, func(ctx context.Context, msg *message.Message) error {
-		var evt ArmedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleWait(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionWaitComplete, func(ctx context.Context, msg *message.Message) error {
-		var evt WaitCompleteEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleRecheck(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionConfirmed, func(ctx context.Context, msg *message.Message) error {
-		var evt ConfirmedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleFireIOC(ctx, evt)
-	})
+func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
+	// Stage 1
+	registerEventSubscription(ctx, bus, runner, TopicReversionCandidate,
+		func(e *CandidateFoundEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt CandidateFoundEvent) error {
+			return r.handleArm(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionArmMarketReady,
+		func(e *ArmMarketReadyEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt ArmMarketReadyEvent) error {
+			return r.handleArmMarketReady(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionArmPlanCalculated,
+		func(e *ArmPlanCalculatedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt ArmPlanCalculatedEvent) error {
+			return r.handleArmPlanCalculated(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionSafetyChecked,
+		func(e *SafetyCheckedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt SafetyCheckedEvent) error {
+			return r.handleSafetyChecked(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionArmed,
+		func(e *ArmedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt ArmedEvent) error {
+			return r.handleWait(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionWaitComplete,
+		func(e *WaitCompleteEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt WaitCompleteEvent) error {
+			return r.handleRecheck(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionConfirmed,
+		func(e *ConfirmedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt ConfirmedEvent) error {
+			return r.handleFireIOC(ctx, evt)
+		},
+	)
+
+	// Stage 2
+	registerEventSubscription(ctx, bus, runner, TopicReversionFireTimingReady,
+		func(e *FireTimingReadyEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt FireTimingReadyEvent) error {
+			return r.handleFireTimingReady(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionFirePlanChecked,
+		func(e *FirePlanCheckedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt FirePlanCheckedEvent) error {
+			return r.handleFirePlanChecked(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionFireWindowReached,
+		func(e *FireWindowReachedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt FireWindowReachedEvent) error {
+			return r.handleFireWindowReached(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionPositionWatchReady,
+		func(e *PositionWatchReadyEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt PositionWatchReadyEvent) error {
+			return r.handlePositionWatchReady(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionIOCSubmitted,
+		func(e *IOCSubmittedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt IOCSubmittedEvent) error {
+			return r.handleIOCSubmitted(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionIOCOutcomeChecked,
+		func(e *IOCOutcomeCheckedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt IOCOutcomeCheckedEvent) error {
+			return r.handleIOCOutcomeChecked(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionTPSLRequired,
+		func(e *TPSLRequiredEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt TPSLRequiredEvent) error {
+			return r.handleTPSLRequired(ctx, evt)
+		},
+	)
+
+	// Stage 3
+	registerEventSubscription(ctx, bus, runner, TopicReversionTimeoutGuardScheduled,
+		func(e *TimeoutGuardScheduledEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt TimeoutGuardScheduledEvent) error {
+			return r.handleTimeoutGuardScheduled(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionTimeoutPositionChecked,
+		func(e *TimeoutPositionCheckedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt TimeoutPositionCheckedEvent) error {
+			return r.handleTimeoutPositionChecked(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionForceCloseInitiated,
+		func(e *ForceCloseInitiatedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt ForceCloseInitiatedEvent) error {
+			return r.handleForceCloseInitiated(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionForceCloseCompleted,
+		func(e *ForceCloseCompletedEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt ForceCloseCompletedEvent) error {
+			return r.handleForceCloseCompleted(ctx, evt)
+		},
+	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionTimeout,
+		func(e *TimeoutEvent) (string, string) { return e.Exchange, e.ReqID },
+		func(ctx context.Context, r *StatelessRunner, evt TimeoutEvent) error {
+			return r.handleTimeout(ctx, evt)
+		},
+	)
+
+	cleanupTopics := []string{
+		TopicReversionPositionClosed,
+		TopicReversionAbort,
+		TopicReversionError,
+	}
+	for _, topic := range cleanupTopics {
+		subscribeTopic(ctx, bus, runner.log, topic, func(ctx context.Context, msg *message.Message) error {
+			var evt struct {
+				BaseReversionEvent
+			}
+			if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+				return err
+			}
+			return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
+		})
+	}
 }
 
-func registerStage2Subscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
-	subscribeTopic(ctx, bus, runner.log, TopicReversionFireTimingReady, func(ctx context.Context, msg *message.Message) error {
-		var evt FireTimingReadyEvent
+func registerEventSubscription[T any](
+	ctx context.Context,
+	bus *eventbus.Bus,
+	runner *StatelessRunner,
+	topic string,
+	route func(*T) (string, string),
+	action func(context.Context, *StatelessRunner, T) error,
+) {
+	subscribeTopic(ctx, bus, runner.log, topic, func(ctx context.Context, msg *message.Message) error {
+		var evt T
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return err
 		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleFireTimingReady(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionFirePlanChecked, func(ctx context.Context, msg *message.Message) error {
-		var evt FirePlanCheckedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleFirePlanChecked(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionFireWindowReached, func(ctx context.Context, msg *message.Message) error {
-		var evt FireWindowReachedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleFireWindowReached(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionPositionWatchReady, func(ctx context.Context, msg *message.Message) error {
-		var evt PositionWatchReadyEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handlePositionWatchReady(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionIOCSubmitted, func(ctx context.Context, msg *message.Message) error {
-		var evt IOCSubmittedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleIOCSubmitted(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionIOCOutcomeChecked, func(ctx context.Context, msg *message.Message) error {
-		var evt IOCOutcomeCheckedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleIOCOutcomeChecked(ctx, evt)
-	})
-}
-
-func registerStage3Subscriptions(ctx context.Context, bus *eventbus.Bus, runner *StatelessRunner) {
-	subscribeTopic(ctx, bus, runner.log, TopicReversionTimeoutGuardScheduled, func(ctx context.Context, msg *message.Message) error {
-		var evt TimeoutGuardScheduledEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleTimeoutGuardScheduled(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionTimeoutPositionChecked, func(ctx context.Context, msg *message.Message) error {
-		var evt TimeoutPositionCheckedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleTimeoutPositionChecked(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionForceCloseInitiated, func(ctx context.Context, msg *message.Message) error {
-		var evt ForceCloseInitiatedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleForceCloseInitiated(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionForceCloseCompleted, func(ctx context.Context, msg *message.Message) error {
-		var evt ForceCloseCompletedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleForceCloseCompleted(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionTimeout, func(ctx context.Context, msg *message.Message) error {
-		var evt TimeoutEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleTimeout(ctx, evt)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionPositionClosed, func(ctx context.Context, msg *message.Message) error {
-		var evt struct {
-			BaseReversionEvent
-		}
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionAbort, func(ctx context.Context, msg *message.Message) error {
-		var evt struct {
-			BaseReversionEvent
-		}
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
-	})
-	subscribeTopic(ctx, bus, runner.log, TopicReversionError, func(ctx context.Context, msg *message.Message) error {
-		var evt struct {
-			BaseReversionEvent
-		}
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		return runner.clone(evt.Exchange, evt.ReqID).handleCleanup(ctx, msg)
+		exch, reqID := route(&evt)
+		return action(ctx, runner.clone(exch, reqID), evt)
 	})
 }
 

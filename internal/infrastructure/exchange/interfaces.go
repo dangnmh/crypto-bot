@@ -19,19 +19,31 @@ type MarketDataProvider interface {
 	GetDepthCommits(ctx context.Context, symbol string, limit int) ([]DepthCommit, error)
 }
 
+// CreateOrderResult is the result returned from the CreateOrder method.
+type CreateOrderResult struct {
+	OrderID       string `json:"orderId"`
+	TPSLSubmitted bool   `json:"tpslSubmitted"`
+}
+
 // OrderExecutor is the interface for placing and managing orders.
 // Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
 type OrderExecutor interface {
-	CreateOrder(ctx context.Context, req SubmitOrderRequest) (string, error)
+	CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error)
 	CreateTrackOrder(ctx context.Context, req SubmitTrackOrderRequest) (string, error)
 	CancelOrder(ctx context.Context, symbol, orderID string) error
 	CancelOrders(ctx context.Context, orderIDs []string) error
 	CancelAllOpenOrders(ctx context.Context, symbol string) error
-	GetOrder(ctx context.Context, orderID string) (*OrderInfo, error)
+	GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
 	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
+}
+
+// TPSLProvider is an optional interface that exchange REST clients can implement
+// to support post-fill Take Profit and Stop Loss configuration.
+type TPSLProvider interface {
+	PlaceTPSL(ctx context.Context, req TPSLRequest) error
 }
 
 // AccountProvider is the interface for reading account data.

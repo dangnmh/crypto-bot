@@ -93,7 +93,7 @@ func TestDryRunClient_GetOrder_Delegates(t *testing.T) {
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
 
-	_, err := dry.GetOrder(context.Background(), "order_123")
+	_, err := dry.GetOrder(context.Background(), "BTC_USDT", "order_123")
 	require.NoError(t, err)
 
 	_, err = dry.GetOpenOrders(context.Background(), "BTC_USDT")
@@ -134,10 +134,10 @@ func TestDryRunClient_UniqueOrderIDs(t *testing.T) {
 
 	ids := make(map[string]bool)
 	for range 50 {
-		id, err := dry.CreateOrder(context.Background(), exchange.SubmitOrderRequest{})
+		res, err := dry.CreateOrder(context.Background(), exchange.SubmitOrderRequest{})
 		require.NoError(t, err)
-		assert.False(t, ids[id], "duplicate order ID: %s", id)
-		ids[id] = true
+		assert.False(t, ids[res.OrderID], "duplicate order ID: %s", res.OrderID)
+		ids[res.OrderID] = true
 	}
 }
 

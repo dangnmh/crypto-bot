@@ -991,3 +991,56 @@ func TestWithPreprocessor_Error(t *testing.T) {
 		// Success: message was ignored/bypassed
 	}
 }
+
+func TestPool_SubscribePublicWithURL(t *testing.T) {
+	t.Parallel()
+
+	url1Chan := make(chan struct{}, 1)
+	url2Chan := make(chan struct{}, 1)
+
+	srv1 := startTestWS(t, func(conn *websocket.Conn) {
+		url1Chan <- struct{}{}
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv1.Close()
+
+	srv2 := startTestWS(t, func(conn *websocket.Conn) {
+		url2Chan <- struct{}{}
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv2.Close()
+
+	p := ws.NewPool(wsURL(srv1), 2, nil)
+	defer p.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// 1. Subscribe to URL 1
+	err := p.SubscribePublicWithURL(ctx, wsURL(srv1), "topic1", map[string]string{"method": "sub1"})
+	require.NoError(t, err)
+
+	select {
+	case <-url1Chan:
+	case <-time.After(time.Second):
+		t.Fatal("srv1 did not receive connection")
+	}
+
+	// 2. Subscribe to URL 2
+	err = p.SubscribePublicWithURL(ctx, wsURL(srv2), "topic2", map[string]string{"method": "sub2"})
+	require.NoError(t, err)
+
+	select {
+	case <-url2Chan:
+	case <-time.After(time.Second):
+		t.Fatal("srv2 did not receive connection")
+	}
+}

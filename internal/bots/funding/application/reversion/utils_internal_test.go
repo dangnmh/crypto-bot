@@ -499,9 +499,9 @@ func TestPositionWatcherArmedBeforeIOCSubmit(t *testing.T) {
 	)
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(context.Context, exchange.SubmitOrderRequest) (string, error) {
+		func(context.Context, exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			operations = append(operations, "ioc_submitted")
-			return "ord-seq", nil
+			return exchange.CreateOrderResult{OrderID: "ord-seq", TPSLSubmitted: false}, nil
 		},
 	)
 
@@ -612,7 +612,7 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 			t.Cleanup(func() { _ = bus.Close() })
 
 			client := mocks.NewMockClient(ctrl)
-			client.EXPECT().GetOrder(gomock.Any(), "ord-none").Return(&exchange.OrderInfo{
+			client.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord-none").Return(&exchange.OrderInfo{
 				OrderID: "ord-none",
 				Symbol:  "BTC_USDT",
 				State:   tt.orderState,

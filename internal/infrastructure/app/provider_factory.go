@@ -69,7 +69,7 @@ func (MexcProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Mexc.Enable
 }
 
-func (MexcProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (MexcProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Mexc
 	client := exchange.Client(mexc.NewClient(
@@ -81,7 +81,7 @@ func (MexcProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (
 	))
 
 	adapter := mexc.NewWsAdapter()
-	return buildProvider(exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, adapter), nil
 }
 
 // GateProviderFactory builds Gate.io infrastructure.
@@ -93,7 +93,7 @@ func (GateProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Gate.Enable
 }
 
-func (GateProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (GateProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Gate
 	client := exchange.Client(gate.NewClient(
@@ -105,7 +105,7 @@ func (GateProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (
 	))
 
 	adapter := gate.NewWsAdapter()
-	return buildProvider(exchange.ExchangeGate, exchange.ExchangeGate, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeGate, exchange.ExchangeGate, cfg, apiCfg, client, adapter), nil
 }
 
 // BinanceProviderFactory builds Binance infrastructure.
@@ -117,7 +117,7 @@ func (BinanceProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Binance.Enable
 }
 
-func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (BinanceProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Binance
 	client := exchange.Client(binance.NewClient(
@@ -128,8 +128,12 @@ func (BinanceProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig
 		sysCfg.Logging,
 	))
 
-	adapter := binance.NewWsAdapter()
-	return buildProvider(exchange.ExchangeBinance, exchange.ExchangeBinance, cfg, apiCfg, client, adapter), nil
+	adapter := binance.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+	adapter.SetURLs(apiCfg.WebSocket.PublicEndpoint(), apiCfg.WebSocket.MarketEndpoint())
+	if concreteClient, ok := client.(*binance.Client); ok {
+		adapter.SetClient(concreteClient)
+	}
+	return buildProvider(ctx, exchange.ExchangeBinance, exchange.ExchangeBinance, cfg, apiCfg, client, adapter), nil
 }
 
 // OkxProviderFactory builds OKX infrastructure.
@@ -141,7 +145,7 @@ func (OkxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Okx.Enable
 }
 
-func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (OkxProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Okx
 	client := exchange.Client(okx.NewClient(
@@ -154,7 +158,7 @@ func (OkxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*
 	))
 
 	adapter := okx.NewWsAdapter()
-	return buildProvider(exchange.ExchangeOkx, exchange.ExchangeOkx, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeOkx, exchange.ExchangeOkx, cfg, apiCfg, client, adapter), nil
 }
 
 // BitgetProviderFactory builds Bitget infrastructure.
@@ -166,7 +170,7 @@ func (BitgetProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bitget.Enable
 }
 
-func (BitgetProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (BitgetProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bitget
 	client := exchange.Client(bitget.NewClient(
@@ -179,7 +183,7 @@ func (BitgetProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig)
 	))
 
 	adapter := bitget.NewWsAdapter()
-	return buildProvider(exchange.ExchangeBitget, exchange.ExchangeBitget, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeBitget, exchange.ExchangeBitget, cfg, apiCfg, client, adapter), nil
 }
 
 // HyperliquidProviderFactory builds Hyperliquid infrastructure.
@@ -204,10 +208,11 @@ func (HyperliquidProviderFactory) Build(ctx context.Context, cfg ProviderFactory
 	))
 
 	adapter := hyperliquid.NewWsAdapter()
-	return buildProvider(exchange.ExchangeHyperliquid, exchange.ExchangeHyperliquid, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeHyperliquid, exchange.ExchangeHyperliquid, cfg, apiCfg, client, adapter), nil
 }
 
 func buildProvider(
+	ctx context.Context,
 	providerName string,
 	watcherExchangeName string,
 	cfg ProviderFactoryConfig,
@@ -220,7 +225,7 @@ func buildProvider(
 		client = exchange.NewDryRunClient(client)
 	}
 
-	wsPool := newWSPool(watcherExchangeName, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	wsPool := newWSPool(ctx, watcherExchangeName, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
 	adapter.SetPool(wsPool)
 
 	return &ExchangeProvider{
@@ -234,6 +239,7 @@ func buildProvider(
 }
 
 func newWSPool(
+	ctx context.Context,
 	exchangeName string,
 	apiCfg sysconfig.APIConfig,
 	adapter ws.ExchangeAdapter,
@@ -265,6 +271,12 @@ func newWSPool(
 		if preprocessor := pp.GetPreprocessor(); preprocessor != nil {
 			appendCommonOpt(pkgws.WithPreprocessor(preprocessor))
 		}
+	}
+	type PrivateURLProvider interface {
+		GetPrivateURLFunc(ctx context.Context) func() (string, error)
+	}
+	if up, ok := adapter.(PrivateURLProvider); ok {
+		privateOpts = append(privateOpts, pkgws.WithURLFunc(up.GetPrivateURLFunc(ctx)))
 	}
 
 	return pkgws.NewPoolWithURLs(
@@ -302,7 +314,7 @@ func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bybit.Enable && sysconfig.NormalizeBybitAccountType(cfg.ExchangeConfig.Bybit.AccountType) != sysconfig.BybitAccountTypeUnified
 }
 
-func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (BybitStandardProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bybit
 	accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
@@ -316,7 +328,7 @@ func (BybitStandardProviderFactory) Build(_ context.Context, cfg ProviderFactory
 	))
 
 	adapter := bybit.NewWsAdapter()
-	return buildProvider(exchange.ExchangeBybit, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeBybit, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
 }
 
 // BybitUnifiedProviderFactory builds Unified Bybit infrastructure (UTA).
@@ -328,7 +340,7 @@ func (BybitUnifiedProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bybit.Enable && sysconfig.NormalizeBybitAccountType(cfg.ExchangeConfig.Bybit.AccountType) == sysconfig.BybitAccountTypeUnified
 }
 
-func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (BybitUnifiedProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bybit
 	client := exchange.Client(bybit.NewClient(
@@ -341,7 +353,7 @@ func (BybitUnifiedProviderFactory) Build(_ context.Context, cfg ProviderFactoryC
 	))
 
 	adapter := bybit.NewWsAdapter()
-	return buildProvider(bybitUnifiedName, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, bybitUnifiedName, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
 }
 
 // BingxProviderFactory builds BingX infrastructure.
@@ -353,7 +365,7 @@ func (BingxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
 	return cfg.ExchangeConfig.Bingx.Enable
 }
 
-func (BingxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+func (BingxProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 	sysCfg := cfg.SystemConfig
 	apiCfg := sysCfg.ExchangeConfig.Bingx
 	client := exchange.Client(bingx.NewClient(
@@ -365,7 +377,7 @@ func (BingxProviderFactory) Build(_ context.Context, cfg ProviderFactoryConfig) 
 	))
 
 	adapter := bingx.NewWsAdapter()
-	return buildProvider(exchange.ExchangeBingx, exchange.ExchangeBingx, cfg, apiCfg, client, adapter), nil
+	return buildProvider(ctx, exchange.ExchangeBingx, exchange.ExchangeBingx, cfg, apiCfg, client, adapter), nil
 }
 
 // KucoinProviderFactory builds KuCoin infrastructure.

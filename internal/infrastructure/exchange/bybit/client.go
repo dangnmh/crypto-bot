@@ -2,6 +2,7 @@ package bybit
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -83,4 +84,22 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 		}
 		return true
 	})
+}
+
+func decodeUtaResponse[T any](resp *bybitsdk.ServerResponse, err error, errPrefix string) ([]T, error) {
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", errPrefix, err)
+	}
+	if resp.RetCode != 0 {
+		return nil, fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
+	}
+
+	var res struct {
+		List []T `json:"list"`
+	}
+	if err := decodeResult(resp.Result, &res); err != nil {
+		return nil, fmt.Errorf("%s decode: %w", errPrefix, err)
+	}
+
+	return res.List, nil
 }

@@ -34,7 +34,7 @@ type kucoinOrder struct {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ordType := "limit"
 	if req.Type == exchange.OrderTypeMarket {
 		ordType = "market"
@@ -62,15 +62,18 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	res, err := ParseResponse[kucoinOrderResult](body, "create_order")
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
-	return res.OrderID, nil
+	return exchange.CreateOrderResult{
+		OrderID:       res.OrderID,
+		TPSLSubmitted: false,
+	}, nil
 }
 
 // CreateTrackOrder is a placeholder.
@@ -175,7 +178,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]kucoinO
 }
 
 // GetOrder fetches details of a specific order.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	raw, err := c.getRawOrder(ctx, orderID)
 	if err != nil {
 		return nil, err

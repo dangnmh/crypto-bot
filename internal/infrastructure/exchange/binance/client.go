@@ -1,7 +1,10 @@
 package binance
 
 import (
+	"compress/gzip"
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -37,15 +40,26 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	}
 
 	if logCfg.HTTP && rt != nil {
+		rt = &decompressionRoundTripper{underlying: rt}
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{},
+				BlackListPaths: []string{
+					"GET|/fapi/v1/ping",
+					"GET|/fapi/v1/time",
+					"GET|/fapi/v1/ticker/24hr",
+					"GET|/fapi/v1/ticker/bookTicker",
+					"GET|/fapi/v1/exchangeInfo",
+					"GET|/fapi/v1/premiumIndex",
+					"POST|/fapi/v1/listenKey",
+				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{}),
+			transportlog.LogOptionRedactSensitiveKeys([]string{
+				"X-Mbx-Apikey",
+			}),
 			transportlog.LogOptionQueryParams(true),
 		)
 	}
@@ -104,4 +118,71 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return time.Since(start).Milliseconds(), nil
+}
+
+type decompressionRoundTripper struct {
+	underlying http.RoundTripper
+}
+
+func (d *decompressionRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Accept-Encoding") != "" {
+		req.Header.Set("Accept-Encoding", "gzip")
+	}
+
+	resp, err := d.underlying.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, gzErr := gzip.NewReader(resp.Body)
+		if gzErr == nil {
+			resp.Body = &gzipReadCloser{
+				gz:   gzReader,
+				body: resp.Body,
+			}
+			resp.Header.Del("Content-Encoding")
+			resp.Header.Del("Content-Length")
+		}
+	}
+
+	return resp, nil
+}
+
+type gzipReadCloser struct {
+	gz   *gzip.Reader
+	body io.ReadCloser
+}
+
+func (g *gzipReadCloser) Read(p []byte) (int, error) {
+	return g.gz.Read(p)
+}
+
+func (g *gzipReadCloser) Close() error {
+	err1 := g.gz.Close()
+	err2 := g.body.Close()
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
+
+// CreateListenKey starts a new Binance user data stream and returns its listenKey.
+func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
+	req := c.sdkClient.RestApi.UserDataStreamsAPI.StartUserDataStream(ctx)
+	resp, err := c.sdkClient.RestApi.UserDataStreamsAPI.StartUserDataStreamExecute(req)
+	if err != nil {
+		return "", fmt.Errorf("binance start user data stream: %w", err)
+	}
+	return resp.Data.GetListenKey(), nil
+}
+
+// KeepAliveListenKey pings the active Binance user data stream to keep it open.
+func (c *Client) KeepAliveListenKey(ctx context.Context) error {
+	req := c.sdkClient.RestApi.UserDataStreamsAPI.KeepaliveUserDataStream(ctx)
+	_, err := c.sdkClient.RestApi.UserDataStreamsAPI.KeepaliveUserDataStreamExecute(req)
+	if err != nil {
+		return fmt.Errorf("binance keepalive user data stream: %w", err)
+	}
+	return nil
 }

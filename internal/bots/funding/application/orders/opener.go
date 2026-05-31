@@ -18,6 +18,7 @@ type OrderResult struct {
 	Candidate       domain.Candidate
 	Order           *exchange.OrderInfo
 	OrderID         string
+	TPSLSubmitted   bool
 	ExternalID      string
 	Price           float64
 	TakeProfitPrice float64
@@ -103,10 +104,11 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 		slog.Int64("offset_ms", ts.Offset()),
 	)
 
-	orderID, err := client.CreateOrder(ctx, req)
+	res, err := client.CreateOrder(ctx, req)
 	result := OrderResult{
 		Candidate:       *candidate,
-		OrderID:         orderID,
+		OrderID:         res.OrderID,
+		TPSLSubmitted:   res.TPSLSubmitted,
 		ExternalID:      extOID,
 		Price:           iocPrice,
 		TakeProfitPrice: tpPrice,
@@ -119,7 +121,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 		return result
 	}
 
-	log.InfoContext(ctx, "📨 IOC submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
+	log.InfoContext(ctx, "📨 IOC submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", res.OrderID))
 	return result
 }
 
@@ -175,10 +177,11 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		slog.String("extOid", extOID),
 	)
 
-	orderID, err := client.CreateOrder(ctx, req)
+	res, err := client.CreateOrder(ctx, req)
 	result := OrderResult{
 		Candidate:       trapCandidate,
-		OrderID:         orderID,
+		OrderID:         res.OrderID,
+		TPSLSubmitted:   res.TPSLSubmitted,
 		ExternalID:      extOID,
 		Price:           trapPrice,
 		TakeProfitPrice: tpPrice,
@@ -191,6 +194,6 @@ func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domai
 		return result
 	}
 
-	log.InfoContext(ctx, "📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", orderID))
+	log.InfoContext(ctx, "📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", res.OrderID))
 	return result
 }

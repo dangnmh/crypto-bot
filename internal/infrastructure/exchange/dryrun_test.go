@@ -40,9 +40,9 @@ func (s *stubClient) GetAssetByCurrency(_ context.Context, _ string) (*exchange.
 func (s *stubClient) GetOpenPositions(_ context.Context, _ string) ([]exchange.Position, error) {
 	return nil, nil
 }
-func (s *stubClient) CreateOrder(_ context.Context, _ exchange.SubmitOrderRequest) (string, error) {
+func (s *stubClient) CreateOrder(_ context.Context, _ exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	s.createOrderCalled = true
-	return "real_123", nil
+	return exchange.CreateOrderResult{OrderID: "real_123", TPSLSubmitted: false}, nil
 }
 func (s *stubClient) CreateTrackOrder(_ context.Context, _ exchange.SubmitTrackOrderRequest) (string, error) {
 	return "real_trk_123", nil
@@ -53,7 +53,7 @@ func (s *stubClient) CancelOrder(_ context.Context, _, _ string) error {
 }
 func (s *stubClient) CancelOrders(_ context.Context, _ []string) error      { return nil }
 func (s *stubClient) CancelAllOpenOrders(_ context.Context, _ string) error { return nil }
-func (s *stubClient) GetOrder(_ context.Context, _ string) (*exchange.OrderInfo, error) {
+func (s *stubClient) GetOrder(_ context.Context, _, _ string) (*exchange.OrderInfo, error) {
 	return nil, nil
 }
 func (s *stubClient) GetOpenOrders(_ context.Context, _ string) ([]exchange.OrderInfo, error) {
@@ -83,7 +83,7 @@ func TestDryRunClient_CreateOrder_ReturnsSimulatedID(t *testing.T) {
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
 
-	id, err := dry.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+	res, err := dry.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
 		Symbol: "BTC_USDT",
 		Price:  50000,
 		Vol:    1,
@@ -91,7 +91,7 @@ func TestDryRunClient_CreateOrder_ReturnsSimulatedID(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.NotEmpty(t, id)
+	assert.NotEmpty(t, res.OrderID)
 	assert.False(t, stub.createOrderCalled, "real CreateOrder should NOT be called in dry-run mode")
 }
 
@@ -182,7 +182,7 @@ func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {
 	_, err = dry.GetOpenPositions(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
 
-	_, err = dry.GetOrder(context.Background(), "order_1")
+	_, err = dry.GetOrder(context.Background(), "BTC_USDT", "order_1")
 	require.NoError(t, err)
 
 	_, err = dry.GetOpenOrders(context.Background(), "BTC_USDT")

@@ -32,7 +32,7 @@ type bitgetOrder struct {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ordType := mapBitgetOrderType(req.Type)
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0
 	side, tradeSide := mapBitgetOrderSide(req.Side, isHedge)
@@ -70,19 +70,25 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	res, err := ParseResponse[bitgetOrderResult](body, "create_order")
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	if res.OrderID == "" && req.ExternalOID != "" {
-		return req.ExternalOID, nil
+		return exchange.CreateOrderResult{
+			OrderID:       req.ExternalOID,
+			TPSLSubmitted: false,
+		}, nil
 	}
 
-	return res.OrderID, nil
+	return exchange.CreateOrderResult{
+		OrderID:       res.OrderID,
+		TPSLSubmitted: false,
+	}, nil
 }
 
 // CreateTrackOrder submits a trailing stop order (stubbed/not implemented).
@@ -93,7 +99,7 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	if symbol == "" {
-		info, err := c.GetOrder(ctx, orderID)
+		info, err := c.GetOrder(ctx, "", orderID)
 		if err != nil {
 			return fmt.Errorf("cancel order failed to locate order: %w", err)
 		}
@@ -175,7 +181,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bitgetO
 }
 
 // GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	// Query pending orders
 	pendingList, err := c.getRawPendingOrders(ctx)
 	if err == nil {

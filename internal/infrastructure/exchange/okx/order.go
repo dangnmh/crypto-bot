@@ -36,7 +36,7 @@ type okxOrder struct {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ordType := mapOKXOrderType(req.Type)
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0
 	side, posSide := mapOKXOrderSide(req.Side, isHedge)
@@ -72,21 +72,24 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	res, err := ParseResponseFirst[okxOrderResult](body, "create_order")
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	if res.SCode != "0" {
 		codeVal := 0
 		_, _ = fmt.Sscanf(res.SCode, "%d", &codeVal)
-		return "", toAPIError(codeVal, res.SMsg, "create_order")
+		return exchange.CreateOrderResult{}, toAPIError(codeVal, res.SMsg, "create_order")
 	}
 
-	return res.OrdID, nil
+	return exchange.CreateOrderResult{
+		OrderID:       res.OrdID,
+		TPSLSubmitted: false,
+	}, nil
 }
 
 func mapOKXOrderType(t int) string {
@@ -140,7 +143,7 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	if symbol == "" {
 		// If symbol is not known, find it first
-		info, err := c.GetOrder(ctx, orderID)
+		info, err := c.GetOrder(ctx, "", orderID)
 		if err != nil {
 			return fmt.Errorf("cancel order failed to locate order: %w", err)
 		}
@@ -236,7 +239,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]okxOrde
 }
 
 // GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	// Query pending orders
 	pendingList, err := c.getRawPendingOrders(ctx)
 	if err == nil {

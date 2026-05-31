@@ -170,9 +170,9 @@ func TestClient_CreateOrder(t *testing.T) {
 		Type:         exchange.OrderTypeLimit,
 		PositionMode: 1,
 	}
-	orderID, err := client.CreateOrder(context.Background(), req)
+	res, err := client.CreateOrder(context.Background(), req)
 	require.NoError(t, err)
-	assert.Equal(t, "order123", orderID)
+	assert.Equal(t, "order123", res.OrderID)
 }
 
 func TestClient_CancelOrder(t *testing.T) {
@@ -353,7 +353,7 @@ func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {
 	defer server.Close()
 
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	info, err := client.GetOrder(context.Background(), "order123")
+	info, err := client.GetOrder(context.Background(), "BTCUSDT", "order123")
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, "order123", info.OrderID)

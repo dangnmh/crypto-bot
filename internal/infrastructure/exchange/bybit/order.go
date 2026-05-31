@@ -32,11 +32,6 @@ type bybitOrder struct {
 	PositionIdx int    `json:"positionIdx"`
 }
 
-type bybitOrderResult struct {
-	Category string       `json:"category"`
-	List     []bybitOrder `json:"list"`
-}
-
 // mapSubmitOrder maps a SubmitOrderRequest to Bybit parameters map.
 func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) map[string]any {
 	params := map[string]any{
@@ -183,23 +178,63 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 }
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	params := c.mapSubmitOrder(req)
 
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).PlaceOrder(ctx)
 	if err != nil {
-		return "", fmt.Errorf("bybit create order: %w", err)
+		return exchange.CreateOrderResult{}, fmt.Errorf("bybit create order: %w", err)
 	}
 	if resp.RetCode != 0 {
-		return "", fmt.Errorf("bybit create order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+		return exchange.CreateOrderResult{}, fmt.Errorf("bybit create order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
 	}
 
 	var res bybitCreateOrderResult
 	if err := decodeResult(resp.Result, &res); err != nil {
-		return "", fmt.Errorf("bybit decode create order result: %w", err)
+		return exchange.CreateOrderResult{}, fmt.Errorf("bybit decode create order result: %w", err)
 	}
 
-	return res.OrderID, nil
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
+	return exchange.CreateOrderResult{OrderID: res.OrderID, TPSLSubmitted: tpslSubmitted}, nil
+}
+
+// PlaceTPSL places Take Profit and Stop Loss on Bybit.
+func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error {
+	params := map[string]any{
+		"category": "linear",
+		"symbol":   req.Symbol,
+	}
+
+	if req.TakeProfitPrice > 0 {
+		params["takeProfit"] = fmt.Sprintf("%g", req.TakeProfitPrice)
+		params["tpTriggerBy"] = triggerByLastPrice
+	}
+	if req.StopLossPrice > 0 {
+		params["stopLoss"] = fmt.Sprintf("%g", req.StopLossPrice)
+		params["slTriggerBy"] = triggerByLastPrice
+	}
+
+	// positionIdx: 0=OneWay, 1=Hedge Long, 2=Hedge Short
+	positionIdx := 0
+	if req.PositionMode == 1 {
+		switch req.Side {
+		case exchange.SideOpenLong:
+			positionIdx = 1
+		case exchange.SideOpenShort:
+			positionIdx = 2
+		}
+	}
+	params["positionIdx"] = positionIdx
+
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionTradingStop(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit set trading stop: %w", err)
+	}
+	if resp.RetCode != 0 {
+		return fmt.Errorf("bybit set trading stop error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+
+	return nil
 }
 
 // CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
@@ -263,33 +298,27 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-func (c *Client) getRawOrder(ctx context.Context, orderID string) (*bybitOrder, error) {
+func (c *Client) getRawOrder(ctx context.Context, symbol, orderID string) (*bybitOrder, error) {
 	params := map[string]any{
 		categoryKey: categoryLinear,
 		orderIDKey:  orderID,
 	}
+	if symbol != "" {
+		params[symbolKey] = symbol
+	}
 
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
+	list, err := decodeUtaResponse[bybitOrder](resp, err, "bybit get order")
 	if err != nil {
-		return nil, fmt.Errorf("bybit get order %s: %w", orderID, err)
+		return nil, err
 	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit get order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitOrderResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode order: %w", err)
-	}
-
-	if len(res.List) == 0 {
+	if len(list) == 0 {
 		return nil, fmt.Errorf("bybit order not found: %s", orderID)
 	}
 
-	return &res.List[0], nil
+	return &list[0], nil
 }
 
-//nolint:dupl // standard raw REST API helper has structural duplicate
 func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bybitOrder, error) {
 	params := map[string]any{
 		categoryKey: categoryLinear,
@@ -299,24 +328,12 @@ func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bybitOr
 	}
 
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("bybit list open orders: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit list open orders error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitOrderResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode open orders: %w", err)
-	}
-
-	return res.List, nil
+	return decodeUtaResponse[bybitOrder](resp, err, "bybit list open orders")
 }
 
 // GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, orderID)
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, err
 	}

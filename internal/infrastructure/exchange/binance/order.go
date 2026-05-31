@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -14,7 +15,7 @@ import (
 )
 
 // CreateOrder places a new order.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	sdkSide := models.NewAlgoOrderSideParameter(sideBuy)
 	if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseLong {
 		sdkSide = models.NewAlgoOrderSideParameter(sideSell)
@@ -66,11 +67,85 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	resp, err := c.sdkClient.RestApi.TradeAPI.NewOrderExecute(orderReq)
 	if err != nil {
-		return "", fmt.Errorf("binance place order: %w", err)
+		return exchange.CreateOrderResult{}, fmt.Errorf("binance place order: %w", err)
 	}
 
 	orderID := strconv.FormatInt(*resp.Data.OrderId, 10)
-	return orderID, nil
+	return exchange.CreateOrderResult{OrderID: orderID, TPSLSubmitted: false}, nil
+}
+
+// PlaceTPSL places Take Profit and Stop Loss conditional orders on Binance.
+func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error {
+	var tpSide models.NewAlgoOrderSideParameter
+	var slSide models.NewAlgoOrderSideParameter
+	var tpPosSide models.NewAlgoOrderPositionSideParameter
+	var slPosSide models.NewAlgoOrderPositionSideParameter
+
+	switch req.Side {
+	case exchange.SideOpenLong:
+		tpSide = models.NewAlgoOrderSideParameter(sideSell)
+		slSide = models.NewAlgoOrderSideParameter(sideSell)
+		if req.PositionMode == 1 {
+			tpPosSide = models.NewAlgoOrderPositionSideParameter(posSideLong)
+			slPosSide = models.NewAlgoOrderPositionSideParameter(posSideLong)
+		}
+	case exchange.SideOpenShort:
+		tpSide = models.NewAlgoOrderSideParameter(sideBuy)
+		slSide = models.NewAlgoOrderSideParameter(sideBuy)
+		if req.PositionMode == 1 {
+			tpPosSide = models.NewAlgoOrderPositionSideParameter(posSideShort)
+			slPosSide = models.NewAlgoOrderPositionSideParameter(posSideShort)
+		}
+	default:
+		return fmt.Errorf("invalid side for TP/SL placement: %d", req.Side)
+	}
+
+	if req.TakeProfitPrice > 0 {
+		err := c.placeAlgoOrder(ctx, req.Symbol, tpSide, "TAKE_PROFIT_MARKET", req.TakeProfitPrice, req.PositionMode, tpPosSide)
+		if err != nil {
+			c.logger.ErrorContext(ctx, "Failed to place Take Profit algo order",
+				slog.Any("error", err),
+				slog.String("symbol", req.Symbol),
+				slog.Float64("takeProfitPrice", req.TakeProfitPrice))
+			return fmt.Errorf("binance place TP order: %w", err)
+		}
+		c.logger.InfoContext(ctx, "Successfully placed Take Profit algo order",
+			slog.String("symbol", req.Symbol),
+			slog.Float64("takeProfitPrice", req.TakeProfitPrice))
+	}
+
+	if req.StopLossPrice > 0 {
+		err := c.placeAlgoOrder(ctx, req.Symbol, slSide, "STOP_MARKET", req.StopLossPrice, req.PositionMode, slPosSide)
+		if err != nil {
+			c.logger.ErrorContext(ctx, "Failed to place Stop Loss algo order",
+				slog.Any("error", err),
+				slog.String("symbol", req.Symbol),
+				slog.Float64("stopLossPrice", req.StopLossPrice))
+			return fmt.Errorf("binance place SL order: %w", err)
+		}
+		c.logger.InfoContext(ctx, "Successfully placed Stop Loss algo order",
+			slog.String("symbol", req.Symbol),
+			slog.Float64("stopLossPrice", req.StopLossPrice))
+	}
+
+	return nil
+}
+
+func (c *Client) placeAlgoOrder(ctx context.Context, symbol string, side models.NewAlgoOrderSideParameter, algoType string, price float64, positionMode int, posSide models.NewAlgoOrderPositionSideParameter) error {
+	req := c.sdkClient.RestApi.TradeAPI.NewAlgoOrder(ctx).
+		AlgoType("CONDITIONAL").
+		Symbol(symbol).
+		Side(side).
+		Type(algoType).
+		TriggerPrice(float32(price)).
+		ClosePosition("true")
+
+	if positionMode == 1 {
+		req = req.PositionSide(posSide)
+	}
+
+	_, err := c.sdkClient.RestApi.TradeAPI.NewAlgoOrderExecute(req)
+	return err
 }
 
 // CreateTrackOrder submits a trailing stop order. Stubbed.
@@ -123,19 +198,12 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 }
 
 // GetOrder queries order status.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
-	symbol := "BTCUSDT"
-	idStr := orderID
-	if sym, id, ok := strings.Cut(orderID, ":"); ok {
-		symbol = sym
-		idStr = id
-	}
-
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	orderReq := c.sdkClient.RestApi.TradeAPI.QueryOrder(ctx).Symbol(symbol)
-	id, err := strconv.ParseInt(idStr, 10, 64)
+	id, err := strconv.ParseInt(orderID, 10, 64)
 	if err != nil {
 		// Non-numeric ID: treat it as client order ID (origClientOrderId)
-		orderReq = orderReq.OrigClientOrderId(idStr)
+		orderReq = orderReq.OrigClientOrderId(orderID)
 	} else {
 		orderReq = orderReq.OrderId(id)
 	}

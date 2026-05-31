@@ -186,9 +186,9 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 
 			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
-			orderID, err := client.CreateOrder(context.Background(), tt.req)
+			res, err := client.CreateOrder(context.Background(), tt.req)
 			require.NoError(t, err)
-			assert.Equal(t, "bybit-ord-987654", orderID)
+			assert.Equal(t, "bybit-ord-987654", res.OrderID)
 		})
 	}
 }
@@ -371,7 +371,7 @@ func TestClient_GetOrder_And_GetOpenOrders(t *testing.T) {
 	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	// GetOrder
-	info, err := client.GetOrder(context.Background(), "bybit-ord-987654")
+	info, err := client.GetOrder(context.Background(), "BTCUSDT", "bybit-ord-987654")
 	require.NoError(t, err)
 	assert.Equal(t, "bybit-ord-987654", info.OrderID)
 	assert.Equal(t, "BTCUSDT", info.Symbol)
@@ -967,7 +967,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	assert.Error(t, err)
 
 	// Test GetOrder server error
-	_, err = client.GetOrder(ctx, "id")
+	_, err = client.GetOrder(ctx, "BTCUSDT", "id")
 	assert.Error(t, err)
 
 	// Test GetOpenOrders server error
@@ -1003,7 +1003,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	defer server2.Close()
 
 	client2 := bybit.NewClient(server2.Client(), server2.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
-	info, err := client2.GetOrder(ctx, "bybit-ord-987654")
+	info, err := client2.GetOrder(ctx, "BTCUSDT", "bybit-ord-987654")
 	require.NoError(t, err)
 	assert.Equal(t, exchange.OrderStateCanceled, info.State)
 	assert.Equal(t, 0, info.Side) // Unknown side is mapped to 0
@@ -1060,7 +1060,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"retCode": 50002,
 				"retMsg": "Mock error"
 			}`,
-			wantErr: "bybit get order by external ID api error: retCode=50002",
+			wantErr: "bybit get order by external ID error: retCode=50002",
 		},
 		{
 			name: "API Error in Closed PnL",

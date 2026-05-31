@@ -269,9 +269,9 @@ func TestClient_CreateOrder(t *testing.T) {
 
 			client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
 
-			orderID, err := client.CreateOrder(context.Background(), tt.req)
+			res, err := client.CreateOrder(context.Background(), tt.req)
 			require.NoError(t, err)
-			assert.Equal(t, "1234567", orderID)
+			assert.Equal(t, "1234567", res.OrderID)
 		})
 	}
 }
@@ -464,7 +464,7 @@ func TestClient_ExtendedPrivateMethods(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 2. GetOrder
-	order, err := client.GetOrder(context.Background(), "1234567")
+	order, err := client.GetOrder(context.Background(), "BTCUSDT", "1234567")
 	require.NoError(t, err)
 	assert.Equal(t, "1234567", order.OrderID)
 	assert.Equal(t, 50000.0, order.Price)

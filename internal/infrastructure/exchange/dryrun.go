@@ -83,7 +83,7 @@ func (d *DryRunClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderI
 
 // ── OrderExecutor (intercepted — no real orders) ─────────────────────.
 
-func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (string, error) {
+func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error) {
 	seq := d.orderSeq.Add(1)
 	fakeID := fmt.Sprintf("dry_%d_%d", time.Now().UnixMilli(), seq)
 
@@ -98,7 +98,10 @@ func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) 
 		slog.String("extOID", req.ExternalOID),
 	)
 
-	return fakeID, nil
+	return CreateOrderResult{
+		OrderID:       fakeID,
+		TPSLSubmitted: false,
+	}, nil
 }
 
 func (d *DryRunClient) CreateTrackOrder(ctx context.Context, req SubmitTrackOrderRequest) (string, error) {
@@ -130,8 +133,8 @@ func (d *DryRunClient) CancelAllOpenOrders(ctx context.Context, symbol string) e
 	return nil
 }
 
-func (d *DryRunClient) GetOrder(ctx context.Context, orderID string) (*OrderInfo, error) {
-	return d.inner.GetOrder(ctx, orderID)
+func (d *DryRunClient) GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error) {
+	return d.inner.GetOrder(ctx, symbol, orderID)
 }
 
 func (d *DryRunClient) GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error) {

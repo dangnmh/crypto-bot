@@ -23,4 +23,17 @@ const (
 	interval15m = "15m"
 	interval30m = "30m"
 	paramMethod = "method"
+
+	chTicker   = "ticker"
+	chDepth    = "depth"
+	chKline    = "kline"
+	chOrder    = "personal.order"
+	chPosition = "personal.position"
+
+	evt24hrTicker     = "24hrTicker"
+	evt24hrMiniTicker = "24hrMiniTicker"
+	evtBookTicker     = "bookTicker"
+
+	defaultPublicURL = "wss://fstream.binance.com/public"
+	defaultMarketURL = "wss://fstream.binance.com/market"
 )

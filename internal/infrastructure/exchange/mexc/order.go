@@ -10,17 +10,18 @@ import (
 )
 
 // CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	body, err := c.PostCtx(ctx, "/api/v1/private/order/create", req)
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	data, err := ParseResponse[exchange.CreateOrderResponse](body, "create_order")
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
-	return data.OrderID, nil
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
+	return exchange.CreateOrderResult{OrderID: data.OrderID, TPSLSubmitted: tpslSubmitted}, nil
 }
 
 // CreateTrackOrder submits a new native trailing stop order and returns the order ID.
@@ -142,7 +143,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]mexcOrd
 }
 
 // GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	raw, err := c.getRawOrder(ctx, orderID)
 	if err != nil {
 		return nil, err

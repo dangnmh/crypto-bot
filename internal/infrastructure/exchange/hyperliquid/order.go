@@ -13,9 +13,9 @@ import (
 )
 
 // CreateOrder places a new order.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (string, error) {
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	if c.exchange == nil {
-		return "", fmt.Errorf("trading is disabled: exchange signer is not configured")
+		return exchange.CreateOrderResult{}, fmt.Errorf("trading is disabled: exchange signer is not configured")
 	}
 
 	isBuy := req.Side != exchange.SideOpenShort && req.Side != exchange.SideCloseLong
@@ -49,11 +49,11 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	status, err := c.exchange.Order(ctx, orderReq, nil)
 	if err != nil {
-		return "", err
+		return exchange.CreateOrderResult{}, err
 	}
 
 	if status.Error != nil {
-		return "", fmt.Errorf("hyperliquid order placement failed: %s", lo.FromPtr(status.Error))
+		return exchange.CreateOrderResult{}, fmt.Errorf("hyperliquid order placement failed: %s", lo.FromPtr(status.Error))
 	}
 
 	var oid int64
@@ -63,7 +63,10 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		oid = int64(status.Filled.Oid)
 	}
 
-	return strconv.FormatInt(oid, 10), nil
+	return exchange.CreateOrderResult{
+		OrderID:       strconv.FormatInt(oid, 10),
+		TPSLSubmitted: false,
+	}, nil
 }
 
 // CancelOrder cancels a single order.
@@ -95,7 +98,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 }
 
 // GetOrder queries a single order.
-func (c *Client) GetOrder(ctx context.Context, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	if c.userAddress == "" {
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}

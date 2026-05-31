@@ -15,6 +15,7 @@ import (
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/pkg/ticker"
 
 	"github.com/ThreeDotsLabs/watermill"
 )
@@ -63,17 +64,11 @@ func (j *ScannerJob) Run(ctx context.Context) error {
 	j.log.InfoContext(ctx, "🚀 Starting background scanner job loop")
 	defer j.log.InfoContext(context.WithoutCancel(ctx), "🛑 Background scanner job loop stopped")
 
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			j.tick(ctx)
-		}
-	}
+	ticker.RunImmediate(ctx, time.Minute, func() bool {
+		j.tick(ctx)
+		return true
+	})
+	return nil
 }
 
 func (j *ScannerJob) tick(ctx context.Context) {
@@ -204,24 +199,10 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 			continue
 		}
 
-		provider, err := s.engine.GetProvider(symCfg.Exchange)
-		if err != nil {
-			s.log.WarnContext(ctx, "Exchange provider not found", slog.String("exchange", symCfg.Exchange), slog.Any("error", err))
-			continue
-		}
-
 		// Retrieve next settle time
 		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, storeSet.Funding())
 		if err != nil {
 			s.log.DebugContext(ctx, "Failed to get next settle time", slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
-			continue
-		}
-
-		now := provider.TimeSync.Now()
-		timeUntilSettle := settle.Sub(now)
-
-		// Check if within the 60-second active scanning window before settlement
-		if timeUntilSettle > 60*time.Second || timeUntilSettle < 0 {
 			continue
 		}
 

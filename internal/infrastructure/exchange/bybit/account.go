@@ -51,11 +51,6 @@ type bybitPosition struct {
 	AutoAddMargin   int    `json:"autoAddMargin"`
 }
 
-type bybitPositionResult struct {
-	Category string          `json:"category"`
-	List     []bybitPosition `json:"list"`
-}
-
 // GetAssets returns the account assets.
 func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 	apiAccountType := accountTypeContract
@@ -154,7 +149,6 @@ func mapPosition(raw bybitPosition) exchange.Position {
 	return pos
 }
 
-//nolint:dupl // standard raw REST API helper has structural duplicate
 func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]bybitPosition, error) {
 	params := map[string]any{
 		categoryKey: categoryLinear,
@@ -164,19 +158,7 @@ func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]bybi
 	}
 
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetPositionList(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("bybit get position: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit get position error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitPositionResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode positions: %w", err)
-	}
-
-	return res.List, nil
+	return decodeUtaResponse[bybitPosition](resp, err, "bybit get position")
 }
 
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
@@ -226,24 +208,17 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		"orderLinkId": extOrderID,
 	}
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(orderParams).GetOpenOrders(ctx)
+	list, err := decodeUtaResponse[bybitOrder](resp, err, "bybit get order by external ID")
 	if err != nil {
-		return nil, fmt.Errorf("bybit get order by external ID %s failed: %w", extOrderID, err)
-	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit get order by external ID api error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+		return nil, err
 	}
 
-	var orderRes bybitOrderResult
-	if err := decodeResult(resp.Result, &orderRes); err != nil {
-		return nil, fmt.Errorf("bybit decode order for external ID: %w", err)
-	}
-
-	if len(orderRes.List) == 0 {
+	if len(list) == 0 {
 		return nil, fmt.Errorf("bybit order for external ID %s not found", extOrderID)
 	}
 
-	numericOrderID := orderRes.List[0].OrderID
-	entryCreatedTimeStr := orderRes.List[0].CreatedTime
+	numericOrderID := list[0].OrderID
+	entryCreatedTimeStr := list[0].CreatedTime
 
 	params := map[string]any{
 		categoryKey: categoryLinear,

@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 
+	"github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures/src/restapi/models"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/samber/lo"
 )
 
@@ -118,79 +121,156 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 // GetRecentClosedPnL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// Look up numeric orderID from client order ID (extOrderID / clientOid)
-	orderInfo, err := c.GetOrder(ctx, symbol+":"+extOrderID)
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("binance get order by external ID %s failed: %w", extOrderID, err)
 	}
-	closingOrderId, parseErr := strconv.ParseInt(orderInfo.OrderID, 10, 64)
+	openingOrderId, parseErr := strconv.ParseInt(orderInfo.OrderID, 10, 64)
 	if parseErr != nil {
 		return nil, fmt.Errorf("binance parse numeric order ID %s failed: %w", orderInfo.OrderID, parseErr)
 	}
 
+	// TODO: Symbol-based trade queries can be subject to collisions if multiple bots trade the same symbol concurrently.
+	// To make this 100% precise, we should track the exact closingOrderId returned by the position close call
+	// and query userTrades specifically by openingOrderId and closingOrderId instead of relying on symbol & startTime.
 	req := c.sdkClient.RestApi.TradeAPI.AccountTradeList(ctx).
 		Symbol(symbol).
-		Limit(10)
+		Limit(50)
 
 	if !startTime.IsZero() {
 		req = req.StartTime(startTime.UnixMilli())
 	}
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.AccountTradeListExecute(req)
-	if err != nil {
-		return nil, fmt.Errorf("binance get closed trades: %w", err)
+	var items []models.AccountTradeListResponseInner
+
+	operation := func() error {
+		resp, err := c.sdkClient.RestApi.TradeAPI.AccountTradeListExecute(req)
+		if err != nil {
+			return err
+		}
+		if len(resp.Data.Items) == 0 {
+			return fmt.Errorf("no user trades found for symbol %s since %v", symbol, startTime)
+		}
+		items = resp.Data.Items
+		return nil
 	}
 
-	items := resp.Data.Items
-	if len(items) == 0 {
-		return nil, fmt.Errorf("no user trades found for symbol %s", symbol)
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(time.Millisecond*200),
+				backoff.WithMaxInterval(time.Second*2)),
+			4),
+		ctx,
+	)
+
+	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
+		c.logger.ErrorContext(ctx, "retry closed trades query", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
+	}); err != nil {
+		return nil, fmt.Errorf("query closed trades failed: %w", err)
 	}
 
-	// The list is returned in chronological order; the last item is the latest trade fill.
-	latestTrade := items[len(items)-1]
+	var openingQty float64
+	var openingWeightedPriceSum float64
+	var openingCommission float64
 
-	var totalQty float64
+	var closingQty float64
+	var closingWeightedPriceSum float64
+	var closingCommission float64
 	var totalRealizedPnl float64
-	var totalCommission float64
-	var weightedPriceSum float64
+
+	var latestTrade models.AccountTradeListResponseInner
+	var hasClosingTrade bool
 
 	for i := range items {
 		item := &items[i]
-		if item.GetOrderId() == closingOrderId {
-			qty := decmath.ParseFloat(item.GetQty())
-			price := decmath.ParseFloat(item.GetPrice())
-			realizedPnl := decmath.ParseFloat(item.GetRealizedPnl())
-			commission := decmath.ParseFloat(item.GetCommission())
+		qty := decmath.ParseFloat(item.GetQty())
+		price := decmath.ParseFloat(item.GetPrice())
+		realizedPnl := decmath.ParseFloat(item.GetRealizedPnl())
+		commission := decmath.ParseFloat(item.GetCommission())
+		itemOrderId := item.GetOrderId()
 
-			totalQty += qty
+		if itemOrderId == openingOrderId {
+			openingQty += qty
+			openingWeightedPriceSum += price * qty
+			openingCommission += commission
+		} else {
+			closingQty += qty
+			closingWeightedPriceSum += price * qty
+			closingCommission += commission
 			totalRealizedPnl += realizedPnl
-			totalCommission += commission
-			weightedPriceSum += price * qty
+			latestTrade = *item
+			hasClosingTrade = true
 		}
 	}
 
-	if totalQty == 0 {
-		return nil, fmt.Errorf("zero quantity for closing order %d", closingOrderId)
+	if openingQty == 0 {
+		return nil, fmt.Errorf("zero opening quantity for order %d", openingOrderId)
 	}
 
-	exitPrice := weightedPriceSum / totalQty
-	var entryPrice float64
+	entryPrice := openingWeightedPriceSum / openingQty
+	var exitPrice float64
+	var closedSize float64
+	var fee float64
 
-	// If the closing execution was SELL, the position was LONG.
-	isLong := strings.EqualFold(latestTrade.GetSide(), "SELL")
-	if isLong {
-		entryPrice = exitPrice - (totalRealizedPnl / totalQty)
+	if hasClosingTrade && closingQty > 0 {
+		exitPrice = closingWeightedPriceSum / closingQty
+		closedSize = closingQty
+		fee = openingCommission + closingCommission
 	} else {
-		entryPrice = exitPrice + (totalRealizedPnl / totalQty)
+		// Fallback if closing trades are not yet in the ledger (asynchronous propagation delay)
+		// We use entry price as exit price fallback
+		exitPrice = entryPrice
+		closedSize = openingQty
+		fee = openingCommission
+	}
+
+	durationMs := int64(0)
+	if hasClosingTrade && !startTime.IsZero() {
+		durationMs = max(latestTrade.GetTime()-startTime.UnixMilli(), 0)
+	}
+
+	fdFee, err := c.getHoldFee(ctx, symbol, startTime)
+	if err != nil {
+		c.logger.Debug("Binance failed to query income history for funding fee", slog.Any("error", err))
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Symbol:     latestTrade.GetSymbol(),
+		Symbol:     symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,
-		ClosedSize: totalQty,
+		ClosedSize: closedSize,
 		GrossPnL:   totalRealizedPnl,
-		Fee:        totalCommission,
-		FundingFee: 0,
-		DurationMs: 0,
+		Fee:        fee,
+		FundingFee: fdFee,
+		DurationMs: durationMs,
+		NetPnl:     totalRealizedPnl - fee + fdFee,
 	}, nil
+}
+
+func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.Time) (float64, error) {
+	if startTime.IsZero() {
+		return 0, nil
+	}
+
+	req := c.sdkClient.RestApi.AccountAPI.GetIncomeHistory(ctx).
+		Symbol(symbol).
+		IncomeType("FUNDING_FEE").
+		StartTime(startTime.UnixMilli()).
+		Limit(10)
+
+	resp, err := c.sdkClient.RestApi.AccountAPI.GetIncomeHistoryExecute(req)
+	if err != nil {
+		return 0, err
+	}
+
+	totalHoldFee := 0.0
+	for _, item := range resp.Data.Items {
+		if item.Income != nil {
+			fee := decmath.ParseFloat(*item.Income)
+			totalHoldFee += fee
+		}
+	}
+
+	return totalHoldFee, nil
 }

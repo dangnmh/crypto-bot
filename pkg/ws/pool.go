@@ -148,11 +148,14 @@ func (p *Pool) Close() {
 	}
 }
 
-// getOrCreatePublicClient returns the index of an available public client or creates a new one.
+// getOrCreatePublicClientIdx returns the index of an available public client or creates a new one.
 // Callers must hold p.mu.Lock().
-func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) (int, error) {
+func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context, targetURL string) (int, error) {
+	if targetURL == "" {
+		targetURL = p.publicURL
+	}
 	for i, count := range p.clientSubCount {
-		if count < p.maxPairs {
+		if count < p.maxPairs && p.publicClients[i].url == targetURL {
 			return i, nil
 		}
 	}
@@ -162,12 +165,12 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context) (int, error) {
 	opts = append(opts, WithOnReady(func(c *Client) {
 		p.replayPublicSubscriptions(idx, c)
 	}))
-	newClient := NewClient(p.publicURL, p.logger, opts...)
+	newClient := NewClient(targetURL, p.logger, opts...)
 	p.attachHandlers(newClient)
 	p.publicClients = append(p.publicClients, newClient)
 	p.clientSubCount = append(p.clientSubCount, 0)
 
-	p.logger.InfoContext(ctx, "🌊 Spawning new public WS connection", slog.Int("pool_idx", idx))
+	p.logger.InfoContext(ctx, "🌊 Spawning new public WS connection", slog.Int("pool_idx", idx), slog.String("url", targetURL))
 	go newClient.Connect(ctx)
 	if err := newClient.WaitReady(ctx); err != nil {
 		return 0, err
@@ -195,11 +198,16 @@ func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
 
 // SubscribePublic tracks a subscription topic and routes it to an available public client.
 func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg any) error {
+	return p.SubscribePublicWithURL(ctx, p.publicURL, topic, msg)
+}
+
+// SubscribePublicWithURL tracks a subscription topic and routes it to an available public client for the specific URL.
+func (p *Pool) SubscribePublicWithURL(ctx context.Context, targetURL, topic string, msg any) error {
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
 	if !exists {
 		var err error
-		idx, err = p.getOrCreatePublicClientIdx(ctx)
+		idx, err = p.getOrCreatePublicClientIdx(ctx, targetURL)
 		if err != nil {
 			p.mu.Unlock()
 			return err
@@ -225,6 +233,11 @@ func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg any) error
 
 // UnsubscribePublic removes a topic tracking and routes the unsubscribe message to the correct client.
 func (p *Pool) UnsubscribePublic(ctx context.Context, topic string, msg any) error {
+	return p.UnsubscribePublicWithURL(ctx, topic, msg)
+}
+
+// UnsubscribePublicWithURL removes a topic tracking and routes the unsubscribe message to the correct client.
+func (p *Pool) UnsubscribePublicWithURL(ctx context.Context, topic string, msg any) error {
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
 	if !exists {
@@ -254,6 +267,11 @@ func (p *Pool) GetPrivateClient() *Client {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.privateClient
+}
+
+// PrivateURL returns the configured private connection URL.
+func (p *Pool) PrivateURL() string {
+	return p.privateURL
 }
 
 // SendPrivate routes a generic JSON payload to the private authenticated client.

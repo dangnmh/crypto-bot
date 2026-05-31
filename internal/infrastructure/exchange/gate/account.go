@@ -120,7 +120,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 // GetRecentClosedPnL queries the recent trades from Gate.io for a symbol, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// Look up numeric orderID from client order ID (extOrderID / text)
-	orderInfo, err := c.GetOrder(ctx, "t-"+extOrderID)
+	orderInfo, err := c.GetOrder(ctx, symbol, "t-"+extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("gate.io get order by external ID %s failed: %w", extOrderID, err)
 	}

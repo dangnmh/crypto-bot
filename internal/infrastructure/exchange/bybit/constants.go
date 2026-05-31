@@ -21,4 +21,5 @@ const (
 	accountTypeContract = "CONTRACT"
 	accountTypeUnified  = "UNIFIED"
 	paramAccountType    = "accountType"
+	triggerByLastPrice  = "LastPrice"
 )
