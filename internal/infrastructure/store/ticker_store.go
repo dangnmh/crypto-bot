@@ -21,14 +21,14 @@ type TickerStore struct {
 }
 
 // NewTickerStore creates a new TickerStore.
-func NewTickerStore(wg *sync.WaitGroup) *TickerStore {
+func NewTickerStore(wg *sync.WaitGroup, log *slog.Logger) *TickerStore {
 	if wg == nil {
 		wg = &sync.WaitGroup{}
 	}
 	wg.Add(1)
 	return &TickerStore{
 		tickers: make(map[string]*TickerData),
-		logger:  slog.Default().With("component", "ticker_store"),
+		logger:  log.With("subsystem", "ticker_store"),
 		readyWG: wg,
 	}
 }

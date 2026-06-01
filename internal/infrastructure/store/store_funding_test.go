@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"log/slog"
 )
 
 func TestFundingStore_GetFunding(t *testing.T) {
@@ -27,7 +29,7 @@ func TestFundingStore_GetFunding(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -44,7 +46,7 @@ func TestFundingStore_GetFunding_Missing(t *testing.T) {
 	t.Parallel()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 	wg.Done()
 
 	_, err := fs.GetFunding(context.Background(), "NONEXISTENT")
@@ -64,7 +66,7 @@ func TestFundingStore_GetSettleTime(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -81,7 +83,7 @@ func TestFundingStore_GetSettleTime_Missing(t *testing.T) {
 	t.Parallel()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 	wg.Done()
 
 	_, err := fs.GetSettleTime(context.Background(), "NONEXISTENT")

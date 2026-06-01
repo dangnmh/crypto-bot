@@ -207,7 +207,7 @@ func TestNewEngine_CustomProviderFactoryPaths(t *testing.T) {
 func TestStoreRegistry_StartStores(t *testing.T) {
 	t.Parallel()
 
-	reg := app.NewStoreRegistry()
+	reg := app.NewStoreRegistry(testLogger())
 	require.NotNil(t, reg.Ticker)
 	require.NotNil(t, reg.Contract)
 	require.NotNil(t, reg.Price)
@@ -227,7 +227,7 @@ func TestStoreRegistry_StartStores(t *testing.T) {
 func TestStoreRegistry_StartStoresWithFunding(t *testing.T) {
 	t.Parallel()
 
-	reg := app.NewStoreRegistry().WithFunding()
+	reg := app.NewStoreRegistry(testLogger()).WithFunding()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -244,7 +244,7 @@ func TestStoreRegistry_StartStoresWithFunding(t *testing.T) {
 func TestStoreRegistry_WaitReadyContextCancelled(t *testing.T) {
 	t.Parallel()
 
-	reg := app.NewStoreRegistry()
+	reg := app.NewStoreRegistry(testLogger())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

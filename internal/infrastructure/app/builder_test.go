@@ -157,7 +157,7 @@ func TestEngineBuilder_MissingAPISecret(t *testing.T) {
 
 func TestStoreRegistry_ChainBuild(t *testing.T) {
 	t.Parallel()
-	r := app.NewStoreRegistry().WithFunding().WithKline()
+	r := app.NewStoreRegistry(testLogger()).WithFunding().WithKline()
 
 	require.NotNil(t, r.Ticker)
 	require.NotNil(t, r.Contract)

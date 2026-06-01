@@ -239,7 +239,13 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}, nil)
 
 	// 3. FireIOC expectations
-	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return(exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil)
+	createOrderCalled := make(chan struct{})
+	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+			close(createOrderCalled)
+			return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
+		},
+	)
 	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
 		OrderID:      "ord_123",
 		Symbol:       "BTC_USDT",
@@ -308,6 +314,12 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			err := json.Unmarshal(msg.Payload, &compEvt)
 			if err == nil && compEvt.Symbol == "BTC_USDT" {
 				msg.Ack()
+				// Wait for CreateOrder to actually be called to avoid asynchronous race conditions in parallel tests
+				select {
+				case <-createOrderCalled:
+				case <-time.After(5 * time.Second):
+					t.Fatal("Timeout waiting for CreateOrder to be called")
+				}
 				return
 			}
 			msg.Ack()
@@ -465,6 +477,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
 		{Symbol: "BTC_USDT", HoldVol: 1},
 	}, nil).AnyTimes()
+	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
 		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
@@ -690,8 +703,10 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	}, nil)
 
 	// 3. FireIOC expectations (we assert CreateOrder receives Leverage = 10, and ChangeLeverage is NOT called)
+	createOrderCalled := make(chan struct{})
 	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 		assert.Equal(t, 10, req.Leverage)
+		close(createOrderCalled)
 		return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
 	})
 	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
@@ -773,6 +788,12 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			err := json.Unmarshal(msg.Payload, &compEvt)
 			if err == nil && compEvt.Symbol == "BTC_USDT" {
 				msg.Ack()
+				// Wait for CreateOrder to actually be called to avoid asynchronous race conditions in parallel tests
+				select {
+				case <-createOrderCalled:
+				case <-time.After(5 * time.Second):
+					t.Fatal("Timeout waiting for CreateOrder to be called")
+				}
 				return
 			}
 			msg.Ack()

@@ -21,14 +21,14 @@ type FundingStore struct {
 }
 
 // NewFundingStore creates a new FundingStore.
-func NewFundingStore(wg *sync.WaitGroup) *FundingStore {
+func NewFundingStore(wg *sync.WaitGroup, log *slog.Logger) *FundingStore {
 	if wg == nil {
 		wg = &sync.WaitGroup{}
 	}
 	wg.Add(1) // Register requirement for initial funding sync
 	return &FundingStore{
 		funding: make(map[string]*FundingData),
-		logger:  slog.Default().With("component", "funding_store"),
+		logger:  log.With("component", "funding_store"),
 		readyWG: wg,
 	}
 }

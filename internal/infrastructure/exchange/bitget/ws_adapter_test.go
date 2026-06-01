@@ -2,6 +2,7 @@ package bitget_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -234,7 +235,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	adapter := bitget.NewWsAdapter()
 
 	// Using a dummy pool with a pre-canceled context so that pool methods return immediately without trying to connect.
-	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, nil)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
 	defer pool.Close()
 	adapter.SetPool(pool)
 

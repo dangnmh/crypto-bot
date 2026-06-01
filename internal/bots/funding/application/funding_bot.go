@@ -59,6 +59,7 @@ func NewFundingBot(
 
 		if len(symbols) > 0 {
 			storesMap[name] = app.NewCentralStore(
+				app.WithLogger(log.With("exchange", name)),
 				app.WithTicker(prov.Client, time.Duration(sysCfg.Sync.Ticker)),
 				app.WithContract(prov.Client, time.Duration(sysCfg.Sync.Contract)),
 				app.WithFunding(prov.Client, time.Duration(sysCfg.Sync.FundingSync), symbols),

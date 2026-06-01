@@ -2,6 +2,7 @@ package hyperliquid_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
@@ -152,7 +153,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	hook := adapter.GetAuthHook("apiKey", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	assert.Nil(t, hook) // GetAuthHook returns nil hook on Hyperliquid (it just intercepts)
 
-	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, nil)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
 	defer pool.Close()
 	adapter.SetPool(pool)
 

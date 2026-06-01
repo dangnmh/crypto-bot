@@ -15,13 +15,13 @@
       "bufferTime": "10ms",
       "postSettleTimeout": "300s"
     },
-    "gate": {
+    "binance": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "30ms",
+      "bufferTime": "10ms",
       "postSettleTimeout": "300s"
     },
-    "binance": {
+    "gate": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
       "bufferTime": "30ms",

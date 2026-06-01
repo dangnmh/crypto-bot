@@ -30,6 +30,7 @@ type StoreRegistry struct {
 	Kline   *store.KlineStore
 
 	readyWG *sync.WaitGroup
+	log     *slog.Logger
 }
 
 // NewStoreRegistry creates a StoreRegistry with the required base stores
@@ -37,26 +38,27 @@ type StoreRegistry struct {
 // can be set after construction.
 //
 // Deprecated: Use NewCentralStore() with StoreOption functions instead.
-func NewStoreRegistry() *StoreRegistry {
+func NewStoreRegistry(log *slog.Logger) *StoreRegistry {
 	wg := &sync.WaitGroup{}
 	return &StoreRegistry{
-		Ticker:   store.NewTickerStore(wg),
-		Contract: store.NewContractStore(wg),
-		Price:    store.NewPriceStore(),
-		Depth:    store.NewDepthStore(),
+		Ticker:   store.NewTickerStore(wg, log),
+		Contract: store.NewContractStore(wg, log),
+		Price:    store.NewPriceStore(log),
+		Depth:    store.NewDepthStore(log),
 		readyWG:  wg,
+		log:      log,
 	}
 }
 
 // WithFunding adds a FundingStore to the registry.
 func (r *StoreRegistry) WithFunding() *StoreRegistry {
-	r.Funding = store.NewFundingStore(r.readyWG)
+	r.Funding = store.NewFundingStore(r.readyWG, r.log)
 	return r
 }
 
 // WithKline adds a KlineStore to the registry.
 func (r *StoreRegistry) WithKline() *StoreRegistry {
-	r.Kline = store.NewKlineStore()
+	r.Kline = store.NewKlineStore(r.log)
 	return r
 }
 

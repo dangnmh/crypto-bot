@@ -9,12 +9,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"log/slog"
 )
 
 func TestPriceStore_UpdateAndGetPrice(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	ctx := context.Background()
 
 	pd := &store.PriceData{
@@ -34,7 +36,7 @@ func TestPriceStore_UpdateAndGetPrice(t *testing.T) {
 func TestPriceStore_ReturnsSnapshot(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	ctx := context.Background()
 	input := &store.PriceData{
 		Symbol:    "BTC_USDT",
@@ -57,7 +59,7 @@ func TestPriceStore_ReturnsSnapshot(t *testing.T) {
 func TestPriceStore_GetPrice_Missing(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	_, err := s.GetPrice(context.Background(), "NONEXISTENT", 5*time.Second)
 	assert.Error(t, err)
 }
@@ -65,7 +67,7 @@ func TestPriceStore_GetPrice_Missing(t *testing.T) {
 func TestPriceStore_GetPrice_Stale(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	pd := &store.PriceData{
 		Symbol:    "BTC_USDT",
 		UpdatedAt: time.Now().Add(-10 * time.Second),
@@ -79,7 +81,7 @@ func TestPriceStore_GetPrice_Stale(t *testing.T) {
 func TestPriceStore_GetBestBidAsk(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	s.UpdatePrice("BTC_USDT", &store.PriceData{BestBid: 100, BestAsk: 101})
 
 	bid, ask, err := s.GetBestBidAsk(context.Background(), "BTC_USDT")
@@ -91,7 +93,7 @@ func TestPriceStore_GetBestBidAsk(t *testing.T) {
 func TestPriceStore_GetBestBidAsk_Missing(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	_, _, err := s.GetBestBidAsk(context.Background(), "NONEXISTENT")
 	assert.Error(t, err)
 }
@@ -99,7 +101,7 @@ func TestPriceStore_GetBestBidAsk_Missing(t *testing.T) {
 func TestPriceStore_PriceAge(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 
 	// Missing symbol returns very large age.
 	age := s.PriceAge("NONEXISTENT")
@@ -114,7 +116,7 @@ func TestPriceStore_PriceAge(t *testing.T) {
 func TestPriceStore_SubscribePrice(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	ctx := t.Context()
 
 	btcUpdates := s.SubscribePrice(ctx, "BTC_USDT")
@@ -137,7 +139,7 @@ func TestPriceStore_SubscribePrice(t *testing.T) {
 func TestPriceStore_SubscribePrice_ContextCancelClosesChannel(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	ctx, cancel := context.WithCancel(context.Background())
 	updates := s.SubscribePrice(ctx, "BTC_USDT")
 
@@ -154,7 +156,7 @@ func TestPriceStore_SubscribePrice_ContextCancelClosesChannel(t *testing.T) {
 func TestPriceStore_SubscribePrice_NonBlockingUpdate(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewPriceStore()
+	s := store.NewPriceStore(slog.Default())
 	ctx := t.Context()
 
 	_ = s.SubscribePrice(ctx, "BTC_USDT")

@@ -48,10 +48,6 @@ func NewPoolWithURLs(
 	publicOpts []ClientOption,
 	privateOpts []ClientOption,
 ) *Pool {
-	if logger == nil {
-		logger = slog.Default().With("component", "wspool")
-	}
-
 	return &Pool{
 		publicURL:      publicURL,
 		privateURL:     privateURL,

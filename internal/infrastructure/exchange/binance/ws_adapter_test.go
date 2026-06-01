@@ -11,6 +11,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	pkgws "crypto-bot/pkg/ws"
+	"log/slog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -182,7 +183,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	adapter := binance.NewWsAdapter("wss://fstream.binance.com/private/ws")
 	adapter.SetURLs("wss://fstream.binance.com/public", "wss://fstream.binance.com/market")
-	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, nil)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
 	defer pool.Close()
 	adapter.SetPool(pool)
 

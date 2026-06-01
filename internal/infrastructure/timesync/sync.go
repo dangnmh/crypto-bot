@@ -27,12 +27,12 @@ type TimeSync struct {
 }
 
 // New creates a new TimeSync service.
-func New(client exchange.Client, interval time.Duration) *TimeSync {
+func New(client exchange.Client, log *slog.Logger, interval time.Duration) *TimeSync {
 	return &TimeSync{
 		client:   client,
 		alpha:    0.3,
 		interval: interval,
-		logger:   slog.Default().With("component", "timesync"),
+		logger:   log.With("component", "timesync"),
 		ready:    make(chan struct{}),
 	}
 }

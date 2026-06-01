@@ -67,7 +67,7 @@ func TestNewFundingBotBuildsExchangeScopedResources(t *testing.T) {
 				Name:     "mexc",
 				Client:   client,
 				Watcher:  watcher.NewOrderWatcher(bus, "mexc", sniperTestLogger()),
-				TimeSync: timesync.New(client, time.Second),
+				TimeSync: timesync.New(client, slog.Default(), time.Second),
 			},
 		},
 	}
@@ -123,7 +123,7 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetServerTime(gomock.Any()).Return(now.UnixMilli(), nil).AnyTimes()
 
-	ts := timesync.New(client, time.Second)
+	ts := timesync.New(client, slog.Default(), time.Second)
 	ctxSync, cancelSync := context.WithCancel(context.Background())
 	cancelSync()
 	ts.Start(ctxSync)
@@ -244,7 +244,7 @@ func TestScannerJob_Run(t *testing.T) {
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetServerTime(gomock.Any()).Return(now.UnixMilli(), nil).AnyTimes()
 	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
-	ts := timesync.New(client, time.Second)
+	ts := timesync.New(client, slog.Default(), time.Second)
 	ctxSync, cancelSync := context.WithCancel(context.Background())
 	cancelSync()
 	ts.Start(ctxSync)

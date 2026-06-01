@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"log/slog"
 )
 
 func TestContractStore_GetContract(t *testing.T) {
@@ -25,7 +27,7 @@ func TestContractStore_GetContract(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	cs := store.NewContractStore(wg)
+	cs := store.NewContractStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -43,7 +45,7 @@ func TestContractStore_GetContract_Missing(t *testing.T) {
 	t.Parallel()
 
 	wg := &sync.WaitGroup{}
-	cs := store.NewContractStore(wg)
+	cs := store.NewContractStore(wg, slog.Default())
 	wg.Done()
 
 	_, err := cs.GetContract(context.Background(), "NONEXISTENT")

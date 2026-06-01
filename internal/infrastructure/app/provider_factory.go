@@ -225,7 +225,9 @@ func buildProvider(
 		client = exchange.NewDryRunClient(client)
 	}
 
-	wsPool := newWSPool(ctx, watcherExchangeName, apiCfg, adapter, cfg.Logger, apiCfg.APIKey, apiCfg.APISecret)
+	log := cfg.Logger.With("exchange", providerName)
+
+	wsPool := newWSPool(ctx, watcherExchangeName, apiCfg, adapter, log, apiCfg.APIKey, apiCfg.APISecret)
 	adapter.SetPool(wsPool)
 
 	return &ExchangeProvider{
@@ -233,8 +235,8 @@ func buildProvider(
 		Client:   client,
 		Adapter:  adapter,
 		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, watcherExchangeName, cfg.Logger.With("component", "order_watcher", "exchange", providerName)),
+		TimeSync: timesync.New(client, log, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, watcherExchangeName, log),
 	}
 }
 
@@ -421,12 +423,14 @@ func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfi
 	wsPool := pkgws.NewPool("", apiCfg.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
 	adapter.SetPool(wsPool)
 
+	log := cfg.Logger.With("exchange", exchange.ExchangeKucoin)
+
 	return &ExchangeProvider{
 		Name:     exchange.ExchangeKucoin,
 		Client:   client,
 		Adapter:  adapter,
 		WS:       wsPool,
-		TimeSync: timesync.New(client, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeKucoin, cfg.Logger.With("component", "order_watcher", "exchange", exchange.ExchangeKucoin)),
+		TimeSync: timesync.New(client, log, time.Duration(sysCfg.Sync.Time)),
+		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeKucoin, log),
 	}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -150,7 +151,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	t.Parallel()
 
 	adapter := bingx.NewWsAdapter()
-	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, nil)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
 	defer pool.Close()
 	adapter.SetPool(pool)
 

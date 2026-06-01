@@ -16,10 +16,10 @@ type KlineStore struct {
 }
 
 // NewKlineStore creates a new KlineStore.
-func NewKlineStore() *KlineStore {
+func NewKlineStore(log *slog.Logger) *KlineStore {
 	return &KlineStore{
 		klines: make(map[string]*KlineBuffer),
-		logger: slog.Default().With("component", "kline_store"),
+		logger: log.With("component", "kline_store"),
 	}
 }
 

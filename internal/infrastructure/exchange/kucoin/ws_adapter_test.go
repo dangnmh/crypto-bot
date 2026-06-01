@@ -2,6 +2,7 @@ package kucoin_test
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -160,7 +161,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	// 3. Test WS Subscriptions
 	adapter := kucoin.NewWsAdapter()
-	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, nil)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
 	defer pool.Close()
 	adapter.SetPool(pool)
 

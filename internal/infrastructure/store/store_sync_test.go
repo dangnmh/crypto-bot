@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"log/slog"
 )
 
 // ── TickerStore sync ─────────────────────────────────────────────────.
@@ -29,7 +31,7 @@ func TestTickerStore_StartTickerSync(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	ts := store.NewTickerStore(wg)
+	ts := store.NewTickerStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -56,7 +58,7 @@ func TestTickerStore_StartTickerSync_Error(t *testing.T) {
 	client.EXPECT().GetTickers(gomock.Any(), "").Return(nil, fmt.Errorf("network error")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	ts := store.NewTickerStore(wg)
+	ts := store.NewTickerStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -82,7 +84,7 @@ func TestContractStore_StartContractSync(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	cs := store.NewContractStore(wg)
+	cs := store.NewContractStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -105,7 +107,7 @@ func TestContractStore_StartContractSync_Error(t *testing.T) {
 	client.EXPECT().GetContractDetails(gomock.Any()).Return(nil, fmt.Errorf("api error")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	cs := store.NewContractStore(wg)
+	cs := store.NewContractStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -132,7 +134,7 @@ func TestFundingStore_StartFundingSync(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -154,7 +156,7 @@ func TestFundingStore_StartFundingSync_Error(t *testing.T) {
 	client.EXPECT().GetFundingRate(gomock.Any(), "BTC_USDT").Return(nil, fmt.Errorf("funding error")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -181,7 +183,7 @@ func TestFundingStore_StartFundingSync_MultipleSymbols(t *testing.T) {
 	client.EXPECT().GetFundingRate(gomock.Any(), "ETH_USDT").Return(nil, fmt.Errorf("no data")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	fs := store.NewFundingStore(wg)
+	fs := store.NewFundingStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()

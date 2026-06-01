@@ -8,6 +8,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	pkgws "crypto-bot/pkg/ws"
+	"log/slog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -182,7 +183,7 @@ func TestWsAdapter_SubscriptionAndErrors(t *testing.T) {
 	assert.Error(t, err)
 
 	// 5. Subscription checks with cancelled context to cover pool routing
-	pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 1, slog.Default())
 	adapter.SetPool(pool)
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -44,6 +44,8 @@ type CentralStore struct {
 	// Lifecycle.
 	readyWG   *sync.WaitGroup
 	syncTasks []syncTask
+
+	log *slog.Logger
 }
 
 // NewCentralStore creates an immutable CentralStore configured by the
@@ -66,7 +68,7 @@ func NewCentralStore(opts ...StoreOption) *CentralStore {
 // WithTicker enables the TickerStore and registers a periodic REST sync.
 func WithTicker(client exchange.Client, interval time.Duration) StoreOption {
 	return func(cs *CentralStore) {
-		cs.ticker = store.NewTickerStore(cs.readyWG)
+		cs.ticker = store.NewTickerStore(cs.readyWG, cs.log)
 		cs.syncTasks = append(cs.syncTasks, syncTask{
 			name: "ticker",
 			startFn: func(ctx context.Context) {
@@ -79,7 +81,7 @@ func WithTicker(client exchange.Client, interval time.Duration) StoreOption {
 // WithContract enables the ContractStore and registers a periodic REST sync.
 func WithContract(client exchange.Client, interval time.Duration) StoreOption {
 	return func(cs *CentralStore) {
-		cs.contract = store.NewContractStore(cs.readyWG)
+		cs.contract = store.NewContractStore(cs.readyWG, cs.log)
 		cs.syncTasks = append(cs.syncTasks, syncTask{
 			name: "contract",
 			startFn: func(ctx context.Context) {
@@ -93,7 +95,7 @@ func WithContract(client exchange.Client, interval time.Duration) StoreOption {
 // for the specified symbols.
 func WithFunding(client exchange.Client, interval time.Duration, symbols []string) StoreOption {
 	return func(cs *CentralStore) {
-		cs.funding = store.NewFundingStore(cs.readyWG)
+		cs.funding = store.NewFundingStore(cs.readyWG, cs.log)
 		cs.syncTasks = append(cs.syncTasks, syncTask{
 			name: "funding",
 			startFn: func(ctx context.Context) {
@@ -106,21 +108,28 @@ func WithFunding(client exchange.Client, interval time.Duration, symbols []strin
 // WithPrice enables the PriceStore (WS-fed, no REST sync).
 func WithPrice() StoreOption {
 	return func(cs *CentralStore) {
-		cs.price = store.NewPriceStore()
+		cs.price = store.NewPriceStore(cs.log)
 	}
 }
 
 // WithDepth enables the DepthStore (WS-fed, no REST sync).
 func WithDepth() StoreOption {
 	return func(cs *CentralStore) {
-		cs.depth = store.NewDepthStore()
+		cs.depth = store.NewDepthStore(cs.log)
 	}
 }
 
 // WithKline enables the KlineStore (WS-fed, no REST sync).
 func WithKline() StoreOption {
 	return func(cs *CentralStore) {
-		cs.kline = store.NewKlineStore()
+		cs.kline = store.NewKlineStore(cs.log)
+	}
+}
+
+// WithLogger enables the Logger (WS-fed, no REST sync).
+func WithLogger(log *slog.Logger) StoreOption {
+	return func(cs *CentralStore) {
+		cs.log = log.With("subsystem", "central_store")
 	}
 }
 

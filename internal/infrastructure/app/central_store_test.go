@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"crypto-bot/internal/infrastructure/app"
@@ -29,7 +30,7 @@ func TestNewCentralStore_NoOptions(t *testing.T) {
 
 func TestNewCentralStore_WSOnlyStores(t *testing.T) {
 	t.Parallel()
-	cs := app.NewCentralStore(app.WithPrice(), app.WithDepth(), app.WithKline())
+	cs := app.NewCentralStore(app.WithLogger(testLogger()), app.WithPrice(), app.WithDepth(), app.WithKline())
 
 	assert.NotNil(t, cs.Price())
 	assert.NotNil(t, cs.Depth())
@@ -45,7 +46,7 @@ func TestNewCentralStore_RESTStores(t *testing.T) {
 	t.Parallel()
 	client := &dummyClient{}
 
-	cs := app.NewCentralStore(
+	cs := app.NewCentralStore(app.WithLogger(testLogger()),
 		app.WithTicker(client, time.Second),
 		app.WithContract(client, time.Second),
 		app.WithFunding(client, time.Second, []string{"BTC_USDT"}),
@@ -60,7 +61,7 @@ func TestNewCentralStore_AllOptions(t *testing.T) {
 	t.Parallel()
 	client := &dummyClient{}
 
-	cs := app.NewCentralStore(
+	cs := app.NewCentralStore(app.WithLogger(testLogger()),
 		app.WithTicker(client, time.Second),
 		app.WithContract(client, time.Second),
 		app.WithFunding(client, time.Second, []string{"BTC_USDT"}),
@@ -83,7 +84,7 @@ func TestCentralStore_Start_CancelledContext(t *testing.T) {
 	t.Parallel()
 	client := &dummyClient{}
 
-	cs := app.NewCentralStore(
+	cs := app.NewCentralStore(app.WithLogger(testLogger()),
 		app.WithTicker(client, time.Second),
 		app.WithContract(client, time.Second),
 	)
@@ -99,7 +100,7 @@ func TestCentralStore_Start_CancelledContext(t *testing.T) {
 func TestCentralStore_WaitReady_NoSyncTasks(t *testing.T) {
 	t.Parallel()
 	// Only WS stores — no readyWG increments, so WaitReady returns immediately.
-	cs := app.NewCentralStore(app.WithPrice(), app.WithDepth())
+	cs := app.NewCentralStore(app.WithLogger(testLogger()), app.WithPrice(), app.WithDepth())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -113,7 +114,7 @@ func TestCentralStore_WaitReady_ContextTimeout(t *testing.T) {
 	client := &dummyClient{}
 
 	// Ticker registers a readyWG entry that will never complete (no sync runs).
-	cs := app.NewCentralStore(app.WithTicker(client, time.Hour))
+	cs := app.NewCentralStore(app.WithLogger(testLogger()), app.WithTicker(client, time.Hour))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -127,7 +128,7 @@ func TestCentralStore_WaitReady_ContextTimeout(t *testing.T) {
 
 func TestCentralStore_WireWS_NilPoolOrAdapter(t *testing.T) {
 	t.Parallel()
-	cs := app.NewCentralStore(app.WithPrice(), app.WithDepth(), app.WithKline())
+	cs := app.NewCentralStore(app.WithLogger(testLogger()), app.WithPrice(), app.WithDepth(), app.WithKline())
 
 	// Should not panic with nil args.
 	assert.NotPanics(t, func() {
@@ -138,7 +139,7 @@ func TestCentralStore_WireWS_NilPoolOrAdapter(t *testing.T) {
 
 func TestCentralStore_WireWS_RegistersHandlers(t *testing.T) {
 	t.Parallel()
-	cs := app.NewCentralStore(app.WithPrice(), app.WithDepth(), app.WithKline())
+	cs := app.NewCentralStore(app.WithLogger(testLogger()), app.WithPrice(), app.WithDepth(), app.WithKline())
 
 	adapter := &mockAdapter{}
 	pool := newTestPool()
@@ -152,7 +153,7 @@ func TestCentralStore_WireWS_RegistersHandlers(t *testing.T) {
 func TestCentralStore_WireWS_SkipsDisabledStores(t *testing.T) {
 	t.Parallel()
 	// Only enable Price — no depth or kline.
-	cs := app.NewCentralStore(app.WithPrice())
+	cs := app.NewCentralStore(app.WithLogger(testLogger()), app.WithPrice())
 
 	adapter := &mockAdapter{}
 	pool := newTestPool()
@@ -169,7 +170,7 @@ func TestCentralStore_SyncTaskCount(t *testing.T) {
 	t.Parallel()
 	client := &dummyClient{}
 
-	cs := app.NewCentralStore(
+	cs := app.NewCentralStore(app.WithLogger(testLogger()),
 		app.WithTicker(client, time.Second),
 		app.WithContract(client, time.Second),
 		app.WithFunding(client, time.Second, []string{"BTC_USDT"}),
@@ -187,5 +188,5 @@ func TestCentralStore_SyncTaskCount(t *testing.T) {
 
 // newTestPool creates a minimal Pool for handler registration tests.
 func newTestPool() *pkgws.Pool {
-	return pkgws.NewPool("wss://test.example.com", 10, nil)
+	return pkgws.NewPool("wss://test.example.com", 10, slog.Default())
 }

@@ -17,11 +17,11 @@ type PriceStore struct {
 }
 
 // NewPriceStore creates a new PriceStore.
-func NewPriceStore() *PriceStore {
+func NewPriceStore(log *slog.Logger) *PriceStore {
 	return &PriceStore{
 		prices:      make(map[string]*PriceData),
 		subscribers: make(map[string]map[chan *PriceData]struct{}),
-		logger:      slog.Default().With("component", "price_store"),
+		logger:      log.With("component", "price_store"),
 	}
 }
 

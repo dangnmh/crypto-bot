@@ -21,14 +21,14 @@ type ContractStore struct {
 }
 
 // NewContractStore creates a new ContractStore.
-func NewContractStore(wg *sync.WaitGroup) *ContractStore {
+func NewContractStore(wg *sync.WaitGroup, log *slog.Logger) *ContractStore {
 	if wg == nil {
 		wg = &sync.WaitGroup{}
 	}
 	wg.Add(1)
 	return &ContractStore{
 		contracts: make(map[string]*ContractData),
-		logger:    slog.Default().With("component", "contract_store"),
+		logger:    log.With("component", "contract_store"),
 		readyWG:   wg,
 	}
 }

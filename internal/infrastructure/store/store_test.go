@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"crypto-bot/internal/infrastructure/store"
@@ -14,7 +15,7 @@ import (
 
 func TestDepthStore_UpdateAndGet(t *testing.T) {
 	t.Parallel()
-	s := store.NewDepthStore()
+	s := store.NewDepthStore(slog.Default())
 	ctx := context.Background()
 
 	ob := &domain.OrderBook{
@@ -36,7 +37,7 @@ func TestDepthStore_UpdateAndGet(t *testing.T) {
 func TestDepthStore_ReturnsSnapshot(t *testing.T) {
 	t.Parallel()
 
-	s := store.NewDepthStore()
+	s := store.NewDepthStore(slog.Default())
 	ctx := context.Background()
 	input := &domain.OrderBook{
 		Symbol: "BTC_USDT",
@@ -58,14 +59,14 @@ func TestDepthStore_ReturnsSnapshot(t *testing.T) {
 
 func TestDepthStore_GetDepth_NotFound(t *testing.T) {
 	t.Parallel()
-	s := store.NewDepthStore()
+	s := store.NewDepthStore(slog.Default())
 	_, err := s.GetDepth(context.Background(), "NONEXISTENT")
 	assert.Error(t, err)
 }
 
 func TestDepthStore_DeleteDepth(t *testing.T) {
 	t.Parallel()
-	s := store.NewDepthStore()
+	s := store.NewDepthStore(slog.Default())
 	s.UpdateDepth("BTC_USDT", &domain.OrderBook{Symbol: "BTC_USDT"})
 	s.DeleteDepth("BTC_USDT")
 
@@ -114,7 +115,7 @@ func TestKlineBuffer_IgnoreOutOfOrder(t *testing.T) {
 
 func TestKlineStore_InitAndGet(t *testing.T) {
 	t.Parallel()
-	s := store.NewKlineStore()
+	s := store.NewKlineStore(slog.Default())
 	ctx := context.Background()
 	initial := []domain.Kline{
 		{Timestamp: 1, Close: 100},
@@ -128,7 +129,7 @@ func TestKlineStore_InitAndGet(t *testing.T) {
 
 func TestKlineStore_AddKline_AutoCreate(t *testing.T) {
 	t.Parallel()
-	s := store.NewKlineStore()
+	s := store.NewKlineStore(slog.Default())
 	s.AddKline("NEW_SYMBOL", domain.Kline{Timestamp: 1, Close: 100})
 
 	klines := s.GetKlines(context.Background(), "NEW_SYMBOL")
@@ -137,7 +138,7 @@ func TestKlineStore_AddKline_AutoCreate(t *testing.T) {
 
 func TestKlineStore_GetKlines_Missing(t *testing.T) {
 	t.Parallel()
-	s := store.NewKlineStore()
+	s := store.NewKlineStore(slog.Default())
 	klines := s.GetKlines(context.Background(), "NONEXISTENT")
 	assert.Nil(t, klines)
 }

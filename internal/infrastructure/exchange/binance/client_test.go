@@ -1,10 +1,13 @@
 package binance_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -497,4 +500,349 @@ func TestClient_ExtendedPrivateMethods(t *testing.T) {
 	// 8. CreateTrackOrder (stub, should fail)
 	_, err = client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
 	assert.Error(t, err)
+}
+
+func TestClient_WarmUp_And_Latency(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Contains(t, r.URL.Path, "/fapi/v1/ping")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	// 1. Test Latency
+	latency, err := client.Latency(context.Background())
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, latency, int64(0))
+
+	// 2. Test WarmUp
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, time.Second)
+}
+
+func TestClient_ListenKey_And_LeverageOnOrder(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" && r.URL.Path == "/fapi/v1/listenKey" {
+			_, _ = w.Write([]byte(`{"listenKey": "test_listen_key"}`))
+			return
+		}
+		if r.Method == "PUT" && r.URL.Path == "/fapi/v1/listenKey" {
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	// 1. CreateListenKey
+	lk, err := client.CreateListenKey(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "test_listen_key", lk)
+
+	// 2. KeepAliveListenKey
+	err = client.KeepAliveListenKey(context.Background())
+	assert.NoError(t, err)
+
+	// 3. SupportLeverageOnOrder
+	assert.False(t, client.SupportLeverageOnOrder())
+}
+
+func TestClient_PlaceTPSL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		req        exchange.TPSLRequest
+		wantPath   string
+		wantMethod string
+	}{
+		{
+			name: "Place TP and SL for OpenLong in HedgeMode",
+			req: exchange.TPSLRequest{
+				Symbol:          "BTCUSDT",
+				Side:            exchange.SideOpenLong,
+				TakeProfitPrice: 55000.0,
+				StopLossPrice:   45000.0,
+				PositionMode:    1,
+			},
+			wantPath:   "/fapi/v1/algoOrder",
+			wantMethod: "POST",
+		},
+		{
+			name: "Place TP and SL for OpenShort in OneWayMode",
+			req: exchange.TPSLRequest{
+				Symbol:          "BTCUSDT",
+				Side:            exchange.SideOpenShort,
+				TakeProfitPrice: 45000.0,
+				StopLossPrice:   55000.0,
+				PositionMode:    2,
+			},
+			wantPath:   "/fapi/v1/algoOrder",
+			wantMethod: "POST",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var calledCount int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.wantMethod, r.Method)
+				assert.Contains(t, r.URL.Path, tt.wantPath)
+				calledCount++
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"code": 200, "msg": "success"}`))
+			}))
+			defer server.Close()
+
+			client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+			err := client.PlaceTPSL(context.Background(), tt.req)
+			require.NoError(t, err)
+			assert.Equal(t, 2, calledCount)
+		})
+	}
+
+	t.Run("Invalid Side", func(t *testing.T) {
+		t.Parallel()
+		client := binance.NewClient(nil, "", "api_key", "api_secret", config.LoggingConfig{})
+		err := client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+			Side: 999,
+		})
+		assert.Error(t, err)
+	})
+}
+
+func TestClient_GetRecentClosedPnL(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fapi/v1/order":
+			assert.Equal(t, "GET", r.Method)
+			_, _ = w.Write([]byte(`{
+				"orderId": 123456,
+				"symbol": "BTCUSDT",
+				"status": "FILLED",
+				"clientOrderId": "ext_123"
+			}`))
+		case "/fapi/v1/userTrades":
+			assert.Equal(t, "GET", r.Method)
+			_, _ = w.Write([]byte(`[
+				{
+					"symbol": "BTCUSDT",
+					"id": 1,
+					"orderId": 123456,
+					"price": "50000.0",
+					"qty": "0.5",
+					"commission": "1.5",
+					"commissionAsset": "USDT",
+					"realizedPnl": "0.0",
+					"side": "BUY",
+					"time": 1672531200000
+				},
+				{
+					"symbol": "BTCUSDT",
+					"id": 2,
+					"orderId": 789012,
+					"price": "52000.0",
+					"qty": "0.5",
+					"commission": "1.56",
+					"commissionAsset": "USDT",
+					"realizedPnl": "1000.0",
+					"side": "SELL",
+					"time": 1672531260000
+				}
+			]`))
+		case "/fapi/v1/income":
+			assert.Equal(t, "GET", r.Method)
+			_, _ = w.Write([]byte(`[
+				{
+					"symbol": "BTCUSDT",
+					"incomeType": "FUNDING_FEE",
+					"income": "-5.5",
+					"asset": "USDT",
+					"time": 1672531230000
+				}
+			]`))
+		default:
+			t.Errorf("Unexpected path request: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", now)
+	require.NoError(t, err)
+	assert.Equal(t, "BTCUSDT", res.Symbol)
+	assert.Equal(t, 50000.0, res.EntryPrice)
+	assert.Equal(t, 52000.0, res.ExitPrice)
+	assert.Equal(t, 0.5, res.ClosedSize)
+	assert.Equal(t, 1000.0, res.GrossPnL)
+	assert.Equal(t, 3.06, res.Fee)
+	assert.Equal(t, -5.5, res.FundingFee)
+	assert.Equal(t, 1000.0-3.06-5.5, res.NetPnl)
+}
+
+func TestClient_GetRecentClosedPnL_Fallback(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fapi/v1/order":
+			_, _ = w.Write([]byte(`{
+				"orderId": 123456,
+				"symbol": "BTCUSDT",
+				"status": "FILLED"
+			}`))
+		case "/fapi/v1/userTrades":
+			_, _ = w.Write([]byte(`[
+				{
+					"symbol": "BTCUSDT",
+					"id": 1,
+					"orderId": 123456,
+					"price": "50000.0",
+					"qty": "0.5",
+					"commission": "1.5",
+					"commissionAsset": "USDT",
+					"realizedPnl": "0.0",
+					"side": "BUY",
+					"time": 1672531200000
+				}
+			]`))
+		case "/fapi/v1/income":
+			_, _ = w.Write([]byte(`[]`))
+		}
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", now)
+	require.NoError(t, err)
+	assert.Equal(t, 50000.0, res.EntryPrice)
+	assert.Equal(t, 50000.0, res.ExitPrice)
+	assert.Equal(t, 0.5, res.ClosedSize)
+	assert.Equal(t, 1.5, res.Fee)
+}
+
+func TestClient_GetRecentClosedPnL_GetOrderError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"code": -2011, "msg": "Unknown Order"}`))
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.Now())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "get order by external ID")
+}
+
+func TestClient_GetRecentClosedPnL_ParseOrderIDError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"symbol": "BTCUSDT",
+			"status": "FILLED"
+		}`))
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.Now())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parse numeric order ID")
+}
+
+func TestClient_GetRecentClosedPnL_ZeroOpeningQty(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fapi/v1/order":
+			_, _ = w.Write([]byte(`{"orderId": 123456, "symbol": "BTCUSDT"}`))
+		case "/fapi/v1/userTrades":
+			_, _ = w.Write([]byte(`[
+				{
+					"symbol": "BTCUSDT",
+					"id": 1,
+					"orderId": 999999,
+					"price": "50000.0",
+					"qty": "0.5",
+					"commission": "1.5",
+					"commissionAsset": "USDT",
+					"realizedPnl": "0.0",
+					"side": "BUY",
+					"time": 1672531200000
+				}
+			]`))
+		case "/fapi/v1/income":
+			_, _ = w.Write([]byte(`[]`))
+		}
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.Now())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "zero opening quantity for order")
+}
+
+func TestDecompressionRoundTripper(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"serverTime": 1672531200000}`)
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, _ = gz.Write(data)
+	_ = gz.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "gzip", r.Header.Get("Accept-Encoding"))
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(
+		server.Client(),
+		server.URL,
+		"api_key",
+		"api_secret",
+		config.LoggingConfig{HTTP: true},
+	)
+
+	timeVal, err := client.GetServerTime(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(1672531200000), timeVal)
 }

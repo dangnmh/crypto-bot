@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"log/slog"
 )
 
 func TestTickerStore_GetTicker(t *testing.T) {
@@ -25,7 +27,7 @@ func TestTickerStore_GetTicker(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	ts := store.NewTickerStore(wg)
+	ts := store.NewTickerStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -43,7 +45,7 @@ func TestTickerStore_GetTicker_Missing(t *testing.T) {
 	t.Parallel()
 
 	wg := &sync.WaitGroup{}
-	ts := store.NewTickerStore(wg)
+	ts := store.NewTickerStore(wg, slog.Default())
 	wg.Done()
 
 	_, err := ts.GetTicker(context.Background(), "NONEXISTENT")
@@ -61,7 +63,7 @@ func TestTickerStore_GetAllTickers(t *testing.T) {
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
-	ts := store.NewTickerStore(wg)
+	ts := store.NewTickerStore(wg, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()

@@ -2,6 +2,7 @@ package timesync_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestTimeSync_StartAndAccessors(t *testing.T) {
 		return time.Now().Add(25 * time.Millisecond).UnixMilli(), nil
 	}).AnyTimes()
 
-	ts := timesync.New(client, 10*time.Millisecond)
+	ts := timesync.New(client, slog.Default(), 10*time.Millisecond)
 	ctx := t.Context()
 
 	go ts.Start(ctx)
@@ -40,7 +41,7 @@ func TestTimeSync_WaitReadyAndSleepCancel(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	ts := timesync.New(mocks.NewMockClient(ctrl), time.Second)
+	ts := timesync.New(mocks.NewMockClient(ctrl), slog.Default(), time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

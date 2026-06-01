@@ -17,10 +17,10 @@ type DepthStore struct {
 }
 
 // NewDepthStore creates a new DepthStore.
-func NewDepthStore() *DepthStore {
+func NewDepthStore(log *slog.Logger) *DepthStore {
 	return &DepthStore{
 		depth:  make(map[string]*domain.OrderBook),
-		logger: slog.Default().With("component", "depth_store"),
+		logger: log.With("component", "depth_store"),
 	}
 }
 

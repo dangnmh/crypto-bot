@@ -523,7 +523,7 @@ func TestClient_IsConnected_Default(t *testing.T) {
 
 func TestNewPool(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 	if p == nil {
 		t.Fatal("NewPool should return a non-nil pool")
 	}
@@ -531,7 +531,7 @@ func TestNewPool(t *testing.T) {
 
 func TestPool_NilLogger(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 	if p == nil {
 		t.Fatal("pool should be initialized with default logger")
 	}
@@ -547,7 +547,7 @@ func TestPool_On_HandlerReceivesMessage(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 30, nil, ws.WithChannelExtractor(func(data []byte) string {
+	p := ws.NewPool(wsURL(srv), 30, slog.Default(), ws.WithChannelExtractor(func(data []byte) string {
 		return "test.channel"
 	}))
 	p.On("test.channel", func(data []byte) {
@@ -575,7 +575,7 @@ func TestPool_On_HandlerReceivesMessage(t *testing.T) {
 
 func TestPool_GetPrivateClient_Nil(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 	if p.GetPrivateClient() != nil {
 		t.Error("private client should be nil before Connect")
 	}
@@ -583,7 +583,7 @@ func TestPool_GetPrivateClient_Nil(t *testing.T) {
 
 func TestPool_SendPrivate_NoClient(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 	err := p.SendPrivate(context.Background(), map[string]string{"test": "msg"})
 	if err != nil {
 		t.Errorf("expected nil when no private client, got %v", err)
@@ -592,7 +592,7 @@ func TestPool_SendPrivate_NoClient(t *testing.T) {
 
 func TestPool_WaitReady_NoClient(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	// Should return immediately when no private client.
@@ -603,7 +603,7 @@ func TestPool_WaitReady_NoClient(t *testing.T) {
 
 func TestPool_Close_Empty(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 	p.Close() // Should not panic.
 }
 
@@ -618,7 +618,7 @@ func TestPool_ConnectAndClose(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 30, nil)
+	p := ws.NewPool(wsURL(srv), 30, slog.Default())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -647,7 +647,7 @@ func TestPool_ConnectIdempotent(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 30, nil)
+	p := ws.NewPool(wsURL(srv), 30, slog.Default())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -670,7 +670,7 @@ func TestPool_On_MultipleHandlers(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 30, nil, ws.WithChannelExtractor(func(data []byte) string {
+	p := ws.NewPool(wsURL(srv), 30, slog.Default(), ws.WithChannelExtractor(func(data []byte) string {
 		return "ch"
 	}))
 	p.On("ch", func(data []byte) { calls.Add(1) })
@@ -702,7 +702,7 @@ func TestPool_SubscribePublic(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 2, nil)
+	p := ws.NewPool(wsURL(srv), 2, slog.Default())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -752,7 +752,7 @@ func TestPool_UsesSeparatePublicAndPrivateURLs(t *testing.T) {
 	})
 	defer publicSrv.Close()
 
-	p := ws.NewPoolWithURLs(wsURL(publicSrv), wsURL(privateSrv), 2, nil, nil, nil)
+	p := ws.NewPoolWithURLs(wsURL(publicSrv), wsURL(privateSrv), 2, slog.Default(), nil, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -782,7 +782,7 @@ func TestPool_UsesSeparatePublicAndPrivateURLs(t *testing.T) {
 
 func TestPool_UnsubscribePublic_NotTracked(t *testing.T) {
 	t.Parallel()
-	p := ws.NewPool("ws://fake", 30, nil)
+	p := ws.NewPool("ws://fake", 30, slog.Default())
 
 	err := p.UnsubscribePublic(context.Background(), "nonexistent", nil)
 	if err != nil {
@@ -801,7 +801,7 @@ func TestPool_SendPrivate_WithClient(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 30, nil)
+	p := ws.NewPool(wsURL(srv), 30, slog.Default())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -832,7 +832,7 @@ func TestPool_UnsubscribePublic_Success(t *testing.T) {
 	})
 	defer srv.Close()
 
-	p := ws.NewPool(wsURL(srv), 2, nil)
+	p := ws.NewPool(wsURL(srv), 2, slog.Default())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -1018,7 +1018,7 @@ func TestPool_SubscribePublicWithURL(t *testing.T) {
 	})
 	defer srv2.Close()
 
-	p := ws.NewPool(wsURL(srv1), 2, nil)
+	p := ws.NewPool(wsURL(srv1), 2, slog.Default())
 	defer p.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
