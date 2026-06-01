@@ -123,26 +123,27 @@ func (j *ScannerJob) trigger(ctx context.Context, candidate domain.Candidate, se
 		slog.Float64("fundingRate", candidate.FundingRate),
 	)
 
-	var eventTimestamp time.Time
+	eventTimestamp := time.Now()
+	var supportLeverageOnOrder bool
 	if prov, err := j.engine.GetProvider(candidate.Config.Exchange); err == nil {
 		eventTimestamp = prov.TimeSync.Now()
-	} else {
-		eventTimestamp = time.Now()
+		supportLeverageOnOrder = prov.Client.SupportLeverageOnOrder()
 	}
 
 	startEvt := reversion.CandidateFoundEvent{
 		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:       reversion.FlowReversion,
-			ReqID:      reqID,
-			Symbol:     candidate.Symbol,
-			Exchange:   candidate.Config.Exchange,
-			SendNotify: false,
-			Timestamp:  eventTimestamp,
-			EventID:    watermill.NewUUID(),
-			Seq:        1,
-			Topic:      reversion.TopicReversionCandidate,
-			ExternalID: candidate.ExternalID,
-			SettleTime: settle,
+			Flow:                   reversion.FlowReversion,
+			ReqID:                  reqID,
+			Symbol:                 candidate.Symbol,
+			Exchange:               candidate.Config.Exchange,
+			SendNotify:             false,
+			Timestamp:              eventTimestamp,
+			EventID:                watermill.NewUUID(),
+			Seq:                    1,
+			Topic:                  reversion.TopicReversionCandidate,
+			ExternalID:             candidate.ExternalID,
+			SettleTime:             settle,
+			SupportLeverageOnOrder: supportLeverageOnOrder,
 		},
 		Candidate: candidate,
 	}

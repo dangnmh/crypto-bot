@@ -81,7 +81,7 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 			wantReduce: true,
 		},
 		{
-			name: "Close Short (Hedge)",
+			name: "Open Short (Hedge)",
 			req: exchange.SubmitOrderRequest{
 				Symbol:       "BTCUSDT",
 				Vol:          2.0,
@@ -96,7 +96,25 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 			wantReduce: true,
 		},
 		{
+			name: "Open Long with Leverage (Hedge)",
+			req: exchange.SubmitOrderRequest{
+				Symbol:       "BTCUSDT",
+				Vol:          2.5,
+				Side:         exchange.SideOpenLong,
+				Type:         exchange.OrderTypeLimit,
+				Price:        50000.0,
+				PositionMode: 1, // Hedge
+				Leverage:     5,
+			},
+			wantSide:  "Buy",
+			wantIdx:   1,
+			wantPrice: "50000",
+			wantTif:   "GTC",
+			wantType:  "Limit",
+		},
+		{
 			name: "Open Long Market (OneWay)",
+
 			req: exchange.SubmitOrderRequest{
 				Symbol:       "BTCUSDT",
 				Vol:          3.0,
@@ -170,6 +188,10 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 
 				if tt.wantReduce {
 					assert.Equal(t, true, body["reduceOnly"])
+				}
+
+				if tt.req.Leverage > 0 {
+					assert.Equal(t, fmt.Sprintf("%d", tt.req.Leverage), body["leverage"])
 				}
 
 				w.Header().Set("Content-Type", "application/json")
@@ -778,7 +800,7 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	hook := adapter.GetAuthHook("key", "secret")
 	assert.NotNil(t, hook)
 	// Execute the auth hook on a dummy Client to cover the code block
-	dummyClient := &pkgws.Client{}
+	dummyClient := pkgws.NewClient("ws://127.0.0.1", slog.Default())
 	hook(dummyClient)
 
 	// Stub checks for cover

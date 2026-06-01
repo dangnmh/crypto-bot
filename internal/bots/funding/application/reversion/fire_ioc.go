@@ -167,7 +167,7 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 	}
 
 	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
-	if cfg.Leverage > 0 {
+	if cfg.Leverage > 0 && !evt.SupportLeverageOnOrder {
 		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", cfg.Leverage))
 		err := r.deps.Client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
 			Symbol:   evt.Symbol,

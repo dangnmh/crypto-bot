@@ -86,6 +86,11 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 	})
 }
 
+// SupportLeverageOnOrder returns true since Bybit V5 supports set-leverage inside create order request.
+func (c *Client) SupportLeverageOnOrder() bool {
+	return true
+}
+
 func decodeUtaResponse[T any](resp *bybitsdk.ServerResponse, err error, errPrefix string) ([]T, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", errPrefix, err)

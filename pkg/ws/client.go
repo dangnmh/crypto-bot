@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -244,10 +243,6 @@ func (c *Client) readLoop(ctx context.Context) {
 			return
 		}
 
-		if strings.Contains(c.url, "private") {
-			c.logger.DebugContext(ctx, "🔍 WS private raw message", slog.String("data", string(data)))
-		}
-
 		if c.preprocessor != nil {
 			decompressed, err := c.preprocessor(data)
 			if err != nil {
@@ -304,6 +299,7 @@ func (c *Client) processMessage(data []byte) {
 
 // SendJSON sends a generic JSON payload.
 func (c *Client) SendJSON(msg any) error {
+	c.logger.Debug("🔍 WS SendJSON", slog.Any("msg", msg))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {

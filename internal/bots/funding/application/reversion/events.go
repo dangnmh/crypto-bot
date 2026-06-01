@@ -94,20 +94,21 @@ type ReversionEvent interface {
 }
 
 type BaseReversionEvent struct {
-	Flow          string    `json:"flow,omitempty"`
-	ReqID         string    `json:"req_id,omitempty"`
-	Symbol        string    `json:"symbol"`
-	Exchange      string    `json:"exchange,omitempty"`
-	SendNotify    bool      `json:"send_notify,omitempty"`
-	Color         string    `json:"color,omitempty"`
-	OrderID       string    `json:"order_id,omitempty"`
-	ExternalID    string    `json:"external_id,omitempty"`
-	Timestamp     time.Time `json:"timestamp"`
-	EventID       string    `json:"event_id,omitempty"`
-	Seq           int64     `json:"seq,omitempty"`
-	Topic         string    `json:"topic,omitempty"`
-	PreviousTopic string    `json:"previous_topic,omitempty"`
-	SettleTime    time.Time `json:"settle_time"`
+	Flow                   string    `json:"flow,omitempty"`
+	ReqID                  string    `json:"req_id,omitempty"`
+	Symbol                 string    `json:"symbol"`
+	Exchange               string    `json:"exchange,omitempty"`
+	SendNotify             bool      `json:"send_notify,omitempty"`
+	Color                  string    `json:"color,omitempty"`
+	OrderID                string    `json:"order_id,omitempty"`
+	ExternalID             string    `json:"external_id,omitempty"`
+	Timestamp              time.Time `json:"timestamp"`
+	EventID                string    `json:"event_id,omitempty"`
+	Seq                    int64     `json:"seq,omitempty"`
+	Topic                  string    `json:"topic,omitempty"`
+	PreviousTopic          string    `json:"previous_topic,omitempty"`
+	SettleTime             time.Time `json:"settle_time"`
+	SupportLeverageOnOrder bool      `json:"support_leverage_on_order,omitempty"`
 }
 
 func (b BaseReversionEvent) GetFlow() string     { return b.Flow }

@@ -79,4 +79,5 @@ type Client interface {
 	OrderExecutor
 	AccountProvider
 	WarmUp(ctx context.Context, interval time.Duration)
+	SupportLeverageOnOrder() bool
 }

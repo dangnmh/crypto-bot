@@ -817,6 +817,44 @@ func (c *MockClientGetTickersCall) DoAndReturn(f func(context.Context, string) (
 	return c
 }
 
+// SupportLeverageOnOrder mocks base method.
+func (m *MockClient) SupportLeverageOnOrder() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportLeverageOnOrder")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportLeverageOnOrder indicates an expected call of SupportLeverageOnOrder.
+func (mr *MockClientMockRecorder) SupportLeverageOnOrder() *MockClientSupportLeverageOnOrderCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportLeverageOnOrder", reflect.TypeOf((*MockClient)(nil).SupportLeverageOnOrder))
+	return &MockClientSupportLeverageOnOrderCall{Call: call}
+}
+
+// MockClientSupportLeverageOnOrderCall wrap *gomock.Call
+type MockClientSupportLeverageOnOrderCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientSupportLeverageOnOrderCall) Return(arg0 bool) *MockClientSupportLeverageOnOrderCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientSupportLeverageOnOrderCall) Do(f func() bool) *MockClientSupportLeverageOnOrderCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientSupportLeverageOnOrderCall) DoAndReturn(f func() bool) *MockClientSupportLeverageOnOrderCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // WarmUp mocks base method.
 func (m *MockClient) WarmUp(ctx context.Context, interval time.Duration) {
 	m.ctrl.T.Helper()

@@ -222,3 +222,8 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 	}
 	return time.Since(start).Milliseconds(), nil
 }
+
+// SupportLeverageOnOrder returns false since Bitget doesn't support setting leverage directly on orders.
+func (c *Client) SupportLeverageOnOrder() bool {
+	return false
+}

@@ -161,6 +161,10 @@ func (d *DryRunClient) ChangeLeverage(ctx context.Context, req ChangeLeverageReq
 	return nil
 }
 
+func (d *DryRunClient) SupportLeverageOnOrder() bool {
+	return d.inner.SupportLeverageOnOrder()
+}
+
 // ── Infrastructure (delegated) ───────────────────────────────────────.
 
 func (d *DryRunClient) WarmUp(ctx context.Context, interval time.Duration) {

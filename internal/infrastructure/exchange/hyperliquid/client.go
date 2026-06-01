@@ -127,3 +127,8 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 		return true
 	})
 }
+
+// SupportLeverageOnOrder returns false since Hyperliquid doesn't support setting leverage directly on orders.
+func (c *Client) SupportLeverageOnOrder() bool {
+	return false
+}

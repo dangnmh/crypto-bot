@@ -67,6 +67,10 @@ func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) map[string]any 
 		params["stopLoss"] = fmt.Sprintf("%g", req.StopLossPrice)
 	}
 
+	if req.Leverage > 0 {
+		params["leverage"] = fmt.Sprintf("%d", req.Leverage)
+	}
+
 	return params
 }
 

@@ -186,3 +186,8 @@ func (c *Client) KeepAliveListenKey(ctx context.Context) error {
 	}
 	return nil
 }
+
+// SupportLeverageOnOrder returns false since Binance doesn't support setting leverage directly on orders.
+func (c *Client) SupportLeverageOnOrder() bool {
+	return false
+}

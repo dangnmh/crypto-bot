@@ -111,7 +111,7 @@ type StatelessRunner struct {
 	wsSub         infraws.Subscriber
 }
 
-func (r *StatelessRunner) clone(exch, reqID string) *StatelessRunner {
+func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
 	prov, err := r.engine.GetProvider(exch)
 	if err != nil {
 		r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
@@ -139,6 +139,8 @@ func (r *StatelessRunner) clone(exch, reqID string) *StatelessRunner {
 	}
 
 	local := *r
+	clonedLog := r.log.With("exchange", exch, "req", reqID, "symbol", symbol)
+	local.log = clonedLog
 	local.deps = strategy.Deps{
 		Client:        prov.Client,
 		WsSub:         wsSub,
@@ -149,7 +151,7 @@ func (r *StatelessRunner) clone(exch, reqID string) *StatelessRunner {
 		FundingStore:  stores.Funding(),
 		DepthStore:    stores.Depth(),
 		Clock:         clock,
-		Log:           r.log.With("exchange", exch, "req", reqID),
+		Log:           clonedLog,
 		Notifier:      r.notifier,
 		EventBus:      r.engine.Bus,
 	}
@@ -261,17 +263,18 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		seq = prev.Seq + 1
 	}
 	return BaseReversionEvent{
-		Flow:          FlowReversion,
-		ReqID:         prev.ReqID,
-		Symbol:        symbol,
-		Exchange:      prev.Exchange,
-		Color:         prev.Color,
-		OrderID:       prev.OrderID,
-		ExternalID:    prev.ExternalID,
-		Timestamp:     timestamp,
-		Seq:           seq,
-		PreviousTopic: prev.Topic,
-		SettleTime:    prev.SettleTime,
+		Flow:                   FlowReversion,
+		ReqID:                  prev.ReqID,
+		Symbol:                 symbol,
+		Exchange:               prev.Exchange,
+		Color:                  prev.Color,
+		OrderID:                prev.OrderID,
+		ExternalID:             prev.ExternalID,
+		Timestamp:              timestamp,
+		Seq:                    seq,
+		PreviousTopic:          prev.Topic,
+		SettleTime:             prev.SettleTime,
+		SupportLeverageOnOrder: prev.SupportLeverageOnOrder,
 	}
 }
 

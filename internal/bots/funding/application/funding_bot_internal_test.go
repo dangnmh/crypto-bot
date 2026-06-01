@@ -243,6 +243,7 @@ func TestScannerJob_Run(t *testing.T) {
 
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetServerTime(gomock.Any()).Return(now.UnixMilli(), nil).AnyTimes()
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 	ts := timesync.New(client, time.Second)
 	ctxSync, cancelSync := context.WithCancel(context.Background())
 	cancelSync()
@@ -250,6 +251,7 @@ func TestScannerJob_Run(t *testing.T) {
 
 	engine.Providers["mexc"] = &app.ExchangeProvider{
 		Name:     "mexc",
+		Client:   client,
 		TimeSync: ts,
 	}
 

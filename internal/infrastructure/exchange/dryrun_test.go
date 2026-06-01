@@ -77,6 +77,7 @@ func (s *stubClient) GetDepthCommits(_ context.Context, _ string, _ int) ([]exch
 	return nil, nil
 }
 func (s *stubClient) WarmUp(_ context.Context, _ time.Duration) {}
+func (s *stubClient) SupportLeverageOnOrder() bool              { return false }
 
 func TestDryRunClient_CreateOrder_ReturnsSimulatedID(t *testing.T) {
 	t.Parallel()
