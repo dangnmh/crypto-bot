@@ -26,7 +26,7 @@ func (s *stubClient) GetTickers(_ context.Context, _ string) ([]exchange.Ticker,
 func (s *stubClient) GetContractDetails(_ context.Context) ([]exchange.ContractDetail, error) {
 	return nil, nil
 }
-func (s *stubClient) GetFundingRate(_ context.Context, _ string) (*exchange.FundingRateDetail, error) {
+func (s *stubClient) GetFundingRates(_ context.Context) ([]exchange.FundingRateResult, error) {
 	return nil, nil
 }
 func (s *stubClient) GetServerTime(_ context.Context) (int64, error) { return 0, nil }
@@ -162,7 +162,7 @@ func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {
 	_, err = dry.GetServerTime(context.Background())
 	require.NoError(t, err)
 
-	_, err = dry.GetFundingRate(context.Background(), "BTC_USDT")
+	_, err = dry.GetFundingRates(context.Background())
 	require.NoError(t, err)
 
 	_, err = dry.GetKlines(context.Background(), "BTC_USDT", "Min1", 1, 2)

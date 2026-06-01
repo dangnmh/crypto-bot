@@ -45,18 +45,30 @@ func (s *FundingStore) StartFundingSync(ctx context.Context, client exchange.Cli
 }
 
 func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, symbols []string) {
-	for _, sym := range symbols {
-		detail, err := client.GetFundingRate(ctx, sym)
-		if err != nil {
-			s.logger.WarnContext(ctx, "🟡 Funding sync failed for symbol", slog.Any("error", err), slog.String("symbol", sym))
-			continue
-		}
-
-		fd := FundingDataFromExchange(detail)
-		s.mu.Lock()
-		s.funding[sym] = fd
-		s.mu.Unlock()
+	results, err := client.GetFundingRates(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "🟡 Bulk funding sync failed", slog.Any("error", err))
+		return
 	}
+
+	// Create symbol set for quick lookup
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+
+	s.mu.Lock()
+	for _, res := range results {
+		if symbolMap[res.Symbol] {
+			s.funding[res.Symbol] = &FundingData{
+				Symbol:         res.Symbol,
+				FundingRate:    res.Rate,
+				NextSettleTime: res.SettleTime,
+				UpdatedAt:      time.Now(),
+			}
+		}
+	}
+	s.mu.Unlock()
 
 	s.logger.DebugContext(ctx, "store.SyncFunding.done", slog.Int("count", len(symbols)))
 	s.fundingReadyOnce.Do(func() { s.readyWG.Done() })

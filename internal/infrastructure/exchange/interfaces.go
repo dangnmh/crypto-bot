@@ -12,7 +12,7 @@ import (
 type MarketDataProvider interface {
 	GetTickers(ctx context.Context, symbol string) ([]Ticker, error)
 	GetContractDetails(ctx context.Context) ([]ContractDetail, error)
-	GetFundingRate(ctx context.Context, symbol string) (*FundingRateDetail, error)
+	GetFundingRates(ctx context.Context) ([]FundingRateResult, error)
 	GetServerTime(ctx context.Context) (int64, error)
 	GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]Kline, error)
 	GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error)

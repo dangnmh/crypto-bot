@@ -127,33 +127,55 @@ func TestClient_GetTickers(t *testing.T) {
 	assert.Equal(t, 50001.0, tickers[0].Ask1)
 }
 
-func TestClient_GetFundingRate(t *testing.T) {
+func TestClient_GetFundingRates(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/public/funding-rate", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"instId": "BTC-USDT-SWAP",
-					"fundingRate": "0.0001",
-					"nextFundingTime": "1597026383085"
-				}
-			]
-		}`))
+		switch r.URL.Path {
+		case "/api/v5/market/tickers":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"last": "50000.5",
+						"bidPx": "50000.0",
+						"askPx": "50001.0",
+						"vol24h": "1000",
+						"volCcy24h": "1000",
+						"ts": "1597026383085"
+					}
+				]
+			}`))
+		case "/api/v5/public/funding-rate":
+			assert.Equal(t, "BTC-USDT-SWAP", r.URL.Query().Get("instId"))
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"fundingRate": "0.0001",
+						"nextFundingTime": "1597026383085"
+					}
+				]
+			}`))
+		}
 	}))
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	fr, err := client.GetFundingRate(context.Background(), "BTC-USDT-SWAP")
+	frs, err := client.GetFundingRates(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, 0.0001, fr.FundingRate)
-	assert.Equal(t, int64(1597026383085), fr.NextSettleTime)
+	require.Len(t, frs, 1)
+	assert.Equal(t, "BTC-USDT-SWAP", frs[0].Symbol)
+	assert.Equal(t, 0.0001, frs[0].Rate)
+	assert.Equal(t, int64(1597026383085), frs[0].SettleTime)
+	assert.Equal(t, 50000500.0, frs[0].Volume24h)
 }
 
 func TestClient_CreateOrder(t *testing.T) {

@@ -146,8 +146,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-// GetTickers returns ticker data for a specific symbol or all symbols.
-func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+func (c *Client) getBybitMarketTickers(ctx context.Context, symbol string) (bybitTickerList, error) {
 	params := map[string]any{
 		categoryKey: categoryLinear,
 	}
@@ -157,15 +156,50 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetMarketTickers(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("bybit list tickers: %w", err)
+		return bybitTickerList{}, fmt.Errorf("bybit list tickers: %w", err)
 	}
 	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit list tickers error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+		return bybitTickerList{}, fmt.Errorf("bybit list tickers error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
 	}
 
 	var res bybitTickerList
 	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode tickers: %w", err)
+		return bybitTickerList{}, fmt.Errorf("bybit decode tickers: %w", err)
+	}
+
+	return res, nil
+}
+
+func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+	res, err := c.getBybitMarketTickers(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	rates := make([]exchange.FundingRateResult, 0, len(res.List))
+	for i := range res.List {
+		raw := &res.List[i]
+		sym := raw.Symbol
+		nextSettle := int64(0)
+		if raw.NextFundingTime != "" {
+			if parsed, err := strconv.ParseInt(raw.NextFundingTime, 10, 64); err == nil {
+				nextSettle = parsed
+			}
+		}
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     sym,
+			Rate:       decmath.ParseFloat(raw.FundingRate),
+			SettleTime: nextSettle,
+			Volume24h:  decmath.ParseFloat(raw.Turnover24h),
+		})
+	}
+	return rates, nil
+}
+
+// GetTickers returns ticker data for a specific symbol or all symbols.
+func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	res, err := c.getBybitMarketTickers(ctx, symbol)
+	if err != nil {
+		return nil, err
 	}
 
 	tickers := make([]exchange.Ticker, 0, len(res.List))
@@ -185,8 +219,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			Ask1:           decmath.ParseFloat(raw.Ask1Price),
 			Volume24:       decmath.ParseFloat(raw.Volume24h),
 			Amount24:       decmath.ParseFloat(raw.Turnover24h),
-			IndexPrice:     decmath.ParseFloat(raw.IndexPrice),
-			FairPrice:      decmath.ParseFloat(raw.MarkPrice),
 			FundingRate:    decmath.ParseFloat(raw.FundingRate),
 			NextSettleTime: nextSettle,
 			Timestamp:      time.Now().UnixMilli(),
@@ -195,28 +227,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return tickers, nil
 }
 
-// GetFundingRate returns current funding rate details for a specific symbol.
-func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetFundingRate")
-	}
-
-	tickers, err := c.GetTickers(ctx, symbol)
-	if err != nil {
-		return nil, err
-	}
-	if len(tickers) == 0 {
-		return nil, fmt.Errorf("bybit ticker not found for: %s", symbol)
-	}
-	t := tickers[0]
-
-	return &exchange.FundingRateDetail{
-		Symbol:         symbol,
-		FundingRate:    t.FundingRate,
-		NextSettleTime: t.NextSettleTime,
-		Timestamp:      time.Now().UnixMilli(),
-	}, nil
-}
 
 // GetKlines returns candlestick data for a symbol.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

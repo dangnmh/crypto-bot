@@ -42,10 +42,11 @@ func TestClient_MarketAndAccountEndpoints(t *testing.T) {
 	assert.Equal(t, 100.5, tickers[0].LastPrice)
 	assert.Equal(t, 0.001, tickers[0].FundingRate)
 
-	funding, err := client.GetFundingRate(ctx, "BTC_USDT")
+	fundingRates, err := client.GetFundingRates(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "BTC_USDT", funding.Symbol)
-	assert.Equal(t, 0.001, funding.FundingRate)
+	require.Len(t, fundingRates, 1)
+	assert.Equal(t, "BTC_USDT", fundingRates[0].Symbol)
+	assert.Equal(t, 0.001, fundingRates[0].Rate)
 
 	klines, err := client.GetKlines(ctx, "BTC_USDT", "Min15", 1000, 2000)
 	require.NoError(t, err)
@@ -124,9 +125,8 @@ func TestClient_InputValidation(t *testing.T) {
 
 	server := newGateServer(t)
 	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-	_, err := client.GetFundingRate(context.Background(), "")
-	require.Error(t, err)
-	_, err = client.GetKlines(context.Background(), "", "1m", 0, 0)
+
+	_, err := client.GetKlines(context.Background(), "", "1m", 0, 0)
 	require.Error(t, err)
 	_, err = client.GetDepthSnapshot(context.Background(), "", 0)
 	require.Error(t, err)
@@ -158,7 +158,7 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 	require.Error(t, err)
 	_, err = errClient.GetTickers(context.Background(), "BTC_USDT")
 	require.Error(t, err)
-	_, err = errClient.GetFundingRate(context.Background(), "BTC_USDT")
+	_, err = errClient.GetFundingRates(context.Background())
 	require.Error(t, err)
 	_, err = errClient.GetKlines(context.Background(), "BTC_USDT", "Min1", 0, 60)
 	require.Error(t, err)

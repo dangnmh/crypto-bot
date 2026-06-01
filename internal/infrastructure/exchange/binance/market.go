@@ -79,48 +79,114 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-// GetTickers returns ticker data for all symbols or a single symbol.
-func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	// 1. Fetch 24h Ticker statistics (to get volumes)
+func (c *Client) getBinanceVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amounts map[string]float64, lasts map[string]float64, err error) {
 	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
 	if symbol != "" {
 		tickerReq = tickerReq.Symbol(symbol)
 	}
 	tickerResp, err := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatisticsExecute(tickerReq)
 	if err != nil {
-		return nil, fmt.Errorf("binance ticker 24h stats: %w", err)
+		return nil, nil, nil, fmt.Errorf("binance ticker 24h stats: %w", err)
 	}
 
-	volMap := make(map[string]float64)
-	amountMap := make(map[string]float64)
-	bestBidMap := make(map[string]float64)
-	bestAskMap := make(map[string]float64)
-	lastMap := make(map[string]float64)
+	vols = make(map[string]float64)
+	amounts = make(map[string]float64)
+	lasts = make(map[string]float64)
+	parseBinance24hStats(tickerResp.Data, vols, amounts, lasts)
 
-	parseBinance24hStats(tickerResp.Data, volMap, amountMap, lastMap)
+	return vols, amounts, lasts, nil
+}
 
-	// 2. Fetch Best Book Prices (bid/ask) using SymbolOrderBookTicker
+func (c *Client) getBinanceBookTickers(ctx context.Context, symbol string) (bids map[string]float64, asks map[string]float64, err error) {
+	bids = make(map[string]float64)
+	asks = make(map[string]float64)
+
 	bookReq := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTicker(ctx)
 	if symbol != "" {
 		bookReq = bookReq.Symbol(symbol)
 	}
 	bookResp, err := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTickerExecute(bookReq)
 	if err == nil {
-		parseBinanceBookTickers(bookResp.Data, bestBidMap, bestAskMap)
+		parseBinanceBookTickers(bookResp.Data, bids, asks)
 	}
 
-	// 3. Fetch Funding Rates & Mark Prices using PremiumIndex/MarkPrice
+	return bids, asks, nil
+}
+
+func (c *Client) getBinanceMarkPrices(ctx context.Context, symbol string) (models.MarkPriceResponse, error) {
 	mpReq := c.sdkClient.RestApi.MarketDataAPI.MarkPrice(ctx)
 	if symbol != "" {
 		mpReq = mpReq.Symbol(symbol)
 	}
 	mpResp, err := c.sdkClient.RestApi.MarketDataAPI.MarkPriceExecute(mpReq)
 	if err != nil {
-		return nil, fmt.Errorf("binance mark price premium index: %w", err)
+		return models.MarkPriceResponse{}, fmt.Errorf("binance mark price premium index: %w", err)
+	}
+
+	return mpResp.Data, nil
+}
+
+func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+	mpData, err := c.getBinanceMarkPrices(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	_, amounts, _, _ := c.getBinanceVolumes24h(ctx, "")
+
+	rates := make([]exchange.FundingRateResult, 0)
+
+	if mpData.MarkPriceResponse2 != nil {
+		for _, item := range mpData.MarkPriceResponse2.Items {
+			sym := item.GetSymbol()
+			var vol float64
+			if amounts != nil {
+				vol = amounts[sym]
+			}
+			rates = append(rates, exchange.FundingRateResult{
+				Symbol:     sym,
+				Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
+				SettleTime: item.GetNextFundingTime(),
+				Volume24h:  vol,
+			})
+		}
+	} else if mpData.MarkPriceResponse1 != nil {
+		item := mpData.MarkPriceResponse1
+		sym := item.GetSymbol()
+		var vol float64
+		if amounts != nil {
+			vol = amounts[sym]
+		}
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     sym,
+			Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
+			SettleTime: item.GetNextFundingTime(),
+			Volume24h:  vol,
+		})
+	}
+
+	return rates, nil
+}
+
+// GetTickers returns ticker data for all symbols or a single symbol.
+func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	volMap, amountMap, lastMap, err := c.getBinanceVolumes24h(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	bestBidMap, bestAskMap, err := c.getBinanceBookTickers(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	mpData, err := c.getBinanceMarkPrices(ctx, symbol)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UnixMilli()
-	return buildBinanceTickers(mpResp.Data, volMap, amountMap, lastMap, bestBidMap, bestAskMap, now), nil
+	return buildBinanceTickers(mpData, volMap, amountMap, lastMap, bestBidMap, bestAskMap, now), nil
 }
 
 func parseBinance24hStats(data models.Ticker24hrPriceChangeStatisticsResponse, vols, amounts, lasts map[string]float64) {
@@ -169,8 +235,6 @@ func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bi
 				Ask1:           asks[sym],
 				Volume24:       vols[sym],
 				Amount24:       amounts[sym],
-				IndexPrice:     decmath.ParseFloat(item.GetIndexPrice()),
-				FairPrice:      decmath.ParseFloat(item.GetMarkPrice()),
 				FundingRate:    decmath.ParseFloat(item.GetLastFundingRate()),
 				NextSettleTime: item.GetNextFundingTime(),
 				Timestamp:      now,
@@ -186,8 +250,6 @@ func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bi
 			Ask1:           asks[sym],
 			Volume24:       vols[sym],
 			Amount24:       amounts[sym],
-			IndexPrice:     decmath.ParseFloat(item.GetIndexPrice()),
-			FairPrice:      decmath.ParseFloat(item.GetMarkPrice()),
 			FundingRate:    decmath.ParseFloat(item.GetLastFundingRate()),
 			NextSettleTime: item.GetNextFundingTime(),
 			Timestamp:      now,
@@ -196,28 +258,6 @@ func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bi
 	return tickers
 }
 
-// GetFundingRate returns current funding rate details for a specific symbol.
-func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetFundingRate")
-	}
-
-	tickers, err := c.GetTickers(ctx, symbol)
-	if err != nil {
-		return nil, err
-	}
-	if len(tickers) == 0 {
-		return nil, fmt.Errorf("binance ticker not found for: %s", symbol)
-	}
-	t := tickers[0]
-
-	return &exchange.FundingRateDetail{
-		Symbol:         symbol,
-		FundingRate:    t.FundingRate,
-		NextSettleTime: t.NextSettleTime,
-		Timestamp:      time.Now().UnixMilli(),
-	}, nil
-}
 
 // GetKlines returns candlestick data.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

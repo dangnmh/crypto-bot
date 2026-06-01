@@ -32,6 +32,23 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return ParseResponse[[]exchange.ContractDetail](body, "contract_details")
 }
 
+func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+	tickers, err := c.GetTickers(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	rates := make([]exchange.FundingRateResult, 0, len(tickers))
+	for _, t := range tickers {
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     t.Symbol,
+			Rate:       t.FundingRate,
+			SettleTime: t.NextSettleTime,
+			Volume24h:  t.Amount24,
+		})
+	}
+	return rates, nil
+}
+
 // GetTickers returns ticker data for all symbols, or a specific symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	params := map[string]any{}
@@ -65,23 +82,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return []exchange.Ticker{single}, nil
 }
 
-// GetFundingRate returns current funding rate details for a specific symbol.
-func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetFundingRate")
-	}
-
-	body, err := c.GetCtx(ctx, "/api/v1/contract/funding_rate/"+symbol, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := ParseResponse[exchange.FundingRateDetail](body, "funding_rate")
-	if err != nil {
-		return nil, err
-	}
-	return &data, nil
-}
 
 // GetFundingRateHistory returns funding rate history for a symbol.
 func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageNum, pageSize int) ([]exchange.FundingRateHistory, error) {

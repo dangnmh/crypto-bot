@@ -19,12 +19,9 @@ func TestTickerDataFromExchange(t *testing.T) {
 		NextSettleTime: 1700000000000,
 		Volume24:       5000,
 		Amount24:       300000000,
-		HoldVol:        2000,
 		LastPrice:      65000,
 		Bid1:           64999,
 		Ask1:           65001,
-		FairPrice:      65000.5,
-		IndexPrice:     64999.9,
 	}
 
 	td := store.TickerDataFromExchange(input)
@@ -60,21 +57,3 @@ func TestContractDataFromExchange(t *testing.T) {
 	assert.Equal(t, 50, cd.MaxLeverage)
 }
 
-func TestFundingDataFromExchange(t *testing.T) {
-	t.Parallel()
-
-	input := &exchange.FundingRateDetail{
-		Symbol:         "SOL_USDT",
-		FundingRate:    -0.002,
-		NextSettleTime: 1700000000000,
-		MaxFundingRate: 0.01,
-		MinFundingRate: -0.01,
-		CollectCycle:   8,
-	}
-
-	fd := store.FundingDataFromExchange(input)
-
-	assert.Equal(t, "SOL_USDT", fd.Symbol)
-	assert.Equal(t, -0.002, fd.FundingRate)
-	assert.Equal(t, 8, fd.CollectCycle)
-}

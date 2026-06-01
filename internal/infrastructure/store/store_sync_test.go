@@ -127,10 +127,13 @@ func TestFundingStore_StartFundingSync(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRate(gomock.Any(), "BTC_USDT").Return(&exchange.FundingRateDetail{
-		Symbol:         "BTC_USDT",
-		FundingRate:    0.001,
-		NextSettleTime: time.Now().Add(time.Hour).UnixMilli(),
+	client.EXPECT().GetFundingRates(gomock.Any()).Return([]exchange.FundingRateResult{
+		{
+			Symbol:     "BTC_USDT",
+			Rate:       0.001,
+			SettleTime: time.Now().Add(time.Hour).UnixMilli(),
+			Volume24h:  1000000,
+		},
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
@@ -153,7 +156,7 @@ func TestFundingStore_StartFundingSync_Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRate(gomock.Any(), "BTC_USDT").Return(nil, fmt.Errorf("funding error")).AnyTimes()
+	client.EXPECT().GetFundingRates(gomock.Any()).Return(nil, fmt.Errorf("funding error")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
 	fs := store.NewFundingStore(wg, slog.Default())
@@ -173,14 +176,15 @@ func TestFundingStore_StartFundingSync_MultipleSymbols(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 
-	// Mock only returns data for BTC_USDT, so ETH_USDT will fail silently.
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRate(gomock.Any(), "BTC_USDT").Return(&exchange.FundingRateDetail{
-		Symbol:         "BTC_USDT",
-		FundingRate:    0.001,
-		NextSettleTime: time.Now().Add(time.Hour).UnixMilli(),
+	client.EXPECT().GetFundingRates(gomock.Any()).Return([]exchange.FundingRateResult{
+		{
+			Symbol:     "BTC_USDT",
+			Rate:       0.001,
+			SettleTime: time.Now().Add(time.Hour).UnixMilli(),
+			Volume24h:  1000000,
+		},
 	}, nil).AnyTimes()
-	client.EXPECT().GetFundingRate(gomock.Any(), "ETH_USDT").Return(nil, fmt.Errorf("no data")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
 	fs := store.NewFundingStore(wg, slog.Default())

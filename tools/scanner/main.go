@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math"
 	"os"
@@ -45,7 +46,22 @@ type Opportunity struct {
 }
 
 func main() {
-	fmt.Println("🔍 Scanning MEXC, Gate.io, Bybit, Binance, OKX, Hyperliquid, Bitget, BingX & KuCoin Futures markets for top funding rates...")
+	var exchangesFlag string
+	flag.StringVar(&exchangesFlag, "exchanges", "", "Comma-separated list of exchanges to scan (e.g. binance,bybit,okx). If empty, scans all.")
+	flag.Parse()
+
+	// Parse targeted exchanges if provided
+	var targetExchanges map[string]bool
+	if exchangesFlag != "" {
+		targetExchanges = make(map[string]bool)
+		parts := strings.Split(exchangesFlag, ",")
+		for _, p := range parts {
+			name := strings.ToLower(strings.TrimSpace(p))
+			if name != "" {
+				targetExchanges[name] = true
+			}
+		}
+	}
 
 	// Create exchange clients. No API keys needed for public market data.
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
@@ -64,7 +80,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	clients := map[string]exchange.Client{
+	allClients := map[string]exchange.Client{
 		"mexc":        mexcClient,
 		"gate":        gateClient,
 		"bybit":       bybitClient,
@@ -76,6 +92,46 @@ func main() {
 		"binance":     binanceClient,
 	}
 
+	// Filter clients based on user flag
+	clients := make(map[string]exchange.Client)
+	var scanList []string
+	for name, client := range allClients {
+		if targetExchanges == nil || targetExchanges[name] {
+			clients[name] = client
+
+			displayName := name
+			switch name {
+			case "mexc":
+				displayName = "MEXC"
+			case "gate":
+				displayName = "Gate.io"
+			case "bybit":
+				displayName = "Bybit"
+			case "okx":
+				displayName = "OKX"
+			case "hyperliquid":
+				displayName = "Hyperliquid"
+			case "bitget":
+				displayName = "Bitget"
+			case "bingx":
+				displayName = "BingX"
+			case "kucoin":
+				displayName = "KuCoin"
+			case "binance":
+				displayName = "Binance"
+			}
+			scanList = append(scanList, displayName)
+		}
+	}
+
+	if len(clients) == 0 {
+		fmt.Println("⚠️ No valid exchanges specified to scan. Exiting.")
+		return
+	}
+
+	sort.Strings(scanList)
+	fmt.Printf("🔍 Scanning %s Futures markets for top funding rates...\n", strings.Join(scanList, ", "))
+
 	var opportunities []Opportunity
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -84,36 +140,32 @@ func main() {
 		wg.Add(1)
 		go func(exchangeName string, c exchange.Client) {
 			defer wg.Done()
-			tickers, err := c.GetTickers(ctx, "")
+			rates, err := c.GetFundingRates(ctx)
 			if err != nil {
-				fmt.Printf("🔴 Failed to fetch %s data: %v\n", strings.ToUpper(exchangeName), err)
+				fmt.Printf("🔴 Failed to fetch %s funding rates: %v\n", strings.ToUpper(exchangeName), err)
 				return
 			}
 
 			var localOpps []Opportunity
-			for _, t := range tickers {
-				vol := t.Amount24
-				if vol == 0 {
-					vol = t.Volume24
-				}
-
+			for _, r := range rates {
+				vol := r.Volume24h
 				if vol < 100000 {
 					continue
 				}
 
-				if t.FundingRate == 0 {
+				if r.Rate == 0 {
 					continue
 				}
 
-				nextSettle := t.NextSettleTime
+				nextSettle := r.SettleTime
 				if nextSettle == 0 {
 					nextSettle = getGateNextSettleTime().UnixMilli()
 				}
 
 				localOpps = append(localOpps, Opportunity{
 					Exchange:       exchangeName,
-					Symbol:         t.Symbol,
-					FundingRate:    t.FundingRate,
+					Symbol:         r.Symbol,
+					FundingRate:    r.Rate,
 					NextSettleTime: nextSettle,
 					Volume24h:      vol,
 				})
@@ -139,6 +191,8 @@ type SymbolGroup struct {
 
 func standardizeSymbol(symbol string) string {
 	s := strings.ToUpper(symbol)
+	s = strings.TrimSuffix(s, "-SWAP")
+	s = strings.TrimSuffix(s, "SWAP")
 	s = strings.ReplaceAll(s, "_", "")
 	s = strings.ReplaceAll(s, "-", "")
 	if strings.HasSuffix(s, "USDTM") {

@@ -110,11 +110,11 @@ func TestDryRunClient_WarmUp(t *testing.T) {
 	})
 }
 
-func TestDryRunClient_GetFundingRate_Delegates(t *testing.T) {
+func TestDryRunClient_GetFundingRates_Delegates(t *testing.T) {
 	t.Parallel()
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
-	_, err := dry.GetFundingRate(context.Background(), "BTC_USDT")
+	_, err := dry.GetFundingRates(context.Background())
 	require.NoError(t, err)
 }
 

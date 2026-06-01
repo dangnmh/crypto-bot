@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"sync"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -100,8 +101,18 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-// GetTickers returns ticker data for all SWAP contracts or a specific instrument.
-func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+type okxTicker struct {
+	InstID    string `json:"instId"`
+	Last      string `json:"last"`
+	BidPx     string `json:"bidPx"`
+	AskPx     string `json:"askPx"`
+	Vol24h    string `json:"vol24h"`
+	VolCcy24h string `json:"volCcy24h"`
+	Ts        string `json:"ts"`
+}
+
+// getOKXVolumes24h fetches tickers from OKX and returns maps of contract volume and USDT volume.
+func (c *Client) getOKXVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, rawTickers []okxTicker, err error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -111,73 +122,161 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 
 	body, err := c.GetCtx(ctx, pathTickers, params)
 	if err != nil {
-		return nil, err
-	}
-
-	type okxTicker struct {
-		InstID    string `json:"instId"`
-		Last      string `json:"last"`
-		BidPx     string `json:"bidPx"`
-		AskPx     string `json:"askPx"`
-		Vol24h    string `json:"vol24h"`
-		VolCcy24h string `json:"volCcy24h"`
-		Ts        string `json:"ts"`
+		return nil, nil, nil, err
 	}
 
 	tickers, err := ParseResponse[okxTicker](body, "tickers")
 	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	vols = make(map[string]float64)
+	amts = make(map[string]float64)
+	for i := range tickers {
+		t := &tickers[i]
+		last, _ := strconv.ParseFloat(t.Last, 64)
+		vol, _ := strconv.ParseFloat(t.Vol24h, 64)
+		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
+
+		vols[t.InstID] = vol
+		amts[t.InstID] = amt * last // Standardized as USDT volume
+	}
+
+	return vols, amts, tickers, nil
+}
+
+// getOKXFundingRates fetches funding rates concurrently using a worker pool for targeted active symbols.
+func (c *Client) getOKXFundingRates(ctx context.Context, symbols []string, amts map[string]float64) ([]exchange.FundingRateResult, error) {
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
+
+	if len(symbols) == 0 {
+		return rates, nil
+	}
+
+	type frResult struct {
+		instID string
+		rate   float64
+		settle int64
+	}
+
+	jobs := make(chan string, len(symbols))
+	results := make(chan frResult, len(symbols))
+	var wg sync.WaitGroup
+
+	numWorkers := 15
+	if len(symbols) < numWorkers {
+		numWorkers = len(symbols)
+	}
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for instID := range jobs {
+				url := fmt.Sprintf("/api/v5/public/funding-rate?instId=%s", instID)
+				frBody, err := c.GetCtx(ctx, url, nil)
+				if err != nil {
+					continue
+				}
+
+				type okxFundingRate struct {
+					InstID          string `json:"instId"`
+					FundingRate     string `json:"fundingRate"`
+					NextFundingTime string `json:"nextFundingTime"`
+				}
+				frList, err := ParseResponse[okxFundingRate](frBody, "funding_rate")
+				if err == nil && len(frList) > 0 {
+					fr, _ := strconv.ParseFloat(frList[0].FundingRate, 64)
+					ns, _ := strconv.ParseInt(frList[0].NextFundingTime, 10, 64)
+					results <- frResult{instID: instID, rate: fr, settle: ns}
+				}
+			}
+		}()
+	}
+
+	for _, sym := range symbols {
+		jobs <- sym
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for res := range results {
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     res.instID,
+			Rate:       res.rate,
+			SettleTime: res.settle,
+			Volume24h:  amts[res.instID],
+		})
+	}
+
+	return rates, nil
+}
+
+func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+	_, amts, rawTickers, err := c.getOKXVolumes24h(ctx, "")
+	if err != nil {
 		return nil, err
 	}
 
-	// Fetch mark prices in bulk to populate funding rates & next settle times without separate API calls
-	mpMap := make(map[string]float64)
-	mpSettleMap := make(map[string]int64)
-	mpParams := map[string]string{
-		paramInstType: instTypeSwap,
-	}
-	if symbol != "" {
-		mpParams[paramInstId] = symbol
-	}
-	mpBody, err := c.GetCtx(ctx, "/api/v5/public/mark-price", mpParams)
-	if err == nil {
-		type okxMarkPrice struct {
-			InstID          string `json:"instId"`
-			FundingRate     string `json:"fundingRate"`
-			NextFundingTime string `json:"nextFundingTime"`
+	var activeSymbols []string
+	for _, t := range rawTickers {
+		if amts[t.InstID] >= 50000 {
+			activeSymbols = append(activeSymbols, t.InstID)
 		}
-		mpList, err := ParseResponse[okxMarkPrice](mpBody, "mark_price")
-		if err == nil {
-			for i := range mpList {
-				fr, _ := strconv.ParseFloat(mpList[i].FundingRate, 64)
-				ns, _ := strconv.ParseInt(mpList[i].NextFundingTime, 10, 64)
-				mpMap[mpList[i].InstID] = fr
-				mpSettleMap[mpList[i].InstID] = ns
+	}
+
+	return c.getOKXFundingRates(ctx, activeSymbols, amts)
+}
+
+// GetTickers returns ticker data for all SWAP contracts or a specific instrument.
+func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	vols, amts, rawTickers, err := c.getOKXVolumes24h(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter active symbols that require funding rate query (volume >= 50k USDT)
+	var activeSymbols []string
+	if symbol != "" {
+		activeSymbols = []string{symbol}
+	} else {
+		for _, t := range rawTickers {
+			if amts[t.InstID] >= 50000 {
+				activeSymbols = append(activeSymbols, t.InstID)
 			}
 		}
 	}
 
-	exchangeTickers := make([]exchange.Ticker, 0, len(tickers))
-	for _, t := range tickers {
+	rates, err := c.getOKXFundingRates(ctx, activeSymbols, amts)
+	if err != nil {
+		return nil, err
+	}
+
+	ratesMap := make(map[string]exchange.FundingRateResult)
+	for _, r := range rates {
+		ratesMap[r.Symbol] = r
+	}
+
+	exchangeTickers := make([]exchange.Ticker, 0, len(rawTickers))
+	for _, t := range rawTickers {
 		last, _ := strconv.ParseFloat(t.Last, 64)
 		bid, _ := strconv.ParseFloat(t.BidPx, 64)
 		ask, _ := strconv.ParseFloat(t.AskPx, 64)
-		vol, _ := strconv.ParseFloat(t.Vol24h, 64)
-		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
-
-		fr := mpMap[t.InstID]
-		ns := mpSettleMap[t.InstID]
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
 			Symbol:         t.InstID,
 			LastPrice:      last,
 			Bid1:           bid,
 			Ask1:           ask,
-			Volume24:       vol,
-			Amount24:       amt,
-			FairPrice:      last,
-			FundingRate:    fr,
-			NextSettleTime: ns,
+			Volume24:       vols[t.InstID],
+			Amount24:       amts[t.InstID],
+			FundingRate:    ratesMap[t.InstID].Rate,
+			NextSettleTime: ratesMap[t.InstID].SettleTime,
 			Timestamp:      ts,
 		})
 	}
@@ -185,42 +284,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return exchangeTickers, nil
 }
 
-// GetFundingRate returns current funding rate details for a specific symbol.
-func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetFundingRate")
-	}
-
-	params := map[string]string{
-		paramInstId: symbol,
-	}
-
-	body, err := c.GetCtx(ctx, pathFundingRate, params)
-	if err != nil {
-		return nil, err
-	}
-
-	type okxFundingRate struct {
-		InstID          string `json:"instId"`
-		FundingRate     string `json:"fundingRate"`
-		NextFundingTime string `json:"nextFundingTime"`
-	}
-
-	data, err := ParseResponseFirst[okxFundingRate](body, "funding_rate")
-	if err != nil {
-		return nil, err
-	}
-
-	fr, _ := strconv.ParseFloat(data.FundingRate, 64)
-	nextSettle, _ := strconv.ParseInt(data.NextFundingTime, 10, 64)
-
-	return &exchange.FundingRateDetail{
-		Symbol:         data.InstID,
-		FundingRate:    fr,
-		NextSettleTime: nextSettle,
-		Timestamp:      nextSettle - 8*3600*1000, // Conceptually, OKX cycles are 8 hours
-	}, nil
-}
 
 // GetKlines returns candlestick data for a symbol.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

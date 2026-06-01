@@ -544,41 +544,41 @@ func (c *MockClientGetDepthSnapshotCall) DoAndReturn(f func(context.Context, str
 	return c
 }
 
-// GetFundingRate mocks base method.
-func (m *MockClient) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
+// GetFundingRates mocks base method.
+func (m *MockClient) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetFundingRate", ctx, symbol)
-	ret0, _ := ret[0].(*exchange.FundingRateDetail)
+	ret := m.ctrl.Call(m, "GetFundingRates", ctx)
+	ret0, _ := ret[0].([]exchange.FundingRateResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetFundingRate indicates an expected call of GetFundingRate.
-func (mr *MockClientMockRecorder) GetFundingRate(ctx, symbol any) *MockClientGetFundingRateCall {
+// GetFundingRates indicates an expected call of GetFundingRates.
+func (mr *MockClientMockRecorder) GetFundingRates(ctx any) *MockClientGetFundingRatesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFundingRate", reflect.TypeOf((*MockClient)(nil).GetFundingRate), ctx, symbol)
-	return &MockClientGetFundingRateCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFundingRates", reflect.TypeOf((*MockClient)(nil).GetFundingRates), ctx)
+	return &MockClientGetFundingRatesCall{Call: call}
 }
 
-// MockClientGetFundingRateCall wrap *gomock.Call
-type MockClientGetFundingRateCall struct {
+// MockClientGetFundingRatesCall wrap *gomock.Call
+type MockClientGetFundingRatesCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockClientGetFundingRateCall) Return(arg0 *exchange.FundingRateDetail, arg1 error) *MockClientGetFundingRateCall {
+func (c *MockClientGetFundingRatesCall) Return(arg0 []exchange.FundingRateResult, arg1 error) *MockClientGetFundingRatesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockClientGetFundingRateCall) Do(f func(context.Context, string) (*exchange.FundingRateDetail, error)) *MockClientGetFundingRateCall {
+func (c *MockClientGetFundingRatesCall) Do(f func(context.Context) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientGetFundingRateCall) DoAndReturn(f func(context.Context, string) (*exchange.FundingRateDetail, error)) *MockClientGetFundingRateCall {
+func (c *MockClientGetFundingRatesCall) DoAndReturn(f func(context.Context) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

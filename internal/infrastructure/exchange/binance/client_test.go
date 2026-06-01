@@ -95,7 +95,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, 3, d.VolScale)
 }
 
-func TestClient_GetTickers_And_FundingRate(t *testing.T) {
+func TestClient_GetTickers_And_FundingRates(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,11 +140,13 @@ func TestClient_GetTickers_And_FundingRate(t *testing.T) {
 	assert.Equal(t, 0.0001, t0.FundingRate)
 	assert.Equal(t, int64(1672531200000), t0.NextSettleTime)
 
-	rate, err := client.GetFundingRate(context.Background(), "BTCUSDT")
+	rates, err := client.GetFundingRates(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", rate.Symbol)
-	assert.Equal(t, 0.0001, rate.FundingRate)
-	assert.Equal(t, int64(1672531200000), rate.NextSettleTime)
+	require.Len(t, rates, 1)
+	assert.Equal(t, "BTCUSDT", rates[0].Symbol)
+	assert.Equal(t, 0.0001, rates[0].Rate)
+	assert.Equal(t, int64(1672531200000), rates[0].SettleTime)
+	assert.Equal(t, 50000000.0, rates[0].Volume24h)
 }
 
 func TestClient_GetKlines(t *testing.T) {

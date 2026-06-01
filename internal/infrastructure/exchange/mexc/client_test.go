@@ -258,34 +258,30 @@ func TestClient_GetTickers_Single(t *testing.T) {
 	}
 }
 
-// ── GetFundingRate ───────────────────────────────────────────────────.
+// ── GetFundingRates ───────────────────────────────────────────────────.
 
 //nolint:dupl // test
-func TestClient_GetFundingRate(t *testing.T) {
+func TestClient_GetFundingRates(t *testing.T) {
 	t.Parallel()
-	detail := exchange.FundingRateDetail{Symbol: "BTC_USDT", FundingRate: 0.001}
+	tickers := []exchange.Ticker{
+		{Symbol: "BTC_USDT", LastPrice: 50000, FundingRate: 0.001, Amount24: 1000000},
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[exchange.FundingRateDetail]{Success: true, Code: 0, Data: detail}))
+		raw, _ := json.Marshal(tickers)
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[json.RawMessage]{Success: true, Code: 0, Data: raw}))
 	}))
 	defer srv.Close()
 
 	client := newTestClient(srv)
-	got, err := client.GetFundingRate(context.Background(), "BTC_USDT")
+	got, err := client.GetFundingRates(context.Background())
 	if err != nil {
-		t.Fatalf("GetFundingRate failed: %v", err)
+		t.Fatalf("GetFundingRates failed: %v", err)
 	}
-	if got.FundingRate != 0.001 {
-		t.Errorf("FundingRate: want 0.001, got %f", got.FundingRate)
+	if len(got) != 1 {
+		t.Fatalf("want 1, got %d", len(got))
 	}
-}
-
-//nolint:dupl // test
-func TestClient_GetFundingRate_EmptySymbol(t *testing.T) {
-	t.Parallel()
-	client := mexc.NewClient(&http.Client{}, "http://localhost", "k", "s", config.LoggingConfig{})
-	_, err := client.GetFundingRate(context.Background(), "")
-	if err == nil {
-		t.Fatal("expected error for empty symbol")
+	if got[0].Rate != 0.001 {
+		t.Errorf("FundingRate: want 0.001, got %f", got[0].Rate)
 	}
 }
 

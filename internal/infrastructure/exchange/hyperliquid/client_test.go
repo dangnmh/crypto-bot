@@ -106,7 +106,8 @@ func TestClient_GetTickers(t *testing.T) {
 	require.Len(t, tickers, 1)
 	assert.Equal(t, "BTC", tickers[0].Symbol)
 	assert.Equal(t, 50000.2, tickers[0].LastPrice)
-	assert.Equal(t, 1000000.0, tickers[0].Volume24)
+	assert.Equal(t, 19.999920000319998, tickers[0].Volume24)
+	assert.Equal(t, 1000000.0, tickers[0].Amount24)
 	assert.Equal(t, 0.0001, tickers[0].FundingRate)
 }
 
@@ -132,10 +133,11 @@ func TestClient_GetFundingRate(t *testing.T) {
 	defer server.Close()
 
 	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
-	fr, err := client.GetFundingRate(context.Background(), "BTC")
+	frs, err := client.GetFundingRates(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "BTC", fr.Symbol)
-	assert.Equal(t, 0.000125, fr.FundingRate)
+	require.Len(t, frs, 1)
+	assert.Equal(t, "BTC", frs[0].Symbol)
+	assert.Equal(t, 0.000125, frs[0].Rate)
 }
 
 //nolint:dupl // standard mock setup contains high structural similarity

@@ -69,6 +69,62 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
+func (c *Client) getGateVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, lasts map[string]float64, err error) {
+	var opts *gateapi.ListFuturesTickersOpts
+	if symbol != "" {
+		opts = &gateapi.ListFuturesTickersOpts{
+			Contract: optional.NewString(symbol),
+		}
+	}
+	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, "usdt", opts)
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("gate.io list tickers: %w", err)
+	}
+
+	vols = make(map[string]float64)
+	amts = make(map[string]float64)
+	lasts = make(map[string]float64)
+	for i := range rawTickers {
+		raw := &rawTickers[i]
+		sym := raw.Contract
+		vols[sym] = decmath.ParseFloat(raw.Volume24h)
+		amts[sym] = decmath.ParseFloat(raw.Volume24hQuote)
+		lasts[sym] = decmath.ParseFloat(raw.Last)
+	}
+	return vols, amts, lasts, nil
+}
+
+func (c *Client) getGateFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
+	var opts *gateapi.ListFuturesTickersOpts
+	if symbol != "" {
+		opts = &gateapi.ListFuturesTickersOpts{
+			Contract: optional.NewString(symbol),
+		}
+	}
+	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, "usdt", opts)
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gate.io list tickers: %w", err)
+	}
+
+	rates := make([]exchange.FundingRateResult, 0, len(rawTickers))
+	for i := range rawTickers {
+		raw := &rawTickers[i]
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     raw.Contract,
+			Rate:       decmath.ParseFloat(raw.FundingRate),
+			SettleTime: 0,
+			Volume24h:  decmath.ParseFloat(raw.Volume24hQuote),
+		})
+	}
+	return rates, nil
+}
+
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	var opts *gateapi.ListFuturesTickersOpts
@@ -96,8 +152,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			Ask1:           decmath.ParseFloat(raw.LowestAsk),
 			Volume24:       decmath.ParseFloat(raw.Volume24h),
 			Amount24:       decmath.ParseFloat(raw.Volume24hQuote),
-			IndexPrice:     decmath.ParseFloat(raw.IndexPrice),
-			FairPrice:      decmath.ParseFloat(raw.MarkPrice),
 			FundingRate:    decmath.ParseFloat(raw.FundingRate),
 			NextSettleTime: 0, // not present in REST ticker, resolved via GetFundingRate
 			Timestamp:      time.Now().UnixMilli(),
@@ -106,27 +160,9 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return tickers, nil
 }
 
-// GetFundingRate returns current funding rate details for a specific symbol.
-func (c *Client) GetFundingRate(ctx context.Context, symbol string) (*exchange.FundingRateDetail, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetFundingRate")
-	}
-
-	tickers, err := c.GetTickers(ctx, symbol)
-	if err != nil {
-		return nil, err
-	}
-	if len(tickers) == 0 {
-		return nil, fmt.Errorf("gate.io ticker not found for: %s", symbol)
-	}
-	t := tickers[0]
-
-	return &exchange.FundingRateDetail{
-		Symbol:         symbol,
-		FundingRate:    t.FundingRate,
-		NextSettleTime: t.NextSettleTime,
-		Timestamp:      time.Now().UnixMilli(),
-	}, nil
+// GetFundingRates returns current funding rate details for all active symbols.
+func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+	return c.getGateFundingRates(ctx, "")
 }
 
 // GetKlines returns candlestick data for a symbol.

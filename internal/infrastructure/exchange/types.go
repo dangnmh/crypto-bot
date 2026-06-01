@@ -140,20 +140,9 @@ type Ticker struct {
 	Ask1           float64 `json:"ask1"`
 	Volume24       float64 `json:"volume24"`
 	Amount24       float64 `json:"amount24"`
-	HoldVol        float64 `json:"holdVol"`
-	Lower24Price   float64 `json:"lower24Price"`
-	High24Price    float64 `json:"high24Price"`
-	Change24Price  float64 `json:"change24Price"`
-	ChangeRate     float64 `json:"changeRate"`
-	IndexPrice     float64 `json:"indexPrice"`
-	FairPrice      float64 `json:"fairPrice"`
 	FundingRate    float64 `json:"fundingRate"`
 	NextSettleTime int64   `json:"nextSettleTime"` // Unix ms — next funding settlement
-	MaxBidPrice    float64 `json:"maxBidPrice"`
-	MinAskPrice    float64 `json:"minAskPrice"`
 	Timestamp      int64   `json:"timestamp"`
-	RiseFallRate   float64 `json:"riseFallRate"`
-	RiseFallValue  float64 `json:"riseFallValue"`
 }
 
 // FundingRateHistory holds historical funding rate entry.
@@ -163,15 +152,13 @@ type FundingRateHistory struct {
 	SettleTime  int64   `json:"settleTime"`
 }
 
-// FundingRateDetail holds current funding rate information.
-type FundingRateDetail struct {
-	Symbol         string  `json:"symbol"`
-	FundingRate    float64 `json:"fundingRate"`
-	MaxFundingRate float64 `json:"maxFundingRate"`
-	MinFundingRate float64 `json:"minFundingRate"`
-	CollectCycle   int     `json:"collectCycle"`
-	NextSettleTime int64   `json:"nextSettleTime"`
-	Timestamp      int64   `json:"timestamp"`
+
+// FundingRateResult holds the rate and settlement time for active scan query.
+type FundingRateResult struct {
+	Symbol     string  `json:"symbol"`
+	Rate       float64 `json:"rate"`
+	SettleTime int64   `json:"settleTime"`
+	Volume24h  float64 `json:"volume24h"`
 }
 
 // AssetInfo holds account asset information.

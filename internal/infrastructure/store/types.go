@@ -24,12 +24,9 @@ type TickerData struct {
 	NextSettleTime int64 // Unix ms
 	Volume24       float64
 	Amount24       float64
-	HoldVol        float64
 	LastPrice      float64
 	BestBid        float64
 	BestAsk        float64
-	FairPrice      float64
-	IndexPrice     float64
 	UpdatedAt      time.Time
 }
 
@@ -68,12 +65,9 @@ func TickerDataFromExchange(t *exchange.Ticker) *TickerData {
 		NextSettleTime: t.NextSettleTime,
 		Volume24:       t.Volume24,
 		Amount24:       t.Amount24,
-		HoldVol:        t.HoldVol,
 		LastPrice:      t.LastPrice,
 		BestBid:        t.Bid1,
 		BestAsk:        t.Ask1,
-		FairPrice:      t.FairPrice,
-		IndexPrice:     t.IndexPrice,
 		UpdatedAt:      time.Now(),
 	}
 }
@@ -96,15 +90,3 @@ func ContractDataFromExchange(d *exchange.ContractDetail) *ContractData {
 	}
 }
 
-// FundingDataFromExchange converts an exchange.FundingRateDetail to FundingData.
-func FundingDataFromExchange(d *exchange.FundingRateDetail) *FundingData {
-	return &FundingData{
-		Symbol:         d.Symbol,
-		FundingRate:    d.FundingRate,
-		NextSettleTime: d.NextSettleTime,
-		MaxFundingRate: d.MaxFundingRate,
-		MinFundingRate: d.MinFundingRate,
-		CollectCycle:   d.CollectCycle,
-		UpdatedAt:      time.Now(),
-	}
-}

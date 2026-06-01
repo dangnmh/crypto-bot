@@ -417,31 +417,36 @@ func TestClient_ErrorPaths(t *testing.T) {
 	assert.ErrorContains(t, err, "batch CancelOrders not implemented")
 }
 
-func TestClient_GetFundingRate(t *testing.T) {
+func TestClient_GetFundingRates(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Contains(t, r.URL.Path, "/api/v1/funding-rate/XBTUSDTM/current")
+		assert.Equal(t, "/api/v1/contracts/active", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"code": "200000",
-			"data": {
-				"symbol": "XBTUSDTM",
-				"value": 0.0001,
-				"fundingTime": 1672531200000
-			}
+			"data": [
+				{
+					"symbol": "XBTUSDTM",
+					"fundingFeeRate": 0.0001,
+					"nextFundingRateDateTime": 1672531200000,
+					"turnoverOf24h": 500000.0
+				}
+			]
 		}`))
 	}))
 	defer server.Close()
 
 	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	fr, err := client.GetFundingRate(context.Background(), "XBTUSDTM")
+	frs, err := client.GetFundingRates(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, "XBTUSDTM", fr.Symbol)
-	assert.Equal(t, 0.0001, fr.FundingRate)
-	assert.Equal(t, int64(1672531200000), fr.NextSettleTime)
+	require.Len(t, frs, 1)
+	assert.Equal(t, "XBTUSDTM", frs[0].Symbol)
+	assert.Equal(t, 0.0001, frs[0].Rate)
+	assert.Equal(t, int64(1672531200000), frs[0].SettleTime)
+	assert.Equal(t, 500000.0, frs[0].Volume24h)
 }
 
 func TestClient_GetKlines(t *testing.T) {
