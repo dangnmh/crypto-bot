@@ -133,7 +133,7 @@ func TestClient_GetFundingRate(t *testing.T) {
 	defer server.Close()
 
 	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
-	frs, err := client.GetFundingRates(context.Background())
+	frs, err := client.GetFundingRates(context.Background(), []string{"BTC"})
 	require.NoError(t, err)
 	require.Len(t, frs, 1)
 	assert.Equal(t, "BTC", frs[0].Symbol)

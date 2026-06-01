@@ -114,49 +114,11 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getBitgetVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, lasts map[string]float64, err error) {
-	params := map[string]string{
-		paramProductType: productTypeUsdtFutures,
-	}
-	if symbol != "" {
-		params[paramSymbol] = symbol
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
 	}
 
-	body, err := c.GetCtx(ctx, pathTickers, params)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	type bitgetTicker struct {
-		Symbol      string `json:"symbol"`
-		LastPr      string `json:"lastPr"`
-		BaseVolume  string `json:"baseVolume"`
-		QuoteVolume string `json:"quoteVolume"`
-	}
-
-	tickers, err := ParseResponse[[]bitgetTicker](body, "tickers")
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	vols = make(map[string]float64)
-	amts = make(map[string]float64)
-	lasts = make(map[string]float64)
-	for i := range tickers {
-		t := &tickers[i]
-		last, _ := strconv.ParseFloat(t.LastPr, 64)
-		vol, _ := strconv.ParseFloat(t.BaseVolume, 64)
-		amt, _ := strconv.ParseFloat(t.QuoteVolume, 64)
-
-		vols[t.Symbol] = vol
-		amts[t.Symbol] = amt
-		lasts[t.Symbol] = last
-	}
-
-	return vols, amts, lasts, nil
-}
-
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
 	params := map[string]string{
 		paramProductType: productTypeUsdtFutures,
 	}
@@ -177,16 +139,22 @@ func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateRes
 		return nil, err
 	}
 
-	rates := make([]exchange.FundingRateResult, 0, len(tickers))
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+
+	rates := make([]exchange.FundingRateResult, 0)
 	for i := range tickers {
 		t := &tickers[i]
+		if !symbolMap[t.Symbol] {
+			continue
+		}
 		fr, _ := strconv.ParseFloat(t.FundingRate, 64)
-		vol, _ := strconv.ParseFloat(t.QuoteVolume, 64)
 		rates = append(rates, exchange.FundingRateResult{
 			Symbol:     t.Symbol,
 			Rate:       fr,
 			SettleTime: 0,
-			Volume24h:  vol,
 		})
 	}
 
@@ -248,7 +216,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 
 	return exchangeTickers, nil
 }
-
 
 // GetKlines returns candlestick data for a symbol.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

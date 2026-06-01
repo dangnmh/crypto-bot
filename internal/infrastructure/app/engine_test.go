@@ -73,13 +73,12 @@ func (d *dummyClient) GetTickers(_ context.Context, _ string) ([]exchange.Ticker
 func (d *dummyClient) GetContractDetails(_ context.Context) ([]exchange.ContractDetail, error) {
 	return nil, nil
 }
-func (d *dummyClient) GetFundingRates(_ context.Context) ([]exchange.FundingRateResult, error) {
+func (d *dummyClient) GetFundingRates(_ context.Context, _ []string) ([]exchange.FundingRateResult, error) {
 	return []exchange.FundingRateResult{
 		{
 			Symbol:     "BTC_USDT",
 			Rate:       0.01,
 			SettleTime: time.Now().Add(time.Hour).UnixMilli(),
-			Volume24h:  1000000,
 		},
 	}, nil
 }

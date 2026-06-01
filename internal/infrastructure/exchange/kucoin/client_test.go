@@ -440,13 +440,12 @@ func TestClient_GetFundingRates(t *testing.T) {
 	defer server.Close()
 
 	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	frs, err := client.GetFundingRates(context.Background())
+	frs, err := client.GetFundingRates(context.Background(), []string{"XBTUSDTM"})
 	require.NoError(t, err)
 	require.Len(t, frs, 1)
 	assert.Equal(t, "XBTUSDTM", frs[0].Symbol)
 	assert.Equal(t, 0.0001, frs[0].Rate)
 	assert.Equal(t, int64(1672531200000), frs[0].SettleTime)
-	assert.Equal(t, 500000.0, frs[0].Volume24h)
 }
 
 func TestClient_GetKlines(t *testing.T) {

@@ -101,7 +101,11 @@ func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Co
 	if fundingCfg != nil {
 		seen := make(map[string]bool)
 		for i := range fundingCfg.Symbols {
-			exch := strings.ToLower(strings.TrimSpace(fundingCfg.Symbols[i].Exchange))
+			sym := &fundingCfg.Symbols[i]
+			if fundingCfg.Blacklist != nil && fundingCfg.Blacklist.IsBlacklisted(sym.Exchange, sym.Symbol) {
+				continue
+			}
+			exch := strings.ToLower(strings.TrimSpace(sym.Exchange))
 			if exch != "" && !seen[exch] {
 				seen[exch] = true
 				activeExchanges = append(activeExchanges, exch)

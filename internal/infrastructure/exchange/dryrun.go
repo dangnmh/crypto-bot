@@ -39,8 +39,8 @@ func (d *DryRunClient) GetContractDetails(ctx context.Context) ([]ContractDetail
 	return d.inner.GetContractDetails(ctx)
 }
 
-func (d *DryRunClient) GetFundingRates(ctx context.Context) ([]FundingRateResult, error) {
-	return d.inner.GetFundingRates(ctx)
+func (d *DryRunClient) GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error) {
+	return d.inner.GetFundingRates(ctx, symbols)
 }
 
 func (d *DryRunClient) GetServerTime(ctx context.Context) (int64, error) {

@@ -300,3 +300,30 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 
 	job2.tick(context.Background())
 }
+
+func TestConfiguredScanner_Scan_Blacklisted(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Symbols: []config.SymbolConfig{
+			{Symbol: "BTC_USDT", Exchange: "mexc"},
+		},
+		Blacklist: &config.BlacklistConfig{
+			Common: []string{"BTC_USDT"},
+		},
+	}
+
+	scanner := NewConfiguredScanner(
+		cfg,
+		nil,
+		map[string]strategy.FundingStoreSet{
+			"mexc": fakeFundingStoreSet{},
+		},
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, opportunities)
+}

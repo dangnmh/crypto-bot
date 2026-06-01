@@ -22,12 +22,11 @@ func TestFundingStore_GetFunding(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRates(gomock.Any()).Return([]exchange.FundingRateResult{
+	client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return([]exchange.FundingRateResult{
 		{
 			Symbol:     "BTC_USDT",
 			Rate:       0.005,
 			SettleTime: time.Now().Add(time.Hour).UnixMilli(),
-			Volume24h:  1000000,
 		},
 	}, nil).AnyTimes()
 
@@ -62,12 +61,11 @@ func TestFundingStore_GetSettleTime(t *testing.T) {
 
 	settleMs := time.Now().Add(time.Hour).UnixMilli()
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRates(gomock.Any()).Return([]exchange.FundingRateResult{
+	client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return([]exchange.FundingRateResult{
 		{
 			Symbol:     "BTC_USDT",
 			Rate:       0.001,
 			SettleTime: settleMs,
-			Volume24h:  1000000,
 		},
 	}, nil).AnyTimes()
 

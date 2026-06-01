@@ -12,6 +12,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"crypto-bot/internal/bots/funding/application/service"
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
@@ -45,6 +46,7 @@ type Opportunity struct {
 	Volume24h      float64
 }
 
+//nolint:gocognit,cyclop // Scanner tool main entrypoint is naturally complex
 func main() {
 	var exchangesFlag string
 	flag.StringVar(&exchangesFlag, "exchanges", "", "Comma-separated list of exchanges to scan (e.g. binance,bybit,okx). If empty, scans all.")
@@ -54,8 +56,8 @@ func main() {
 	var targetExchanges map[string]bool
 	if exchangesFlag != "" {
 		targetExchanges = make(map[string]bool)
-		parts := strings.Split(exchangesFlag, ",")
-		for _, p := range parts {
+		parts := strings.SplitSeq(exchangesFlag, ",")
+		for p := range parts {
 			name := strings.ToLower(strings.TrimSpace(p))
 			if name != "" {
 				targetExchanges[name] = true
@@ -135,24 +137,41 @@ func main() {
 	var opportunities []Opportunity
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-
+	blackList := []string{
+		// BTC
+		"BTC_USDT", "BTCUSDT", "BTC-USDT", "BTC-USDT-SWAP", "BTC",
+		// ETH
+		"ETH_USDT", "ETHUSDT", "ETH-USDT", "ETH-USDT-SWAP", "ETH",
+		// SOL
+		"SOL_USDT", "SOLUSDT", "SOL-USDT", "SOL-USDT-SWAP", "SOL",
+		// BNB
+		"BNB_USDT", "BNBUSDT", "BNB-USDT", "BNB-USDT-SWAP", "BNB",
+		// XRP
+		"XRP_USDT", "XRPUSDT", "XRP-USDT", "XRP-USDT-SWAP", "XRP",
+		// ADA
+		"ADA_USDT", "ADAUSDT", "ADA-USDT", "ADA-USDT-SWAP", "ADA",
+		// DOT
+		"DOT_USDT", "DOTUSDT", "DOT-USDT", "DOT-USDT-SWAP", "DOT",
+		// DOGE
+		"DOGE_USDT", "DOGEUSDT", "DOGE-USDT", "DOGE-USDT-SWAP", "DOGE",
+		// LTC
+		"LTC_USDT", "LTCUSDT", "LTC-USDT", "LTC-USDT-SWAP", "LTC",
+		// TRX
+		"TRX_USDT", "TRXUSDT", "TRX-USDT", "TRX-USDT-SWAP", "TRX",
+	}
 	for name, client := range clients {
 		wg.Add(1)
 		go func(exchangeName string, c exchange.Client) {
 			defer wg.Done()
-			rates, err := c.GetFundingRates(ctx)
+			fs := service.NewFundingService(c)
+			results, err := fs.GetPotentialFundingSymbols(ctx, 1000000, 0, nil, blackList)
 			if err != nil {
-				fmt.Printf("🔴 Failed to fetch %s funding rates: %v\n", strings.ToUpper(exchangeName), err)
+				fmt.Printf("🔴 Failed to fetch %s potential funding symbols: %v\n", strings.ToUpper(exchangeName), err)
 				return
 			}
 
 			var localOpps []Opportunity
-			for _, r := range rates {
-				vol := r.Volume24h
-				if vol < 100000 {
-					continue
-				}
-
+			for _, r := range results {
 				if r.Rate == 0 {
 					continue
 				}
@@ -167,7 +186,7 @@ func main() {
 					Symbol:         r.Symbol,
 					FundingRate:    r.Rate,
 					NextSettleTime: nextSettle,
-					Volume24h:      vol,
+					Volume24h:      r.Volume24h,
 				})
 			}
 

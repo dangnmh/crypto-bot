@@ -170,15 +170,25 @@ func (c *Client) getBybitMarketTickers(ctx context.Context, symbol string) (bybi
 	return res, nil
 }
 
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
 	res, err := c.getBybitMarketTickers(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	rates := make([]exchange.FundingRateResult, 0, len(res.List))
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+	rates := make([]exchange.FundingRateResult, 0)
 	for i := range res.List {
 		raw := &res.List[i]
 		sym := raw.Symbol
+		if !symbolMap[sym] {
+			continue
+		}
 		nextSettle := int64(0)
 		if raw.NextFundingTime != "" {
 			if parsed, err := strconv.ParseInt(raw.NextFundingTime, 10, 64); err == nil {
@@ -189,7 +199,6 @@ func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateRes
 			Symbol:     sym,
 			Rate:       decmath.ParseFloat(raw.FundingRate),
 			SettleTime: nextSettle,
-			Volume24h:  decmath.ParseFloat(raw.Turnover24h),
 		})
 	}
 	return rates, nil
@@ -226,7 +235,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 	return tickers, nil
 }
-
 
 // GetKlines returns candlestick data for a symbol.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

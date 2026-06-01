@@ -114,7 +114,7 @@ func TestDryRunClient_GetFundingRates_Delegates(t *testing.T) {
 	t.Parallel()
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
-	_, err := dry.GetFundingRates(context.Background())
+	_, err := dry.GetFundingRates(context.Background(), []string{"BTC_USDT"})
 	require.NoError(t, err)
 }
 

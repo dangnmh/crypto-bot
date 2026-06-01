@@ -194,6 +194,12 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 			continue
 		}
 
+		// Skip if blacklisted
+		if s.cfg.Blacklist != nil && s.cfg.Blacklist.IsBlacklisted(symCfg.Exchange, symCfg.Symbol) {
+			s.log.DebugContext(ctx, "Skipping blacklisted symbol", slog.String("symbol", symCfg.Symbol), slog.String("exchange", symCfg.Exchange))
+			continue
+		}
+
 		storeSet, ok := s.stores[symCfg.Exchange]
 		if !ok {
 			s.log.WarnContext(ctx, "Store set not found for exchange", slog.String("exchange", symCfg.Exchange))

@@ -12,72 +12,6 @@ import (
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
-func (c *Client) getHyperliquidVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, lasts map[string]float64, err error) {
-	data, err := c.info.MetaAndAssetCtxs(ctx, hl.MetaAndAssetCtxsParams{})
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	vols = make(map[string]float64)
-	amts = make(map[string]float64)
-	lasts = make(map[string]float64)
-	for i := range data.Universe {
-		asset := &data.Universe[i]
-		if symbol != "" && asset.Name != symbol {
-			continue
-		}
-		if asset.IsDelisted {
-			continue
-		}
-
-		ctxVal := &data.Ctxs[i]
-		lastPx := 0.0
-		if ctxVal.MidPx != "" {
-			lastPx = decmath.ParseFloat(ctxVal.MidPx)
-		} else if ctxVal.MarkPx != "" {
-			lastPx = decmath.ParseFloat(ctxVal.MarkPx)
-		}
-
-		vol24h := decmath.ParseFloat(ctxVal.DayNtlVlm)
-
-		vols[asset.Name] = vol24h / lastPx
-		amts[asset.Name] = vol24h
-		lasts[asset.Name] = lastPx
-	}
-
-	return vols, amts, lasts, nil
-}
-
-func (c *Client) getHyperliquidFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
-	data, err := c.info.MetaAndAssetCtxs(ctx, hl.MetaAndAssetCtxsParams{})
-	if err != nil {
-		return nil, err
-	}
-
-	rates := make([]exchange.FundingRateResult, 0, len(data.Universe))
-	for i := range data.Universe {
-		asset := &data.Universe[i]
-		if symbol != "" && asset.Name != symbol {
-			continue
-		}
-		if asset.IsDelisted {
-			continue
-		}
-
-		ctxVal := &data.Ctxs[i]
-		fundingRate := decmath.ParseFloat(ctxVal.Funding)
-		vol24h := decmath.ParseFloat(ctxVal.DayNtlVlm)
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     asset.Name,
-			Rate:       fundingRate,
-			SettleTime: time.Now().Truncate(time.Hour).Add(time.Hour).UnixMilli(),
-			Volume24h:  vol24h,
-		})
-	}
-
-	return rates, nil
-}
-
 // GetTickers returns ticker data for all symbols or a single symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	data, err := c.info.MetaAndAssetCtxs(ctx, hl.MetaAndAssetCtxsParams{})
@@ -165,17 +99,29 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-// GetFundingRates returns current funding rate details for all active symbols.
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+// GetFundingRates returns current funding rate details for the specified symbols.
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+
 	data, err := c.info.MetaAndAssetCtxs(ctx, hl.MetaAndAssetCtxsParams{})
 	if err != nil {
 		return nil, err
 	}
 
-	rates := make([]exchange.FundingRateResult, 0, len(data.Universe))
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+
+	rates := make([]exchange.FundingRateResult, 0)
 	nextHour := time.Now().Truncate(time.Hour).Add(time.Hour).UnixMilli()
 	for i := range data.Universe {
 		asset := &data.Universe[i]
+		if !symbolMap[asset.Name] {
+			continue
+		}
 		if asset.IsDelisted {
 			continue
 		}
@@ -184,7 +130,6 @@ func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateRes
 			Symbol:     asset.Name,
 			Rate:       decmath.ParseFloat(ctxVal.Funding),
 			SettleTime: nextHour,
-			Volume24h:  decmath.ParseFloat(ctxVal.DayNtlVlm),
 		})
 	}
 	return rates, nil

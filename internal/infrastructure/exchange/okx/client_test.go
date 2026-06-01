@@ -169,13 +169,12 @@ func TestClient_GetFundingRates(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	frs, err := client.GetFundingRates(context.Background())
+	frs, err := client.GetFundingRates(context.Background(), []string{"BTC-USDT-SWAP"})
 	require.NoError(t, err)
 	require.Len(t, frs, 1)
 	assert.Equal(t, "BTC-USDT-SWAP", frs[0].Symbol)
 	assert.Equal(t, 0.0001, frs[0].Rate)
 	assert.Equal(t, int64(1597026383085), frs[0].SettleTime)
-	assert.Equal(t, 50000500.0, frs[0].Volume24h)
 }
 
 func TestClient_CreateOrder(t *testing.T) {

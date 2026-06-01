@@ -45,7 +45,7 @@ func (s *FundingStore) StartFundingSync(ctx context.Context, client exchange.Cli
 }
 
 func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, symbols []string) {
-	results, err := client.GetFundingRates(ctx)
+	results, err := client.GetFundingRates(ctx, symbols)
 	if err != nil {
 		s.logger.WarnContext(ctx, "🟡 Bulk funding sync failed", slog.Any("error", err))
 		return

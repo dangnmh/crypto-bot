@@ -88,49 +88,6 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getBingXVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, lasts map[string]float64, err error) {
-	params := make(map[string]string)
-	if symbol != "" {
-		params[paramSymbol] = symbol
-	}
-
-	tickerBody, err := c.GetCtx(ctx, pathTickers, params)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	type bingxTicker struct {
-		Symbol      string `json:"symbol"`
-		LastPrice   string `json:"lastPrice"`
-		Volume      string `json:"volume"`
-		QuoteVolume string `json:"quoteVolume"`
-	}
-
-	var rawTickers []bingxTicker
-	var singleTicker bingxTicker
-	if err := json.Unmarshal(tickerBody, &singleTicker); err == nil && singleTicker.Symbol != "" {
-		rawTickers = []bingxTicker{singleTicker}
-	} else {
-		tickersParsed, err := ParseResponse[[]bingxTicker](tickerBody, "tickers")
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		rawTickers = tickersParsed
-	}
-
-	vols = make(map[string]float64)
-	amts = make(map[string]float64)
-	lasts = make(map[string]float64)
-	for i := range rawTickers {
-		t := &rawTickers[i]
-		vols[t.Symbol] = decmath.ParseFloat(t.Volume)
-		amts[t.Symbol] = decmath.ParseFloat(t.QuoteVolume)
-		lasts[t.Symbol] = decmath.ParseFloat(t.LastPrice)
-	}
-
-	return vols, amts, lasts, nil
-}
-
 func (c *Client) getBingXFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
 	params := make(map[string]string)
 	if symbol != "" {
@@ -141,8 +98,6 @@ func (c *Client) getBingXFundingRates(ctx context.Context, symbol string) ([]exc
 	if err != nil {
 		return nil, err
 	}
-
-	_, amounts, _, _ := c.getBingXVolumes24h(ctx, symbol)
 
 	type bingxPremiumIndex struct {
 		Symbol          string `json:"symbol"`
@@ -165,15 +120,10 @@ func (c *Client) getBingXFundingRates(ctx context.Context, symbol string) ([]exc
 	rates := make([]exchange.FundingRateResult, 0, len(rawIndexes))
 	for i := range rawIndexes {
 		idx := &rawIndexes[i]
-		var vol float64
-		if amounts != nil {
-			vol = amounts[idx.Symbol]
-		}
 		rates = append(rates, exchange.FundingRateResult{
 			Symbol:     idx.Symbol,
 			Rate:       decmath.ParseFloat(idx.LastFundingRate),
 			SettleTime: idx.NextFundingTime,
-			Volume24h:  vol,
 		})
 	}
 
@@ -282,9 +232,26 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return exchangeTickers, nil
 }
 
-// GetFundingRates returns current funding rate details for all active symbols.
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
-	return c.getBingXFundingRates(ctx, "")
+// GetFundingRates returns current funding rate details for the specified symbols.
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+	allRates, err := c.getBingXFundingRates(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+	var rates []exchange.FundingRateResult
+	for _, r := range allRates {
+		if symbolMap[r.Symbol] {
+			rates = append(rates, r)
+		}
+	}
+	return rates, nil
 }
 
 // GetKlines returns candlestick data for a symbol. Supports both array-of-arrays and array-of-objects formats.

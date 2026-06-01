@@ -570,7 +570,7 @@ func TestClient_GetTickers_And_GetFundingRate(t *testing.T) {
 	assert.Equal(t, 0.0001, t0.FundingRate)
 	assert.Equal(t, int64(1672531200000), t0.NextSettleTime)
 
-	rates, err := client.GetFundingRates(context.Background())
+	rates, err := client.GetFundingRates(context.Background(), []string{"BTCUSDT"})
 	require.NoError(t, err)
 	require.Len(t, rates, 1)
 	assert.Equal(t, "BTCUSDT", rates[0].Symbol)
@@ -954,7 +954,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	assert.Error(t, err)
 
 	// Test GetFundingRates error
-	_, err = client.GetFundingRates(ctx)
+	_, err = client.GetFundingRates(ctx, []string{"BTCUSDT"})
 	assert.Error(t, err)
 
 	// Test GetKlines symbol empty

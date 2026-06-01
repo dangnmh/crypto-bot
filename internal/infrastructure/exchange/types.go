@@ -152,13 +152,11 @@ type FundingRateHistory struct {
 	SettleTime  int64   `json:"settleTime"`
 }
 
-
 // FundingRateResult holds the rate and settlement time for active scan query.
 type FundingRateResult struct {
 	Symbol     string  `json:"symbol"`
 	Rate       float64 `json:"rate"`
 	SettleTime int64   `json:"settleTime"`
-	Volume24h  float64 `json:"volume24h"`
 }
 
 // AssetInfo holds account asset information.

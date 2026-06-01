@@ -56,4 +56,3 @@ func TestContractDataFromExchange(t *testing.T) {
 	assert.Equal(t, 0.0006, cd.TakerFeeRate)
 	assert.Equal(t, 50, cd.MaxLeverage)
 }
-

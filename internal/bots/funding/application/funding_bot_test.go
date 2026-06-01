@@ -101,3 +101,40 @@ func TestFundingBot_Run_CancelledContext(t *testing.T) {
 	err := bot.Run(ctx)
 	assert.NoError(t, err)
 }
+
+func TestNewFundingBot_WithBlacklist(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Symbols: []config.SymbolConfig{
+			{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 100, Leverage: 5},
+			{Symbol: "ETH_USDT", Exchange: "mexc", MarginUSDT: 100, Leverage: 5},
+		},
+		Blacklist: &config.BlacklistConfig{
+			Common: []string{"ETH_USDT"},
+		},
+	}
+	sysCfg := &config.SystemConfig{}
+	engine := &app.Engine{
+		Bus: eventbus.New(slog.Default()),
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name: "mexc",
+			},
+		},
+	}
+
+	ctrl := gomock.NewController(t)
+	m := mocks.NewMockNotifier(ctrl)
+
+	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
+	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
+
+	bot := application.NewFundingBot(
+		cfg, sysCfg, engine, m,
+		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		slog.Default(),
+	)
+	require.NotNil(t, bot)
+}

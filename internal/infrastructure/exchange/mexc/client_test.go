@@ -273,7 +273,7 @@ func TestClient_GetFundingRates(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(srv)
-	got, err := client.GetFundingRates(context.Background())
+	got, err := client.GetFundingRates(context.Background(), []string{"BTC_USDT"})
 	if err != nil {
 		t.Fatalf("GetFundingRates failed: %v", err)
 	}

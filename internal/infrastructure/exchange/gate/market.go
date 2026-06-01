@@ -69,34 +69,6 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getGateVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, lasts map[string]float64, err error) {
-	var opts *gateapi.ListFuturesTickersOpts
-	if symbol != "" {
-		opts = &gateapi.ListFuturesTickersOpts{
-			Contract: optional.NewString(symbol),
-		}
-	}
-	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, "usdt", opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("gate.io list tickers: %w", err)
-	}
-
-	vols = make(map[string]float64)
-	amts = make(map[string]float64)
-	lasts = make(map[string]float64)
-	for i := range rawTickers {
-		raw := &rawTickers[i]
-		sym := raw.Contract
-		vols[sym] = decmath.ParseFloat(raw.Volume24h)
-		amts[sym] = decmath.ParseFloat(raw.Volume24hQuote)
-		lasts[sym] = decmath.ParseFloat(raw.Last)
-	}
-	return vols, amts, lasts, nil
-}
-
 func (c *Client) getGateFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
 	var opts *gateapi.ListFuturesTickersOpts
 	if symbol != "" {
@@ -119,7 +91,6 @@ func (c *Client) getGateFundingRates(ctx context.Context, symbol string) ([]exch
 			Symbol:     raw.Contract,
 			Rate:       decmath.ParseFloat(raw.FundingRate),
 			SettleTime: 0,
-			Volume24h:  decmath.ParseFloat(raw.Volume24hQuote),
 		})
 	}
 	return rates, nil
@@ -160,9 +131,26 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return tickers, nil
 }
 
-// GetFundingRates returns current funding rate details for all active symbols.
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
-	return c.getGateFundingRates(ctx, "")
+// GetFundingRates returns current funding rate details for the specified symbols.
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+	allRates, err := c.getGateFundingRates(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+	var rates []exchange.FundingRateResult
+	for _, r := range allRates {
+		if symbolMap[r.Symbol] {
+			rates = append(rates, r)
+		}
+	}
+	return rates, nil
 }
 
 // GetKlines returns candlestick data for a symbol.

@@ -79,7 +79,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getBinanceVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amounts map[string]float64, lasts map[string]float64, err error) {
+func (c *Client) getBinanceVolumes24h(ctx context.Context, symbol string) (vols, amounts, lasts map[string]float64, err error) {
 	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
 	if symbol != "" {
 		tickerReq = tickerReq.Symbol(symbol)
@@ -97,7 +97,7 @@ func (c *Client) getBinanceVolumes24h(ctx context.Context, symbol string) (vols 
 	return vols, amounts, lasts, nil
 }
 
-func (c *Client) getBinanceBookTickers(ctx context.Context, symbol string) (bids map[string]float64, asks map[string]float64, err error) {
+func (c *Client) getBinanceBookTickers(ctx context.Context, symbol string) (bids, asks map[string]float64, err error) {
 	bids = make(map[string]float64)
 	asks = make(map[string]float64)
 
@@ -126,43 +126,45 @@ func (c *Client) getBinanceMarkPrices(ctx context.Context, symbol string) (model
 	return mpResp.Data, nil
 }
 
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+
 	mpData, err := c.getBinanceMarkPrices(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 
-	_, amounts, _, _ := c.getBinanceVolumes24h(ctx, "")
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
 
 	rates := make([]exchange.FundingRateResult, 0)
 
 	if mpData.MarkPriceResponse2 != nil {
 		for _, item := range mpData.MarkPriceResponse2.Items {
 			sym := item.GetSymbol()
-			var vol float64
-			if amounts != nil {
-				vol = amounts[sym]
+			if !symbolMap[sym] {
+				continue
 			}
 			rates = append(rates, exchange.FundingRateResult{
 				Symbol:     sym,
 				Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
 				SettleTime: item.GetNextFundingTime(),
-				Volume24h:  vol,
 			})
 		}
 	} else if mpData.MarkPriceResponse1 != nil {
 		item := mpData.MarkPriceResponse1
 		sym := item.GetSymbol()
-		var vol float64
-		if amounts != nil {
-			vol = amounts[sym]
+		if symbolMap[sym] {
+			rates = append(rates, exchange.FundingRateResult{
+				Symbol:     sym,
+				Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
+				SettleTime: item.GetNextFundingTime(),
+			})
 		}
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     sym,
-			Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
-			SettleTime: item.GetNextFundingTime(),
-			Volume24h:  vol,
-		})
 	}
 
 	return rates, nil
@@ -257,7 +259,6 @@ func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bi
 	}
 	return tickers
 }
-
 
 // GetKlines returns candlestick data.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

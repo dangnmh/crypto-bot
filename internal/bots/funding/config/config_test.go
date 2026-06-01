@@ -356,3 +356,31 @@ func TestLoad_WithTradingDefaults(t *testing.T) {
 	sc := cfg.Symbols[0]
 	assert.Equal(t, 10, sc.Leverage, "should inherit from defaults")
 }
+
+func TestLoad_WithBlacklist(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Create funding.jsonc
+	fundingPath := filepath.Join(dir, "funding.jsonc")
+	fundingContent := `[
+		{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 20},
+		{"symbol": "ETH_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 20}
+	]`
+	require.NoError(t, os.WriteFile(fundingPath, []byte(fundingContent), 0o600))
+
+	// Create blacklist.jsonc
+	blacklistPath := filepath.Join(dir, "blacklist.jsonc")
+	blacklistContent := `{
+		"common": ["ETH_USDT"]
+	}`
+	require.NoError(t, os.WriteFile(blacklistPath, []byte(blacklistContent), 0o600))
+
+	cfg, err := config.Load(sysWithMexc(), fundingPath)
+	require.NoError(t, err)
+
+	assert.NotNil(t, cfg.Blacklist)
+	assert.True(t, cfg.Blacklist.IsBlacklisted("mexc", "ETH_USDT"))
+	assert.False(t, cfg.Blacklist.IsBlacklisted("mexc", "BTC_USDT"))
+}

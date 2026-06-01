@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/pkg/types"
 )
@@ -43,8 +45,9 @@ type SymbolConfig struct {
 
 // Config is the root configuration containing both System and Funding configs.
 type Config struct {
-	System  *SystemConfig  `validate:"required"`
-	Symbols []SymbolConfig `json:"symbols" validate:"required,gt=0,dive"`
+	System    *SystemConfig    `validate:"required"`
+	Symbols   []SymbolConfig   `json:"symbols" validate:"required,gt=0,dive"`
+	Blacklist *BlacklistConfig `json:"-"`
 }
 
 type RawFundingReversionConfig struct {
@@ -72,4 +75,58 @@ type TradingDefaults struct {
 	// Raw parsed defaults
 	FundingReversion RawFundingReversionConfig `json:"fundingReversion"`
 	FundingTrap      domain.FundingTrapConfig  `json:"fundingTrap"`
+}
+
+type BlacklistConfig struct {
+	Common      []string `json:"common"`
+	Mexc        []string `json:"mexc"`
+	Gate        []string `json:"gate"`
+	Bybit       []string `json:"bybit"`
+	Binance     []string `json:"binance"`
+	Okx         []string `json:"okx"`
+	Hyperliquid []string `json:"hyperliquid"`
+	Bitget      []string `json:"bitget"`
+	Kucoin      []string `json:"kucoin"`
+	Bingx       []string `json:"bingx"`
+}
+
+func (b *BlacklistConfig) IsBlacklisted(exchange, symbol string) bool {
+	if b == nil {
+		return false
+	}
+	sym := strings.ToUpper(strings.TrimSpace(symbol))
+	// Check common blacklist
+	for _, s := range b.Common {
+		if strings.ToUpper(strings.TrimSpace(s)) == sym {
+			return true
+		}
+	}
+	// Check exchange specific blacklist
+	var exchList []string
+	switch strings.ToLower(exchange) {
+	case "mexc":
+		exchList = b.Mexc
+	case "gate":
+		exchList = b.Gate
+	case "bybit":
+		exchList = b.Bybit
+	case "binance":
+		exchList = b.Binance
+	case "okx":
+		exchList = b.Okx
+	case "hyperliquid":
+		exchList = b.Hyperliquid
+	case "bitget":
+		exchList = b.Bitget
+	case "kucoin":
+		exchList = b.Kucoin
+	case "bingx":
+		exchList = b.Bingx
+	}
+	for _, s := range exchList {
+		if strings.ToUpper(strings.TrimSpace(s)) == sym {
+			return true
+		}
+	}
+	return false
 }

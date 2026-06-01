@@ -42,7 +42,7 @@ func TestClient_MarketAndAccountEndpoints(t *testing.T) {
 	assert.Equal(t, 100.5, tickers[0].LastPrice)
 	assert.Equal(t, 0.001, tickers[0].FundingRate)
 
-	fundingRates, err := client.GetFundingRates(ctx)
+	fundingRates, err := client.GetFundingRates(ctx, []string{"BTC_USDT"})
 	require.NoError(t, err)
 	require.Len(t, fundingRates, 1)
 	assert.Equal(t, "BTC_USDT", fundingRates[0].Symbol)
@@ -158,7 +158,7 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 	require.Error(t, err)
 	_, err = errClient.GetTickers(context.Background(), "BTC_USDT")
 	require.Error(t, err)
-	_, err = errClient.GetFundingRates(context.Background())
+	_, err = errClient.GetFundingRates(context.Background(), []string{"BTC_USDT"})
 	require.Error(t, err)
 	_, err = errClient.GetKlines(context.Background(), "BTC_USDT", "Min1", 0, 60)
 	require.Error(t, err)

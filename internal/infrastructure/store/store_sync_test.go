@@ -127,12 +127,11 @@ func TestFundingStore_StartFundingSync(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRates(gomock.Any()).Return([]exchange.FundingRateResult{
+	client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return([]exchange.FundingRateResult{
 		{
 			Symbol:     "BTC_USDT",
 			Rate:       0.001,
 			SettleTime: time.Now().Add(time.Hour).UnixMilli(),
-			Volume24h:  1000000,
 		},
 	}, nil).AnyTimes()
 
@@ -156,7 +155,7 @@ func TestFundingStore_StartFundingSync_Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRates(gomock.Any()).Return(nil, fmt.Errorf("funding error")).AnyTimes()
+	client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("funding error")).AnyTimes()
 
 	wg := &sync.WaitGroup{}
 	fs := store.NewFundingStore(wg, slog.Default())
@@ -177,12 +176,11 @@ func TestFundingStore_StartFundingSync_MultipleSymbols(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	client := mocks.NewMockClient(ctrl)
-	client.EXPECT().GetFundingRates(gomock.Any()).Return([]exchange.FundingRateResult{
+	client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return([]exchange.FundingRateResult{
 		{
 			Symbol:     "BTC_USDT",
 			Rate:       0.001,
 			SettleTime: time.Now().Add(time.Hour).UnixMilli(),
-			Volume24h:  1000000,
 		},
 	}, nil).AnyTimes()
 

@@ -53,6 +53,9 @@ func NewFundingBot(
 		for i := range cfg.Symbols {
 			exch := cfg.Symbols[i].Exchange
 			if exch == name {
+				if cfg.Blacklist != nil && cfg.Blacklist.IsBlacklisted(exch, cfg.Symbols[i].Symbol) {
+					continue
+				}
 				symbols = append(symbols, cfg.Symbols[i].Symbol)
 			}
 		}

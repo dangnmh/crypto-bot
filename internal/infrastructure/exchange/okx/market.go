@@ -111,8 +111,7 @@ type okxTicker struct {
 	Ts        string `json:"ts"`
 }
 
-// getOKXVolumes24h fetches tickers from OKX and returns maps of contract volume and USDT volume.
-func (c *Client) getOKXVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, rawTickers []okxTicker, err error) {
+func (c *Client) getOKXVolumes24h(ctx context.Context, symbol string) (vols, amts map[string]float64, rawTickers []okxTicker, err error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -163,15 +162,10 @@ func (c *Client) getOKXFundingRates(ctx context.Context, symbols []string, amts 
 	results := make(chan frResult, len(symbols))
 	var wg sync.WaitGroup
 
-	numWorkers := 15
-	if len(symbols) < numWorkers {
-		numWorkers = len(symbols)
-	}
+	numWorkers := min(len(symbols), 15)
 
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range numWorkers {
+		wg.Go(func() {
 			for instID := range jobs {
 				url := fmt.Sprintf("/api/v5/public/funding-rate?instId=%s", instID)
 				frBody, err := c.GetCtx(ctx, url, nil)
@@ -191,7 +185,7 @@ func (c *Client) getOKXFundingRates(ctx context.Context, symbols []string, amts 
 					results <- frResult{instID: instID, rate: fr, settle: ns}
 				}
 			}
-		}()
+		})
 	}
 
 	for _, sym := range symbols {
@@ -209,27 +203,23 @@ func (c *Client) getOKXFundingRates(ctx context.Context, symbols []string, amts 
 			Symbol:     res.instID,
 			Rate:       res.rate,
 			SettleTime: res.settle,
-			Volume24h:  amts[res.instID],
 		})
 	}
 
 	return rates, nil
 }
 
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
-	_, amts, rawTickers, err := c.getOKXVolumes24h(ctx, "")
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+
+	_, amts, _, err := c.getOKXVolumes24h(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 
-	var activeSymbols []string
-	for _, t := range rawTickers {
-		if amts[t.InstID] >= 50000 {
-			activeSymbols = append(activeSymbols, t.InstID)
-		}
-	}
-
-	return c.getOKXFundingRates(ctx, activeSymbols, amts)
+	return c.getOKXFundingRates(ctx, symbols, amts)
 }
 
 // GetTickers returns ticker data for all SWAP contracts or a specific instrument.
@@ -283,7 +273,6 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 
 	return exchangeTickers, nil
 }
-
 
 // GetKlines returns candlestick data for a symbol.
 func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {

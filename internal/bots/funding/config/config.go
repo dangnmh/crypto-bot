@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -34,8 +35,21 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	}
 
 	cfg := &Config{
-		System:  sysCfg,
-		Symbols: symCfgs,
+		System:    sysCfg,
+		Symbols:   symCfgs,
+		Blacklist: &BlacklistConfig{},
+	}
+
+	configDir := filepath.Dir(fundingPath)
+	blacklistPath := filepath.Join(configDir, "blacklist.jsonc")
+	if blk, err := LoadBlacklist(blacklistPath); err == nil {
+		cfg.Blacklist = blk
+	} else if os.IsNotExist(err) {
+		// Fallback to blacklist.json
+		blacklistPathJSON := filepath.Join(configDir, "blacklist.json")
+		if blk, err := LoadBlacklist(blacklistPathJSON); err == nil {
+			cfg.Blacklist = blk
+		}
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -43,6 +57,25 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func LoadBlacklist(path string) (*BlacklistConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err = hujson.Standardize(data)
+	if err != nil {
+		return nil, fmt.Errorf("standardize blacklist config: %w", err)
+	}
+
+	var blacklist BlacklistConfig
+	if err := json.Unmarshal(data, &blacklist); err != nil {
+		return nil, fmt.Errorf("parse blacklist config: %w", err)
+	}
+
+	return &blacklist, nil
 }
 
 func (c *Config) parseTradingDefaults() (TradingDefaults, error) {

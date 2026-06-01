@@ -89,4 +89,3 @@ func ContractDataFromExchange(d *exchange.ContractDetail) *ContractData {
 		UpdatedAt:    time.Now(),
 	}
 }
-

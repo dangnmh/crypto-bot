@@ -140,13 +140,12 @@ func TestClient_GetTickers_And_FundingRates(t *testing.T) {
 	assert.Equal(t, 0.0001, t0.FundingRate)
 	assert.Equal(t, int64(1672531200000), t0.NextSettleTime)
 
-	rates, err := client.GetFundingRates(context.Background())
+	rates, err := client.GetFundingRates(context.Background(), []string{"BTCUSDT"})
 	require.NoError(t, err)
 	require.Len(t, rates, 1)
 	assert.Equal(t, "BTCUSDT", rates[0].Symbol)
 	assert.Equal(t, 0.0001, rates[0].Rate)
 	assert.Equal(t, int64(1672531200000), rates[0].SettleTime)
-	assert.Equal(t, 50000000.0, rates[0].Volume24h)
 }
 
 func TestClient_GetKlines(t *testing.T) {

@@ -545,18 +545,18 @@ func (c *MockClientGetDepthSnapshotCall) DoAndReturn(f func(context.Context, str
 }
 
 // GetFundingRates mocks base method.
-func (m *MockClient) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+func (m *MockClient) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetFundingRates", ctx)
+	ret := m.ctrl.Call(m, "GetFundingRates", ctx, symbols)
 	ret0, _ := ret[0].([]exchange.FundingRateResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetFundingRates indicates an expected call of GetFundingRates.
-func (mr *MockClientMockRecorder) GetFundingRates(ctx any) *MockClientGetFundingRatesCall {
+func (mr *MockClientMockRecorder) GetFundingRates(ctx, symbols any) *MockClientGetFundingRatesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFundingRates", reflect.TypeOf((*MockClient)(nil).GetFundingRates), ctx)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFundingRates", reflect.TypeOf((*MockClient)(nil).GetFundingRates), ctx, symbols)
 	return &MockClientGetFundingRatesCall{Call: call}
 }
 
@@ -572,13 +572,13 @@ func (c *MockClientGetFundingRatesCall) Return(arg0 []exchange.FundingRateResult
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockClientGetFundingRatesCall) Do(f func(context.Context) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
+func (c *MockClientGetFundingRatesCall) Do(f func(context.Context, []string) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientGetFundingRatesCall) DoAndReturn(f func(context.Context) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
+func (c *MockClientGetFundingRatesCall) DoAndReturn(f func(context.Context, []string) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

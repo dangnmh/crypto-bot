@@ -92,128 +92,6 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getKuCoinVolumes24h(ctx context.Context, symbol string) (vols map[string]float64, amts map[string]float64, lasts map[string]float64, err error) {
-	vols = make(map[string]float64)
-	amts = make(map[string]float64)
-	lasts = make(map[string]float64)
-
-	cBody, err := c.GetCtx(ctx, pathContracts, nil)
-	if err == nil {
-		type kucoinContractFunding struct {
-			Symbol        string  `json:"symbol"`
-			TurnoverOf24h float64 `json:"turnoverOf24h"`
-			VolumeOf24h   float64 `json:"volumeOf24h"`
-		}
-		cList, err := ParseResponse[[]kucoinContractFunding](cBody, "contracts_active")
-		if err == nil {
-			for i := range cList {
-				sym := cList[i].Symbol
-				vols[sym] = cList[i].VolumeOf24h
-				amts[sym] = cList[i].TurnoverOf24h
-			}
-		}
-	}
-
-	if symbol != "" {
-		params := map[string]string{
-			paramSymbol: symbol,
-		}
-		body, err := c.GetCtx(ctx, pathTickerSingle, params)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		type kucoinSingleTicker struct {
-			Symbol string `json:"symbol"`
-			Price  string `json:"price"`
-		}
-
-		raw, err := ParseResponse[kucoinSingleTicker](body, "ticker_single")
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		last := decmath.ParseFloat(raw.Price)
-		lasts[raw.Symbol] = last
-		if vols[raw.Symbol] == 0 {
-			vols[raw.Symbol] = 0
-			amts[raw.Symbol] = 0
-		}
-		return vols, amts, lasts, nil
-	}
-
-	body, err := c.GetCtx(ctx, pathTickers, nil)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	type kucoinTicker struct {
-		Symbol    string `json:"symbol"`
-		LastPrice string `json:"lastPrice"`
-		Price     string `json:"price"`
-		Volume    string `json:"volume"`
-		Vol       string `json:"vol"`
-	}
-
-	tickers, err := ParseResponse[[]kucoinTicker](body, "tickers")
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	for i := range tickers {
-		t := &tickers[i]
-		last := decmath.ParseFloat(t.LastPrice)
-		if last == 0 {
-			last = decmath.ParseFloat(t.Price)
-		}
-		lasts[t.Symbol] = last
-
-		if vols[t.Symbol] == 0 {
-			vol := decmath.ParseFloat(t.Volume)
-			if vol == 0 {
-				vol = decmath.ParseFloat(t.Vol)
-			}
-			vols[t.Symbol] = vol
-			amts[t.Symbol] = vol * last
-		}
-	}
-
-	return vols, amts, lasts, nil
-}
-
-func (c *Client) getKuCoinFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
-	cBody, err := c.GetCtx(ctx, pathContracts, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	type kucoinContractFunding struct {
-		Symbol                  string  `json:"symbol"`
-		FundingFeeRate          float64 `json:"fundingFeeRate"`
-		NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
-		TurnoverOf24h           float64 `json:"turnoverOf24h"`
-	}
-	cList, err := ParseResponse[[]kucoinContractFunding](cBody, "contracts_active")
-	if err != nil {
-		return nil, err
-	}
-
-	rates := make([]exchange.FundingRateResult, 0, len(cList))
-	for i := range cList {
-		sym := cList[i].Symbol
-		if symbol != "" && sym != symbol {
-			continue
-		}
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     sym,
-			Rate:       cList[i].FundingFeeRate,
-			SettleTime: cList[i].NextFundingRateDateTime,
-			Volume24h:  cList[i].TurnoverOf24h,
-		})
-	}
-
-	return rates, nil
-}
-
 // GetTickers returns ticker data for all contracts.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	if symbol != "" {
@@ -345,8 +223,12 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return exchangeTickers, nil
 }
 
-// GetFundingRates returns current funding rate details for all active symbols.
-func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateResult, error) {
+// GetFundingRates returns current funding rate details for the specified symbols.
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+
 	cBody, err := c.GetCtx(ctx, pathContracts, nil)
 	if err != nil {
 		return nil, err
@@ -365,13 +247,20 @@ func (c *Client) GetFundingRates(ctx context.Context) ([]exchange.FundingRateRes
 		return nil, err
 	}
 
-	rates := make([]exchange.FundingRateResult, 0, len(cList))
+	symbolMap := make(map[string]bool)
+	for _, sym := range symbols {
+		symbolMap[sym] = true
+	}
+
+	rates := make([]exchange.FundingRateResult, 0)
 	for i := range cList {
+		if !symbolMap[cList[i].Symbol] {
+			continue
+		}
 		rates = append(rates, exchange.FundingRateResult{
 			Symbol:     cList[i].Symbol,
 			Rate:       cList[i].FundingFeeRate,
 			SettleTime: cList[i].NextFundingRateDateTime,
-			Volume24h:  cList[i].TurnoverOf24h,
 		})
 	}
 	return rates, nil
