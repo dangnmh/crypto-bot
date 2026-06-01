@@ -12,13 +12,13 @@
     "bybit": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "10ms",
+      "bufferTime": "-10ms",
       "postSettleTimeout": "300s"
     },
     "binance": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "10ms",
+      "bufferTime": "-10ms",
       "postSettleTimeout": "300s"
     },
     "gate": {
