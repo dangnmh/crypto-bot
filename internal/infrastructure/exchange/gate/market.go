@@ -69,33 +69,6 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getGateFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
-	var opts *gateapi.ListFuturesTickersOpts
-	if symbol != "" {
-		opts = &gateapi.ListFuturesTickersOpts{
-			Contract: optional.NewString(symbol),
-		}
-	}
-	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, "usdt", opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("gate.io list tickers: %w", err)
-	}
-
-	rates := make([]exchange.FundingRateResult, 0, len(rawTickers))
-	for i := range rawTickers {
-		raw := &rawTickers[i]
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     raw.Contract,
-			Rate:       decmath.ParseFloat(raw.FundingRate),
-			SettleTime: 0,
-		})
-	}
-	return rates, nil
-}
-
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	var opts *gateapi.ListFuturesTickersOpts
@@ -117,15 +90,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	for i := range rawTickers {
 		raw := &rawTickers[i]
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:         raw.Contract,
-			LastPrice:      decmath.ParseFloat(raw.Last),
-			Bid1:           decmath.ParseFloat(raw.HighestBid),
-			Ask1:           decmath.ParseFloat(raw.LowestAsk),
-			Volume24:       decmath.ParseFloat(raw.Volume24h),
-			Amount24:       decmath.ParseFloat(raw.Volume24hQuote),
-			FundingRate:    decmath.ParseFloat(raw.FundingRate),
-			NextSettleTime: 0, // not present in REST ticker, resolved via GetFundingRate
-			Timestamp:      time.Now().UnixMilli(),
+			Symbol:    raw.Contract,
+			LastPrice: decmath.ParseFloat(raw.Last),
+			Bid1:      decmath.ParseFloat(raw.HighestBid),
+			Ask1:      decmath.ParseFloat(raw.LowestAsk),
+			Volume24:  decmath.ParseFloat(raw.Volume24h),
+			Amount24:  decmath.ParseFloat(raw.Volume24hQuote),
+			Timestamp: time.Now().UnixMilli(),
 		})
 	}
 	return tickers, nil
@@ -136,21 +107,60 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	if len(symbols) == 0 {
 		return nil, nil
 	}
-	allRates, err := c.getGateFundingRates(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	symbolMap := make(map[string]bool)
-	for _, sym := range symbols {
-		symbolMap[sym] = true
-	}
-	var rates []exchange.FundingRateResult
-	for _, r := range allRates {
-		if symbolMap[r.Symbol] {
-			rates = append(rates, r)
+
+	needUsdt, needBtc := determineNeededSettleCoins(symbols)
+	contractMap := make(map[string]*gateapi.Contract)
+
+	if needUsdt {
+		if err := c.fetchContracts(ctx, "usdt", contractMap); err != nil {
+			return nil, err
 		}
 	}
+	if needBtc {
+		if err := c.fetchContracts(ctx, "btc", contractMap); err != nil {
+			return nil, err
+		}
+	}
+
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
+	for _, sym := range symbols {
+		contract, exists := contractMap[sym]
+		if !exists {
+			return nil, fmt.Errorf("gate.io contract not found for symbol: %s", sym)
+		}
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     sym,
+			Rate:       decmath.ParseFloat(contract.FundingRate),
+			SettleTime: int64(contract.FundingNextApply * 1000),
+		})
+	}
+
 	return rates, nil
+}
+
+func determineNeededSettleCoins(symbols []string) (needUsdt, needBtc bool) {
+	for _, sym := range symbols {
+		if strings.HasSuffix(strings.ToLower(sym), "_usd") {
+			needBtc = true
+		} else {
+			needUsdt = true
+		}
+	}
+	return
+}
+
+func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap map[string]*gateapi.Contract) error {
+	contracts, httpResp, err := c.apiClient.FuturesApi.ListFuturesContracts(ctx, settle, nil)
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("gate.io list %s contracts: %w", settle, err)
+	}
+	for i := range contracts {
+		contractMap[contracts[i].Name] = &contracts[i]
+	}
+	return nil
 }
 
 // GetKlines returns candlestick data for a symbol.

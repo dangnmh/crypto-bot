@@ -26,8 +26,8 @@ func TestTickerStore_StartTickerSync(t *testing.T) {
 
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
-		{Symbol: "BTC_USDT", LastPrice: 50000, FundingRate: 0.001},
-		{Symbol: "ETH_USDT", LastPrice: 3000, FundingRate: 0.002},
+		{Symbol: "BTC_USDT", LastPrice: 50000},
+		{Symbol: "ETH_USDT", LastPrice: 3000},
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}

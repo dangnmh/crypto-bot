@@ -134,15 +134,13 @@ type ContractDetail struct {
 
 // Ticker holds real-time ticker data for a symbol.
 type Ticker struct {
-	Symbol         string  `json:"symbol"`
-	LastPrice      float64 `json:"lastPrice"`
-	Bid1           float64 `json:"bid1"`
-	Ask1           float64 `json:"ask1"`
-	Volume24       float64 `json:"volume24"`
-	Amount24       float64 `json:"amount24"`
-	FundingRate    float64 `json:"fundingRate"`
-	NextSettleTime int64   `json:"nextSettleTime"` // Unix ms — next funding settlement
-	Timestamp      int64   `json:"timestamp"`
+	Symbol    string  `json:"symbol"`
+	LastPrice float64 `json:"lastPrice"`
+	Bid1      float64 `json:"bid1"`
+	Ask1      float64 `json:"ask1"`
+	Volume24  float64 `json:"volume24"`
+	Amount24  float64 `json:"amount24"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 // FundingRateHistory holds historical funding rate entry.

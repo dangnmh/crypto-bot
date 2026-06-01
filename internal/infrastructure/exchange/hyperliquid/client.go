@@ -19,6 +19,7 @@ import (
 type Client struct {
 	exchange    *hl.Exchange
 	info        *hl.Info
+	httpClient  *http.Client
 	userAddress string
 	baseURL     string
 	logger      *slog.Logger
@@ -109,6 +110,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 	return &Client{
 		exchange:    exchangeClient,
 		info:        infoClient,
+		httpClient:  finalClient,
 		userAddress: userAddress,
 		baseURL:     baseURL,
 		logger:      logger,

@@ -1,8 +1,14 @@
 package hyperliquid
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
 	"math"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -37,19 +43,16 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			lastPx = decmath.ParseFloat(ctxVal.MarkPx)
 		}
 
-		fundingRate := decmath.ParseFloat(ctxVal.Funding)
 		vol24h := decmath.ParseFloat(ctxVal.DayNtlVlm)
 
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:         asset.Name,
-			LastPrice:      lastPx,
-			Bid1:           lastPx,
-			Ask1:           lastPx,
-			Volume24:       vol24h / lastPx,
-			Amount24:       vol24h,
-			FundingRate:    fundingRate,
-			NextSettleTime: time.Now().Truncate(time.Hour).Add(time.Hour).UnixMilli(),
-			Timestamp:      time.Now().UnixMilli(),
+			Symbol:    asset.Name,
+			LastPrice: lastPx,
+			Bid1:      lastPx,
+			Ask1:      lastPx,
+			Volume24:  vol24h / lastPx,
+			Amount24:  vol24h,
+			Timestamp: time.Now().UnixMilli(),
 		})
 	}
 	return tickers, nil
@@ -99,39 +102,138 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
+type RawVenueFunding struct {
+	FundingRate     string `json:"fundingRate"`
+	NextFundingTime int64  `json:"nextFundingTime"`
+}
+
+type RawVenueItem struct {
+	Venue string
+	Info  RawVenueFunding
+}
+
+func (r *RawVenueItem) UnmarshalJSON(data []byte) error {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	if len(arr) < 2 {
+		return fmt.Errorf("invalid venue item length")
+	}
+	if err := json.Unmarshal(arr[0], &r.Venue); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(arr[1], &r.Info); err != nil {
+		return err
+	}
+	return nil
+}
+
+type RawAssetFunding struct {
+	Asset  string
+	Venues []RawVenueItem
+}
+
+func (r *RawAssetFunding) UnmarshalJSON(data []byte) error {
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	if len(arr) < 2 {
+		return fmt.Errorf("invalid asset funding length")
+	}
+	if err := json.Unmarshal(arr[0], &r.Asset); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(arr[1], &r.Venues); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) getRawPredictedFundings(ctx context.Context) ([]RawAssetFunding, error) {
+	payload := map[string]string{
+		"type": "predictedFundings",
+	}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/info", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("predictedFundings API error status=%d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var rawAssets []RawAssetFunding
+	if err := json.Unmarshal(body, &rawAssets); err != nil {
+		return nil, err
+	}
+	return rawAssets, nil
+}
+
 // GetFundingRates returns current funding rate details for the specified symbols.
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
 	}
 
-	data, err := c.info.MetaAndAssetCtxs(ctx, hl.MetaAndAssetCtxsParams{})
+	rawAssets, err := c.getRawPredictedFundings(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	symbolMap := make(map[string]bool)
-	for _, sym := range symbols {
-		symbolMap[sym] = true
+	fundingMap := make(map[string]RawAssetFunding)
+	for _, a := range rawAssets {
+		fundingMap[a.Asset] = a
 	}
 
-	rates := make([]exchange.FundingRateResult, 0)
-	nextHour := time.Now().Truncate(time.Hour).Add(time.Hour).UnixMilli()
-	for i := range data.Universe {
-		asset := &data.Universe[i]
-		if !symbolMap[asset.Name] {
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
+	for _, sym := range symbols {
+		assetFunding, ok := fundingMap[sym]
+		if !ok {
+			c.logger.WarnContext(ctx, "Hyperliquid asset not found in predicted fundings", slog.String("symbol", sym))
 			continue
 		}
-		if asset.IsDelisted {
+
+		var hlFunding *RawVenueFunding
+		for i := range assetFunding.Venues {
+			if assetFunding.Venues[i].Venue == "HlPerp" {
+				hlFunding = &assetFunding.Venues[i].Info
+				break
+			}
+		}
+
+		if hlFunding == nil {
+			c.logger.WarnContext(ctx, "HlPerp venue not found in predicted fundings for asset", slog.String("symbol", sym))
 			continue
 		}
-		ctxVal := &data.Ctxs[i]
+
+		fr, _ := strconv.ParseFloat(hlFunding.FundingRate, 64)
 		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     asset.Name,
-			Rate:       decmath.ParseFloat(ctxVal.Funding),
-			SettleTime: nextHour,
+			Symbol:     sym,
+			Rate:       fr,
+			SettleTime: hlFunding.NextFundingTime,
 		})
 	}
+
 	return rates, nil
 }
 

@@ -25,7 +25,6 @@ import (
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
-	unifiedURL string
 	apiKey     string
 	apiSecret  string
 	passphrase string
@@ -76,7 +75,6 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 	return &Client{
 		httpClient: finalClient,
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		unifiedURL: defaultUnifiedURL,
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
 		passphrase: passphrase,
@@ -114,12 +112,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		urlPath += "?" + strings.Join(parts, "&")
 	}
 
-	baseURL := c.baseURL
-	if strings.Contains(path, "/ua/v1/") {
-		baseURL = c.unifiedURL
-	}
-
-	url := baseURL + urlPath
+	url := c.baseURL + urlPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create GET request: %w", err)

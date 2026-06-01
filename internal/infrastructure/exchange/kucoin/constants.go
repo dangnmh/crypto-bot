@@ -2,15 +2,13 @@ package kucoin
 
 const (
 	// Base URL and Default Addresses.
-	defaultRestURL    = "https://api-futures.kucoin.com"
-	defaultUnifiedURL = "https://api.kucoin.com"
+	defaultRestURL = "https://api-futures.kucoin.com"
 
 	// REST Endpoints.
 	pathServerTime     = "/api/v1/timestamp"
 	pathContracts      = "/api/v1/contracts/active"
 	pathTickers        = "/api/v1/allTickers"
 	pathTickerSingle   = "/api/v1/ticker"
-	pathFundingRate    = "/api/ua/v1/market/funding-rate"
 	pathKlines         = "/api/v1/kline/query"
 	pathDepth          = "/api/v1/level2/snapshot"
 	pathPlaceOrder     = "/api/v1/orders"

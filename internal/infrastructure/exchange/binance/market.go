@@ -231,30 +231,26 @@ func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bi
 		for _, item := range data.MarkPriceResponse2.Items {
 			sym := item.GetSymbol()
 			tickers = append(tickers, exchange.Ticker{
-				Symbol:         sym,
-				LastPrice:      lasts[sym],
-				Bid1:           bids[sym],
-				Ask1:           asks[sym],
-				Volume24:       vols[sym],
-				Amount24:       amounts[sym],
-				FundingRate:    decmath.ParseFloat(item.GetLastFundingRate()),
-				NextSettleTime: item.GetNextFundingTime(),
-				Timestamp:      now,
+				Symbol:    sym,
+				LastPrice: lasts[sym],
+				Bid1:      bids[sym],
+				Ask1:      asks[sym],
+				Volume24:  vols[sym],
+				Amount24:  amounts[sym],
+				Timestamp: now,
 			})
 		}
 	} else if data.MarkPriceResponse1 != nil {
 		item := data.MarkPriceResponse1
 		sym := item.GetSymbol()
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:         sym,
-			LastPrice:      lasts[sym],
-			Bid1:           bids[sym],
-			Ask1:           asks[sym],
-			Volume24:       vols[sym],
-			Amount24:       amounts[sym],
-			FundingRate:    decmath.ParseFloat(item.GetLastFundingRate()),
-			NextSettleTime: item.GetNextFundingTime(),
-			Timestamp:      now,
+			Symbol:    sym,
+			LastPrice: lasts[sym],
+			Bid1:      bids[sym],
+			Ask1:      asks[sym],
+			Volume24:  vols[sym],
+			Amount24:  amounts[sym],
+			Timestamp: now,
 		})
 	}
 	return tickers

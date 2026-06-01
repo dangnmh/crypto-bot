@@ -88,7 +88,13 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getBingXFundingRates(ctx context.Context, symbol string) ([]exchange.FundingRateResult, error) {
+type rawPremiumIndex struct {
+	Symbol          string `json:"symbol"`
+	LastFundingRate string `json:"lastFundingRate"`
+	NextFundingTime int64  `json:"nextFundingTime"`
+}
+
+func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*rawPremiumIndex, error) {
 	params := make(map[string]string)
 	if symbol != "" {
 		params[paramSymbol] = symbol
@@ -99,35 +105,21 @@ func (c *Client) getBingXFundingRates(ctx context.Context, symbol string) ([]exc
 		return nil, err
 	}
 
-	type bingxPremiumIndex struct {
-		Symbol          string `json:"symbol"`
-		LastFundingRate string `json:"lastFundingRate"`
-		NextFundingTime int64  `json:"nextFundingTime"`
-	}
-
-	var rawIndexes []bingxPremiumIndex
-	var singleIndex bingxPremiumIndex
-	if err := json.Unmarshal(indexBody, &singleIndex); err == nil && singleIndex.Symbol != "" {
-		rawIndexes = []bingxPremiumIndex{singleIndex}
+	var rawIndexes []rawPremiumIndex
+	if singleIndex, err := ParseResponse[rawPremiumIndex](indexBody, "premium_index"); err == nil {
+		rawIndexes = []rawPremiumIndex{singleIndex}
 	} else {
-		indexesParsed, err := ParseResponse[[]bingxPremiumIndex](indexBody, "premium_index")
+		indexesParsed, err := ParseResponse[[]rawPremiumIndex](indexBody, "premium_index")
 		if err != nil {
 			return nil, err
 		}
 		rawIndexes = indexesParsed
 	}
 
-	rates := make([]exchange.FundingRateResult, 0, len(rawIndexes))
-	for i := range rawIndexes {
-		idx := &rawIndexes[i]
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     idx.Symbol,
-			Rate:       decmath.ParseFloat(idx.LastFundingRate),
-			SettleTime: idx.NextFundingTime,
-		})
+	if len(rawIndexes) == 0 {
+		return nil, fmt.Errorf("bingx funding rate not found for symbol: %s", symbol)
 	}
-
-	return rates, nil
+	return &rawIndexes[0], nil
 }
 
 // GetTickers returns ticker data combined with premium index (funding rate and mark price).
@@ -143,7 +135,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, err
 	}
 
-	type bingxTicker struct {
+	type rawBingxTicker struct {
 		Symbol      string `json:"symbol"`
 		LastPrice   string `json:"lastPrice"`
 		BidPrice    string `json:"bidPrice"`
@@ -153,50 +145,19 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		Time        string `json:"time"`
 	}
 
-	var rawTickers []bingxTicker
-	var singleTicker bingxTicker
+	var rawTickers []rawBingxTicker
+	var singleTicker rawBingxTicker
 	if err := json.Unmarshal(tickerBody, &singleTicker); err == nil && singleTicker.Symbol != "" {
-		rawTickers = []bingxTicker{singleTicker}
+		rawTickers = []rawBingxTicker{singleTicker}
 	} else {
-		tickersParsed, err := ParseResponse[[]bingxTicker](tickerBody, "tickers")
+		tickersParsed, err := ParseResponse[[]rawBingxTicker](tickerBody, "tickers")
 		if err != nil {
 			return nil, err
 		}
 		rawTickers = tickersParsed
 	}
 
-	// 2. Fetch Premium Index (funding rates & mark prices)
-	indexBody, err := c.GetCtx(ctx, pathFundingRate, params)
-	if err != nil {
-		return nil, err
-	}
-
-	type bingxPremiumIndex struct {
-		Symbol          string `json:"symbol"`
-		MarkPrice       string `json:"markPrice"`
-		LastFundingRate string `json:"lastFundingRate"`
-		NextFundingTime int64  `json:"nextFundingTime"`
-	}
-
-	var rawIndexes []bingxPremiumIndex
-	var singleIndex bingxPremiumIndex
-	if err := json.Unmarshal(indexBody, &singleIndex); err == nil && singleIndex.Symbol != "" {
-		rawIndexes = []bingxPremiumIndex{singleIndex}
-	} else {
-		indexesParsed, err := ParseResponse[[]bingxPremiumIndex](indexBody, "premium_index")
-		if err != nil {
-			return nil, err
-		}
-		rawIndexes = indexesParsed
-	}
-
-	indexMap := make(map[string]*bingxPremiumIndex)
-	for i := range rawIndexes {
-		idx := &rawIndexes[i]
-		indexMap[idx.Symbol] = idx
-	}
-
-	// 3. Merge ticker and premium index
+	// 2. Map tickers
 	exchangeTickers := make([]exchange.Ticker, 0, len(rawTickers))
 	for i := range rawTickers {
 		t := &rawTickers[i]
@@ -208,24 +169,14 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		amt := decmath.ParseFloat(t.QuoteVolume)
 		ts := decmath.ParseInt64(t.Time)
 
-		var fr float64
-		var nextSettle int64
-
-		if idx, ok := indexMap[t.Symbol]; ok {
-			fr = decmath.ParseFloat(idx.LastFundingRate)
-			nextSettle = idx.NextFundingTime
-		}
-
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:         t.Symbol,
-			LastPrice:      last,
-			Bid1:           bid,
-			Ask1:           ask,
-			Volume24:       vol,
-			Amount24:       amt,
-			FundingRate:    fr,
-			NextSettleTime: nextSettle,
-			Timestamp:      ts,
+			Symbol:    t.Symbol,
+			LastPrice: last,
+			Bid1:      bid,
+			Ask1:      ask,
+			Volume24:  vol,
+			Amount24:  amt,
+			Timestamp: ts,
 		})
 	}
 
@@ -237,19 +188,17 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	if len(symbols) == 0 {
 		return nil, nil
 	}
-	allRates, err := c.getBingXFundingRates(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	symbolMap := make(map[string]bool)
-	for _, sym := range symbols {
-		symbolMap[sym] = true
-	}
 	var rates []exchange.FundingRateResult
-	for _, r := range allRates {
-		if symbolMap[r.Symbol] {
-			rates = append(rates, r)
+	for _, sym := range symbols {
+		raw, err := c.getRawFundingRate(ctx, sym)
+		if err != nil {
+			return nil, err
 		}
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     raw.Symbol,
+			Rate:       decmath.ParseFloat(raw.LastFundingRate),
+			SettleTime: raw.NextFundingTime,
+		})
 	}
 	return rates, nil
 }

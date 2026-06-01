@@ -106,12 +106,11 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 	now := time.Now()
 
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
-		Symbol:      "BTC_USDT",
-		FundingRate: 0.01,
-		LastPrice:   100,
-		BestBid:     99,
-		BestAsk:     101,
-		Amount24:    100000,
+		Symbol:    "BTC_USDT",
+		LastPrice: 100,
+		BestBid:   99,
+		BestAsk:   101,
+		Amount24:  100000,
 	}, nil).AnyTimes()
 
 	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
@@ -119,6 +118,10 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 	}, nil).AnyTimes()
 
 	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(now.Add(30*time.Second), nil).AnyTimes()
+	fundings.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.01,
+	}, nil).AnyTimes()
 
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetServerTime(gomock.Any()).Return(now.UnixMilli(), nil).AnyTimes()

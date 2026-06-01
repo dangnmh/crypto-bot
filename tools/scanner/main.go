@@ -25,6 +25,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/logger"
 )
 
 type FundingRateDetail struct {
@@ -65,21 +66,25 @@ func main() {
 		}
 	}
 
+	logger.InitLogger("debug")
 	// Create exchange clients. No API keys needed for public market data.
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
-	mexcClient := mexc.NewClient(httpPool, "https://contract.mexc.com", "", "", sysconfig.LoggingConfig{})
-	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", sysconfig.LoggingConfig{})
-	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", sysconfig.LoggingConfig{})
-	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", sysconfig.LoggingConfig{})
-	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", sysconfig.LoggingConfig{})
-	bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", sysconfig.LoggingConfig{})
-	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", sysconfig.LoggingConfig{})
-	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", sysconfig.LoggingConfig{})
+	logCfg := sysconfig.LoggingConfig{
+		HTTP: true,
+	}
 
-	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", sysconfig.LoggingConfig{})
+	mexcClient := mexc.NewClient(httpPool, "https://contract.mexc.com", "", "", logCfg)
+	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", logCfg)
+	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", logCfg)
+	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
+	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
+	bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
+	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
+	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
+	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
 	defer cancel()
 
 	allClients := map[string]exchange.Client{

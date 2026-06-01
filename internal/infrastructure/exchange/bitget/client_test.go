@@ -109,7 +109,6 @@ func TestClient_GetTickers(t *testing.T) {
 	require.Len(t, tickers, 1)
 	assert.Equal(t, "BTCUSDT", tickers[0].Symbol)
 	assert.Equal(t, 50000.5, tickers[0].LastPrice)
-	assert.Equal(t, 0.0001, tickers[0].FundingRate)
 }
 
 func TestClient_GetFundingRates(t *testing.T) {
@@ -117,7 +116,8 @@ func TestClient_GetFundingRates(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v2/mix/market/tickers", r.URL.Path)
+		assert.Equal(t, "/api/v2/mix/market/current-fund-rate", r.URL.Path)
+		assert.Equal(t, "USDT-FUTURES", r.URL.Query().Get("productType"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -127,7 +127,7 @@ func TestClient_GetFundingRates(t *testing.T) {
 				{
 					"symbol": "BTCUSDT",
 					"fundingRate": "0.00015",
-					"quoteVolume": "50000000"
+					"nextUpdate": "1743062400000"
 				}
 			]
 		}`))
@@ -140,6 +140,7 @@ func TestClient_GetFundingRates(t *testing.T) {
 	require.Len(t, frs, 1)
 	assert.Equal(t, "BTCUSDT", frs[0].Symbol)
 	assert.Equal(t, 0.00015, frs[0].Rate)
+	assert.Equal(t, int64(1743062400000), frs[0].SettleTime)
 }
 
 func TestClient_CreateOrder(t *testing.T) {

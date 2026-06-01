@@ -431,8 +431,7 @@ func TestClient_GetFundingRates(t *testing.T) {
 				{
 					"symbol": "XBTUSDTM",
 					"fundingFeeRate": 0.0001,
-					"nextFundingRateDateTime": 1672531200000,
-					"turnoverOf24h": 500000.0
+					"nextFundingRateDateTime": 1672531200000
 				}
 			]
 		}`))

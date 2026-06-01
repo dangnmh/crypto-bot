@@ -137,8 +137,6 @@ func TestClient_GetTickers_And_FundingRates(t *testing.T) {
 	assert.Equal(t, 50000.0, t0.LastPrice)
 	assert.Equal(t, 49999.0, t0.Bid1)
 	assert.Equal(t, 50001.0, t0.Ask1)
-	assert.Equal(t, 0.0001, t0.FundingRate)
-	assert.Equal(t, int64(1672531200000), t0.NextSettleTime)
 
 	rates, err := client.GetFundingRates(context.Background(), []string{"BTCUSDT"})
 	require.NoError(t, err)

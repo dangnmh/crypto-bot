@@ -108,7 +108,6 @@ func TestClient_GetTickers(t *testing.T) {
 	assert.Equal(t, 50000.2, tickers[0].LastPrice)
 	assert.Equal(t, 19.999920000319998, tickers[0].Volume24)
 	assert.Equal(t, 1000000.0, tickers[0].Amount24)
-	assert.Equal(t, 0.0001, tickers[0].FundingRate)
 }
 
 //nolint:dupl // standard mock setup contains high structural similarity
@@ -119,14 +118,14 @@ func TestClient_GetFundingRate(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[
-			{
-				"universe": [
-					{"name": "BTC", "szDecimals": 4, "maxLeverage": 50, "isDelisted": false}
-				],
-				"marginTables": []
-			},
 			[
-				{"funding": "0.000125", "dayNtlVlm": "1000.0", "markPx": "50000"}
+				"BTC",
+				[
+					[
+						"HlPerp",
+						{"fundingRate": "0.000125", "nextFundingTime": 1609459200000}
+					]
+				]
 			]
 		]`))
 	}))

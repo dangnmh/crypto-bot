@@ -56,7 +56,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	require.NoError(t, lc.Start(context.Background()))
 	require.NoError(t, lc.Stop(context.Background()))
 
-	httpClient := provideHTTPClient()
+	httpClient := provideHTTPClient(bootstrapTestLogger())
 	require.NotNil(t, httpClient)
 	assert.IsType(t, &http.Client{}, httpClient)
 

@@ -117,10 +117,13 @@ func TestConfiguredScanner_Scan_NilContract(t *testing.T) {
 	fundings := mocks.NewMockFundingReader(ctrl)
 
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+		Symbol: "BTC_USDT",
+	}, nil).AnyTimes()
+	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
+	fundings.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: -0.01,
 	}, nil).AnyTimes()
-	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
 
 	cfg := &config.Config{
 		Symbols: []config.SymbolConfig{
@@ -156,10 +159,13 @@ func TestConfiguredScanner_Scan_GetContractError(t *testing.T) {
 	contracts := mocks.NewMockContractReader(ctrl)
 
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+		Symbol: "BTC_USDT",
+	}, nil).AnyTimes()
+	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
+	fundings.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.01,
 	}, nil).AnyTimes()
-	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
 	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(nil, errors.New("contract error")).AnyTimes()
 
 	cfg := &config.Config{

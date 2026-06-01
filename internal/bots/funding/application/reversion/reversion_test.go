@@ -115,6 +115,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	mockContractStore := mocks.NewMockContractReader(ctrl)
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
 	mockNotifier := mocks.NewMockNotifier(ctrl)
+	mockFundingStore := mocks.NewMockFundingReader(ctrl)
 
 	// Set up Clock
 	mockClock := mocks.NewMockClock(ctrl)
@@ -230,12 +231,9 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}, nil).AnyTimes()
 
 	// 2. Recheck expectations
-	mockTickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+	mockFundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.001,
-		LastPrice:   60000.0,
-		BestBid:     59990.0,
-		BestAsk:     60000.0,
 	}, nil)
 
 	// 3. FireIOC expectations
@@ -256,6 +254,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
 		{Symbol: "BTC_USDT", HoldVol: 1},
 	}, nil).AnyTimes()
+	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	// 4. Watcher/notifier expectations
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
@@ -297,6 +296,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			ticker:   mockTickerStore,
 			contract: mockContractStore,
 			price:    mockPriceStore,
+			funding:  mockFundingStore,
 		},
 	}
 	err = strategyInst.Start(context.Background(), stores)
@@ -343,6 +343,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
 	mockNotifier := mocks.NewMockNotifier(ctrl)
 	mockClock := mocks.NewMockClock(ctrl)
+	mockFundingStore := mocks.NewMockFundingReader(ctrl)
 
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	var mu sync.Mutex
@@ -448,12 +449,9 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		ContractSize: 0.001,
 	}, nil).AnyTimes()
 
-	mockTickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+	mockFundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.001,
-		LastPrice:   60000.0,
-		BestBid:     59990.0,
-		BestAsk:     60000.0,
 	}, nil)
 
 	createOrderCalled := make(chan struct{})
@@ -522,6 +520,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 			ticker:   mockTickerStore,
 			contract: mockContractStore,
 			price:    mockPriceStore,
+			funding:  mockFundingStore,
 		},
 	}
 	err = strategyInst.Start(context.Background(), stores)
@@ -580,6 +579,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	mockContractStore := mocks.NewMockContractReader(ctrl)
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
 	mockNotifier := mocks.NewMockNotifier(ctrl)
+	mockFundingStore := mocks.NewMockFundingReader(ctrl)
 
 	// Set up Clock
 	mockClock := mocks.NewMockClock(ctrl)
@@ -694,12 +694,9 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	}, nil).AnyTimes()
 
 	// 2. Recheck expectations
-	mockTickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+	mockFundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.001,
-		LastPrice:   60000.0,
-		BestBid:     59990.0,
-		BestAsk:     60000.0,
 	}, nil)
 
 	// 3. FireIOC expectations (we assert CreateOrder receives Leverage = 10, and ChangeLeverage is NOT called)
@@ -752,6 +749,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			ticker:   mockTickerStore,
 			contract: mockContractStore,
 			price:    mockPriceStore,
+			funding:  mockFundingStore,
 		},
 	}
 	err = strategyInst.Start(context.Background(), stores)

@@ -32,27 +32,48 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return ParseResponse[[]exchange.ContractDetail](body, "contract_details")
 }
 
+type rawFunding struct {
+	Symbol         string  `json:"symbol"`
+	FundingRate    float64 `json:"fundingRate"`
+	NextSettleTime int64   `json:"nextSettleTime"`
+}
+
+func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*rawFunding, error) {
+	params := map[string]any{}
+	if symbol != "" {
+		params[paramSymbol] = symbol
+	}
+	body, err := c.GetCtx(ctx, "/api/v1/contract/funding_rate", params)
+	if err != nil {
+		return nil, err
+	}
+	rawRates, err := ParseResponse[[]rawFunding](body, "funding_rates")
+	if err != nil {
+		return nil, err
+	}
+	for i := range rawRates {
+		if rawRates[i].Symbol == symbol {
+			return &rawRates[i], nil
+		}
+	}
+	return nil, fmt.Errorf("mexc funding rate not found for symbol: %s", symbol)
+}
+
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
 	}
-	tickers, err := c.GetTickers(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	symbolMap := make(map[string]bool)
+
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		symbolMap[sym] = true
-	}
-	rates := make([]exchange.FundingRateResult, 0)
-	for _, t := range tickers {
-		if !symbolMap[t.Symbol] {
-			continue
+		raw, err := c.getRawFundingRate(ctx, sym)
+		if err != nil {
+			return nil, err
 		}
 		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     t.Symbol,
-			Rate:       t.FundingRate,
-			SettleTime: t.NextSettleTime,
+			Symbol:     raw.Symbol,
+			Rate:       raw.FundingRate,
+			SettleTime: raw.NextSettleTime,
 		})
 	}
 	return rates, nil

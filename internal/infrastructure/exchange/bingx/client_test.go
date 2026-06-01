@@ -126,7 +126,6 @@ func TestClient_GetTickers(t *testing.T) {
 	assert.Equal(t, 50000.5, tickers[0].LastPrice)
 	assert.Equal(t, 50000.0, tickers[0].Bid1)
 	assert.Equal(t, 50001.0, tickers[0].Ask1)
-	assert.Equal(t, 0.0001, tickers[0].FundingRate)
 }
 
 func TestClient_GetKlines(t *testing.T) {

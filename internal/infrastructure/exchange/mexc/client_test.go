@@ -263,12 +263,19 @@ func TestClient_GetTickers_Single(t *testing.T) {
 //nolint:dupl // test
 func TestClient_GetFundingRates(t *testing.T) {
 	t.Parallel()
-	tickers := []exchange.Ticker{
-		{Symbol: "BTC_USDT", LastPrice: 50000, FundingRate: 0.001, Amount24: 1000000},
+	type rawFundingRate struct {
+		Symbol         string  `json:"symbol"`
+		FundingRate    float64 `json:"fundingRate"`
+		NextSettleTime int64   `json:"nextSettleTime"`
+	}
+	rates := []rawFundingRate{
+		{Symbol: "BTC_USDT", FundingRate: 0.001, NextSettleTime: 1609459200000},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := json.Marshal(tickers)
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[json.RawMessage]{Success: true, Code: 0, Data: raw}))
+		if r.URL.Path != "/api/v1/contract/funding_rate" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]rawFundingRate]{Success: true, Code: 0, Data: rates}))
 	}))
 	defer srv.Close()
 
@@ -282,6 +289,9 @@ func TestClient_GetFundingRates(t *testing.T) {
 	}
 	if got[0].Rate != 0.001 {
 		t.Errorf("FundingRate: want 0.001, got %f", got[0].Rate)
+	}
+	if got[0].SettleTime != 1609459200000 {
+		t.Errorf("SettleTime: want 1609459200000, got %d", got[0].SettleTime)
 	}
 }
 

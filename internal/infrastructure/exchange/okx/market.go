@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"sync"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -101,7 +100,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-type okxTicker struct {
+type rawTicker struct {
 	InstID    string `json:"instId"`
 	Last      string `json:"last"`
 	BidPx     string `json:"bidPx"`
@@ -111,7 +110,7 @@ type okxTicker struct {
 	Ts        string `json:"ts"`
 }
 
-func (c *Client) getOKXVolumes24h(ctx context.Context, symbol string) (vols, amts map[string]float64, rawTickers []okxTicker, err error) {
+func (c *Client) getRawVolumes24h(ctx context.Context, symbol string) (vols, amts map[string]float64, rawTickers []rawTicker, err error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -124,7 +123,7 @@ func (c *Client) getOKXVolumes24h(ctx context.Context, symbol string) (vols, amt
 		return nil, nil, nil, err
 	}
 
-	tickers, err := ParseResponse[okxTicker](body, "tickers")
+	tickers, err := ParseResponse[rawTicker](body, "tickers")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -144,69 +143,26 @@ func (c *Client) getOKXVolumes24h(ctx context.Context, symbol string) (vols, amt
 	return vols, amts, tickers, nil
 }
 
-// getOKXFundingRates fetches funding rates concurrently using a worker pool for targeted active symbols.
-func (c *Client) getOKXFundingRates(ctx context.Context, symbols []string, amts map[string]float64) ([]exchange.FundingRateResult, error) {
-	rates := make([]exchange.FundingRateResult, 0, len(symbols))
+type rawFunding struct {
+	InstID          string `json:"instId"`
+	FundingRate     string `json:"fundingRate"`
+	NextFundingTime string `json:"nextFundingTime"`
+}
 
-	if len(symbols) == 0 {
-		return rates, nil
+func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*rawFunding, error) {
+	url := fmt.Sprintf("/api/v5/public/funding-rate?instId=%s", symbol)
+	frBody, err := c.GetCtx(ctx, url, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	type frResult struct {
-		instID string
-		rate   float64
-		settle int64
+	frList, err := ParseResponse[rawFunding](frBody, "funding_rate")
+	if err != nil {
+		return nil, err
 	}
-
-	jobs := make(chan string, len(symbols))
-	results := make(chan frResult, len(symbols))
-	var wg sync.WaitGroup
-
-	numWorkers := min(len(symbols), 15)
-
-	for range numWorkers {
-		wg.Go(func() {
-			for instID := range jobs {
-				url := fmt.Sprintf("/api/v5/public/funding-rate?instId=%s", instID)
-				frBody, err := c.GetCtx(ctx, url, nil)
-				if err != nil {
-					continue
-				}
-
-				type okxFundingRate struct {
-					InstID          string `json:"instId"`
-					FundingRate     string `json:"fundingRate"`
-					NextFundingTime string `json:"nextFundingTime"`
-				}
-				frList, err := ParseResponse[okxFundingRate](frBody, "funding_rate")
-				if err == nil && len(frList) > 0 {
-					fr, _ := strconv.ParseFloat(frList[0].FundingRate, 64)
-					ns, _ := strconv.ParseInt(frList[0].NextFundingTime, 10, 64)
-					results <- frResult{instID: instID, rate: fr, settle: ns}
-				}
-			}
-		})
+	if len(frList) == 0 {
+		return nil, fmt.Errorf("okx funding rate not found for symbol: %s", symbol)
 	}
-
-	for _, sym := range symbols {
-		jobs <- sym
-	}
-	close(jobs)
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	for res := range results {
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     res.instID,
-			Rate:       res.rate,
-			SettleTime: res.settle,
-		})
-	}
-
-	return rates, nil
+	return &frList[0], nil
 }
 
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
@@ -214,41 +170,28 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	_, amts, _, err := c.getOKXVolumes24h(ctx, "")
-	if err != nil {
-		return nil, err
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
+	for _, sym := range symbols {
+		raw, err := c.getRawFundingRate(ctx, sym)
+		if err != nil {
+			return nil, err
+		}
+		fr, _ := strconv.ParseFloat(raw.FundingRate, 64)
+		ns, _ := strconv.ParseInt(raw.NextFundingTime, 10, 64)
+		rates = append(rates, exchange.FundingRateResult{
+			Symbol:     raw.InstID,
+			Rate:       fr,
+			SettleTime: ns,
+		})
 	}
-
-	return c.getOKXFundingRates(ctx, symbols, amts)
+	return rates, nil
 }
 
 // GetTickers returns ticker data for all SWAP contracts or a specific instrument.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	vols, amts, rawTickers, err := c.getOKXVolumes24h(ctx, symbol)
+	vols, amts, rawTickers, err := c.getRawVolumes24h(ctx, symbol)
 	if err != nil {
 		return nil, err
-	}
-
-	// Filter active symbols that require funding rate query (volume >= 50k USDT)
-	var activeSymbols []string
-	if symbol != "" {
-		activeSymbols = []string{symbol}
-	} else {
-		for _, t := range rawTickers {
-			if amts[t.InstID] >= 50000 {
-				activeSymbols = append(activeSymbols, t.InstID)
-			}
-		}
-	}
-
-	rates, err := c.getOKXFundingRates(ctx, activeSymbols, amts)
-	if err != nil {
-		return nil, err
-	}
-
-	ratesMap := make(map[string]exchange.FundingRateResult)
-	for _, r := range rates {
-		ratesMap[r.Symbol] = r
 	}
 
 	exchangeTickers := make([]exchange.Ticker, 0, len(rawTickers))
@@ -259,15 +202,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:         t.InstID,
-			LastPrice:      last,
-			Bid1:           bid,
-			Ask1:           ask,
-			Volume24:       vols[t.InstID],
-			Amount24:       amts[t.InstID],
-			FundingRate:    ratesMap[t.InstID].Rate,
-			NextSettleTime: ratesMap[t.InstID].SettleTime,
-			Timestamp:      ts,
+			Symbol:    t.InstID,
+			LastPrice: last,
+			Bid1:      bid,
+			Ask1:      ask,
+			Volume24:  vols[t.InstID],
+			Amount24:  amts[t.InstID],
+			Timestamp: ts,
 		})
 	}
 

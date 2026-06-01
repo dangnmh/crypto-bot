@@ -92,8 +92,10 @@ func provideNotifier(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig, log *slog
 	return n, nil
 }
 
-func provideHTTPClient() *http.Client {
-	return httpclient.NewPool(httpclient.DefaultPoolConfig())
+func provideHTTPClient(log *slog.Logger) *http.Client {
+	cfg := httpclient.DefaultPoolConfig()
+	cfg.Logger = log
+	return httpclient.NewPool(cfg)
 }
 
 func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config, httpClient *http.Client, log *slog.Logger) (*infraapp.Engine, error) {

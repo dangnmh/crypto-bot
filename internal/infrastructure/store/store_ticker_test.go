@@ -23,7 +23,7 @@ func TestTickerStore_GetTicker(t *testing.T) {
 
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
-		{Symbol: "BTC_USDT", FundingRate: 0.001, LastPrice: 65000, Bid1: 64999, Ask1: 65001},
+		{Symbol: "BTC_USDT", LastPrice: 65000, Bid1: 64999, Ask1: 65001},
 	}, nil).AnyTimes()
 
 	wg := &sync.WaitGroup{}
@@ -37,7 +37,6 @@ func TestTickerStore_GetTicker(t *testing.T) {
 
 	td, err := ts.GetTicker(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
-	assert.Equal(t, 0.001, td.FundingRate)
 	assert.Equal(t, 65000.0, td.LastPrice)
 }
 

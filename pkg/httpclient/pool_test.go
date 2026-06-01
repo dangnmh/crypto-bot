@@ -7,6 +7,7 @@ import (
 	httpclient "crypto-bot/pkg/httpclient"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,10 @@ func TestNewPool(t *testing.T) {
 	require.NotNil(t, client, "expected non-nil client")
 	assert.Equal(t, cfg.Timeout, client.Timeout)
 
-	transport, ok := client.Transport.(*http.Transport)
+	retryRT, ok := client.Transport.(*retryablehttp.RoundTripper)
+	require.True(t, ok, "expected *retryablehttp.RoundTripper")
+
+	transport, ok := retryRT.Client.HTTPClient.Transport.(*http.Transport)
 	require.True(t, ok, "expected *http.Transport")
 
 	assert.Equal(t, cfg.MaxIdleConns, transport.MaxIdleConns)

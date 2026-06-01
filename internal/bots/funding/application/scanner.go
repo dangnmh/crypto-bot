@@ -190,7 +190,7 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 
 		// Skip if disabled in-memory
 		if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
-			s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("symbol", symCfg.Symbol), slog.String("reason", reason))
+			s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.String("reason", reason))
 			continue
 		}
 
@@ -209,7 +209,7 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 		// Retrieve next settle time
 		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, storeSet.Funding())
 		if err != nil {
-			s.log.DebugContext(ctx, "Failed to get next settle time", slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
+			s.log.DebugContext(ctx, "Failed to get next settle time", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
 			continue
 		}
 
@@ -221,14 +221,20 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 
 		td, err := storeSet.Ticker().GetTicker(ctx, symCfg.Symbol)
 		if err != nil {
-			s.log.DebugContext(ctx, "No ticker data available yet", slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
+			s.log.DebugContext(ctx, "No ticker data available yet", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
+			continue
+		}
+
+		fd, err := storeSet.Funding().GetFunding(ctx, symCfg.Symbol)
+		if err != nil {
+			s.log.DebugContext(ctx, "No funding data available yet", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
 			continue
 		}
 
 		// Build and enrich candidate opportunity
-		candidate := s.buildCandidate(symCfg, td)
+		candidate := s.buildCandidate(symCfg, td, fd.FundingRate)
 		if !s.enrich(ctx, storeSet.Contract(), &candidate) {
-			s.log.DebugContext(ctx, "Contract enrichment failed for candidate", slog.String("symbol", symCfg.Symbol))
+			s.log.DebugContext(ctx, "Contract enrichment failed for candidate", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol))
 			continue
 		}
 
@@ -241,12 +247,12 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 	return opportunities, nil
 }
 
-func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.TickerData) domain.Candidate {
+func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.TickerData, fundingRate float64) domain.Candidate {
 	intent := domain.TradeIntent{
 		Symbol:      td.Symbol,
-		FundingRate: td.FundingRate,
+		FundingRate: fundingRate,
 	}
-	if td.FundingRate > 0 {
+	if fundingRate > 0 {
 		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenLong, shared.SideCloseLong, "bestAsk"
 	} else {
 		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenShort, shared.SideCloseShort, "bestBid"

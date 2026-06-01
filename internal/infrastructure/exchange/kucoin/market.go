@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -154,27 +155,19 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, err
 	}
 
-	// Fetch active contracts in bulk to populate funding rates & next settle times without separate API calls
-	cMap := make(map[string]float64)
-	cTimeMap := make(map[string]int64)
+	// Fetch active contracts in bulk to populate volume & turnover 24h without separate API calls
 	cVolMap := make(map[string]float64)
 	cAmtMap := make(map[string]float64)
 	cBody, err := c.GetCtx(ctx, pathContracts, nil)
 	if err == nil {
-		type kucoinContractFunding struct {
-			Symbol                  string  `json:"symbol"`
-			FundingFeeRate          float64 `json:"fundingFeeRate"`
-			NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
-			TurnoverOf24h           float64 `json:"turnoverOf24h"`
-			VolumeOf24h             float64 `json:"volumeOf24h"`
+		type rawActiveContract struct {
+			Symbol        string  `json:"symbol"`
+			TurnoverOf24h float64 `json:"turnoverOf24h"`
+			VolumeOf24h   float64 `json:"volumeOf24h"`
 		}
-		cList, err := ParseResponse[[]kucoinContractFunding](cBody, "contracts_active")
+		cList, err := ParseResponse[[]rawActiveContract](cBody, "contracts_active")
 		if err == nil {
 			for i := range cList {
-				fr := cList[i].FundingFeeRate
-				ns := cList[i].NextFundingRateDateTime
-				cMap[cList[i].Symbol] = fr
-				cTimeMap[cList[i].Symbol] = ns
 				cVolMap[cList[i].Symbol] = cList[i].VolumeOf24h
 				cAmtMap[cList[i].Symbol] = cList[i].TurnoverOf24h
 			}
@@ -204,19 +197,14 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 			amt = vol * last
 		}
 
-		fr := cMap[t.Symbol]
-		ns := cTimeMap[t.Symbol]
-
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:         t.Symbol,
-			LastPrice:      last,
-			Bid1:           bid,
-			Ask1:           ask,
-			Volume24:       vol,
-			Amount24:       amt,
-			FundingRate:    fr,
-			NextSettleTime: ns,
-			Timestamp:      ts,
+			Symbol:    t.Symbol,
+			LastPrice: last,
+			Bid1:      bid,
+			Ask1:      ask,
+			Volume24:  vol,
+			Amount24:  amt,
+			Timestamp: ts,
 		})
 	}
 
@@ -229,40 +217,41 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	cBody, err := c.GetCtx(ctx, pathContracts, nil)
+	body, err := c.GetCtx(ctx, pathContracts, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	type kucoinContractFunding struct {
+	type rawActiveContract struct {
 		Symbol                  string  `json:"symbol"`
 		FundingFeeRate          float64 `json:"fundingFeeRate"`
 		NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
-		TurnoverOf24h           float64 `json:"turnoverOf24h"`
-		VolumeOf24h             float64 `json:"volumeOf24h"`
 	}
 
-	cList, err := ParseResponse[[]kucoinContractFunding](cBody, "contracts_active")
+	contracts, err := ParseResponse[[]rawActiveContract](body, "contracts_active")
 	if err != nil {
 		return nil, err
 	}
 
-	symbolMap := make(map[string]bool)
-	for _, sym := range symbols {
-		symbolMap[sym] = true
+	contractMap := make(map[string]rawActiveContract, len(contracts))
+	for _, contract := range contracts {
+		contractMap[contract.Symbol] = contract
 	}
 
-	rates := make([]exchange.FundingRateResult, 0)
-	for i := range cList {
-		if !symbolMap[cList[i].Symbol] {
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
+	for _, sym := range symbols {
+		contract, exists := contractMap[sym]
+		if !exists {
+			c.logger.WarnContext(ctx, "Symbol not found in active contracts", slog.String("symbol", sym))
 			continue
 		}
 		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     cList[i].Symbol,
-			Rate:       cList[i].FundingFeeRate,
-			SettleTime: cList[i].NextFundingRateDateTime,
+			Symbol:     sym,
+			Rate:       contract.FundingFeeRate,
+			SettleTime: contract.NextFundingRateDateTime,
 		})
 	}
+
 	return rates, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 
@@ -114,47 +115,73 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
+type rawTicker struct {
+	Symbol      string `json:"symbol"`
+	LastPr      string `json:"lastPr"`
+	BidPr       string `json:"bidPr"`
+	AskPr       string `json:"askPr"`
+	BaseVolume  string `json:"baseVolume"`
+	QuoteVolume string `json:"quoteVolume"`
+	Ts          string `json:"ts"`
+	FundingRate string `json:"fundingRate"`
+}
+
+type rawBitgetFunding struct {
+	Symbol      string `json:"symbol"`
+	FundingRate string `json:"fundingRate"`
+	NextUpdate  string `json:"nextUpdate"`
+}
+
+func (c *Client) getRawFundingRates(ctx context.Context, symbol string) ([]rawBitgetFunding, error) {
+	params := map[string]string{
+		paramProductType: productTypeUsdtFutures,
+	}
+	if symbol != "" {
+		params[paramSymbol] = symbol
+	}
+
+	body, err := c.GetCtx(ctx, pathFundingRate, params)
+	if err != nil {
+		return nil, err
+	}
+
+	rates, err := ParseResponse[[]rawBitgetFunding](body, "funding_rate")
+	if err != nil {
+		return nil, err
+	}
+	return rates, nil
+}
+
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
 	}
 
-	params := map[string]string{
-		paramProductType: productTypeUsdtFutures,
-	}
-
-	body, err := c.GetCtx(ctx, pathTickers, params)
+	rawRates, err := c.getRawFundingRates(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 
-	type bitgetTicker struct {
-		Symbol      string `json:"symbol"`
-		FundingRate string `json:"fundingRate"`
-		QuoteVolume string `json:"quoteVolume"`
+	rateMap := make(map[string]rawBitgetFunding)
+	for _, r := range rawRates {
+		rateMap[r.Symbol] = r
 	}
 
-	tickers, err := ParseResponse[[]bitgetTicker](body, "tickers")
-	if err != nil {
-		return nil, err
-	}
-
-	symbolMap := make(map[string]bool)
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		symbolMap[sym] = true
-	}
-
-	rates := make([]exchange.FundingRateResult, 0)
-	for i := range tickers {
-		t := &tickers[i]
-		if !symbolMap[t.Symbol] {
+		raw, ok := rateMap[sym]
+		if !ok {
+			c.logger.WarnContext(ctx, "Bitget funding rate not found for symbol", slog.String("symbol", sym))
 			continue
 		}
-		fr, _ := strconv.ParseFloat(t.FundingRate, 64)
+
+		fr, _ := strconv.ParseFloat(raw.FundingRate, 64)
+		nextUpdateVal, _ := strconv.ParseInt(raw.NextUpdate, 10, 64)
+
 		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     t.Symbol,
+			Symbol:     sym,
 			Rate:       fr,
-			SettleTime: 0,
+			SettleTime: nextUpdateVal,
 		})
 	}
 
@@ -175,18 +202,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, err
 	}
 
-	type bitgetTicker struct {
-		Symbol      string `json:"symbol"`
-		LastPr      string `json:"lastPr"`
-		BidPr       string `json:"bidPr"`
-		AskPr       string `json:"askPr"`
-		BaseVolume  string `json:"baseVolume"`
-		QuoteVolume string `json:"quoteVolume"`
-		Ts          string `json:"ts"`
-		FundingRate string `json:"fundingRate"`
-	}
-
-	tickers, err := ParseResponse[[]bitgetTicker](body, "tickers")
+	tickers, err := ParseResponse[[]rawTicker](body, "tickers")
 	if err != nil {
 		return nil, err
 	}
@@ -200,17 +216,15 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		vol, _ := strconv.ParseFloat(t.BaseVolume, 64)
 		amt, _ := strconv.ParseFloat(t.QuoteVolume, 64)
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
-		fr, _ := strconv.ParseFloat(t.FundingRate, 64)
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:      t.Symbol,
-			LastPrice:   last,
-			Bid1:        bid,
-			Ask1:        ask,
-			Volume24:    vol,
-			Amount24:    amt,
-			FundingRate: fr,
-			Timestamp:   ts,
+			Symbol:    t.Symbol,
+			LastPrice: last,
+			Bid1:      bid,
+			Ask1:      ask,
+			Volume24:  vol,
+			Amount24:  amt,
+			Timestamp: ts,
 		})
 	}
 

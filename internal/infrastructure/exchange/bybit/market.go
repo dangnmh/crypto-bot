@@ -146,7 +146,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getBybitMarketTickers(ctx context.Context, symbol string) (bybitTickerList, error) {
+func (c *Client) getRawMarketTickers(ctx context.Context, symbol string) (bybitTickerList, error) {
 	params := map[string]any{
 		categoryKey: categoryLinear,
 	}
@@ -170,24 +170,27 @@ func (c *Client) getBybitMarketTickers(ctx context.Context, symbol string) (bybi
 	return res, nil
 }
 
+func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*bybitTicker, error) {
+	res, err := c.getRawMarketTickers(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+	if len(res.List) == 0 {
+		return nil, fmt.Errorf("bybit ticker not found for symbol: %s", symbol)
+	}
+	return &res.List[0], nil
+}
+
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
 	}
-	res, err := c.getBybitMarketTickers(ctx, "")
-	if err != nil {
-		return nil, err
-	}
-	symbolMap := make(map[string]bool)
+
+	rates := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		symbolMap[sym] = true
-	}
-	rates := make([]exchange.FundingRateResult, 0)
-	for i := range res.List {
-		raw := &res.List[i]
-		sym := raw.Symbol
-		if !symbolMap[sym] {
-			continue
+		raw, err := c.getRawFundingRate(ctx, sym)
+		if err != nil {
+			return nil, err
 		}
 		nextSettle := int64(0)
 		if raw.NextFundingTime != "" {
@@ -196,7 +199,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 			}
 		}
 		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     sym,
+			Symbol:     raw.Symbol,
 			Rate:       decmath.ParseFloat(raw.FundingRate),
 			SettleTime: nextSettle,
 		})
@@ -206,7 +209,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	res, err := c.getBybitMarketTickers(ctx, symbol)
+	res, err := c.getRawMarketTickers(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -214,23 +217,14 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	tickers := make([]exchange.Ticker, 0, len(res.List))
 	for i := range res.List {
 		raw := &res.List[i]
-		nextSettle := int64(0)
-		if raw.NextFundingTime != "" {
-			if parsed, err := strconv.ParseInt(raw.NextFundingTime, 10, 64); err == nil {
-				nextSettle = parsed
-			}
-		}
-
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:         raw.Symbol,
-			LastPrice:      decmath.ParseFloat(raw.LastPrice),
-			Bid1:           decmath.ParseFloat(raw.Bid1Price),
-			Ask1:           decmath.ParseFloat(raw.Ask1Price),
-			Volume24:       decmath.ParseFloat(raw.Volume24h),
-			Amount24:       decmath.ParseFloat(raw.Turnover24h),
-			FundingRate:    decmath.ParseFloat(raw.FundingRate),
-			NextSettleTime: nextSettle,
-			Timestamp:      time.Now().UnixMilli(),
+			Symbol:    raw.Symbol,
+			LastPrice: decmath.ParseFloat(raw.LastPrice),
+			Bid1:      decmath.ParseFloat(raw.Bid1Price),
+			Ask1:      decmath.ParseFloat(raw.Ask1Price),
+			Volume24:  decmath.ParseFloat(raw.Volume24h),
+			Amount24:  decmath.ParseFloat(raw.Turnover24h),
+			Timestamp: time.Now().UnixMilli(),
 		})
 	}
 	return tickers, nil

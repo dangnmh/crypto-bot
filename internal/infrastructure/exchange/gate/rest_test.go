@@ -40,7 +40,6 @@ func TestClient_MarketAndAccountEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tickers, 1)
 	assert.Equal(t, 100.5, tickers[0].LastPrice)
-	assert.Equal(t, 0.001, tickers[0].FundingRate)
 
 	fundingRates, err := client.GetFundingRates(ctx, []string{"BTC_USDT"})
 	require.NoError(t, err)
@@ -197,6 +196,7 @@ func newGateServer(t *testing.T) *httptest.Server {
 				"name": "BTC_USDT", "quanto_multiplier": "0.0001", "leverage_min": "1",
 				"leverage_max": "100", "order_price_round": "0.0001",
 				"maker_fee_rate": "0.0002", "taker_fee_rate": "0.0006",
+				"funding_rate": "0.001", "funding_next_apply": 1700000000,
 			}})
 		case r.URL.Path == "/futures/usdt/tickers":
 			writeJSON(t, w, []map[string]string{{

@@ -802,9 +802,9 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "symbol config not found")
 
-	tickerStore := mocks.NewMockTickerReader(ctrl)
-	tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(nil, errors.New("missing ticker"))
-	runner.deps.TickerStore = tickerStore
+	fundingStore := mocks.NewMockFundingReader(ctrl)
+	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(nil, errors.New("missing funding"))
+	runner.deps.FundingStore = fundingStore
 	runner.globalCfg.Symbols = []config.SymbolConfig{{Symbol: "BTC_USDT", MinFundingRate: 0.001}}
 	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
@@ -812,9 +812,9 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
 		},
 	})
-	require.ErrorContains(t, err, "no ticker for recheck")
+	require.ErrorContains(t, err, "no funding data for recheck")
 
-	tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: -0.01,
 	}, nil)
@@ -826,7 +826,7 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "FR sign flip")
 
-	tickerStore.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
 		Symbol:      "BTC_USDT",
 		FundingRate: 0.0001,
 	}, nil)
