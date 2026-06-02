@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -49,13 +50,13 @@ func (c *Client) getRawAssets(ctx context.Context, _ binanceWalletBalanceRequest
 	return &resp.Data, nil
 }
 
-func (c *Client) getRawOpenPositions(ctx context.Context, req binancePositionsRequest) (*models.PositionInformationV2Response, error) {
-	r := c.sdkClient.RestApi.TradeAPI.PositionInformationV2(ctx)
+func (c *Client) getRawOpenPositions(ctx context.Context, req binancePositionsRequest) (*models.PositionInformationV3Response, error) {
+	r := c.sdkClient.RestApi.TradeAPI.PositionInformationV3(ctx)
 	if req.Symbol != "" {
 		r = r.Symbol(req.Symbol)
 	}
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.PositionInformationV2Execute(r)
+	resp, err := c.sdkClient.RestApi.TradeAPI.PositionInformationV3Execute(r)
 	if err != nil {
 		return nil, fmt.Errorf("binance position information: %w", err)
 	}
@@ -197,6 +198,18 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
+type aggregatedTradeResults struct {
+	openingQty              float64
+	openingWeightedPriceSum float64
+	openingCommission       float64
+	closingQty              float64
+	closingWeightedPriceSum float64
+	closingCommission       float64
+	totalRealizedPnl        float64
+	latestTrade             models.AccountTradeListResponseInner
+	hasClosingTrade         bool
+}
+
 // GetRecentClosedPnL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// Look up numeric orderID from client order ID (extOrderID / clientOid).
@@ -221,93 +234,39 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		req.StartTime = startTime.UnixMilli()
 	}
 
-	var items []models.AccountTradeListResponseInner
+	isOpenLong := (orderInfo.Side == exchange.SideOpenLong)
 
-	operation := func() error {
-		resp, err := c.getRawAccountTrades(ctx, req)
-		if err != nil {
-			return err
-		}
-		if len(resp.Items) == 0 {
-			return fmt.Errorf("no user trades found for symbol %s since %v", symbol, startTime)
-		}
-		items = resp.Items
-		return nil
+	items, _, err := c.fetchAccountTradesWithRetry(ctx, req, symbol, openingOrderId, startTime, isOpenLong, orderInfo.DealVol)
+	if err != nil {
+		return nil, err
 	}
 
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Millisecond*200),
-				backoff.WithMaxInterval(time.Second*2)),
-			4),
-		ctx,
-	)
+	agg := c.aggregateClosedTrades(items, openingOrderId, startTime, isOpenLong, orderInfo.DealVol)
 
-	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
-		c.logger.ErrorContext(ctx, "retry closed trades query", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
-	}); err != nil {
-		return nil, fmt.Errorf("query closed trades failed: %w", err)
-	}
-
-	var openingQty float64
-	var openingWeightedPriceSum float64
-	var openingCommission float64
-
-	var closingQty float64
-	var closingWeightedPriceSum float64
-	var closingCommission float64
-	var totalRealizedPnl float64
-
-	var latestTrade models.AccountTradeListResponseInner
-	var hasClosingTrade bool
-
-	for i := range items {
-		item := &items[i]
-		qty := decmath.ParseFloat(item.GetQty())
-		price := decmath.ParseFloat(item.GetPrice())
-		realizedPnl := decmath.ParseFloat(item.GetRealizedPnl())
-		commission := decmath.ParseFloat(item.GetCommission())
-		itemOrderId := item.GetOrderId()
-
-		if itemOrderId == openingOrderId {
-			openingQty += qty
-			openingWeightedPriceSum += price * qty
-			openingCommission += commission
-		} else {
-			closingQty += qty
-			closingWeightedPriceSum += price * qty
-			closingCommission += commission
-			totalRealizedPnl += realizedPnl
-			latestTrade = *item
-			hasClosingTrade = true
-		}
-	}
-
-	if openingQty == 0 {
+	if agg.openingQty == 0 {
 		return nil, fmt.Errorf("zero opening quantity for order %d", openingOrderId)
 	}
 
-	entryPrice := openingWeightedPriceSum / openingQty
+	entryPrice := agg.openingWeightedPriceSum / agg.openingQty
 	var exitPrice float64
 	var closedSize float64
 	var fee float64
 
-	if hasClosingTrade && closingQty > 0 {
-		exitPrice = closingWeightedPriceSum / closingQty
-		closedSize = closingQty
-		fee = openingCommission + closingCommission
+	if agg.hasClosingTrade && agg.closingQty > 0 {
+		exitPrice = agg.closingWeightedPriceSum / agg.closingQty
+		closedSize = agg.closingQty
+		fee = agg.openingCommission + agg.closingCommission
 	} else {
 		// Fallback if closing trades are not yet in the ledger (asynchronous propagation delay).
 		// We use entry price as exit price fallback.
 		exitPrice = entryPrice
-		closedSize = openingQty
-		fee = openingCommission
+		closedSize = agg.openingQty
+		fee = agg.openingCommission
 	}
 
 	durationMs := int64(0)
-	if hasClosingTrade && !startTime.IsZero() {
-		durationMs = max(latestTrade.GetTime()-startTime.UnixMilli(), 0)
+	if agg.hasClosingTrade && !startTime.IsZero() {
+		durationMs = max(agg.latestTrade.GetTime()-startTime.UnixMilli(), 0)
 	}
 
 	fdFee, err := c.getHoldFee(ctx, symbol, startTime)
@@ -320,12 +279,182 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,
 		ClosedSize: closedSize,
-		GrossPnL:   totalRealizedPnl,
+		GrossPnL:   agg.totalRealizedPnl,
 		Fee:        fee,
 		FundingFee: fdFee,
 		DurationMs: durationMs,
-		NetPnl:     totalRealizedPnl - fee + fdFee,
+		NetPnl:     agg.totalRealizedPnl - fee + fdFee,
 	}, nil
+}
+
+func (c *Client) aggregateClosedTrades(
+	items []models.AccountTradeListResponseInner,
+	openingOrderId int64,
+	startTime time.Time,
+	isOpenLong bool,
+	expectedVol float64,
+) aggregatedTradeResults {
+	var res aggregatedTradeResults
+
+	// Sort trades by Trade ID (strictly sequential and ascending) to ensure chronological order for capping
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].GetId() < items[j].GetId()
+	})
+
+	remainingCloseVol := expectedVol
+
+	for i := range items {
+		item := &items[i]
+		qty := decmath.ParseFloat(item.GetQty())
+		price := decmath.ParseFloat(item.GetPrice())
+		realizedPnl := decmath.ParseFloat(item.GetRealizedPnl())
+		commission := decmath.ParseFloat(item.GetCommission())
+		itemOrderId := item.GetOrderId()
+
+		if itemOrderId == openingOrderId {
+			res.openingQty += qty
+			res.openingWeightedPriceSum += price * qty
+			res.openingCommission += commission
+		} else {
+			// Time filter: must be >= startTime
+			if !startTime.IsZero() && item.GetTime() < startTime.UnixMilli() {
+				continue
+			}
+
+			// Side Filter: must be opposite side of opening order
+			isOppositeSide := false
+			if isOpenLong {
+				isOppositeSide = !item.GetBuyer() || item.GetSide() == sideSell
+			} else {
+				isOppositeSide = item.GetBuyer() || item.GetSide() == sideBuy
+			}
+
+			if !isOppositeSide {
+				continue
+			}
+
+			if expectedVol > 0 && remainingCloseVol <= 0 {
+				continue // Skip extra closing trades once target volume is reached
+			}
+
+			takeQty := qty
+			ratio := 1.0
+			if expectedVol > 0 && qty > remainingCloseVol {
+				takeQty = remainingCloseVol
+				ratio = remainingCloseVol / qty
+				remainingCloseVol = 0
+			} else if expectedVol > 0 {
+				remainingCloseVol -= qty
+			}
+
+			res.closingQty += takeQty
+			res.closingWeightedPriceSum += price * takeQty
+			res.closingCommission += commission * ratio
+			res.totalRealizedPnl += realizedPnl * ratio
+			res.latestTrade = *item
+			res.hasClosingTrade = true
+		}
+	}
+
+	return res
+}
+
+func (c *Client) fetchAccountTradesWithRetry(
+	ctx context.Context,
+	req binanceAccountTradeListRequest,
+	symbol string,
+	openingOrderId int64,
+	startTime time.Time,
+	isOpenLong bool,
+	expectedVol float64,
+) ([]models.AccountTradeListResponseInner, bool, error) {
+	var items []models.AccountTradeListResponseInner
+	var hasClosing bool
+
+	operation := func() error {
+		var err error
+		items, hasClosing, err = c.tryFetchAccountTrades(ctx, req, openingOrderId, startTime, isOpenLong, expectedVol)
+		if err != nil {
+			return err
+		}
+		if !hasClosing {
+			return fmt.Errorf("closing trade not found yet (propagation delay)")
+		}
+		return nil
+	}
+
+	eb := backoff.NewExponentialBackOff()
+	eb.InitialInterval = time.Millisecond * 200
+	eb.MaxInterval = time.Second * 2
+	eb.MaxElapsedTime = 0 // rely on MaxRetries
+
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(eb, 4),
+		ctx,
+	)
+
+	err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
+		c.logger.InfoContext(ctx, "retry closed trades query", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
+	})
+
+	if err != nil {
+		if len(items) > 0 {
+			return items, false, nil
+		}
+		return nil, false, err
+	}
+
+	return items, hasClosing, nil
+}
+
+func (c *Client) tryFetchAccountTrades(
+	ctx context.Context,
+	req binanceAccountTradeListRequest,
+	openingOrderId int64,
+	startTime time.Time,
+	isOpenLong bool,
+	expectedVol float64,
+) ([]models.AccountTradeListResponseInner, bool, error) {
+	resp, err := c.getRawAccountTrades(ctx, req)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(resp.Items) == 0 {
+		return nil, false, fmt.Errorf("no user trades found")
+	}
+
+	var closingQty float64
+	for i := range resp.Items {
+		item := &resp.Items[i]
+		if item.GetOrderId() != openingOrderId {
+			// Time Filter: must be >= startTime
+			if !startTime.IsZero() && item.GetTime() < startTime.UnixMilli() {
+				continue
+			}
+			// Side Filter: must be opposite side of opening order
+			isOppositeSide := false
+			if isOpenLong {
+				isOppositeSide = !item.GetBuyer() || item.GetSide() == sideSell
+			} else {
+				isOppositeSide = item.GetBuyer() || item.GetSide() == sideBuy
+			}
+
+			if isOppositeSide {
+				closingQty += decmath.ParseFloat(item.GetQty())
+			}
+		}
+	}
+
+	hasClosing := false
+	if expectedVol > 0 {
+		if closingQty >= expectedVol-1e-9 {
+			hasClosing = true
+		}
+	} else if closingQty > 0 {
+		hasClosing = true
+	}
+
+	return resp.Items, hasClosing, nil
 }
 
 func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.Time) (float64, error) {

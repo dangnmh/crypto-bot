@@ -340,7 +340,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		assert.Contains(t, r.URL.Path, "/fapi/v2/positionRisk")
+		assert.Contains(t, r.URL.Path, "/fapi/v3/positionRisk")
 
 		_, _ = w.Write([]byte(`[
 			{
@@ -441,7 +441,7 @@ func TestClient_ExtendedPrivateMethods(t *testing.T) {
 			return
 		}
 
-		if r.Method == "GET" && r.URL.Path == "/fapi/v2/positionRisk" {
+		if r.Method == "GET" && r.URL.Path == "/fapi/v3/positionRisk" {
 			_, _ = w.Write([]byte(`[
 				{
 					"symbol": "BTCUSDT",
@@ -627,22 +627,31 @@ func TestClient_PlaceTPSL(t *testing.T) {
 func TestClient_GetRecentClosedPnL(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/fapi/v1/order":
-			assert.Equal(t, "GET", r.Method)
-			_, _ = w.Write([]byte(`{
+	cases := []struct {
+		name            string
+		orderResponse   string
+		tradesResponse  string
+		incomeResponse  string
+		orderErr        bool
+		expectedError   string
+		expectedEntry   float64
+		expectedExit    float64
+		expectedSize    float64
+		expectedGross   float64
+		expectedFee     float64
+		expectedFunding float64
+		expectedNet     float64
+	}{
+		{
+			name: "Standard",
+			orderResponse: `{
 				"orderId": 123456,
 				"symbol": "BTCUSDT",
 				"status": "FILLED",
-				"clientOrderId": "ext_123"
-			}`))
-		case "/fapi/v1/userTrades":
-			assert.Equal(t, "GET", r.Method)
-			_, _ = w.Write([]byte(`[
+				"clientOrderId": "ext_123",
+				"side": "BUY"
+			}`,
+			tradesResponse: `[
 				{
 					"symbol": "BTCUSDT",
 					"id": 1,
@@ -667,10 +676,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 					"side": "SELL",
 					"time": 1672531260000
 				}
-			]`))
-		case "/fapi/v1/income":
-			assert.Equal(t, "GET", r.Method)
-			_, _ = w.Write([]byte(`[
+			]`,
+			incomeResponse: `[
 				{
 					"symbol": "BTCUSDT",
 					"incomeType": "FUNDING_FEE",
@@ -678,43 +685,50 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 					"asset": "USDT",
 					"time": 1672531230000
 				}
-			]`))
-		default:
-			t.Errorf("Unexpected path request: %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", now)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", res.Symbol)
-	assert.Equal(t, 50000.0, res.EntryPrice)
-	assert.Equal(t, 52000.0, res.ExitPrice)
-	assert.Equal(t, 0.5, res.ClosedSize)
-	assert.Equal(t, 1000.0, res.GrossPnL)
-	assert.Equal(t, 3.06, res.Fee)
-	assert.Equal(t, -5.5, res.FundingFee)
-	assert.Equal(t, 1000.0-3.06-5.5, res.NetPnl)
-}
-
-func TestClient_GetRecentClosedPnL_Fallback(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/fapi/v1/order":
-			_, _ = w.Write([]byte(`{
+			]`,
+			expectedEntry:   50000.0,
+			expectedExit:    52000.0,
+			expectedSize:    0.5,
+			expectedGross:   1000.0,
+			expectedFee:     3.06,
+			expectedFunding: -5.5,
+			expectedNet:     1000.0 - 3.06 - 5.5,
+		},
+		{
+			name: "Capping and Sorting",
+			orderResponse: `{
 				"orderId": 123456,
 				"symbol": "BTCUSDT",
-				"status": "FILLED"
-			}`))
-		case "/fapi/v1/userTrades":
-			_, _ = w.Write([]byte(`[
+				"status": "FILLED",
+				"clientOrderId": "ext_123",
+				"side": "BUY",
+				"executedQty": "0.5"
+			}`,
+			tradesResponse: `[
+				{
+					"symbol": "BTCUSDT",
+					"id": 3,
+					"orderId": 789013,
+					"price": "53000.0",
+					"qty": "0.4",
+					"commission": "2.0",
+					"commissionAsset": "USDT",
+					"realizedPnl": "1200.0",
+					"side": "SELL",
+					"time": 1672531260000
+				},
+				{
+					"symbol": "BTCUSDT",
+					"id": 2,
+					"orderId": 789012,
+					"price": "52000.0",
+					"qty": "0.3",
+					"commission": "1.0",
+					"commissionAsset": "USDT",
+					"realizedPnl": "600.0",
+					"side": "SELL",
+					"time": 1672531230000
+				},
 				{
 					"symbol": "BTCUSDT",
 					"id": 1,
@@ -727,69 +741,71 @@ func TestClient_GetRecentClosedPnL_Fallback(t *testing.T) {
 					"side": "BUY",
 					"time": 1672531200000
 				}
-			]`))
-		case "/fapi/v1/income":
-			_, _ = w.Write([]byte(`[]`))
-		}
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", now)
-	require.NoError(t, err)
-	assert.Equal(t, 50000.0, res.EntryPrice)
-	assert.Equal(t, 50000.0, res.ExitPrice)
-	assert.Equal(t, 0.5, res.ClosedSize)
-	assert.Equal(t, 1.5, res.Fee)
-}
-
-func TestClient_GetRecentClosedPnL_GetOrderError(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"code": -2011, "msg": "Unknown Order"}`))
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.Now())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "get order by external ID")
-}
-
-func TestClient_GetRecentClosedPnL_ParseOrderIDError(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"symbol": "BTCUSDT",
-			"status": "FILLED"
-		}`))
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.Now())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "parse numeric order ID")
-}
-
-func TestClient_GetRecentClosedPnL_ZeroOpeningQty(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/fapi/v1/order":
-			_, _ = w.Write([]byte(`{"orderId": 123456, "symbol": "BTCUSDT"}`))
-		case "/fapi/v1/userTrades":
-			_, _ = w.Write([]byte(`[
+			]`,
+			incomeResponse:  `[]`,
+			expectedEntry:   50000.0,
+			expectedExit:    52400.0,
+			expectedSize:    0.5,
+			expectedGross:   1200.0,
+			expectedFee:     3.5,
+			expectedFunding: 0.0,
+			expectedNet:     1200.0 - 3.5,
+		},
+		{
+			name: "Fallback (No closing trades found)",
+			orderResponse: `{
+				"orderId": 123456,
+				"symbol": "BTCUSDT",
+				"status": "FILLED",
+				"clientOrderId": "ext_123",
+				"side": "BUY"
+			}`,
+			tradesResponse: `[
+				{
+					"symbol": "BTCUSDT",
+					"id": 1,
+					"orderId": 123456,
+					"price": "50000.0",
+					"qty": "0.5",
+					"commission": "1.5",
+					"commissionAsset": "USDT",
+					"realizedPnl": "0.0",
+					"side": "BUY",
+					"time": 1672531200000
+				}
+			]`,
+			incomeResponse:  `[]`,
+			expectedEntry:   50000.0,
+			expectedExit:    50000.0,
+			expectedSize:    0.5,
+			expectedGross:   0.0,
+			expectedFee:     1.5,
+			expectedFunding: 0.0,
+			expectedNet:     -1.5,
+		},
+		{
+			name:          "Order Error",
+			orderErr:      true,
+			expectedError: "binance get order by external ID",
+		},
+		{
+			name: "Parse Order ID Error",
+			orderResponse: `{
+				"symbol": "BTCUSDT",
+				"status": "FILLED"
+			}`,
+			expectedError: "binance parse numeric order ID",
+		},
+		{
+			name: "Zero Opening Qty Error",
+			orderResponse: `{
+				"orderId": 123456,
+				"symbol": "BTCUSDT",
+				"status": "FILLED",
+				"clientOrderId": "ext_123",
+				"side": "BUY"
+			}`,
+			tradesResponse: `[
 				{
 					"symbol": "BTCUSDT",
 					"id": 1,
@@ -802,18 +818,53 @@ func TestClient_GetRecentClosedPnL_ZeroOpeningQty(t *testing.T) {
 					"side": "BUY",
 					"time": 1672531200000
 				}
-			]`))
-		case "/fapi/v1/income":
-			_, _ = w.Write([]byte(`[]`))
-		}
-	}))
-	defer server.Close()
+			]`,
+			incomeResponse: `[]`,
+			expectedError:  "zero opening quantity for order",
+		},
+	}
 
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.Now())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "zero opening quantity for order")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if tc.orderErr {
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = w.Write([]byte(`{"code": -1102, "msg": "Mandatory parameter was not sent"}`))
+					return
+				}
+				switch r.URL.Path {
+				case "/fapi/v1/order":
+					_, _ = w.Write([]byte(tc.orderResponse))
+				case "/fapi/v1/userTrades":
+					_, _ = w.Write([]byte(tc.tradesResponse))
+				case "/fapi/v1/income":
+					_, _ = w.Write([]byte(tc.incomeResponse))
+				}
+			}))
+			defer server.Close()
+
+			client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+			res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.UnixMilli(1672531100000))
+
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, "BTCUSDT", res.Symbol)
+				assert.Equal(t, tc.expectedEntry, res.EntryPrice)
+				assert.Equal(t, tc.expectedExit, res.ExitPrice)
+				assert.Equal(t, tc.expectedSize, res.ClosedSize)
+				assert.Equal(t, tc.expectedGross, res.GrossPnL)
+				assert.Equal(t, tc.expectedFee, res.Fee)
+				assert.Equal(t, tc.expectedFunding, res.FundingFee)
+				assert.Equal(t, tc.expectedNet, res.NetPnl)
+			}
+		})
+	}
 }
 
 func TestDecompressionRoundTripper(t *testing.T) {

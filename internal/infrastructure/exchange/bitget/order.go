@@ -11,17 +11,19 @@ import (
 )
 
 type bitgetCreateOrderRequest struct {
-	Symbol      string `json:"symbol"`
-	ProductType string `json:"productType"`
-	MarginMode  string `json:"marginMode"`
-	Side        string `json:"side"`
-	OrderType   string `json:"orderType"`
-	Size        string `json:"size"`
-	MarginCoin  string `json:"marginCoin"`
-	TradeSide   string `json:"tradeSide,omitempty"`
-	Price       string `json:"price,omitempty"`
-	ClientOid   string `json:"clientOid,omitempty"`
-	ReduceOnly  bool   `json:"reduceOnly,omitempty"`
+	Symbol                 string `json:"symbol"`
+	ProductType            string `json:"productType"`
+	MarginMode             string `json:"marginMode"`
+	Side                   string `json:"side"`
+	OrderType              string `json:"orderType"`
+	Size                   string `json:"size"`
+	MarginCoin             string `json:"marginCoin"`
+	TradeSide              string `json:"tradeSide,omitempty"`
+	Price                  string `json:"price,omitempty"`
+	ClientOid              string `json:"clientOid,omitempty"`
+	ReduceOnly             string `json:"reduceOnly,omitempty"`
+	PresetStopSurplusPrice string `json:"presetStopSurplusPrice,omitempty"`
+	PresetStopLossPrice    string `json:"presetStopLossPrice,omitempty"`
 }
 
 type bitgetCreateOrderResponse struct {
@@ -102,8 +104,16 @@ func (c *Client) createRawOrder(ctx context.Context, req bitgetCreateOrderReques
 		bodyMap["clientOid"] = req.ClientOid
 	}
 
-	if req.ReduceOnly {
-		bodyMap["reduceOnly"] = true
+	if req.ReduceOnly != "" {
+		bodyMap["reduceOnly"] = req.ReduceOnly
+	}
+
+	if req.PresetStopSurplusPrice != "" {
+		bodyMap["presetStopSurplusPrice"] = req.PresetStopSurplusPrice
+	}
+
+	if req.PresetStopLossPrice != "" {
+		bodyMap["presetStopLossPrice"] = req.PresetStopLossPrice
 	}
 
 	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
@@ -202,16 +212,33 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		marginMode = modeCrossed
 	}
 
+	reduceOnlyVal := "NO"
+	if req.ReduceOnly {
+		reduceOnlyVal = "YES"
+	}
+
+	var presetStopSurplusPrice string
+	if req.TakeProfitPrice > 0 {
+		presetStopSurplusPrice = fmt.Sprintf("%g", req.TakeProfitPrice)
+	}
+
+	var presetStopLossPrice string
+	if req.StopLossPrice > 0 {
+		presetStopLossPrice = fmt.Sprintf("%g", req.StopLossPrice)
+	}
+
 	rawReq := bitgetCreateOrderRequest{
-		Symbol:      req.Symbol,
-		ProductType: productTypeUsdtFutures,
-		MarginMode:  marginMode,
-		Side:        side,
-		OrderType:   ordType,
-		Size:        fmt.Sprintf("%g", req.Vol),
-		MarginCoin:  constantUsdt,
-		ClientOid:   req.ExternalOID,
-		ReduceOnly:  req.ReduceOnly,
+		Symbol:                 req.Symbol,
+		ProductType:            productTypeUsdtFutures,
+		MarginMode:             marginMode,
+		Side:                   side,
+		OrderType:              ordType,
+		Size:                   fmt.Sprintf("%g", req.Vol),
+		MarginCoin:             constantUsdt,
+		ClientOid:              req.ExternalOID,
+		ReduceOnly:             reduceOnlyVal,
+		PresetStopSurplusPrice: presetStopSurplusPrice,
+		PresetStopLossPrice:    presetStopLossPrice,
 	}
 
 	if isHedge {
@@ -227,16 +254,18 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return exchange.CreateOrderResult{}, err
 	}
 
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
+
 	if res.OrderID == "" && req.ExternalOID != "" {
 		return exchange.CreateOrderResult{
 			OrderID:       req.ExternalOID,
-			TPSLSubmitted: false,
+			TPSLSubmitted: tpslSubmitted,
 		}, nil
 	}
 
 	return exchange.CreateOrderResult{
 		OrderID:       res.OrderID,
-		TPSLSubmitted: false,
+		TPSLSubmitted: tpslSubmitted,
 	}, nil
 }
 
