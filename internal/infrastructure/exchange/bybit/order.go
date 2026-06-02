@@ -488,12 +488,14 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 
 // structToMap converts any struct to a map[string]any.
 func structToMap(val any) map[string]any {
-	bytes, err := json.Marshal(val)
+	data, err := json.Marshal(val)
 	if err != nil {
 		return nil
 	}
 	var res map[string]any
-	if err := json.Unmarshal(bytes, &res); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&res); err != nil {
 		return nil
 	}
 	return res

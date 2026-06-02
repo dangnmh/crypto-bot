@@ -1129,6 +1129,10 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 					}`))
 					return
 				}
+				if strings.Contains(r.URL.Path, "/v5/position/closed-pnl") {
+					st := r.URL.Query().Get("startTime")
+					assert.Equal(t, "1780415999000", st)
+				}
 				now := time.Now().UnixMilli()
 				resStr := strings.ReplaceAll(tt.response, "{{UPDATED_TIME}}", fmt.Sprintf("%d", now))
 				resStr = strings.ReplaceAll(resStr, "{{CREATED_TIME}}", fmt.Sprintf("%d", now-5000))
@@ -1137,7 +1141,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			defer server.Close()
 
 			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
-			info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext-123", time.Time{})
+			testTime := time.UnixMilli(1780415999000)
+			info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext-123", testTime)
 
 			if tt.wantErr != "" {
 				assert.Error(t, err)
