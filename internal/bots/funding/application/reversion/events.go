@@ -133,6 +133,13 @@ func (e CandidateFoundEvent) GetDataMap() map[string]any {
 	return map[string]any{keySymbol: e.Symbol, keyFundingRate: e.Candidate.FundingRate, "side": e.Candidate.Side.String()}
 }
 
+func (e CandidateFoundEvent) DeduplicateKey() string {
+	if e.SettleTime.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("reversion:%s:%s:%d", e.Exchange, e.Symbol, e.SettleTime.Unix())
+}
+
 type ArmMarketReadyEvent struct {
 	BaseReversionEvent
 	Candidate fundingdomain.Candidate `json:"candidate"`

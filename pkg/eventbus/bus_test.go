@@ -144,3 +144,62 @@ func TestPublish_OnClosedBus(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "publish to")
 }
+
+type mockDeduplicatable struct {
+	Key string `json:"key"`
+	Val string `json:"val"`
+}
+
+func (m mockDeduplicatable) DeduplicateKey() string {
+	return m.Key
+}
+
+func TestPublish_Deduplication(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New(slog.Default())
+	defer func() { _ = bus.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	msgs, err := bus.Subscribe(ctx, "test.dedup")
+	require.NoError(t, err)
+
+	// Publish first event
+	evt1 := mockDeduplicatable{Key: "key-1", Val: "first"}
+	err = bus.Publish("test.dedup", evt1)
+	require.NoError(t, err)
+
+	// Publish second event with same key (should be deduplicated/dropped)
+	evt2 := mockDeduplicatable{Key: "key-1", Val: "second"}
+	err = bus.Publish("test.dedup", evt2)
+	require.NoError(t, err)
+
+	// Publish third event with different key (should succeed)
+	evt3 := mockDeduplicatable{Key: "key-2", Val: "third"}
+	err = bus.Publish("test.dedup", evt3)
+	require.NoError(t, err)
+
+	// We should receive exactly 2 messages (evt1 and evt3, in any order)
+	var received []string
+	for range 2 {
+		select {
+		case msg := <-msgs:
+			var rec mockDeduplicatable
+			require.NoError(t, json.Unmarshal(msg.Payload, &rec))
+			received = append(received, rec.Val)
+			msg.Ack()
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for message")
+		}
+	}
+
+	assert.Contains(t, received, "first")
+	assert.Contains(t, received, "third")
+	assert.NotContains(t, received, "second")
+
+	// Verify timeline only has 2 entries (since the duplicate one is dropped before log/publish)
+	timeline := bus.Timeline()
+	assert.Len(t, timeline, 2)
+}

@@ -26,6 +26,8 @@ github.com/bybit-exchange/bybit.go.api v1.1.1 h1:YrVVK7FpmKZ7W3D5b7HheYepx3hyqIl
 github.com/bybit-exchange/bybit.go.api v1.1.1/go.mod h1:P22TFRynmYRrquJCPalKxZgIIIc9+PkC4kQPeejitsI=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
+github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
+github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/consensys/gnark-crypto v0.20.1 h1:PXDUBvk8AzhvWowHLWBEAfUQcV1/aZgWIqD6eMpXmDg=
 github.com/consensys/gnark-crypto v0.20.1/go.mod h1:RBWrSgy+IDbGR69RRV313th3M/aZU1ubk2om+qHuTSc=
 github.com/crate-crypto/go-eth-kzg v1.5.0 h1:FYRiJMJG2iv+2Dy3fi14SVGjcPteZ5HAAUe4YWlJygc=
@@ -153,6 +155,8 @@ github.com/sonirico/vago v0.11.4 h1:KlKh5iYYxKii1bhReKDIE10LPz/GPPqAcn4EvZl4t54=
 github.com/sonirico/vago v0.11.4/go.mod h1:HCfnyPHId7V+zBZ5BLfIsdHIO+ewo6+uhF1N0hxlldc=
 github.com/sonirico/vago/lol v0.1.0 h1:YjI+JAQ6enMYlpoM23w6J+1b11TJ8rqPpuD2NDHdFlA=
 github.com/sonirico/vago/lol v0.1.0/go.mod h1:k8CVrcWhKbPSX5821lt8L64z/DaST2TUaxiJOdPaSA0=
+github.com/sony/gobreaker v1.0.0 h1:feX5fGGXSl3dYd4aHZItw+FpHLvvoaqkawKjVNiFMNQ=
+github.com/sony/gobreaker v1.0.0/go.mod h1:ZKptC7FHNvhBz7dN2LGjPVBz2sZJmc0/PkyDJOjmxWY=
 github.com/sony/gobreaker/v2 v2.4.0 h1:g2KJRW1Ubty3+ZOcSEUN7K+REQJdN6yo6XvaML+jptg=
 github.com/sony/gobreaker/v2 v2.4.0/go.mod h1:pTyFJgcZ3h2tdQVLZZruK2C0eoFL1fb/G83wK1ZQl+s=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

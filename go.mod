@@ -34,6 +34,7 @@ require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/consensys/gnark-crypto v0.20.1 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -63,6 +64,7 @@ require (
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/sonirico/vago v0.11.4 // indirect
 	github.com/sonirico/vago/lol v0.1.0 // indirect
+	github.com/sony/gobreaker v1.0.0 // indirect
 	github.com/sony/gobreaker/v2 v2.4.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect

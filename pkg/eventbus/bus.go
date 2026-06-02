@@ -16,14 +16,21 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 )
+
+// Deduplicatable represents an event that can provide a key to prevent duplicate publishing.
+type Deduplicatable interface {
+	DeduplicateKey() string
+}
 
 // Bus wraps a Watermill GoChannel with event logging and lifecycle management.
 // Create one Bus per trading cycle — it is NOT safe for reuse across cycles.
 type Bus struct {
-	pubsub *gochannel.GoChannel
-	logger *slog.Logger
+	pubsub       *gochannel.GoChannel
+	deduplicator *middleware.Deduplicator
+	logger       *slog.Logger
 
 	mu  sync.RWMutex
 	log []LogEntry
@@ -41,10 +48,28 @@ func New(logger *slog.Logger) *Bus {
 		BlockPublishUntilSubscriberAck: false, // Non-blocking publish for performance
 	}, wmLogger)
 
+	repo, err := middleware.NewMapExpiringKeyRepository(24 * time.Hour)
+	if err != nil {
+		panic(fmt.Errorf("eventbus: failed to create expiring key repository: %w", err))
+	}
+
+	dedup := &middleware.Deduplicator{
+		KeyFactory: func(msg *message.Message) (string, error) {
+			key := msg.Metadata.Get("dedup_key")
+			if key == "" {
+				return "uuid:" + msg.UUID, nil
+			}
+			return key, nil
+		},
+		Repository: repo,
+		Timeout:    5 * time.Second,
+	}
+
 	return &Bus{
-		pubsub: ps,
-		logger: logger,
-		log:    make([]LogEntry, 0, 32),
+		pubsub:       ps,
+		deduplicator: dedup,
+		logger:       logger,
+		log:          make([]LogEntry, 0, 32),
 	}
 }
 
@@ -57,6 +82,27 @@ func (b *Bus) Publish(topic string, payload any) error {
 	}
 
 	msg := message.NewMessage(watermill.NewUUID(), data)
+
+	// Extract deduplication key if payload implements Deduplicatable
+	if dedup, ok := payload.(Deduplicatable); ok {
+		key := dedup.DeduplicateKey()
+		if key != "" {
+			msg.Metadata.Set("dedup_key", key)
+
+			// Check duplicate using Watermill Deduplicator
+			isDup, err := b.deduplicator.IsDuplicate(msg)
+			if err != nil {
+				return fmt.Errorf("eventbus: check duplicate: %w", err)
+			}
+			if isDup {
+				b.logger.Warn("eventbus: duplicate event detected, skipping publication",
+					slog.String("key", key),
+					slog.String("topic", topic),
+				)
+				return nil
+			}
+		}
+	}
 
 	// Record in event log
 	b.mu.Lock()
