@@ -28,7 +28,6 @@ type bybitClosedPnLRequest struct {
 	Category  string `json:"category"`
 	Symbol    string `json:"symbol"`
 	Limit     int    `json:"limit,omitempty"`
-	OrderID   string `json:"orderId,omitempty"`
 	StartTime int64  `json:"startTime,omitempty"`
 }
 
@@ -268,14 +267,12 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("%s", errStr)
 	}
 
-	numericOrderID := rawOrder.OrderID
 	entryCreatedTimeStr := rawOrder.CreatedTime
 
 	req := bybitClosedPnLRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,
 		Limit:    10,
-		OrderID:  numericOrderID,
 	}
 	if !startTime.IsZero() {
 		req.StartTime = startTime.UnixMilli()
@@ -308,7 +305,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	bo := backoff.WithContext(
 		backoff.WithMaxRetries(
 			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Millisecond*200),
+				backoff.WithInitialInterval(time.Second),
 				backoff.WithMaxInterval(time.Second*2)),
 			4),
 		ctx,

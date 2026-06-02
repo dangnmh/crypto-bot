@@ -383,13 +383,11 @@ func (c *Client) fetchAccountTradesWithRetry(
 		return nil
 	}
 
-	eb := backoff.NewExponentialBackOff()
-	eb.InitialInterval = time.Millisecond * 200
-	eb.MaxInterval = time.Second * 2
-	eb.MaxElapsedTime = 0 // rely on MaxRetries
-
 	bo := backoff.WithContext(
-		backoff.WithMaxRetries(eb, 4),
+		backoff.WithMaxRetries(backoff.NewExponentialBackOff(
+			backoff.WithInitialInterval(time.Second),
+			backoff.WithMaxInterval(time.Second*2)),
+			4),
 		ctx,
 	)
 
