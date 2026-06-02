@@ -51,6 +51,8 @@ type Opportunity struct {
 func main() {
 	var exchangesFlag string
 	flag.StringVar(&exchangesFlag, "exchanges", "", "Comma-separated list of exchanges to scan (e.g. binance,bybit,okx). If empty, scans all.")
+	var minFundingRate float64
+	flag.Float64Var(&minFundingRate, "minFundingRate", 0.3, "Minimum absolute funding rate (in percent) to filter. E.g. 0.1 for 0.1%")
 	flag.Parse()
 
 	// Parse targeted exchanges if provided
@@ -178,6 +180,10 @@ func main() {
 			var localOpps []Opportunity
 			for _, r := range results {
 				if r.Rate == 0 {
+					continue
+				}
+
+				if minFundingRate > 0 && math.Abs(r.Rate)*100 < minFundingRate {
 					continue
 				}
 

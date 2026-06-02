@@ -9,43 +9,242 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
+// Explicit request/response structs for order endpoints.
+
+type mexcCreateOrderRequest struct {
+	Symbol          string  `json:"symbol"`
+	Price           float64 `json:"price,omitempty"`
+	Vol             float64 `json:"vol"`
+	Leverage        int     `json:"leverage,omitempty"`
+	Side            int     `json:"side"`
+	Type            int     `json:"type"`
+	OpenType        int     `json:"openType,omitempty"`
+	ExternalOID     string  `json:"externalOid,omitempty"`
+	PositionID      int64   `json:"positionId,omitempty"`
+	PositionMode    int     `json:"positionMode,omitempty"`
+	ReduceOnly      bool    `json:"reduceOnly,omitempty"`
+	FlashClose      bool    `json:"flashClose,omitempty"`
+	StopLossPrice   float64 `json:"stopLossPrice,omitempty"`
+	TakeProfitPrice float64 `json:"takeProfitPrice,omitempty"`
+}
+
+type mexcCreateOrderResponse struct {
+	OrderID string `json:"orderId"`
+	Ts      int64  `json:"ts"`
+}
+
+type mexcSubmitTrackOrderRequest struct {
+	Symbol       string  `json:"symbol"`
+	Leverage     int     `json:"leverage"`
+	Side         int     `json:"side"`
+	Vol          float64 `json:"vol"`
+	OpenType     int     `json:"openType"`
+	Trend        int     `json:"trend"`
+	ActivePrice  float64 `json:"activePrice,omitempty"`
+	BackType     int     `json:"backType"`
+	BackValue    float64 `json:"backValue"`
+	PositionMode int     `json:"positionMode,omitempty"`
+	ReduceOnly   bool    `json:"reduceOnly,omitempty"`
+}
+
+type mexcCancelOrdersRequest []string
+
+type mexcCancelOrderResult struct {
+	OrderID   int64  `json:"orderId"`
+	ErrorCode int    `json:"errorCode"`
+	ErrorMsg  string `json:"errorMsg"`
+}
+
+type mexcCancelAllOpenOrdersRequest struct {
+	Symbol string `json:"symbol"`
+}
+
+type mexcGetOrderRequest struct {
+	OrderID string `json:"orderId"`
+}
+
+type mexcGetOrderByExternalRequest struct {
+	Symbol      string `json:"symbol"`
+	ExternalOID string `json:"externalOid"`
+}
+
+type mexcOpenOrdersRequest struct {
+	Symbol string `json:"symbol,omitempty"`
+}
+
+type mexcCloseAllPositionsRequest struct {
+	Symbol string `json:"symbol"`
+}
+
+type mexcChangeLeverageRequest struct {
+	Symbol       string `json:"symbol"`
+	Leverage     int    `json:"leverage"`
+	OpenType     int    `json:"openType"`
+	PositionType int    `json:"positionType"`
+}
+
+// Private raw methods invoking the MEXC API.
+
+func (c *Client) createRawOrder(ctx context.Context, req mexcCreateOrderRequest) (*mexcCreateOrderResponse, error) {
+	body, err := c.PostCtx(ctx, "/api/v1/private/order/create", req)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponse[mexcCreateOrderResponse](body, "create_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) createRawTrackOrder(ctx context.Context, req mexcSubmitTrackOrderRequest) (string, error) {
+	body, err := c.PostCtx(ctx, "/api/v1/private/trackorder/place", req)
+	if err != nil {
+		return "", err
+	}
+	return ParseResponse[string](body, "create_track_order")
+}
+
+func (c *Client) cancelRawOrders(ctx context.Context, req mexcCancelOrdersRequest) ([]mexcCancelOrderResult, error) {
+	body, err := c.PostCtx(ctx, "/api/v1/private/order/cancel", req)
+	if err != nil {
+		return nil, err
+	}
+	return parseCancelOrdersResponse(body)
+}
+
+func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req mexcCancelAllOpenOrdersRequest) error {
+	body, err := c.PostCtx(ctx, "/api/v1/private/order/cancel_all", req)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "cancel_all_open_orders")
+}
+
+func (c *Client) getRawOrder(ctx context.Context, req mexcGetOrderRequest) (*mexcOrder, error) {
+	path := fmt.Sprintf("/api/v1/private/order/get/%s", req.OrderID)
+	body, err := c.GetCtx(ctx, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	data, err := ParseResponse[mexcOrder](body, "get_order")
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func (c *Client) getRawOrderByExOrderID(ctx context.Context, req mexcGetOrderByExternalRequest) (*mexcOrder, error) {
+	path := fmt.Sprintf("/api/v1/private/order/external/%s/%s", req.Symbol, req.ExternalOID)
+	body, err := c.GetCtx(ctx, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	data, err := ParseResponse[mexcOrder](body, "get_order_by_external")
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, req mexcOpenOrdersRequest) ([]mexcOrder, error) {
+	params := map[string]any{}
+	if req.Symbol != "" {
+		params[paramSymbol] = req.Symbol
+	}
+	body, err := c.GetCtx(ctx, "/api/v1/private/order/open_orders/", params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[[]mexcOrder](body, "get_open_orders")
+}
+
+func (c *Client) closeRawAllPositions(ctx context.Context, req mexcCloseAllPositionsRequest) error {
+	body, err := c.PostCtx(ctx, "/api/v1/private/position/close_all", req)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "close_all_positions")
+}
+
+func (c *Client) changeRawLeverage(ctx context.Context, req mexcChangeLeverageRequest) error {
+	body, err := c.PostCtx(ctx, "/api/v1/private/position/change_leverage", req)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "change_leverage")
+}
+
+func parseCancelOrdersResponse(body []byte) ([]mexcCancelOrderResult, error) {
+	var raw APIResponse[json.RawMessage]
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("parse cancel_orders response: %w", err)
+	}
+	if !raw.Success {
+		return nil, toAPIError(raw.Code, raw.Message, "cancel_orders")
+	}
+	if len(raw.Data) == 0 || string(raw.Data) == "null" {
+		return nil, nil
+	}
+	var results []mexcCancelOrderResult
+	if err := json.Unmarshal(raw.Data, &results); err != nil {
+		return nil, fmt.Errorf("parse cancel_orders data: %w", err)
+	}
+	return results, nil
+}
+
+// Public mapper methods implementing the exchange.OrderExecutor interface.
+
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	body, err := c.PostCtx(ctx, "/api/v1/private/order/create", req)
+	mexcReq := mexcCreateOrderRequest{
+		Symbol:          req.Symbol,
+		Price:           req.Price,
+		Vol:             req.Vol,
+		Leverage:        req.Leverage,
+		Side:            req.Side,
+		Type:            req.Type,
+		OpenType:        req.OpenType,
+		ExternalOID:     req.ExternalOID,
+		PositionID:      req.PositionID,
+		PositionMode:    req.PositionMode,
+		ReduceOnly:      req.ReduceOnly,
+		FlashClose:      req.FlashClose,
+		StopLossPrice:   req.StopLossPrice,
+		TakeProfitPrice: req.TakeProfitPrice,
+	}
+
+	data, err := c.createRawOrder(ctx, mexcReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
 
-	data, err := ParseResponse[exchange.CreateOrderResponse](body, "create_order")
-	if err != nil {
-		return exchange.CreateOrderResult{}, err
-	}
 	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
 	return exchange.CreateOrderResult{OrderID: data.OrderID, TPSLSubmitted: tpslSubmitted}, nil
 }
 
 // CreateTrackOrder submits a new native trailing stop order and returns the order ID.
 func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	body, err := c.PostCtx(ctx, "/api/v1/private/trackorder/place", req)
-	if err != nil {
-		return "", err
+	mexcReq := mexcSubmitTrackOrderRequest{
+		Symbol:       req.Symbol,
+		Leverage:     req.Leverage,
+		Side:         req.Side,
+		Vol:          req.Vol,
+		OpenType:     req.OpenType,
+		Trend:        req.Trend,
+		ActivePrice:  req.ActivePrice,
+		BackType:     req.BackType,
+		BackValue:    req.BackValue,
+		PositionMode: req.PositionMode,
+		ReduceOnly:   req.ReduceOnly,
 	}
 
-	// For trackorder/place, the data field is a string containing the order ID.
-	data, err := ParseResponse[string](body, "create_track_order")
-	if err != nil {
-		return "", err
-	}
-	return data, nil
+	return c.createRawTrackOrder(ctx, mexcReq)
 }
 
 // CancelOrders cancels one or more orders by their IDs.
 func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
-	body, err := c.PostCtx(ctx, "/api/v1/private/order/cancel", orderIDs)
-	if err != nil {
-		return err
-	}
-	results, err := parseCancelOrdersResponse(body)
+	results, err := c.cancelRawOrders(ctx, mexcCancelOrdersRequest(orderIDs))
 	if err != nil {
 		return err
 	}
@@ -63,12 +262,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	req := map[string]string{paramSymbol: symbol}
-	body, err := c.PostCtx(ctx, "/api/v1/private/order/cancel_all", req)
-	if err != nil {
-		return err
-	}
-	return ParseResponseIgnoreData(body, "cancel_all_open_orders")
+	return c.cancelRawAllOpenOrders(ctx, mexcCancelAllOpenOrdersRequest{Symbol: symbol})
 }
 
 // CancelOrder cancels a single order by its ID.
@@ -76,75 +270,9 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 	return c.CancelOrders(ctx, []string{orderID})
 }
 
-type cancelOrderResult struct {
-	OrderID   int64  `json:"orderId"`
-	ErrorCode int    `json:"errorCode"`
-	ErrorMsg  string `json:"errorMsg"`
-}
-
-func parseCancelOrdersResponse(body []byte) ([]cancelOrderResult, error) {
-	var raw APIResponse[json.RawMessage]
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("parse cancel_orders response: %w", err)
-	}
-	if !raw.Success {
-		return nil, toAPIError(raw.Code, raw.Message, "cancel_orders")
-	}
-	if len(raw.Data) == 0 || string(raw.Data) == "null" {
-		return nil, nil
-	}
-	var results []cancelOrderResult
-	if err := json.Unmarshal(raw.Data, &results); err != nil {
-		return nil, fmt.Errorf("parse cancel_orders data: %w", err)
-	}
-	return results, nil
-}
-
-func (c *Client) getRawOrder(ctx context.Context, orderID string) (*mexcOrder, error) {
-	path := fmt.Sprintf("/api/v1/private/order/get/%s", orderID)
-	body, err := c.GetCtx(ctx, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := ParseResponse[mexcOrder](body, "get_order")
-	if err != nil {
-		return nil, err
-	}
-	return &data, nil
-}
-
-func (c *Client) getRawOrderByExOrderID(ctx context.Context, symbol, extOrderID string) (*mexcOrder, error) {
-	path := fmt.Sprintf("/api/v1/private/order/external/%s/%s", symbol, extOrderID)
-	body, err := c.GetCtx(ctx, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := ParseResponse[mexcOrder](body, "get_order_by_external")
-	if err != nil {
-		return nil, err
-	}
-	return &data, nil
-}
-
-func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]mexcOrder, error) {
-	params := map[string]any{}
-	if symbol != "" {
-		params[paramSymbol] = symbol
-	}
-
-	body, err := c.GetCtx(ctx, "/api/v1/private/order/open_orders/", params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[[]mexcOrder](body, "get_open_orders")
-}
-
 // GetOrder queries a single order by ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, orderID)
+	raw, err := c.getRawOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +281,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOpenOrders returns all open orders, optionally filtered by symbol.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawOrders, err := c.getRawOpenOrders(ctx, symbol)
+	rawOrders, err := c.getRawOpenOrders(ctx, mexcOpenOrdersRequest{Symbol: symbol})
 	if err != nil {
 		return nil, err
 	}
@@ -167,17 +295,12 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 
 // CloseAllPositions closes all positions for a symbol.
 func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	req := map[string]string{paramSymbol: symbol}
-	body, err := c.PostCtx(ctx, "/api/v1/private/position/close_all", req)
-	if err != nil {
-		return err
-	}
-	return ParseResponseIgnoreData(body, "close_all_positions")
+	return c.closeRawAllPositions(ctx, mexcCloseAllPositionsRequest{Symbol: symbol})
 }
 
 // ClosePosition closes one position leg using a reduce-only market order.
 func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
-	req := exchange.SubmitOrderRequest{
+	req := mexcCreateOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
 		Side:         int(closeSide),
@@ -185,19 +308,17 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		PositionMode: positionMode,
 		ReduceOnly:   true,
 	}
-	body, err := c.PostCtx(ctx, "/api/v1/private/order/create", req)
-	if err != nil {
-		return err
-	}
-	_, err = ParseResponse[exchange.CreateOrderResponse](body, "close_position")
+	_, err := c.createRawOrder(ctx, req)
 	return err
 }
 
 // ChangeLeverage changes the leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	body, err := c.PostCtx(ctx, "/api/v1/private/position/change_leverage", req)
-	if err != nil {
-		return err
+	mexcReq := mexcChangeLeverageRequest{
+		Symbol:       req.Symbol,
+		Leverage:     req.Leverage,
+		OpenType:     req.OpenType,
+		PositionType: req.PositionType,
 	}
-	return ParseResponseIgnoreData(body, "change_leverage")
+	return c.changeRawLeverage(ctx, mexcReq)
 }

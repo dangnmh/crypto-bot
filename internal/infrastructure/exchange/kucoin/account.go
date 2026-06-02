@@ -28,14 +28,39 @@ type kucoinPosition struct {
 	LiquidationPrice string `json:"liquidationPrice"`
 }
 
-// GetAssets fetches account balance overview.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+type kucoinAssetsRequest struct{}
+
+type kucoinOpenPositionsRequest struct{}
+
+// Private raw methods invoking the KuCoin REST API.
+
+func (c *Client) getRawAssets(ctx context.Context, _ kucoinAssetsRequest) (*kucoinAccountOverview, error) {
 	body, err := c.GetCtx(ctx, pathAccountBalance, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	overview, err := ParseResponse[kucoinAccountOverview](body, "account_balance")
+	if err != nil {
+		return nil, err
+	}
+	return &overview, nil
+}
+
+func (c *Client) getRawOpenPositions(ctx context.Context, _ kucoinOpenPositionsRequest) ([]kucoinPosition, error) {
+	body, err := c.GetCtx(ctx, pathOpenPositions, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseResponse[[]kucoinPosition](body, "open_positions")
+}
+
+// Public mapper methods implementing the exchange.AccountDataProvider interface.
+
+// GetAssets fetches account balance overview.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	overview, err := c.getRawAssets(ctx, kucoinAssetsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -73,18 +98,9 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-func (c *Client) getRawOpenPositions(ctx context.Context) ([]kucoinPosition, error) {
-	body, err := c.GetCtx(ctx, pathOpenPositions, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[[]kucoinPosition](body, "open_positions")
-}
-
 // GetOpenPositions retrieves currently active futures positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	positions, err := c.getRawOpenPositions(ctx)
+	positions, err := c.getRawOpenPositions(ctx, kucoinOpenPositionsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +117,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		posType := 1 // long
+		posType := 1 // Long.
 		if amt < 0 {
-			posType = 2 // short
+			posType = 2 // Short.
 		}
 
 		absAmt := math.Abs(amt)

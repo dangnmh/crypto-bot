@@ -14,31 +14,147 @@ import (
 	"github.com/samber/lo"
 )
 
-// GetServerTime returns the Binance server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+// Explicit request/response structs for market data endpoints.
+
+type binanceServerTimeRequest struct{}
+type binanceContractDetailsRequest struct{}
+
+type binanceVolumes24hRequest struct {
+	Symbol string
+}
+
+type binanceBookTickersRequest struct {
+	Symbol string
+}
+
+type binanceMarkPricesRequest struct {
+	Symbol string
+}
+
+type binanceKlinesRequest struct {
+	Symbol    string
+	Interval  string
+	StartTime int64
+	EndTime   int64
+}
+
+type binanceDepthRequest struct {
+	Symbol string
+	Limit  int
+}
+
+// Private raw methods invoking the Binance SDK.
+
+func (c *Client) getRawServerTime(ctx context.Context, _ binanceServerTimeRequest) (*models.CheckServerTimeResponse, error) {
 	reqTime := c.sdkClient.RestApi.MarketDataAPI.CheckServerTime(ctx)
 	resp, err := c.sdkClient.RestApi.MarketDataAPI.CheckServerTimeExecute(reqTime)
 	if err != nil {
-		return 0, fmt.Errorf("binance check server time: %w", err)
+		return nil, fmt.Errorf("binance check server time: %w", err)
 	}
-	return resp.Data.GetServerTime(), nil
+	return &resp.Data, nil
 }
 
-// GetContractDetails returns all USD-M futures contract specifications.
-func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+func (c *Client) getRawContractDetails(ctx context.Context, _ binanceContractDetailsRequest) (*models.ExchangeInformationResponse, error) {
 	req := c.sdkClient.RestApi.MarketDataAPI.ExchangeInformation(ctx)
 	resp, err := c.sdkClient.RestApi.MarketDataAPI.ExchangeInformationExecute(req)
 	if err != nil {
 		return nil, fmt.Errorf("binance exchange information: %w", err)
 	}
+	return &resp.Data, nil
+}
 
-	rawSymbols := resp.Data.GetSymbols()
+func (c *Client) getRawVolumes24h(ctx context.Context, req binanceVolumes24hRequest) (*models.Ticker24hrPriceChangeStatisticsResponse, error) {
+	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
+	if req.Symbol != "" {
+		tickerReq = tickerReq.Symbol(req.Symbol)
+	}
+	resp, err := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatisticsExecute(tickerReq)
+	if err != nil {
+		return nil, fmt.Errorf("binance ticker 24h stats: %w", err)
+	}
+	return &resp.Data, nil
+}
+
+func (c *Client) getRawBookTickers(ctx context.Context, req binanceBookTickersRequest) (*models.SymbolOrderBookTickerResponse, error) {
+	bookReq := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTicker(ctx)
+	if req.Symbol != "" {
+		bookReq = bookReq.Symbol(req.Symbol)
+	}
+	resp, err := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTickerExecute(bookReq)
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func (c *Client) getRawMarkPrices(ctx context.Context, req binanceMarkPricesRequest) (*models.MarkPriceResponse, error) {
+	mpReq := c.sdkClient.RestApi.MarketDataAPI.MarkPrice(ctx)
+	if req.Symbol != "" {
+		mpReq = mpReq.Symbol(req.Symbol)
+	}
+	mpResp, err := c.sdkClient.RestApi.MarketDataAPI.MarkPriceExecute(mpReq)
+	if err != nil {
+		return nil, fmt.Errorf("binance mark price premium index: %w", err)
+	}
+	return &mpResp.Data, nil
+}
+
+func (c *Client) getRawKlines(ctx context.Context, req binanceKlinesRequest) (*models.KlineCandlestickDataResponse, error) {
+	r := c.sdkClient.RestApi.MarketDataAPI.KlineCandlestickData(ctx).
+		Symbol(req.Symbol).
+		Interval(models.ContinuousContractKlineCandlestickDataIntervalParameter(req.Interval))
+
+	if req.StartTime > 0 {
+		r = r.StartTime(req.StartTime)
+	}
+	if req.EndTime > 0 {
+		r = r.EndTime(req.EndTime)
+	}
+
+	resp, err := c.sdkClient.RestApi.MarketDataAPI.KlineCandlestickDataExecute(r)
+	if err != nil {
+		return nil, fmt.Errorf("binance klines: %w", err)
+	}
+	return &resp.Data, nil
+}
+
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req binanceDepthRequest) (*models.OrderBookResponse, error) {
+	r := c.sdkClient.RestApi.MarketDataAPI.OrderBook(ctx).Symbol(req.Symbol)
+	if req.Limit > 0 {
+		r = r.Limit(int64(req.Limit))
+	}
+	resp, err := c.sdkClient.RestApi.MarketDataAPI.OrderBookExecute(r)
+	if err != nil {
+		return nil, fmt.Errorf("binance orderbook snapshot: %w", err)
+	}
+	return &resp.Data, nil
+}
+
+// Public mapper methods implementing the exchange.MarketDataProvider interface.
+
+// GetServerTime returns the Binance server timestamp in milliseconds.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	resp, err := c.getRawServerTime(ctx, binanceServerTimeRequest{})
+	if err != nil {
+		return 0, err
+	}
+	return resp.GetServerTime(), nil
+}
+
+// GetContractDetails returns all USD-M futures contract specifications.
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+	resp, err := c.getRawContractDetails(ctx, binanceContractDetailsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	rawSymbols := resp.GetSymbols()
 	details := make([]exchange.ContractDetail, 0, len(rawSymbols))
 
 	for i := range rawSymbols {
 		raw := &rawSymbols[i]
 
-		// Filter active perpetual contracts
+		// Filter active perpetual contracts.
 		if raw.GetStatus() != "TRADING" || raw.GetContractType() != "PERPETUAL" {
 			continue
 		}
@@ -64,15 +180,15 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			BaseCoin:      raw.GetBaseAsset(),
 			QuoteCoin:     raw.GetQuoteAsset(),
 			SettleCoin:    raw.GetMarginAsset(),
-			ContractSize:  1.0, // standard linear perpetual
+			ContractSize:  1.0, // standard linear perpetual.
 			MinLeverage:   1,
-			MaxLeverage:   125, // common max limit
+			MaxLeverage:   125, // common max limit.
 			PriceUnit:     priceUnit,
 			MinVol:        int(minVol),
 			VolUnit:       int(stepSize),
 			PriceScale:    int(raw.GetPricePrecision()),
 			VolScale:      int(raw.GetQuantityPrecision()),
-			State:         1, // active
+			State:         1, // active.
 		})
 	}
 
@@ -80,50 +196,38 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 }
 
 func (c *Client) getBinanceVolumes24h(ctx context.Context, symbol string) (vols, amounts, lasts map[string]float64, err error) {
-	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
-	if symbol != "" {
-		tickerReq = tickerReq.Symbol(symbol)
-	}
-	tickerResp, err := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatisticsExecute(tickerReq)
+	resp, err := c.getRawVolumes24h(ctx, binanceVolumes24hRequest{Symbol: symbol})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("binance ticker 24h stats: %w", err)
+		return nil, nil, nil, err
 	}
 
 	vols = make(map[string]float64)
 	amounts = make(map[string]float64)
 	lasts = make(map[string]float64)
-	parseBinance24hStats(tickerResp.Data, vols, amounts, lasts)
+	parseBinance24hStats(*resp, vols, amounts, lasts)
 
 	return vols, amounts, lasts, nil
 }
 
 func (c *Client) getBinanceBookTickers(ctx context.Context, symbol string) (bids, asks map[string]float64, err error) {
+	resp, err := c.getRawBookTickers(ctx, binanceBookTickersRequest{Symbol: symbol})
+	if err != nil {
+		return nil, nil, err
+	}
+
 	bids = make(map[string]float64)
 	asks = make(map[string]float64)
-
-	bookReq := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTicker(ctx)
-	if symbol != "" {
-		bookReq = bookReq.Symbol(symbol)
-	}
-	bookResp, err := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTickerExecute(bookReq)
-	if err == nil {
-		parseBinanceBookTickers(bookResp.Data, bids, asks)
-	}
+	parseBinanceBookTickers(*resp, bids, asks)
 
 	return bids, asks, nil
 }
 
 func (c *Client) getBinanceMarkPrices(ctx context.Context, symbol string) (models.MarkPriceResponse, error) {
-	mpReq := c.sdkClient.RestApi.MarketDataAPI.MarkPrice(ctx)
-	if symbol != "" {
-		mpReq = mpReq.Symbol(symbol)
-	}
-	mpResp, err := c.sdkClient.RestApi.MarketDataAPI.MarkPriceExecute(mpReq)
+	resp, err := c.getRawMarkPrices(ctx, binanceMarkPricesRequest{Symbol: symbol})
 	if err != nil {
-		return models.MarkPriceResponse{}, fmt.Errorf("binance mark price premium index: %w", err)
+		return models.MarkPriceResponse{}, err
 	}
-
-	return mpResp.Data, nil
+	return *resp, nil
 }
 
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
@@ -280,23 +384,17 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		binanceInterval = "1d"
 	}
 
-	req := c.sdkClient.RestApi.MarketDataAPI.KlineCandlestickData(ctx).
-		Symbol(symbol).
-		Interval(models.ContinuousContractKlineCandlestickDataIntervalParameter(binanceInterval))
-
-	if start > 0 {
-		req = req.StartTime(start)
-	}
-	if end > 0 {
-		req = req.EndTime(end)
-	}
-
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.KlineCandlestickDataExecute(req)
+	resp, err := c.getRawKlines(ctx, binanceKlinesRequest{
+		Symbol:    symbol,
+		Interval:  binanceInterval,
+		StartTime: start,
+		EndTime:   end,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("binance klines: %w", err)
+		return nil, err
 	}
 
-	items := resp.Data.Items
+	items := resp.Items
 	klines := make([]exchange.Kline, 0, len(items))
 
 	for _, item := range items {
@@ -353,17 +451,15 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
 	}
 
-	req := c.sdkClient.RestApi.MarketDataAPI.OrderBook(ctx).Symbol(symbol)
-	if limit > 0 {
-		req = req.Limit(int64(limit))
-	}
-
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.OrderBookExecute(req)
+	resp, err := c.getRawDepthSnapshot(ctx, binanceDepthRequest{
+		Symbol: symbol,
+		Limit:  limit,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("binance orderbook snapshot: %w", err)
+		return nil, err
 	}
 
-	ob := resp.Data
+	ob := resp
 	book := &domain.OrderBook{
 		Symbol:  symbol,
 		Version: ob.GetLastUpdateId(),

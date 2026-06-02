@@ -31,4 +31,5 @@ const (
 	gateAuthMethodAPIKey = "api_key"
 	gatePayloadAll       = "!all"
 	gateJSONMethod       = "method"
+	gateSettleUsdt       = "usdt"
 )

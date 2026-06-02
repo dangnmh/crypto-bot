@@ -11,7 +11,37 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	bybitsdk "github.com/bybit-exchange/bybit.go.api"
 )
+
+// Explicit request/response structs for market data endpoints.
+
+type bybitServerTimeRequest struct{}
+
+type bybitInstrumentInfoRequest struct {
+	Category string `json:"category"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+type bybitMarketTickersRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol,omitempty"`
+}
+
+type bybitKlinesRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol"`
+	Interval string `json:"interval"`
+	Start    int64  `json:"start,omitempty"`
+	End      int64  `json:"end,omitempty"`
+}
+
+type bybitOrderbookRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol"`
+	Limit    int    `json:"limit,omitempty"`
+}
 
 type bybitLotSizeFilter struct {
 	MaxOrderQty string `json:"maxOrderQty"`
@@ -76,8 +106,9 @@ type bybitOrderbookResult struct {
 	U      int64      `json:"u"`
 }
 
-// GetServerTime returns the Bybit server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+// Private raw methods invoking the Bybit SDK.
+
+func (c *Client) getRawServerTime(ctx context.Context, _ bybitServerTimeRequest) (int64, error) {
 	resp, err := c.sdkClient.NewUtaBybitServiceNoParams().GetServerTime(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("bybit get server time: %w", err)
@@ -88,23 +119,120 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	return resp.Time, nil
 }
 
-// GetContractDetails returns all contract specifications.
-func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		limitKey:    1000,
-	}
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetInstrumentInfo(ctx)
+func (c *Client) callUtaWithParams(ctx context.Context, params map[string]any, fn func(context.Context, map[string]any) (*bybitsdk.ServerResponse, error), errPrefix string, dest any) error {
+	resp, err := fn(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("bybit list contracts: %w", err)
+		return fmt.Errorf("%s: %w", errPrefix, err)
 	}
 	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit list contracts error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+		return fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
 	}
+	return decodeResult(resp.Result, dest)
+}
 
+func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentInfoRequest) (*bybitInstrumentsInfoResult, error) {
+	params := map[string]any{
+		categoryKey: req.Category,
+	}
+	if req.Limit > 0 {
+		params[limitKey] = req.Limit
+	}
 	var res bybitInstrumentsInfoResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode instruments: %w", err)
+	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
+		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetInstrumentInfo(ctx)
+	}, "bybit list contracts", &res)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawMarketTickers(ctx context.Context, req bybitMarketTickersRequest) (*bybitTickerList, error) {
+	params := map[string]any{
+		categoryKey: req.Category,
+	}
+	if req.Symbol != "" {
+		params[symbolKey] = req.Symbol
+	}
+	var res bybitTickerList
+	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
+		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetMarketTickers(ctx)
+	}, "bybit list tickers", &res)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*bybitTicker, error) {
+	res, err := c.getRawMarketTickers(ctx, bybitMarketTickersRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(res.List) == 0 {
+		return nil, fmt.Errorf("bybit ticker not found for symbol: %s", symbol)
+	}
+	return &res.List[0], nil
+}
+
+func (c *Client) getRawKlines(ctx context.Context, req bybitKlinesRequest) (*bybitKlineResult, error) {
+	params := map[string]any{
+		categoryKey: req.Category,
+		symbolKey:   req.Symbol,
+		"interval":  req.Interval,
+	}
+	if req.Start > 0 {
+		params["start"] = req.Start
+	}
+	if req.End > 0 {
+		params["end"] = req.End
+	}
+	var res bybitKlineResult
+	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
+		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetMarketKline(ctx)
+	}, "bybit get klines", &res)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req bybitOrderbookRequest) (*bybitOrderbookResult, error) {
+	params := map[string]any{
+		categoryKey: req.Category,
+		symbolKey:   req.Symbol,
+	}
+	if req.Limit > 0 {
+		params[limitKey] = req.Limit
+	}
+	var res bybitOrderbookResult
+	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
+		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetOrderBookInfo(ctx)
+	}, "bybit order book", &res)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// Public mapper methods implementing the exchange.MarketDataProvider interface.
+
+// GetServerTime returns the Bybit server timestamp in milliseconds.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	return c.getRawServerTime(ctx, bybitServerTimeRequest{})
+}
+
+// GetContractDetails returns all contract specifications.
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+	res, err := c.getRawInstrumentInfo(ctx, bybitInstrumentInfoRequest{
+		Category: categoryLinear,
+		Limit:    1000,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	details := make([]exchange.ContractDetail, 0, len(res.List))
@@ -146,41 +274,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
-func (c *Client) getRawMarketTickers(ctx context.Context, symbol string) (bybitTickerList, error) {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-	}
-	if symbol != "" {
-		params[symbolKey] = symbol
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetMarketTickers(ctx)
-	if err != nil {
-		return bybitTickerList{}, fmt.Errorf("bybit list tickers: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return bybitTickerList{}, fmt.Errorf("bybit list tickers error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitTickerList
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return bybitTickerList{}, fmt.Errorf("bybit decode tickers: %w", err)
-	}
-
-	return res, nil
-}
-
-func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*bybitTicker, error) {
-	res, err := c.getRawMarketTickers(ctx, symbol)
-	if err != nil {
-		return nil, err
-	}
-	if len(res.List) == 0 {
-		return nil, fmt.Errorf("bybit ticker not found for symbol: %s", symbol)
-	}
-	return &res.List[0], nil
-}
-
+// GetFundingRates returns current funding rate details for the specified symbols.
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
@@ -209,7 +303,10 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	res, err := c.getRawMarketTickers(ctx, symbol)
+	res, err := c.getRawMarketTickers(ctx, bybitMarketTickersRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -237,35 +334,20 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	}
 
 	bybitInterval := mapInterval(interval)
-
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   symbol,
-		"interval":  bybitInterval,
-	}
-	if start > 0 {
-		params["start"] = start
-	}
-	if end > 0 {
-		params["end"] = end
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetMarketKline(ctx)
+	res, err := c.getRawKlines(ctx, bybitKlinesRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+		Interval: bybitInterval,
+		Start:    start,
+		End:      end,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("bybit get klines: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit get klines error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitKlineResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode klines: %w", err)
+		return nil, err
 	}
 
 	klines := make([]exchange.Kline, 0, len(res.List))
-	// Bybit returns klines in reverse chronological order (newest first). Let's reverse them if needed,
-	// or parse exactly as Mexc/Gate which standardizes oldest first.
+	// Bybit returns klines in reverse chronological order (newest first). We reverse them
+	// to standardize oldest first.
 	for _, candle := range slices.Backward(res.List) {
 		if len(candle) < 7 {
 			continue
@@ -290,25 +372,13 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
 	}
 
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   symbol,
-	}
-	if limit > 0 {
-		params[limitKey] = limit
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOrderBookInfo(ctx)
+	ob, err := c.getRawDepthSnapshot(ctx, bybitOrderbookRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+		Limit:    limit,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("bybit order book: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit order book error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var ob bybitOrderbookResult
-	if err := decodeResult(resp.Result, &ob); err != nil {
-		return nil, fmt.Errorf("bybit decode orderbook: %w", err)
+		return nil, err
 	}
 
 	book := &domain.OrderBook{

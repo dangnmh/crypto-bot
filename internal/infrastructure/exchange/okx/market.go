@@ -11,54 +11,199 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-// GetServerTime returns the OKX server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+// Explicit request/response structs for market data endpoints.
+
+type okxServerTimeResponse struct {
+	Epoch string `json:"epoch"`
+}
+
+type okxInstrumentsRequest struct {
+	InstType string `json:"instType"`
+}
+
+type okxInstrument struct {
+	InstID    string `json:"instId"`
+	BaseCcy   string `json:"baseCcy"`
+	SettleCcy string `json:"settleCcy"`
+	CtVal     string `json:"ctVal"`
+	Lever     string `json:"lever"`
+	TickSz    string `json:"tickSz"`
+	LotSz     string `json:"lotSz"`
+	MinSz     string `json:"minSz"`
+	State     string `json:"state"`
+}
+
+type okxTickersRequest struct {
+	InstType string `json:"instType"`
+	InstID   string `json:"instId,omitempty"`
+}
+
+type okxTicker struct {
+	InstID    string `json:"instId"`
+	Last      string `json:"last"`
+	BidPx     string `json:"bidPx"`
+	AskPx     string `json:"askPx"`
+	Vol24h    string `json:"vol24h"`
+	VolCcy24h string `json:"volCcy24h"`
+	Ts        string `json:"ts"`
+}
+
+type okxFundingRateRequest struct {
+	InstID string `json:"instId"`
+}
+
+type okxFundingRate struct {
+	InstID          string `json:"instId"`
+	FundingRate     string `json:"fundingRate"`
+	NextFundingTime string `json:"nextFundingTime"`
+}
+
+type okxKlinesRequest struct {
+	InstID string `json:"instId"`
+	Bar    string `json:"bar"`
+	Before string `json:"before,omitempty"`
+	After  string `json:"after,omitempty"`
+	Limit  string `json:"limit,omitempty"`
+}
+
+type okxBookLevel []string
+
+type okxDepthRequest struct {
+	InstID string `json:"instId"`
+	Sz     string `json:"sz,omitempty"`
+}
+
+type okxDepthResponse struct {
+	Asks []okxBookLevel `json:"asks"`
+	Bids []okxBookLevel `json:"bids"`
+	Ts   string         `json:"ts"`
+}
+
+// Private raw methods invoking the OKX V5 REST API.
+
+func (c *Client) getRawServerTime(ctx context.Context) (*okxServerTimeResponse, error) {
 	body, err := c.GetCtx(ctx, pathServerTime, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
+	}
+	res, err := ParseResponseFirst[okxServerTimeResponse](body, "server_time")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawContractDetails(ctx context.Context, req okxInstrumentsRequest) ([]okxInstrument, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	body, err := c.GetCtx(ctx, pathInstruments, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxInstrument](body, "contract_details")
+}
+
+func (c *Client) getRawTickers(ctx context.Context, req okxTickersRequest) ([]okxTicker, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	if req.InstID != "" {
+		params[paramInstId] = req.InstID
+	}
+	body, err := c.GetCtx(ctx, pathTickers, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxTicker](body, "tickers")
+}
+
+func (c *Client) getRawFundingRate(ctx context.Context, req okxFundingRateRequest) (*okxFundingRate, error) {
+	params := map[string]string{
+		paramInstId: req.InstID,
+	}
+	body, err := c.GetCtx(ctx, pathFundingRate, params)
+	if err != nil {
+		return nil, err
+	}
+	frList, err := ParseResponse[okxFundingRate](body, "funding_rate")
+	if err != nil {
+		return nil, err
+	}
+	if len(frList) == 0 {
+		return nil, fmt.Errorf("okx funding rate not found for symbol: %s", req.InstID)
+	}
+	return &frList[0], nil
+}
+
+func (c *Client) getRawKlines(ctx context.Context, req okxKlinesRequest) ([][]string, error) {
+	params := map[string]string{
+		paramInstId: req.InstID,
+		"bar":       req.Bar,
+	}
+	if req.Before != "" {
+		params["before"] = req.Before
+	}
+	if req.After != "" {
+		params["after"] = req.After
+	}
+	if req.Limit != "" {
+		params[paramLimit] = req.Limit
 	}
 
-	type serverTime struct {
-		Epoch string `json:"epoch"`
+	body, err := c.GetCtx(ctx, pathKlines, params)
+	if err != nil {
+		return nil, err
 	}
 
-	data, err := ParseResponseFirst[serverTime](body, "server_time")
+	var resp APIResponse[[]string]
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse klines response: %w", err)
+	}
+	if resp.Code != "0" {
+		codeVal := 0
+		_, _ = fmt.Sscanf(resp.Code, "%d", &codeVal)
+		return nil, toAPIError(codeVal, resp.Msg, "klines")
+	}
+	return resp.Data, nil
+}
+
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req okxDepthRequest) (*okxDepthResponse, error) {
+	params := map[string]string{
+		paramInstId: req.InstID,
+	}
+	if req.Sz != "" {
+		params["sz"] = req.Sz
+	}
+	body, err := c.GetCtx(ctx, pathBooks, params)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponseFirst[okxDepthResponse](body, "depth_snapshot")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// Public mapper methods implementing the exchange.MarketDataProvider interface.
+
+// GetServerTime returns the OKX server timestamp in milliseconds.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	res, err := c.getRawServerTime(ctx)
 	if err != nil {
 		return 0, err
 	}
-
-	val, err := strconv.ParseInt(data.Epoch, 10, 64)
+	val, err := strconv.ParseInt(res.Epoch, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("parse server time: %w", err)
 	}
-
 	return val, nil
 }
 
 // GetContractDetails returns specifications for all swap/futures contracts.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	params := map[string]string{
-		paramInstType: instTypeSwap,
-	}
-
-	body, err := c.GetCtx(ctx, pathInstruments, params)
-	if err != nil {
-		return nil, err
-	}
-
-	type okxInstrument struct {
-		InstID    string `json:"instId"`
-		BaseCcy   string `json:"baseCcy"`
-		SettleCcy string `json:"settleCcy"`
-		CtVal     string `json:"ctVal"`
-		Lever     string `json:"lever"`
-		TickSz    string `json:"tickSz"`
-		LotSz     string `json:"lotSz"`
-		MinSz     string `json:"minSz"`
-		State     string `json:"state"`
-	}
-
-	instruments, err := ParseResponse[okxInstrument](body, "contract_details")
+	instruments, err := c.getRawContractDetails(ctx, okxInstrumentsRequest{InstType: instTypeSwap})
 	if err != nil {
 		return nil, err
 	}
@@ -96,75 +241,10 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			State:            stateVal,
 		})
 	}
-
 	return details, nil
 }
 
-type rawTicker struct {
-	InstID    string `json:"instId"`
-	Last      string `json:"last"`
-	BidPx     string `json:"bidPx"`
-	AskPx     string `json:"askPx"`
-	Vol24h    string `json:"vol24h"`
-	VolCcy24h string `json:"volCcy24h"`
-	Ts        string `json:"ts"`
-}
-
-func (c *Client) getRawVolumes24h(ctx context.Context, symbol string) (vols, amts map[string]float64, rawTickers []rawTicker, err error) {
-	params := map[string]string{
-		paramInstType: instTypeSwap,
-	}
-	if symbol != "" {
-		params[paramInstId] = symbol
-	}
-
-	body, err := c.GetCtx(ctx, pathTickers, params)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	tickers, err := ParseResponse[rawTicker](body, "tickers")
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	vols = make(map[string]float64)
-	amts = make(map[string]float64)
-	for i := range tickers {
-		t := &tickers[i]
-		last, _ := strconv.ParseFloat(t.Last, 64)
-		vol, _ := strconv.ParseFloat(t.Vol24h, 64)
-		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
-
-		vols[t.InstID] = vol
-		amts[t.InstID] = amt * last // Standardized as USDT volume
-	}
-
-	return vols, amts, tickers, nil
-}
-
-type rawFunding struct {
-	InstID          string `json:"instId"`
-	FundingRate     string `json:"fundingRate"`
-	NextFundingTime string `json:"nextFundingTime"`
-}
-
-func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*rawFunding, error) {
-	url := fmt.Sprintf("/api/v5/public/funding-rate?instId=%s", symbol)
-	frBody, err := c.GetCtx(ctx, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	frList, err := ParseResponse[rawFunding](frBody, "funding_rate")
-	if err != nil {
-		return nil, err
-	}
-	if len(frList) == 0 {
-		return nil, fmt.Errorf("okx funding rate not found for symbol: %s", symbol)
-	}
-	return &frList[0], nil
-}
-
+// GetFundingRates returns the funding rate for specific contracts.
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
@@ -172,7 +252,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 	rates := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		raw, err := c.getRawFundingRate(ctx, sym)
+		raw, err := c.getRawFundingRate(ctx, okxFundingRateRequest{InstID: sym})
 		if err != nil {
 			return nil, err
 		}
@@ -189,29 +269,34 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 // GetTickers returns ticker data for all SWAP contracts or a specific instrument.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	vols, amts, rawTickers, err := c.getRawVolumes24h(ctx, symbol)
+	rawTickers, err := c.getRawTickers(ctx, okxTickersRequest{
+		InstType: instTypeSwap,
+		InstID:   symbol,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	exchangeTickers := make([]exchange.Ticker, 0, len(rawTickers))
-	for _, t := range rawTickers {
+	for i := range rawTickers {
+		t := &rawTickers[i]
 		last, _ := strconv.ParseFloat(t.Last, 64)
 		bid, _ := strconv.ParseFloat(t.BidPx, 64)
 		ask, _ := strconv.ParseFloat(t.AskPx, 64)
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
+		vol, _ := strconv.ParseFloat(t.Vol24h, 64)
+		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
 			Symbol:    t.InstID,
 			LastPrice: last,
 			Bid1:      bid,
 			Ask1:      ask,
-			Volume24:  vols[t.InstID],
-			Amount24:  amts[t.InstID],
+			Volume24:  vol,
+			Amount24:  amt * last, // Standardized as USDT volume
 			Timestamp: ts,
 		})
 	}
-
 	return exchangeTickers, nil
 }
 
@@ -221,43 +306,30 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		return nil, fmt.Errorf("symbol is required for GetKlines")
 	}
 
-	// Map intervals
 	bar := "1m"
 	if interval == "Min1" || interval == "1m" {
 		bar = "1m"
 	}
 
-	params := map[string]string{
-		paramInstId: symbol,
-		"bar":       bar,
-		paramLimit:  "100",
+	req := okxKlinesRequest{
+		InstID: symbol,
+		Bar:    bar,
+		Limit:  "100",
 	}
-
 	if start > 0 {
-		params["before"] = fmt.Sprintf("%d", start) // OKX candle uses before/after
+		req.Before = fmt.Sprintf("%d", start)
 	}
 	if end > 0 {
-		params["after"] = fmt.Sprintf("%d", end)
+		req.After = fmt.Sprintf("%d", end)
 	}
 
-	body, err := c.GetCtx(ctx, pathKlines, params)
+	rawData, err := c.getRawKlines(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	// OKX returns array of arrays, e.g., [ [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm], ... ]
-	var resp APIResponse[[]string]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse klines response: %w", err)
-	}
-	if resp.Code != "0" {
-		codeVal := 0
-		_, _ = fmt.Sscanf(resp.Code, "%d", &codeVal)
-		return nil, toAPIError(codeVal, resp.Msg, "klines")
-	}
-
-	klines := make([]exchange.Kline, 0, len(resp.Data))
-	for _, row := range slices.Backward(resp.Data) { // OKX returns newest first, so we reverse it
+	klines := make([]exchange.Kline, 0, len(rawData))
+	for _, row := range slices.Backward(rawData) { // OKX returns newest first, so we reverse it
 		if len(row) < 6 {
 			continue
 		}
@@ -297,35 +369,21 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		sz = "20"
 	}
 
-	params := map[string]string{
-		paramInstId: symbol,
-		"sz":        sz,
-	}
-
-	body, err := c.GetCtx(ctx, pathBooks, params)
-	if err != nil {
-		return nil, err
-	}
-
-	type okxBookLevel []string
-	type okxBook struct {
-		Asks []okxBookLevel `json:"asks"`
-		Bids []okxBookLevel `json:"bids"`
-		Ts   string         `json:"ts"`
-	}
-
-	book, err := ParseResponseFirst[okxBook](body, "depth_snapshot")
+	res, err := c.getRawDepthSnapshot(ctx, okxDepthRequest{
+		InstID: symbol,
+		Sz:     sz,
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	ob := &exchange.OrderBook{
 		Symbol: symbol,
-		Asks:   make([]exchange.OrderBookEntry, 0, len(book.Asks)),
-		Bids:   make([]exchange.OrderBookEntry, 0, len(book.Bids)),
+		Asks:   make([]exchange.OrderBookEntry, 0, len(res.Asks)),
+		Bids:   make([]exchange.OrderBookEntry, 0, len(res.Bids)),
 	}
 
-	for _, level := range book.Asks {
+	for _, level := range res.Asks {
 		if len(level) < 2 {
 			continue
 		}
@@ -334,7 +392,7 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
 	}
 
-	for _, level := range book.Bids {
+	for _, level := range res.Bids {
 		if len(level) < 2 {
 			continue
 		}

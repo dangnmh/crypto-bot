@@ -14,12 +14,117 @@ import (
 	"github.com/gateio/gateapi-go/v7"
 )
 
-// GetServerTime returns the Gate.io server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+// Explicit request/response structs for market data endpoints.
+
+type gateContractsRequest struct {
+	Settle string `json:"settle"`
+}
+
+type gateTickersRequest struct {
+	Settle   string `json:"settle"`
+	Contract string `json:"contract,omitempty"`
+}
+
+type gateKlinesRequest struct {
+	Settle   string `json:"settle"`
+	Contract string `json:"contract"`
+	Interval string `json:"interval"`
+	From     int64  `json:"from,omitempty"`
+	To       int64  `json:"to,omitempty"`
+}
+
+type gateDepthRequest struct {
+	Settle   string `json:"settle"`
+	Contract string `json:"contract"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+// Private raw methods invoking the Gate.io SDK.
+
+func (c *Client) getRawServerTime(ctx context.Context) (*gateapi.SystemTime, error) {
 	resp, httpResp, err := c.apiClient.SpotApi.GetSystemTime(ctx)
 	if httpResp != nil && httpResp.Body != nil {
 		_ = httpResp.Body.Close()
 	}
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsRequest) ([]gateapi.Contract, error) {
+	contracts, httpResp, err := c.apiClient.FuturesApi.ListFuturesContracts(ctx, req.Settle, nil)
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return contracts, nil
+}
+
+func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]gateapi.FuturesTicker, error) {
+	var opts *gateapi.ListFuturesTickersOpts
+	if req.Contract != "" {
+		opts = &gateapi.ListFuturesTickersOpts{
+			Contract: optional.NewString(req.Contract),
+		}
+	}
+
+	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, req.Settle, opts)
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rawTickers, nil
+}
+
+func (c *Client) getRawKlines(ctx context.Context, req gateKlinesRequest) ([]gateapi.FuturesCandlestick, error) {
+	opts := &gateapi.ListFuturesCandlesticksOpts{
+		Interval: optional.NewString(req.Interval),
+	}
+	if req.From > 0 {
+		opts.From = optional.NewInt64(req.From)
+	}
+	if req.To > 0 {
+		opts.To = optional.NewInt64(req.To)
+	}
+
+	candles, httpResp, err := c.apiClient.FuturesApi.ListFuturesCandlesticks(ctx, req.Settle, req.Contract, opts)
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return candles, nil
+}
+
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req gateDepthRequest) (*gateapi.FuturesOrderBook, error) {
+	var opts *gateapi.ListFuturesOrderBookOpts
+	if req.Limit > 0 {
+		opts = &gateapi.ListFuturesOrderBookOpts{
+			Limit: optional.NewInt32(int32(req.Limit)),
+		}
+	}
+
+	ob, httpResp, err := c.apiClient.FuturesApi.ListFuturesOrderBook(ctx, req.Settle, req.Contract, opts)
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ob, nil
+}
+
+// Public mapper methods implementing the exchange.MarketDataProvider interface.
+
+// GetServerTime returns the Gate.io server timestamp in milliseconds.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	resp, err := c.getRawServerTime(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("gate.io get server time: %w", err)
 	}
@@ -28,10 +133,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 
 // GetContractDetails returns all contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	contracts, httpResp, err := c.apiClient.FuturesApi.ListFuturesContracts(ctx, "usdt", nil)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list contracts: %w", err)
 	}
@@ -71,17 +173,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	var opts *gateapi.ListFuturesTickersOpts
-	if symbol != "" {
-		opts = &gateapi.ListFuturesTickersOpts{
-			Contract: optional.NewString(symbol),
-		}
-	}
-
-	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, "usdt", opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	rawTickers, err := c.getRawTickers(ctx, gateTickersRequest{Settle: gateSettleUsdt, Contract: symbol})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list tickers: %w", err)
 	}
@@ -112,7 +204,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	contractMap := make(map[string]*gateapi.Contract)
 
 	if needUsdt {
-		if err := c.fetchContracts(ctx, "usdt", contractMap); err != nil {
+		if err := c.fetchContracts(ctx, gateSettleUsdt, contractMap); err != nil {
 			return nil, err
 		}
 	}
@@ -150,10 +242,7 @@ func determineNeededSettleCoins(symbols []string) (needUsdt, needBtc bool) {
 }
 
 func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap map[string]*gateapi.Contract) error {
-	contracts, httpResp, err := c.apiClient.FuturesApi.ListFuturesContracts(ctx, settle, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: settle})
 	if err != nil {
 		return fmt.Errorf("gate.io list %s contracts: %w", settle, err)
 	}
@@ -169,7 +258,6 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		return nil, fmt.Errorf("symbol is required for GetKlines")
 	}
 
-	// Map interval to Gate.io structure
 	gateInterval := "1m"
 	switch interval {
 	case "Min1", "1m":
@@ -188,20 +276,19 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		gateInterval = "1d"
 	}
 
-	opts := &gateapi.ListFuturesCandlesticksOpts{
-		Interval: optional.NewString(gateInterval),
+	req := gateKlinesRequest{
+		Settle:   gateSettleUsdt,
+		Contract: symbol,
+		Interval: gateInterval,
 	}
 	if start > 0 {
-		opts.From = optional.NewInt64(start / 1000) // ms to seconds
+		req.From = start / 1000 // ms to seconds
 	}
 	if end > 0 {
-		opts.To = optional.NewInt64(end / 1000) // ms to seconds
+		req.To = end / 1000 // ms to seconds
 	}
 
-	candles, httpResp, err := c.apiClient.FuturesApi.ListFuturesCandlesticks(ctx, "usdt", symbol, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	candles, err := c.getRawKlines(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list klines: %w", err)
 	}
@@ -227,17 +314,11 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
 	}
 
-	var opts *gateapi.ListFuturesOrderBookOpts
-	if limit > 0 {
-		opts = &gateapi.ListFuturesOrderBookOpts{
-			Limit: optional.NewInt32(int32(limit)),
-		}
-	}
-
-	ob, httpResp, err := c.apiClient.FuturesApi.ListFuturesOrderBook(ctx, "usdt", symbol, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	ob, err := c.getRawDepthSnapshot(ctx, gateDepthRequest{
+		Settle:   gateSettleUsdt,
+		Contract: symbol,
+		Limit:    limit,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io order book: %w", err)
 	}

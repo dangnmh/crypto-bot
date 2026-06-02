@@ -9,6 +9,8 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
+// Explicit request/response structs for account endpoints.
+
 type okxBalanceDetail struct {
 	Ccy       string `json:"ccy"`
 	Eq        string `json:"eq"`
@@ -19,6 +21,10 @@ type okxBalanceDetail struct {
 
 type okxBalance struct {
 	Details []okxBalanceDetail `json:"details"`
+}
+
+type okxBalanceRequest struct {
+	Ccy string `json:"ccy,omitempty"`
 }
 
 type okxPosition struct {
@@ -33,14 +39,81 @@ type okxPosition struct {
 	MgnMode     string `json:"mgnMode"`
 }
 
-// GetAssets returns all account asset information.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	body, err := c.GetCtx(ctx, pathAccountBalance, nil)
+type okxPositionsRequest struct {
+	InstType string `json:"instType"`
+	InstID   string `json:"instId,omitempty"`
+}
+
+type okxClosedPosition struct {
+	InstID       string `json:"instId"`
+	CloseAvgPx   string `json:"closeAvgPx"`
+	OpenAvgPx    string `json:"openAvgPx"`
+	Pnl          string `json:"pnl"`
+	CloseTotalSz string `json:"closeTotalSz"`
+	CTime        string `json:"cTime"`
+	UTime        string `json:"uTime"`
+}
+
+type okxClosedPositionsRequest struct {
+	InstType string `json:"instType"`
+	Limit    string `json:"limit,omitempty"`
+	InstID   string `json:"instId,omitempty"`
+	Begin    string `json:"begin,omitempty"`
+}
+
+// Private raw methods invoking the OKX V5 REST API.
+
+func (c *Client) getRawBalance(ctx context.Context, req okxBalanceRequest) ([]okxBalance, error) {
+	params := map[string]string{}
+	if req.Ccy != "" {
+		params["ccy"] = req.Ccy
+	}
+	body, err := c.GetCtx(ctx, pathAccountBalance, params)
 	if err != nil {
 		return nil, err
 	}
+	return ParseResponse[okxBalance](body, "account_balance")
+}
 
-	balances, err := ParseResponse[okxBalance](body, "assets")
+func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsRequest) ([]okxPosition, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	if req.InstID != "" {
+		params[paramInstId] = req.InstID
+	}
+	body, err := c.GetCtx(ctx, pathOpenPositions, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxPosition](body, "open_positions")
+}
+
+func (c *Client) getRawClosedPositions(ctx context.Context, req okxClosedPositionsRequest) ([]okxClosedPosition, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	if req.Limit != "" {
+		params[paramLimit] = req.Limit
+	}
+	if req.InstID != "" {
+		params[paramInstId] = req.InstID
+	}
+	if req.Begin != "" {
+		params["begin"] = req.Begin
+	}
+	body, err := c.GetCtx(ctx, "/api/v5/account/positions-history", params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxClosedPosition](body, "positions_history")
+}
+
+// Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
+
+// GetAssets returns all account asset information.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	balances, err := c.getRawBalance(ctx, okxBalanceRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -73,16 +146,7 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 
 // GetAssetByCurrency returns asset info for a specific currency.
 func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	params := map[string]string{
-		"ccy": currency,
-	}
-
-	body, err := c.GetCtx(ctx, pathAccountBalance, params)
-	if err != nil {
-		return nil, err
-	}
-
-	balances, err := ParseResponse[okxBalance](body, "asset_by_currency")
+	balances, err := c.getRawBalance(ctx, okxBalanceRequest{Ccy: currency})
 	if err != nil {
 		return nil, err
 	}
@@ -107,25 +171,12 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]okxPosition, error) {
-	params := map[string]string{
-		paramInstType: instTypeSwap,
-	}
-	if symbol != "" {
-		params[paramInstId] = symbol
-	}
-
-	body, err := c.GetCtx(ctx, pathOpenPositions, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[okxPosition](body, "open_positions")
-}
-
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	positions, err := c.getRawOpenPositions(ctx, symbol)
+	positions, err := c.getRawOpenPositions(ctx, okxPositionsRequest{
+		InstType: instTypeSwap,
+		InstID:   symbol,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -157,35 +208,18 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
-type okxClosedPosition struct {
-	InstID       string `json:"instId"`
-	CloseAvgPx   string `json:"closeAvgPx"`
-	OpenAvgPx    string `json:"openAvgPx"`
-	Pnl          string `json:"pnl"`
-	CloseTotalSz string `json:"closeTotalSz"`
-	CTime        string `json:"cTime"`
-	UTime        string `json:"uTime"`
-}
-
 // GetRecentClosedPnL queries the historical closed position metrics from OKX.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	params := map[string]string{
-		paramInstType: instTypeSwap,
-		paramLimit:    "10",
-	}
-	if symbol != "" {
-		params[paramInstId] = symbol
+	req := okxClosedPositionsRequest{
+		InstType: instTypeSwap,
+		Limit:    "10",
+		InstID:   symbol,
 	}
 	if !startTime.IsZero() {
-		params["begin"] = strconv.FormatInt(startTime.UnixMilli(), 10)
+		req.Begin = strconv.FormatInt(startTime.UnixMilli(), 10)
 	}
 
-	body, err := c.GetCtx(ctx, "/api/v5/account/positions-history", params)
-	if err != nil {
-		return nil, err
-	}
-
-	positions, err := ParseResponse[okxClosedPosition](body, "positions_history")
+	positions, err := c.getRawClosedPositions(ctx, req)
 	if err != nil {
 		return nil, err
 	}

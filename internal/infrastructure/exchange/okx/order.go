@@ -10,11 +10,77 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
-type okxOrderResult struct {
+// Explicit request/response structs for order endpoints.
+
+type okxAttachAlgoOrd struct {
+	AttachAlgoClOrdId    string `json:"attachAlgoClOrdId,omitempty"`
+	TpTriggerPx          string `json:"tpTriggerPx,omitempty"`
+	TpTriggerRatio       string `json:"tpTriggerRatio,omitempty"`
+	TpOrdPx              string `json:"tpOrdPx,omitempty"`
+	TpOrdKind            string `json:"tpOrdKind,omitempty"`
+	SlTriggerPx          string `json:"slTriggerPx,omitempty"`
+	SlTriggerRatio       string `json:"slTriggerRatio,omitempty"`
+	SlOrdPx              string `json:"slOrdPx,omitempty"`
+	TpTriggerPxType      string `json:"tpTriggerPxType,omitempty"`
+	SlTriggerPxType      string `json:"slTriggerPxType,omitempty"`
+	Sz                   string `json:"sz,omitempty"`
+	AmendPxOnTriggerType string `json:"amendPxOnTriggerType,omitempty"`
+	CallbackRatio        string `json:"callbackRatio,omitempty"`
+	CallbackSpread       string `json:"callbackSpread,omitempty"`
+	ActivePx             string `json:"activePx,omitempty"`
+}
+
+type okxCreateOrderRequest struct {
+	InstID           string             `json:"instId"`
+	TdMode           string             `json:"tdMode"`
+	Ccy              string             `json:"ccy,omitempty"`
+	ClOrdID          string             `json:"clOrdId,omitempty"`
+	Tag              string             `json:"tag,omitempty"`
+	Side             string             `json:"side"`
+	PosSide          string             `json:"posSide,omitempty"`
+	OrdType          string             `json:"ordType"`
+	Sz               string             `json:"sz"`
+	Px               string             `json:"px,omitempty"`
+	SpeedBump        string             `json:"speedBump,omitempty"`
+	Outcome          string             `json:"outcome,omitempty"`
+	PxUsd            string             `json:"pxUsd,omitempty"`
+	PxVol            string             `json:"pxVol,omitempty"`
+	ReduceOnly       bool               `json:"reduceOnly,omitempty"`
+	TgtCcy           string             `json:"tgtCcy,omitempty"`
+	BanAmend         bool               `json:"banAmend,omitempty"`
+	PxAmendType      string             `json:"pxAmendType,omitempty"`
+	TradeQuoteCcy    string             `json:"tradeQuoteCcy,omitempty"`
+	SlippagePct      string             `json:"slippagePct,omitempty"`
+	StpMode          string             `json:"stpMode,omitempty"`
+	IsElpTakerAccess bool               `json:"isElpTakerAccess,omitempty"`
+	AttachAlgoOrds   []okxAttachAlgoOrd `json:"attachAlgoOrds,omitempty"`
+}
+
+type okxCreateOrderResult struct {
+	OrdID   string `json:"ordId"`
+	ClOrdID string `json:"clOrdId"`
+	Tag     string `json:"tag"`
+	Ts      string `json:"ts"`
+	SCode   string `json:"sCode"`
+	SMsg    string `json:"sMsg"`
+	SubCode string `json:"subCode"`
+}
+
+type okxCancelOrderRequest struct {
+	InstID string `json:"instId"`
+	OrdID  string `json:"ordId"`
+}
+
+type okxCancelOrderResult struct {
 	OrdID   string `json:"ordId"`
 	ClOrdID string `json:"clOrdId"`
 	SCode   string `json:"sCode"`
 	SMsg    string `json:"sMsg"`
+}
+
+type okxOrdersRequest struct {
+	InstType string `json:"instType"`
+	InstID   string `json:"instId,omitempty"`
 }
 
 type okxOrder struct {
@@ -35,6 +101,90 @@ type okxOrder struct {
 	TradeId string `json:"tradeId"`
 }
 
+type okxSetLeverageRequest struct {
+	InstID  string `json:"instId"`
+	Lever   string `json:"lever"`
+	MgnMode string `json:"mgnMode"`
+}
+
+// Private raw methods invoking the OKX V5 REST API.
+
+func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) (*okxCreateOrderResult, error) {
+	body, err := c.PostCtx(ctx, pathPlaceOrder, req)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponseFirst[okxCreateOrderResult](body, "create_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) cancelRawOrder(ctx context.Context, req okxCancelOrderRequest) (*okxCancelOrderResult, error) {
+	body, err := c.PostCtx(ctx, pathCancelOrder, req)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponseFirst[okxCancelOrderResult](body, "cancel_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawPendingOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	if req.InstID != "" {
+		params[paramInstId] = req.InstID
+	}
+	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxOrder](pendingBody, "pending_orders")
+}
+
+func (c *Client) getRawHistoryOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	if req.InstID != "" {
+		params[paramInstId] = req.InstID
+	}
+	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxOrder](historyBody, "orders_history")
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
+	params := map[string]string{
+		paramInstType: req.InstType,
+	}
+	if req.InstID != "" {
+		params[paramInstId] = req.InstID
+	}
+	body, err := c.GetCtx(ctx, pathPendingOrders, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[okxOrder](body, "open_orders")
+}
+
+func (c *Client) setRawLeverage(ctx context.Context, req okxSetLeverageRequest) error {
+	body, err := c.PostCtx(ctx, pathSetLeverage, req)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "change_leverage")
+}
+
+// Public mapper methods implementing the exchange.OrderExecutor interface.
+
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ordType := mapOKXOrderType(req.Type)
@@ -46,36 +196,44 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		tdMode = modeCross
 	}
 
-	bodyMap := map[string]any{
-		paramInstId: req.Symbol,
-		"tdMode":    tdMode,
-		"side":      side,
-		"ordType":   ordType,
-		"sz":        fmt.Sprintf("%g", req.Vol),
+	okxReq := okxCreateOrderRequest{
+		InstID:     req.Symbol,
+		TdMode:     tdMode,
+		Side:       side,
+		OrdType:    ordType,
+		Sz:         fmt.Sprintf("%g", req.Vol),
+		ReduceOnly: req.ReduceOnly,
 	}
 
 	if isHedge {
-		bodyMap["posSide"] = posSide
+		okxReq.PosSide = posSide
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		bodyMap["px"] = fmt.Sprintf("%g", req.Price)
+		okxReq.Px = fmt.Sprintf("%g", req.Price)
 	}
 
 	if req.ExternalOID != "" {
-		bodyMap["clOrdId"] = req.ExternalOID
+		okxReq.ClOrdID = req.ExternalOID
 	}
 
-	if req.ReduceOnly {
-		bodyMap["reduceOnly"] = true
+	if req.TakeProfitPrice > 0 || req.StopLossPrice > 0 {
+		algo := okxAttachAlgoOrd{}
+		if req.TakeProfitPrice > 0 {
+			algo.TpTriggerPx = fmt.Sprintf("%g", req.TakeProfitPrice)
+			algo.TpOrdPx = "-1"
+			algo.TpTriggerPxType = triggerPxTypeLast
+			algo.TpOrdKind = "condition"
+		}
+		if req.StopLossPrice > 0 {
+			algo.SlTriggerPx = fmt.Sprintf("%g", req.StopLossPrice)
+			algo.SlOrdPx = "-1"
+			algo.SlTriggerPxType = triggerPxTypeLast
+		}
+		okxReq.AttachAlgoOrds = []okxAttachAlgoOrd{algo}
 	}
 
-	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
-	if err != nil {
-		return exchange.CreateOrderResult{}, err
-	}
-
-	res, err := ParseResponseFirst[okxOrderResult](body, "create_order")
+	res, err := c.createRawOrder(ctx, okxReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -86,9 +244,10 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return exchange.CreateOrderResult{}, toAPIError(codeVal, res.SMsg, "create_order")
 	}
 
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
 	return exchange.CreateOrderResult{
 		OrderID:       res.OrdID,
-		TPSLSubmitted: false,
+		TPSLSubmitted: tpslSubmitted,
 	}, nil
 }
 
@@ -150,17 +309,10 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		symbol = info.Symbol
 	}
 
-	bodyMap := map[string]any{
-		paramInstId: symbol,
-		"ordId":     orderID,
-	}
-
-	body, err := c.PostCtx(ctx, pathCancelOrder, bodyMap)
-	if err != nil {
-		return err
-	}
-
-	res, err := ParseResponseFirst[okxOrderResult](body, "cancel_order")
+	res, err := c.cancelRawOrder(ctx, okxCancelOrderRequest{
+		InstID: symbol,
+		OrdID:  orderID,
+	})
 	if err != nil {
 		return err
 	}
@@ -206,42 +358,10 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-func (c *Client) getRawPendingOrders(ctx context.Context) ([]okxOrder, error) {
-	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, map[string]string{paramInstType: instTypeSwap})
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[okxOrder](pendingBody, "pending_orders")
-}
-
-func (c *Client) getRawHistoryOrders(ctx context.Context) ([]okxOrder, error) {
-	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", map[string]string{paramInstType: instTypeSwap})
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[okxOrder](historyBody, "orders_history")
-}
-
-func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]okxOrder, error) {
-	params := map[string]string{
-		paramInstType: instTypeSwap,
-	}
-	if symbol != "" {
-		params[paramInstId] = symbol
-	}
-
-	body, err := c.GetCtx(ctx, pathPendingOrders, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[okxOrder](body, "open_orders")
-}
-
 // GetOrder queries a single order by ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	// Query pending orders
-	pendingList, err := c.getRawPendingOrders(ctx)
+	pendingList, err := c.getRawPendingOrders(ctx, okxOrdersRequest{InstType: instTypeSwap})
 	if err == nil {
 		for i := range pendingList {
 			o := pendingList[i]
@@ -253,7 +373,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	}
 
 	// Query history orders
-	historyList, err := c.getRawHistoryOrders(ctx)
+	historyList, err := c.getRawHistoryOrders(ctx, okxOrdersRequest{InstType: instTypeSwap})
 	if err == nil {
 		for i := range historyList {
 			o := historyList[i]
@@ -269,7 +389,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawList, err := c.getRawOpenOrders(ctx, symbol)
+	rawList, err := c.getRawOpenOrders(ctx, okxOrdersRequest{InstType: instTypeSwap, InstID: symbol})
 	if err != nil {
 		return nil, err
 	}
@@ -326,18 +446,11 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 		mgnMode = modeCross
 	}
 
-	bodyMap := map[string]any{
-		"instId":  req.Symbol,
-		"lever":   fmt.Sprintf("%d", req.Leverage),
-		"mgnMode": mgnMode,
-	}
-
-	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
-	if err != nil {
-		return err
-	}
-
-	return ParseResponseIgnoreData(body, "change_leverage")
+	return c.setRawLeverage(ctx, okxSetLeverageRequest{
+		InstID:  req.Symbol,
+		Lever:   fmt.Sprintf("%d", req.Leverage),
+		MgnMode: mgnMode,
+	})
 }
 
 func mapOkxOrder(o okxOrder) exchange.OrderInfo {

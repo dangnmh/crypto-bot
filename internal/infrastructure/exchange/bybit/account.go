@@ -13,6 +13,34 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+// Explicit request/response structs for account endpoints.
+
+type bybitWalletBalanceRequest struct {
+	AccountType string `json:"accountType"`
+}
+
+type bybitPositionsRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol,omitempty"`
+}
+
+type bybitClosedPnLRequest struct {
+	Category  string `json:"category"`
+	Symbol    string `json:"symbol"`
+	Limit     int    `json:"limit,omitempty"`
+	OrderID   string `json:"orderId,omitempty"`
+	StartTime int64  `json:"startTime,omitempty"`
+}
+
+type bybitTransactionLogRequest struct {
+	AccountType string `json:"accountType"`
+	Category    string `json:"category"`
+	Type        string `json:"type,omitempty"`
+	Symbol      string `json:"symbol,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
+	StartTime   int64  `json:"startTime,omitempty"`
+}
+
 type bybitCoinBalance struct {
 	Coin          string `json:"coin"`
 	Equity        string `json:"equity"`
@@ -51,17 +79,43 @@ type bybitPosition struct {
 	AutoAddMargin   int    `json:"autoAddMargin"`
 }
 
-// GetAssets returns the account assets.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	apiAccountType := accountTypeContract
-	if strings.EqualFold(c.accountType, "unified") {
-		apiAccountType = accountTypeUnified
-	}
+type bybitClosedPnLRow struct {
+	Symbol        string `json:"symbol"`
+	Side          string `json:"side"`
+	Qty           string `json:"qty"`
+	OrderPrice    string `json:"orderPrice"`
+	OrderType     string `json:"orderType"`
+	ClosedSize    string `json:"closedSize"`
+	AvgEntryPrice string `json:"avgEntryPrice"`
+	AvgExitPrice  string `json:"avgExitPrice"`
+	ClosedPnl     string `json:"closedPnl"`
+	OpenFee       string `json:"openFee"`
+	CloseFee      string `json:"closeFee"`
+	CreatedTime   string `json:"createdTime"`
+	UpdatedTime   string `json:"updatedTime"`
+}
 
-	params := map[string]any{
-		paramAccountType: apiAccountType,
-	}
+type bybitClosedPnLResult struct {
+	List []bybitClosedPnLRow `json:"list"`
+}
 
+type bybitTransactionLogChange struct {
+	Symbol   string `json:"symbol"`
+	Type     string `json:"type"`
+	Funding  string `json:"funding"`
+	Change   string `json:"change"`
+	Fee      string `json:"fee"`
+	CashFlow string `json:"cashFlow"`
+}
+
+type bybitTransactionLogResult struct {
+	List []bybitTransactionLogChange `json:"list"`
+}
+
+// Private raw methods invoking the Bybit SDK.
+
+func (c *Client) getRawAssets(ctx context.Context, req bybitWalletBalanceRequest) (*bybitWalletBalanceResult, error) {
+	params := structToMap(req)
 	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetAccountWallet(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("bybit list assets: %w", err)
@@ -74,10 +128,71 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 	if err := decodeResult(resp.Result, &res); err != nil {
 		return nil, fmt.Errorf("bybit decode wallet balance: %w", err)
 	}
+	return &res, nil
+}
+
+func (c *Client) getRawOpenPositions(ctx context.Context, req bybitPositionsRequest) ([]bybitPosition, error) {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetPositionList(ctx)
+	return decodeUtaResponse[bybitPosition](resp, err, "bybit get position")
+}
+
+func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetClosePnl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if resp.RetCode != 0 {
+		return nil, fmt.Errorf("bybit get closed pnl error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+
+	var res bybitClosedPnLResult
+	if err := decodeResult(resp.Result, &res); err != nil {
+		return nil, fmt.Errorf("bybit decode closed pnl: %w", err)
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawTransactionLog(ctx context.Context, req bybitTransactionLogRequest) ([]bybitTransactionLogChange, error) {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetTransactionLog(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("bybit query transaction log: %w", err)
+	}
+	if resp.RetCode != 0 {
+		return nil, fmt.Errorf("bybit transaction log error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+
+	var result bybitTransactionLogResult
+	if err := decodeResult(resp.Result, &result); err != nil {
+		return nil, fmt.Errorf("bybit decode transaction log: %w", err)
+	}
+
+	return result.List, nil
+}
+
+// Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
+
+// GetAssets returns the account assets.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	apiAccountType := accountTypeContract
+	if strings.EqualFold(c.accountType, "unified") {
+		apiAccountType = accountTypeUnified
+	}
+
+	res, err := c.getRawAssets(ctx, bybitWalletBalanceRequest{
+		AccountType: apiAccountType,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	assets := []exchange.AssetInfo{}
-	for _, wallet := range res.List {
-		for _, coin := range wallet.Coin {
+	for i := range res.List {
+		wallet := &res.List[i]
+		for j := range wallet.Coin {
+			coin := &wallet.Coin[j]
 			equity := decmath.ParseFloat(coin.Equity)
 			unrealized := decmath.ParseFloat(coin.UnrealisedPnl)
 			assets = append(assets, exchange.AssetInfo{
@@ -91,7 +206,7 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 	}
 
 	if len(assets) == 0 {
-		// Provide default zero balance asset if empty
+		// Provide default zero balance asset if empty.
 		assets = append(assets, exchange.AssetInfo{
 			Currency: "USDT",
 		})
@@ -118,52 +233,12 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-// mapPosition maps a bybitPosition to exchange.Position.
-func mapPosition(raw bybitPosition) exchange.Position {
-	avgPrice := raw.EntryPrice
-	if avgPrice == "" {
-		avgPrice = raw.AvgPrice
-	}
-
-	pos := exchange.Position{
-		Symbol:       raw.Symbol,
-		HoldVol:      decmath.ParseFloat(raw.Size),
-		HoldAvgPrice: decmath.ParseFloat(avgPrice),
-		OpenAvgPrice: decmath.ParseFloat(avgPrice),
-	}
-
-	switch raw.PositionIdx {
-	case 1:
-		pos.PositionType = 1 // Long
-	case 2:
-		pos.PositionType = 2 // Short
-	default:
-		// OneWay mode fallback
-		if strings.EqualFold(raw.Side, "buy") {
-			pos.PositionType = 1 // Long
-		} else if strings.EqualFold(raw.Side, "sell") {
-			pos.PositionType = 2 // Short
-		}
-	}
-
-	return pos
-}
-
-func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]bybitPosition, error) {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-	}
-	if symbol != "" {
-		params[symbolKey] = symbol
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetPositionList(ctx)
-	return decodeUtaResponse[bybitPosition](resp, err, "bybit get position")
-}
-
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	rawList, err := c.getRawOpenPositions(ctx, symbol)
+	rawList, err := c.getRawOpenPositions(ctx, bybitPositionsRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -179,71 +254,39 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-type bybitClosedPnLRow struct {
-	Symbol        string `json:"symbol"`
-	Side          string `json:"side"`
-	Qty           string `json:"qty"`
-	OrderPrice    string `json:"orderPrice"`
-	OrderType     string `json:"orderType"`
-	ClosedSize    string `json:"closedSize"`
-	AvgEntryPrice string `json:"avgEntryPrice"`
-	AvgExitPrice  string `json:"avgExitPrice"`
-	ClosedPnl     string `json:"closedPnl"`
-	OpenFee       string `json:"openFee"`
-	CloseFee      string `json:"closeFee"`
-	CreatedTime   string `json:"createdTime"`
-	UpdatedTime   string `json:"updatedTime"`
-}
-
-type bybitClosedPnLResult struct {
-	List []bybitClosedPnLRow `json:"list"`
-}
-
 // GetRecentClosedPnL queries the most recent closed PnL ledger record from Bybit.
 // It includes a retry loop using the backoff library to account for Bybit's asynchronous database propagation delay.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// Look up numeric orderID from client order ID (extOrderID / orderLinkId)
-	orderParams := map[string]any{
-		categoryKey:   categoryLinear,
-		"orderLinkId": extOrderID,
-	}
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(orderParams).GetOpenOrders(ctx)
-	list, err := decodeUtaResponse[bybitOrder](resp, err, "bybit get order by external ID")
+	// Look up numeric orderID from client order ID (extOrderID / orderLinkId).
+	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+		Category:    categoryLinear,
+		OrderLinkID: extOrderID,
+	})
 	if err != nil {
-		return nil, err
+		errStr := err.Error()
+		errStr = strings.Replace(errStr, "bybit get order error", "bybit get order by external ID error", 1)
+		return nil, fmt.Errorf("%s", errStr)
 	}
 
-	if len(list) == 0 {
-		return nil, fmt.Errorf("bybit order for external ID %s not found", extOrderID)
-	}
+	numericOrderID := rawOrder.OrderID
+	entryCreatedTimeStr := rawOrder.CreatedTime
 
-	numericOrderID := list[0].OrderID
-	entryCreatedTimeStr := list[0].CreatedTime
-
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   symbol,
-		limitKey:    10,
-		"orderId":   numericOrderID,
+	req := bybitClosedPnLRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+		Limit:    10,
+		OrderID:  numericOrderID,
 	}
 	if !startTime.IsZero() {
-		params["startTime"] = startTime.UnixMilli()
+		req.StartTime = startTime.UnixMilli()
 	}
 
 	var row bybitClosedPnLRow
 
 	operation := func() error {
-		resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetClosePnl(ctx)
+		res, err := c.getRawClosedPnL(ctx, req)
 		if err != nil {
 			return err
-		}
-		if resp.RetCode != 0 {
-			return fmt.Errorf("bybit get closed pnl error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-		}
-
-		var res bybitClosedPnLResult
-		if err := decodeResult(resp.Result, &res); err != nil {
-			return backoff.Permanent(fmt.Errorf("bybit decode closed pnl: %w", err))
 		}
 
 		if len(res.List) == 0 {
@@ -252,7 +295,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 
 		candidate := res.List[0]
 		updatedTime := decmath.ParseInt64(candidate.UpdatedTime)
-		// Check if the record is fresh (updated within the last 15 seconds)
+		// Check if the record is fresh (updated within the last 15 seconds).
 		if time.Now().UnixMilli()-updatedTime >= 15000 {
 			return fmt.Errorf("stale closed pnl record found for symbol %s", symbol)
 		}
@@ -261,7 +304,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil
 	}
 
-	// Retry up to 5 times (4 retries + 1st try) with 200ms constant delay, respecting context cancellation
+	// Retry up to 5 times (4 retries + 1st try) with 200ms constant delay, respecting context cancellation.
 	bo := backoff.WithContext(
 		backoff.WithMaxRetries(
 			backoff.NewExponentialBackOff(
@@ -284,7 +327,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	openFee := decmath.ParseFloat(row.OpenFee)
 	closeFee := decmath.ParseFloat(row.CloseFee)
 
-	// Query Bybit's Transaction Log to get the settled funding fee (holdFee) for this symbol
+	// Query Bybit's Transaction Log to get the settled funding fee (holdFee) for this symbol.
 	fdFee, err := c.getHoldFee(ctx, symbol, startTime)
 	if err != nil {
 		c.logger.Debug("Bybit failed to query transaction log for funding fee", slog.Any("error", err))
@@ -296,7 +339,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 
 	entryCreatedTime := decmath.ParseInt64(entryCreatedTimeStr)
 	if entryCreatedTime == 0 {
-		entryCreatedTime = decmath.ParseInt64(row.CreatedTime) // Fallback for unit tests where order createdTime might be empty
+		entryCreatedTime = decmath.ParseInt64(row.CreatedTime) // Fallback for unit tests where order createdTime might be empty.
 	}
 	closeTime := decmath.ParseInt64(row.UpdatedTime)
 	duration := max(closeTime-entryCreatedTime, 0)
@@ -314,35 +357,37 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}, nil
 }
 
-type bybitTransactionLogChange struct {
-	Symbol   string `json:"symbol"`
-	Type     string `json:"type"`
-	Funding  string `json:"funding"`
-	Change   string `json:"change"`
-	Fee      string `json:"fee"`
-	CashFlow string `json:"cashFlow"`
-}
+// Helper mapping functions.
 
-type bybitTransactionLogResult struct {
-	List []bybitTransactionLogChange `json:"list"`
-}
-
-// getTransactionLog executes the Bybit GetTransactionLog API call with given params.
-func (c *Client) getTransactionLog(ctx context.Context, params map[string]any) ([]bybitTransactionLogChange, error) {
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetTransactionLog(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("bybit query transaction log: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit transaction log error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+// mapPosition maps a bybitPosition to exchange.Position.
+func mapPosition(raw bybitPosition) exchange.Position {
+	avgPrice := raw.EntryPrice
+	if avgPrice == "" {
+		avgPrice = raw.AvgPrice
 	}
 
-	var result bybitTransactionLogResult
-	if err := decodeResult(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("bybit decode transaction log: %w", err)
+	pos := exchange.Position{
+		Symbol:       raw.Symbol,
+		HoldVol:      decmath.ParseFloat(raw.Size),
+		HoldAvgPrice: decmath.ParseFloat(avgPrice),
+		OpenAvgPrice: decmath.ParseFloat(avgPrice),
 	}
 
-	return result.List, nil
+	switch raw.PositionIdx {
+	case 1:
+		pos.PositionType = 1 // Long
+	case 2:
+		pos.PositionType = 2 // Short
+	default:
+		// OneWay mode fallback.
+		if strings.EqualFold(raw.Side, "buy") {
+			pos.PositionType = 1 // Long
+		} else if strings.EqualFold(raw.Side, "sell") {
+			pos.PositionType = 2 // Short
+		}
+	}
+
+	return pos
 }
 
 // getHoldFee queries Bybit's Transaction Log to retrieve the settled funding fee for a symbol.
@@ -351,19 +396,19 @@ func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.T
 	if strings.EqualFold(c.accountType, "unified") {
 		apiAccountType = accountTypeUnified
 	}
-	params := map[string]any{
-		paramAccountType: apiAccountType,
-		categoryKey:      categoryLinear,
-		"type":           "SETTLEMENT",
-		symbolKey:        symbol,
-		limitKey:         10,
+	req := bybitTransactionLogRequest{
+		AccountType: apiAccountType,
+		Category:    categoryLinear,
+		Type:        "SETTLEMENT",
+		Symbol:      symbol,
+		Limit:       10,
 	}
 
 	if !startTime.IsZero() {
-		params["startTime"] = startTime.UnixMilli()
+		req.StartTime = startTime.UnixMilli()
 	}
 
-	list, err := c.getTransactionLog(ctx, params)
+	list, err := c.getRawTransactionLog(ctx, req)
 	if err != nil {
 		return 0, err
 	}
@@ -372,7 +417,7 @@ func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.T
 		return 0, nil
 	}
 
-	// Prefer the 'funding' field for funding fee, fall back to 'change' if empty
+	// Prefer the 'funding' field for funding fee, fall back to 'change' if empty.
 	fundingVal := list[0].Funding
 	if fundingVal == "" {
 		fundingVal = list[0].Change

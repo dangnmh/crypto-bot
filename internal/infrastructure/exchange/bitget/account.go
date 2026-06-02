@@ -32,10 +32,26 @@ type bitgetPosition struct {
 	AchievedProfits  string `json:"achievedProfits"`
 }
 
-// GetAssets returns all account asset information.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+type bitgetAssetsRequest struct {
+	ProductType string `json:"productType"`
+}
+
+type bitgetOpenPositionsRequest struct {
+	ProductType string `json:"productType"`
+}
+
+type bitgetTradeFillsRequest struct {
+	ProductType string `json:"productType"`
+	Limit       string `json:"limit,omitempty"`
+	Symbol      string `json:"symbol,omitempty"`
+	StartTime   string `json:"startTime,omitempty"`
+}
+
+// Private raw methods invoking the Bitget REST API.
+
+func (c *Client) getRawAssets(ctx context.Context, req bitgetAssetsRequest) ([]bitgetAccountAsset, error) {
 	params := map[string]string{
-		paramProductType: productTypeUsdtFutures,
+		paramProductType: req.ProductType,
 	}
 
 	body, err := c.GetCtx(ctx, pathAccountBalance, params)
@@ -43,7 +59,51 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 		return nil, err
 	}
 
-	balances, err := ParseResponse[[]bitgetAccountAsset](body, "assets")
+	return ParseResponse[[]bitgetAccountAsset](body, "assets")
+}
+
+func (c *Client) getRawOpenPositions(ctx context.Context, req bitgetOpenPositionsRequest) ([]bitgetPosition, error) {
+	params := map[string]string{
+		paramProductType: req.ProductType,
+	}
+
+	body, err := c.GetCtx(ctx, pathOpenPositions, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseResponse[[]bitgetPosition](body, "open_positions")
+}
+
+func (c *Client) getRawTradeFills(ctx context.Context, req bitgetTradeFillsRequest) ([]bitgetTradeFill, error) {
+	params := map[string]string{
+		paramProductType: req.ProductType,
+	}
+	if req.Limit != "" {
+		params[paramLimit] = req.Limit
+	}
+	if req.Symbol != "" {
+		params[paramSymbol] = req.Symbol
+	}
+	if req.StartTime != "" {
+		params["startTime"] = req.StartTime
+	}
+
+	body, err := c.GetCtx(ctx, "/api/v2/mix/order/fills", params)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseResponse[[]bitgetTradeFill](body, "fills")
+}
+
+// Public mapper methods implementing the exchange.AccountDataProvider interface.
+
+// GetAssets returns all account asset information.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	balances, err := c.getRawAssets(ctx, bitgetAssetsRequest{
+		ProductType: productTypeUsdtFutures,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -85,22 +145,11 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	return nil, fmt.Errorf("asset balance not found for currency: %s", currency)
 }
 
-func (c *Client) getRawOpenPositions(ctx context.Context) ([]bitgetPosition, error) {
-	params := map[string]string{
-		paramProductType: productTypeUsdtFutures,
-	}
-
-	body, err := c.GetCtx(ctx, pathOpenPositions, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[[]bitgetPosition](body, "open_positions")
-}
-
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	positions, err := c.getRawOpenPositions(ctx)
+	positions, err := c.getRawOpenPositions(ctx, bitgetOpenPositionsRequest{
+		ProductType: productTypeUsdtFutures,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +168,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		avgPx, _ := strconv.ParseFloat(pos.OpenPriceAvg, 64)
 
-		posType := 1 // long
+		posType := 1 // Long.
 		if pos.HoldSide == posSideShort {
 			posType = 2
 		}
@@ -149,30 +198,25 @@ type bitgetTradeFill struct {
 
 // GetRecentClosedPnL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// Look up numeric orderID from client order ID (extOrderID / clientOid)
+	// Look up numeric orderID from client order ID (extOrderID / clientOid).
 	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("bitget get order by external ID %s failed: %w", extOrderID, err)
 	}
 	closingOrderId := orderInfo.OrderID
 
-	params := map[string]string{
-		paramProductType: productTypeUsdtFutures,
-		paramLimit:       "10",
+	req := bitgetTradeFillsRequest{
+		ProductType: productTypeUsdtFutures,
+		Limit:       "10",
 	}
 	if !startTime.IsZero() {
-		params["startTime"] = strconv.FormatInt(startTime.UnixMilli(), 10)
+		req.StartTime = strconv.FormatInt(startTime.UnixMilli(), 10)
 	}
 	if symbol != "" {
-		params[paramSymbol] = symbol
+		req.Symbol = symbol
 	}
 
-	body, err := c.GetCtx(ctx, "/api/v2/mix/order/fills", params)
-	if err != nil {
-		return nil, err
-	}
-
-	fills, err := ParseResponse[[]bitgetTradeFill](body, "fills")
+	fills, err := c.getRawTradeFills(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +225,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
 	}
 
-	// Find the latest fill representing the latest closing execution
+	// Find the latest fill representing the latest closing execution.
 	latestFill := &fills[0]
 	for i := range fills {
 		f := &fills[i]
@@ -218,10 +262,10 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 
 	return &exchange.ClosedPnLInfo{
 		Symbol:     latestFill.Symbol,
-		EntryPrice: 0, // Fallback to WS estimation
+		EntryPrice: 0, // Fallback to WS estimation.
 		ExitPrice:  exitPrice,
 		ClosedSize: totalQty,
-		GrossPnL:   0, // Fallback to WS estimation
+		GrossPnL:   0, // Fallback to WS estimation.
 		Fee:        totalCommission,
 		FundingFee: 0,
 		DurationMs: 0,

@@ -2,6 +2,7 @@ package bybit
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,6 +11,65 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
+
+// Explicit request/response structs for order endpoints.
+
+type bybitCreateOrderRequest struct {
+	Category    string `json:"category"`
+	Symbol      string `json:"symbol"`
+	Side        string `json:"side"`
+	OrderType   string `json:"orderType"`
+	Qty         string `json:"qty"`
+	Price       string `json:"price,omitempty"`
+	TimeInForce string `json:"timeInForce,omitempty"`
+	PositionIdx int    `json:"positionIdx"`
+	ReduceOnly  bool   `json:"reduceOnly,omitempty"`
+	OrderLinkID string `json:"orderLinkId,omitempty"`
+	TakeProfit  string `json:"takeProfit,omitempty"`
+	StopLoss    string `json:"stopLoss,omitempty"`
+	Leverage    string `json:"leverage,omitempty"`
+}
+
+type bybitPlaceTPSLRequest struct {
+	Category    string `json:"category"`
+	Symbol      string `json:"symbol"`
+	TakeProfit  string `json:"takeProfit,omitempty"`
+	StopLoss    string `json:"stopLoss,omitempty"`
+	TpTriggerBy string `json:"tpTriggerBy,omitempty"`
+	SlTriggerBy string `json:"slTriggerBy,omitempty"`
+	PositionIdx int    `json:"positionIdx"`
+}
+
+type bybitCancelOrderRequest struct {
+	Category    string `json:"category"`
+	Symbol      string `json:"symbol"`
+	OrderID     string `json:"orderId,omitempty"`
+	OrderLinkID string `json:"orderLinkId,omitempty"`
+}
+
+type bybitCancelAllOpenOrdersRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol"`
+}
+
+type bybitGetOrderRequest struct {
+	Category    string `json:"category"`
+	OrderID     string `json:"orderId,omitempty"`
+	OrderLinkID string `json:"orderLinkId,omitempty"`
+	Symbol      string `json:"symbol,omitempty"`
+}
+
+type bybitListOpenOrdersRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol,omitempty"`
+}
+
+type bybitChangeLeverageRequest struct {
+	Category     string `json:"category"`
+	Symbol       string `json:"symbol"`
+	BuyLeverage  string `json:"buyLeverage"`
+	SellLeverage string `json:"sellLeverage"`
+}
 
 type bybitCreateOrderResult struct {
 	OrderID     string `json:"orderId"`
@@ -32,47 +92,292 @@ type bybitOrder struct {
 	PositionIdx int    `json:"positionIdx"`
 }
 
-// mapSubmitOrder maps a SubmitOrderRequest to Bybit parameters map.
-func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) map[string]any {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   req.Symbol,
+// Private raw methods invoking the Bybit SDK.
+
+func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).PlaceOrder(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("bybit create order: %w", err)
+	}
+	if resp.RetCode != 0 {
+		return nil, fmt.Errorf("bybit create order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
 	}
 
+	var res bybitCreateOrderResult
+	if err := decodeResult(resp.Result, &res); err != nil {
+		return nil, fmt.Errorf("bybit decode create order result: %w", err)
+	}
+	return &res, nil
+}
+
+func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionTradingStop(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit set trading stop: %w", err)
+	}
+	if resp.RetCode != 0 {
+		return fmt.Errorf("bybit set trading stop error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
+}
+
+func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest) error {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).CancelOrder(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit cancel order: %w", err)
+	}
+	if resp.RetCode != 0 {
+		// If order is already cancelled/filled, return nil to match Gate.io behavior.
+		if resp.RetCode == 110001 || strings.Contains(strings.ToLower(resp.RetMsg), "already cancelled") || strings.Contains(strings.ToLower(resp.RetMsg), "filled") {
+			return nil
+		}
+		return fmt.Errorf("bybit cancel order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
+}
+
+func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllOpenOrdersRequest) error {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).CancelAllOrders(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit cancel all orders: %w", err)
+	}
+	if resp.RetCode != 0 {
+		return fmt.Errorf("bybit cancel all orders error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
+}
+
+func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*bybitOrder, error) {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
+	list, err := decodeUtaResponse[bybitOrder](resp, err, "bybit get order")
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		id := req.OrderID
+		if id == "" {
+			id = req.OrderLinkID
+		}
+		return nil, fmt.Errorf("bybit order not found: %s", id)
+	}
+	return &list[0], nil
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRequest) ([]bybitOrder, error) {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
+	return decodeUtaResponse[bybitOrder](resp, err, "bybit list open orders")
+}
+
+func (c *Client) changeRawLeverage(ctx context.Context, req bybitChangeLeverageRequest) error {
+	params := structToMap(req)
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionLeverage(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit change leverage: %w", err)
+	}
+	// Bybit returns RetCode 110043 if leverage is already set to the target value. We ignore this safely.
+	if resp.RetCode != 0 && resp.RetCode != 110043 {
+		return fmt.Errorf("bybit change leverage error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
+}
+
+// Public mapper methods implementing the exchange.OrderExecutor interface.
+
+// CreateOrder submits a new order and returns the order ID.
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	bybitOrderType, bybitTif := mapOrderTypeAndTif(req.Type)
-	params["orderType"] = bybitOrderType
-	params["timeInForce"] = bybitTif
+	bybitSide, positionIdx, reduceOnly := mapSideAndPosition(req.Side, req.PositionMode == 1)
+
+	rawReq := bybitCreateOrderRequest{
+		Category:    categoryLinear,
+		Symbol:      req.Symbol,
+		Side:        bybitSide,
+		OrderType:   bybitOrderType,
+		Qty:         fmt.Sprintf("%g", req.Vol),
+		TimeInForce: bybitTif,
+		PositionIdx: positionIdx,
+	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		params["price"] = fmt.Sprintf("%g", req.Price)
+		rawReq.Price = fmt.Sprintf("%g", req.Price)
 	}
-
-	params["qty"] = fmt.Sprintf("%g", req.Vol)
-
-	bybitSide, positionIdx, reduceOnly := mapSideAndPosition(req.Side, req.PositionMode == 1)
-	params["side"] = bybitSide
-	params["positionIdx"] = positionIdx
 	if reduceOnly || req.ReduceOnly {
-		params["reduceOnly"] = true
+		rawReq.ReduceOnly = true
+	}
+	if req.ExternalOID != "" {
+		rawReq.OrderLinkID = req.ExternalOID
+	}
+	if req.TakeProfitPrice > 0 {
+		rawReq.TakeProfit = fmt.Sprintf("%g", req.TakeProfitPrice)
+	}
+	if req.StopLossPrice > 0 {
+		rawReq.StopLoss = fmt.Sprintf("%g", req.StopLossPrice)
+	}
+	if req.Leverage > 0 {
+		rawReq.Leverage = fmt.Sprintf("%d", req.Leverage)
 	}
 
-	if req.ExternalOID != "" {
-		params["orderLinkId"] = req.ExternalOID
+	res, err := c.createRawOrder(ctx, rawReq)
+	if err != nil {
+		return exchange.CreateOrderResult{}, err
+	}
+
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
+	return exchange.CreateOrderResult{OrderID: res.OrderID, TPSLSubmitted: tpslSubmitted}, nil
+}
+
+// PlaceTPSL places Take Profit and Stop Loss on Bybit.
+func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error {
+	rawReq := bybitPlaceTPSLRequest{
+		Category: categoryLinear,
+		Symbol:   req.Symbol,
 	}
 
 	if req.TakeProfitPrice > 0 {
-		params["takeProfit"] = fmt.Sprintf("%g", req.TakeProfitPrice)
+		rawReq.TakeProfit = fmt.Sprintf("%g", req.TakeProfitPrice)
+		rawReq.TpTriggerBy = triggerByLastPrice
 	}
 	if req.StopLossPrice > 0 {
-		params["stopLoss"] = fmt.Sprintf("%g", req.StopLossPrice)
+		rawReq.StopLoss = fmt.Sprintf("%g", req.StopLossPrice)
+		rawReq.SlTriggerBy = triggerByLastPrice
 	}
 
-	if req.Leverage > 0 {
-		params["leverage"] = fmt.Sprintf("%d", req.Leverage)
+	// positionIdx: 0=OneWay, 1=Hedge Long, 2=Hedge Short.
+	positionIdx := 0
+	if req.PositionMode == 1 {
+		switch req.Side {
+		case exchange.SideOpenLong:
+			positionIdx = 1
+		case exchange.SideOpenShort:
+			positionIdx = 2
+		}
 	}
+	rawReq.PositionIdx = positionIdx
 
-	return params
+	return c.placeRawTPSL(ctx, rawReq)
 }
+
+// CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
+func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
+	return "", fmt.Errorf("CreateTrackOrder not implemented for Bybit")
+}
+
+// CancelOrder cancels a single order by its ID.
+func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	return c.cancelRawOrder(ctx, bybitCancelOrderRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+		OrderID:  orderID,
+	})
+}
+
+// CancelOrders cancels multiple orders.
+func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
+	for _, id := range orderIDs {
+		err := c.CancelOrder(ctx, "", id)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CancelAllOpenOrders cancels all open orders for a given symbol.
+func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
+	return c.cancelRawAllOpenOrders(ctx, bybitCancelAllOpenOrdersRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+	})
+}
+
+// GetOrder queries a single order by ID.
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+		OrderID:  orderID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	info := mapOrderInfo(*raw)
+	return &info, nil
+}
+
+// GetOpenOrders returns all open orders.
+func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
+	rawList, err := c.getRawOpenOrders(ctx, bybitListOpenOrdersRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]exchange.OrderInfo, 0, len(rawList))
+	for i := range rawList {
+		orders = append(orders, mapOrderInfo(rawList[i]))
+	}
+	return orders, nil
+}
+
+// ClosePosition closes one position leg using a market order.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+	req := exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         int(closeSide),
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: positionMode,
+		ReduceOnly:   true,
+	}
+	_, err := c.CreateOrder(ctx, req)
+	return err
+}
+
+// CloseAllPositions closes all positions for a symbol.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	for i := range positions {
+		pos := &positions[i]
+		if pos.HoldVol > 0 {
+			var side domain.Side
+			if pos.PositionType == 1 { // Long
+				side = domain.SideCloseLong
+			} else { // Short
+				side = domain.SideCloseShort
+			}
+			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1) // default hedge mode close
+			if posErr != nil {
+				return posErr
+			}
+		}
+	}
+	return nil
+}
+
+// ChangeLeverage changes the leverage for a symbol.
+func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
+	leverageStr := fmt.Sprintf("%d", req.Leverage)
+	return c.changeRawLeverage(ctx, bybitChangeLeverageRequest{
+		Category:     categoryLinear,
+		Symbol:       req.Symbol,
+		BuyLeverage:  leverageStr,
+		SellLeverage: leverageStr,
+	})
+}
+
+// Helper mapping functions.
 
 func mapOrderTypeAndTif(orderType int) (string, string) {
 	switch orderType {
@@ -133,14 +438,14 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 		DealAvgPrice: decmath.ParseFloat(raw.AvgPrice),
 		DealVol:      decmath.ParseFloat(raw.CumExecQty),
 		ExternalOID:  raw.OrderLinkID,
-		PositionMode: 2, // Default One-Way
+		PositionMode: 2, // Default One-Way.
 	}
 
 	if raw.PositionIdx > 0 {
-		info.PositionMode = 1 // Hedge mode
+		info.PositionMode = 1 // Hedge mode.
 	}
 
-	// Created/Updated times
+	// Created/Updated times.
 	if raw.CreatedTime != "" {
 		if parsed, err := strconv.ParseInt(raw.CreatedTime, 10, 64); err == nil {
 			info.CreateTime = parsed
@@ -152,7 +457,7 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 		}
 	}
 
-	// Map Side
+	// Map Side.
 	switch raw.Side {
 	case sideBuy:
 		if raw.PositionIdx == 2 {
@@ -168,7 +473,7 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 		}
 	}
 
-	// Map State
+	// Map State.
 	switch strings.ToLower(raw.OrderStatus) {
 	case "filled":
 		info.State = exchange.OrderStateFilled
@@ -181,239 +486,15 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 	return info
 }
 
-// CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	params := c.mapSubmitOrder(req)
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).PlaceOrder(ctx)
+// structToMap converts any struct to a map[string]any.
+func structToMap(val any) map[string]any {
+	bytes, err := json.Marshal(val)
 	if err != nil {
-		return exchange.CreateOrderResult{}, fmt.Errorf("bybit create order: %w", err)
+		return nil
 	}
-	if resp.RetCode != 0 {
-		return exchange.CreateOrderResult{}, fmt.Errorf("bybit create order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	var res map[string]any
+	if err := json.Unmarshal(bytes, &res); err != nil {
+		return nil
 	}
-
-	var res bybitCreateOrderResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return exchange.CreateOrderResult{}, fmt.Errorf("bybit decode create order result: %w", err)
-	}
-
-	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
-	return exchange.CreateOrderResult{OrderID: res.OrderID, TPSLSubmitted: tpslSubmitted}, nil
-}
-
-// PlaceTPSL places Take Profit and Stop Loss on Bybit.
-func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error {
-	params := map[string]any{
-		"category": "linear",
-		"symbol":   req.Symbol,
-	}
-
-	if req.TakeProfitPrice > 0 {
-		params["takeProfit"] = fmt.Sprintf("%g", req.TakeProfitPrice)
-		params["tpTriggerBy"] = triggerByLastPrice
-	}
-	if req.StopLossPrice > 0 {
-		params["stopLoss"] = fmt.Sprintf("%g", req.StopLossPrice)
-		params["slTriggerBy"] = triggerByLastPrice
-	}
-
-	// positionIdx: 0=OneWay, 1=Hedge Long, 2=Hedge Short
-	positionIdx := 0
-	if req.PositionMode == 1 {
-		switch req.Side {
-		case exchange.SideOpenLong:
-			positionIdx = 1
-		case exchange.SideOpenShort:
-			positionIdx = 2
-		}
-	}
-	params["positionIdx"] = positionIdx
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionTradingStop(ctx)
-	if err != nil {
-		return fmt.Errorf("bybit set trading stop: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return fmt.Errorf("bybit set trading stop error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	return nil
-}
-
-// CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented for Bybit")
-}
-
-// CancelOrder cancels a single order by its ID.
-func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   symbol,
-		orderIDKey:  orderID,
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).CancelOrder(ctx)
-	if err != nil {
-		return fmt.Errorf("bybit cancel order: %w", err)
-	}
-	if resp.RetCode != 0 {
-		// If order is already cancelled/filled, return nil to match Gate.io behavior
-		if resp.RetCode == 110001 || strings.Contains(strings.ToLower(resp.RetMsg), "already cancelled") || strings.Contains(strings.ToLower(resp.RetMsg), "filled") {
-			return nil
-		}
-		return fmt.Errorf("bybit cancel order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
-}
-
-// CancelOrders cancels multiple orders.
-func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
-	// For Bybit standard/unified, bulk cancel is not directly standard in a single SDK call,
-	// so we loop over individual order cancels like in mexc/gate.
-	for _, id := range orderIDs {
-		// Note: since CancelOrder requires symbol, and the bot uses symbols globally,
-		// we query order or use empty symbol (Bybit V5 cancel requires symbol).
-		// We fallback to checking each or mapping. The sniper bot passes symbols or empty.
-		// If empty, we try to cancel. (CancelOrders in sniper is normally called with known symbol order).
-		err := c.CancelOrder(ctx, "", id)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// CancelAllOpenOrders cancels all open orders for a given symbol.
-func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   symbol,
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).CancelAllOrders(ctx)
-	if err != nil {
-		return fmt.Errorf("bybit cancel all orders: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return fmt.Errorf("bybit cancel all orders error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
-}
-
-func (c *Client) getRawOrder(ctx context.Context, symbol, orderID string) (*bybitOrder, error) {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		orderIDKey:  orderID,
-	}
-	if symbol != "" {
-		params[symbolKey] = symbol
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
-	list, err := decodeUtaResponse[bybitOrder](resp, err, "bybit get order")
-	if err != nil {
-		return nil, err
-	}
-	if len(list) == 0 {
-		return nil, fmt.Errorf("bybit order not found: %s", orderID)
-	}
-
-	return &list[0], nil
-}
-
-func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]bybitOrder, error) {
-	params := map[string]any{
-		categoryKey: categoryLinear,
-	}
-	if symbol != "" {
-		params[symbolKey] = symbol
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
-	return decodeUtaResponse[bybitOrder](resp, err, "bybit list open orders")
-}
-
-// GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, symbol, orderID)
-	if err != nil {
-		return nil, err
-	}
-	info := mapOrderInfo(*raw)
-	return &info, nil
-}
-
-// GetOpenOrders returns all open orders.
-func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawList, err := c.getRawOpenOrders(ctx, symbol)
-	if err != nil {
-		return nil, err
-	}
-
-	orders := make([]exchange.OrderInfo, 0, len(rawList))
-	for i := range rawList {
-		orders = append(orders, mapOrderInfo(rawList[i]))
-	}
-	return orders, nil
-}
-
-// ClosePosition closes one position leg using a market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
-	req := exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Vol:          volume,
-		Side:         int(closeSide),
-		Type:         exchange.OrderTypeMarket,
-		PositionMode: positionMode,
-		ReduceOnly:   true,
-	}
-	_, err := c.CreateOrder(ctx, req)
-	return err
-}
-
-// CloseAllPositions closes all positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := &positions[i]
-		if pos.HoldVol > 0 {
-			var side domain.Side
-			if pos.PositionType == 1 { // Long
-				side = domain.SideCloseLong
-			} else { // Short
-				side = domain.SideCloseShort
-			}
-			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1) // default hedge mode close
-			if posErr != nil {
-				return posErr
-			}
-		}
-	}
-	return nil
-}
-
-// ChangeLeverage changes the leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	params := map[string]any{
-		categoryKey:    categoryLinear,
-		symbolKey:      req.Symbol,
-		"buyLeverage":  fmt.Sprintf("%d", req.Leverage),
-		"sellLeverage": fmt.Sprintf("%d", req.Leverage),
-	}
-
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionLeverage(ctx)
-	if err != nil {
-		return fmt.Errorf("bybit change leverage: %w", err)
-	}
-	// Bybit returns RetCode 110043 if leverage is already set to the target value. We ignore this safely!
-	if resp.RetCode != 0 && resp.RetCode != 110043 {
-		return fmt.Errorf("bybit change leverage error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
+	return res
 }

@@ -12,10 +12,40 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-type kucoinOrderResult struct {
+type kucoinCreateOrderRequest struct {
+	Symbol    string  `json:"symbol"`
+	Side      string  `json:"side"`
+	Type      string  `json:"type"`
+	Size      float64 `json:"size"`
+	Price     float64 `json:"price,omitempty"`
+	ClientOid string  `json:"clientOid,omitempty"`
+}
+
+type kucoinCreateOrderResponse struct {
 	OrderID   string `json:"orderId"`
 	ClientOid string `json:"clientOid"`
 }
+
+type kucoinCancelOrderRequest struct {
+	OrderID string `json:"orderId"`
+}
+
+type kucoinCancelOrderResponse struct{}
+
+type kucoinOrderRequest struct {
+	OrderID string `json:"orderId"`
+}
+
+type kucoinOpenOrdersRequest struct {
+	Symbol string `json:"symbol,omitempty"`
+}
+
+type kucoinChangeLeverageRequest struct {
+	Symbol   string `json:"symbol"`
+	Leverage string `json:"leverage"`
+}
+
+type kucoinChangeLeverageResponse struct{}
 
 type kucoinOrder struct {
 	OrderID     string `json:"orderId"`
@@ -33,6 +63,130 @@ type kucoinOrder struct {
 	IsActive    bool   `json:"isActive"`
 }
 
+// Private raw methods invoking the KuCoin REST API.
+
+func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderRequest) (*kucoinCreateOrderResponse, error) {
+	bodyMap := map[string]any{
+		paramSymbol: req.Symbol,
+		"side":      req.Side,
+		paramType:   req.Type,
+		"size":      req.Size,
+	}
+	if req.Price > 0 {
+		bodyMap["price"] = req.Price
+	}
+	if req.ClientOid != "" {
+		bodyMap["clientOid"] = req.ClientOid
+	}
+
+	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := ParseResponse[kucoinCreateOrderResponse](body, "create_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) cancelRawOrder(ctx context.Context, req kucoinCancelOrderRequest) (*kucoinCancelOrderResponse, error) {
+	path := fmt.Sprintf("%s/%s", pathCancelOrder, req.OrderID)
+	url := c.baseURL + path
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create DELETE request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
+		sig := SignRequest(c.apiSecret, ts, http.MethodDelete, path, "")
+		httpReq.Header.Set(headerKey, c.apiKey)
+		httpReq.Header.Set(headerSign, sig)
+		httpReq.Header.Set(headerTimestamp, ts)
+		httpReq.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
+		httpReq.Header.Set(headerVersion, "2")
+	}
+
+	body, err := c.doRequest(ctx, httpReq)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ParseResponseIgnoreData(body, "cancel_order"); err != nil {
+		return nil, err
+	}
+	return &kucoinCancelOrderResponse{}, nil
+}
+
+func (c *Client) getRawOrder(ctx context.Context, req kucoinOrderRequest) (*kucoinOrder, error) {
+	path := fmt.Sprintf("%s/%s", pathGetOrder, req.OrderID)
+	body, err := c.GetCtx(ctx, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := ParseResponse[kucoinOrder](body, "get_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersRequest) ([]kucoinOrder, error) {
+	params := map[string]string{
+		"status": "active",
+	}
+	if req.Symbol != "" {
+		params[paramSymbol] = req.Symbol
+	}
+
+	body, err := c.GetCtx(ctx, pathPendingOrders, params)
+	if err != nil {
+		return nil, err
+	}
+
+	type orderListData struct {
+		Items []kucoinOrder `json:"items"`
+	}
+
+	var rawList []kucoinOrder
+	listParsed, err := ParseResponse[orderListData](body, "open_orders")
+	if err == nil {
+		rawList = listParsed.Items
+	} else {
+		directParsed, err := ParseResponse[[]kucoinOrder](body, "open_orders")
+		if err == nil {
+			rawList = directParsed
+		} else {
+			return nil, fmt.Errorf("parse open orders failed: %w", err)
+		}
+	}
+
+	return rawList, nil
+}
+
+func (c *Client) changeRawLeverage(ctx context.Context, req kucoinChangeLeverageRequest) (*kucoinChangeLeverageResponse, error) {
+	bodyMap := map[string]any{
+		paramSymbol: req.Symbol,
+		"leverage":  req.Leverage,
+	}
+
+	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ParseResponseIgnoreData(body, "set_leverage"); err != nil {
+		return nil, err
+	}
+	return &kucoinChangeLeverageResponse{}, nil
+}
+
+// Public mapper methods implementing the exchange.OrderExecutor interface.
+
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	ordType := "limit"
@@ -45,27 +199,19 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		side = sideSell
 	}
 
-	bodyMap := map[string]any{
-		paramSymbol: req.Symbol,
-		"side":      side,
-		paramType:   ordType,
-		"size":      req.Vol,
+	rawReq := kucoinCreateOrderRequest{
+		Symbol:    req.Symbol,
+		Side:      side,
+		Type:      ordType,
+		Size:      req.Vol,
+		ClientOid: req.ExternalOID,
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		bodyMap["price"] = req.Price
+		rawReq.Price = req.Price
 	}
 
-	if req.ExternalOID != "" {
-		bodyMap["clientOid"] = req.ExternalOID
-	}
-
-	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
-	if err != nil {
-		return exchange.CreateOrderResult{}, err
-	}
-
-	res, err := ParseResponse[kucoinOrderResult](body, "create_order")
+	res, err := c.createRawOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -83,31 +229,10 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 
 // CancelOrder cancels an existing order by ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	path := fmt.Sprintf("%s/%s", pathCancelOrder, orderID)
-	// KuCoin cancel request is DELETE
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, http.NoBody)
-	if err != nil {
-		return fmt.Errorf("create DELETE request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
-		sig := SignRequest(c.apiSecret, ts, http.MethodDelete, path, "")
-		req.Header.Set(headerKey, c.apiKey)
-		req.Header.Set(headerSign, sig)
-		req.Header.Set(headerTimestamp, ts)
-		req.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
-		req.Header.Set(headerVersion, "2")
-	}
-
-	body, err := c.doRequest(ctx, req)
-	if err != nil {
-		return err
-	}
-
-	return ParseResponseIgnoreData(body, "cancel_order")
+	_, err := c.cancelRawOrder(ctx, kucoinCancelOrderRequest{
+		OrderID: orderID,
+	})
+	return err
 }
 
 // CancelOrders cancels multiple orders.
@@ -129,57 +254,11 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-func (c *Client) getRawOrder(ctx context.Context, orderID string) (*kucoinOrder, error) {
-	path := fmt.Sprintf("%s/%s", pathGetOrder, orderID)
-	body, err := c.GetCtx(ctx, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := ParseResponse[kucoinOrder](body, "get_order")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-func (c *Client) getRawOpenOrders(ctx context.Context, symbol string) ([]kucoinOrder, error) {
-	params := map[string]string{
-		"status": "active",
-	}
-	if symbol != "" {
-		params[paramSymbol] = symbol
-	}
-
-	body, err := c.GetCtx(ctx, pathPendingOrders, params)
-	if err != nil {
-		return nil, err
-	}
-
-	// Paginated or direct list
-	type orderListData struct {
-		Items []kucoinOrder `json:"items"`
-	}
-
-	var rawList []kucoinOrder
-	listParsed, err := ParseResponse[orderListData](body, "open_orders")
-	if err == nil {
-		rawList = listParsed.Items
-	} else {
-		directParsed, err := ParseResponse[[]kucoinOrder](body, "open_orders")
-		if err == nil {
-			rawList = directParsed
-		} else {
-			return nil, fmt.Errorf("parse open orders failed: %w", err)
-		}
-	}
-
-	return rawList, nil
-}
-
 // GetOrder fetches details of a specific order.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, orderID)
+	raw, err := c.getRawOrder(ctx, kucoinOrderRequest{
+		OrderID: orderID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +268,9 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOpenOrders returns all currently active orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawList, err := c.getRawOpenOrders(ctx, symbol)
+	rawList, err := c.getRawOpenOrders(ctx, kucoinOpenOrdersRequest{
+		Symbol: symbol,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -240,17 +321,11 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 // ChangeLeverage changes leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	bodyMap := map[string]any{
-		paramSymbol: req.Symbol,
-		"leverage":  strconv.Itoa(req.Leverage),
-	}
-
-	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
-	if err != nil {
-		return err
-	}
-
-	return ParseResponseIgnoreData(body, "set_leverage")
+	_, err := c.changeRawLeverage(ctx, kucoinChangeLeverageRequest{
+		Symbol:   req.Symbol,
+		Leverage: strconv.Itoa(req.Leverage),
+	})
+	return err
 }
 
 func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {

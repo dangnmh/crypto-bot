@@ -36,4 +36,5 @@ const (
 
 	defaultPublicURL = "wss://fstream.binance.com/public"
 	defaultMarketURL = "wss://fstream.binance.com/market"
+	binanceTrueStr   = "true"
 )

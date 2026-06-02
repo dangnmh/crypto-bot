@@ -17,18 +17,100 @@ import (
 	"github.com/samber/lo"
 )
 
-// GetAssets returns all account assets and balances.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+// Explicit request/response structs for account endpoints.
+
+type binanceWalletBalanceRequest struct{}
+
+type binancePositionsRequest struct {
+	Symbol string
+}
+
+type binanceAccountTradeListRequest struct {
+	Symbol    string
+	Limit     int32
+	StartTime int64
+}
+
+type binanceIncomeHistoryRequest struct {
+	Symbol     string
+	IncomeType string
+	StartTime  int64
+	Limit      int32
+}
+
+// Private raw methods invoking the Binance SDK.
+
+func (c *Client) getRawAssets(ctx context.Context, _ binanceWalletBalanceRequest) (*models.FuturesAccountBalanceV2Response, error) {
 	req := c.sdkClient.RestApi.AccountAPI.FuturesAccountBalanceV2(ctx)
 	resp, err := c.sdkClient.RestApi.AccountAPI.FuturesAccountBalanceV2Execute(req)
 	if err != nil {
 		return nil, fmt.Errorf("binance futures account balance: %w", err)
 	}
+	return &resp.Data, nil
+}
 
-	items := resp.Data.Items
+func (c *Client) getRawOpenPositions(ctx context.Context, req binancePositionsRequest) (*models.PositionInformationV2Response, error) {
+	r := c.sdkClient.RestApi.TradeAPI.PositionInformationV2(ctx)
+	if req.Symbol != "" {
+		r = r.Symbol(req.Symbol)
+	}
+
+	resp, err := c.sdkClient.RestApi.TradeAPI.PositionInformationV2Execute(r)
+	if err != nil {
+		return nil, fmt.Errorf("binance position information: %w", err)
+	}
+	return &resp.Data, nil
+}
+
+func (c *Client) getRawAccountTrades(ctx context.Context, req binanceAccountTradeListRequest) (*models.AccountTradeListResponse, error) {
+	r := c.sdkClient.RestApi.TradeAPI.AccountTradeList(ctx).
+		Symbol(req.Symbol)
+	if req.Limit > 0 {
+		r = r.Limit(int64(req.Limit))
+	}
+	if req.StartTime > 0 {
+		r = r.StartTime(req.StartTime)
+	}
+
+	resp, err := c.sdkClient.RestApi.TradeAPI.AccountTradeListExecute(r)
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+func (c *Client) getRawIncomeHistory(ctx context.Context, req binanceIncomeHistoryRequest) (*models.GetIncomeHistoryResponse, error) {
+	r := c.sdkClient.RestApi.AccountAPI.GetIncomeHistory(ctx).
+		Symbol(req.Symbol).
+		IncomeType(req.IncomeType)
+	if req.StartTime > 0 {
+		r = r.StartTime(req.StartTime)
+	}
+	if req.Limit > 0 {
+		r = r.Limit(int64(req.Limit))
+	}
+
+	resp, err := c.sdkClient.RestApi.AccountAPI.GetIncomeHistoryExecute(r)
+	if err != nil {
+		return nil, err
+	}
+	return &resp.Data, nil
+}
+
+// Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
+
+// GetAssets returns all account assets and balances.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	resp, err := c.getRawAssets(ctx, binanceWalletBalanceRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	items := resp.Items
 	assets := make([]exchange.AssetInfo, 0, len(items))
 
-	for _, item := range items {
+	for i := range items {
+		item := &items[i]
 		asset := item.GetAsset()
 		balance := decmath.ParseFloat(lo.FromPtr(item.Balance))
 		crossUnPnl := decmath.ParseFloat(lo.FromPtr(item.CrossUnPnl))
@@ -74,21 +156,18 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 
 // GetOpenPositions returns all open positions for a symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	req := c.sdkClient.RestApi.TradeAPI.PositionInformationV2(ctx)
-	if symbol != "" {
-		req = req.Symbol(symbol)
-	}
-
-	resp, err := c.sdkClient.RestApi.TradeAPI.PositionInformationV2Execute(req)
+	resp, err := c.getRawOpenPositions(ctx, binancePositionsRequest{
+		Symbol: symbol,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("binance position information: %w", err)
+		return nil, err
 	}
 
-	items := resp.Data.Items
+	items := resp.Items
 	positions := make([]exchange.Position, 0, len(items))
 
 	for i := range items {
-		raw := items[i]
+		raw := &items[i]
 		amt := decmath.ParseFloat(lo.FromPtr(raw.PositionAmt))
 
 		if math.Abs(amt) == 0 {
@@ -120,7 +199,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// Look up numeric orderID from client order ID (extOrderID / clientOid)
+	// Look up numeric orderID from client order ID (extOrderID / clientOid).
 	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("binance get order by external ID %s failed: %w", extOrderID, err)
@@ -133,25 +212,26 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	// TODO: Symbol-based trade queries can be subject to collisions if multiple bots trade the same symbol concurrently.
 	// To make this 100% precise, we should track the exact closingOrderId returned by the position close call
 	// and query userTrades specifically by openingOrderId and closingOrderId instead of relying on symbol & startTime.
-	req := c.sdkClient.RestApi.TradeAPI.AccountTradeList(ctx).
-		Symbol(symbol).
-		Limit(50)
+	req := binanceAccountTradeListRequest{
+		Symbol: symbol,
+		Limit:  50,
+	}
 
 	if !startTime.IsZero() {
-		req = req.StartTime(startTime.UnixMilli())
+		req.StartTime = startTime.UnixMilli()
 	}
 
 	var items []models.AccountTradeListResponseInner
 
 	operation := func() error {
-		resp, err := c.sdkClient.RestApi.TradeAPI.AccountTradeListExecute(req)
+		resp, err := c.getRawAccountTrades(ctx, req)
 		if err != nil {
 			return err
 		}
-		if len(resp.Data.Items) == 0 {
+		if len(resp.Items) == 0 {
 			return fmt.Errorf("no user trades found for symbol %s since %v", symbol, startTime)
 		}
-		items = resp.Data.Items
+		items = resp.Items
 		return nil
 	}
 
@@ -218,8 +298,8 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		closedSize = closingQty
 		fee = openingCommission + closingCommission
 	} else {
-		// Fallback if closing trades are not yet in the ledger (asynchronous propagation delay)
-		// We use entry price as exit price fallback
+		// Fallback if closing trades are not yet in the ledger (asynchronous propagation delay).
+		// We use entry price as exit price fallback.
 		exitPrice = entryPrice
 		closedSize = openingQty
 		fee = openingCommission
@@ -253,19 +333,20 @@ func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.T
 		return 0, nil
 	}
 
-	req := c.sdkClient.RestApi.AccountAPI.GetIncomeHistory(ctx).
-		Symbol(symbol).
-		IncomeType("FUNDING_FEE").
-		StartTime(startTime.UnixMilli()).
-		Limit(10)
-
-	resp, err := c.sdkClient.RestApi.AccountAPI.GetIncomeHistoryExecute(req)
+	resp, err := c.getRawIncomeHistory(ctx, binanceIncomeHistoryRequest{
+		Symbol:     symbol,
+		IncomeType: "FUNDING_FEE",
+		StartTime:  startTime.UnixMilli(),
+		Limit:      10,
+	})
 	if err != nil {
 		return 0, err
 	}
 
 	totalHoldFee := 0.0
-	for _, item := range resp.Data.Items {
+	items := resp.Items
+	for i := range items {
+		item := &items[i]
 		if item.Income != nil {
 			fee := decmath.ParseFloat(*item.Income)
 			totalHoldFee += fee

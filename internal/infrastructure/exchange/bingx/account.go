@@ -11,6 +11,14 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+// Explicit request/response structs for account endpoints.
+
+type bingxWalletBalanceRequest struct{}
+
+type bingxPositionsRequest struct {
+	Symbol string `json:"symbol,omitempty"`
+}
+
 type bingxBalance struct {
 	Asset           string `json:"asset"`
 	Balance         string `json:"balance"`
@@ -28,8 +36,9 @@ type bingxPosition struct {
 	Isolated         bool   `json:"isolated"`
 }
 
-// GetAssets fetches all active margin balances.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+// Private raw methods invoking the BingX REST API.
+
+func (c *Client) getRawAssets(ctx context.Context, _ bingxWalletBalanceRequest) ([]bingxBalance, error) {
 	body, err := c.GetCtx(ctx, pathAccountBalance, nil)
 	if err != nil {
 		return nil, err
@@ -52,6 +61,31 @@ func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 				return nil, fmt.Errorf("parse assets response: %w", err)
 			}
 		}
+	}
+	return res, nil
+}
+
+func (c *Client) getRawOpenPositions(ctx context.Context, req bingxPositionsRequest) ([]bingxPosition, error) {
+	params := map[string]string{}
+	if req.Symbol != "" {
+		params[paramSymbol] = req.Symbol
+	}
+
+	body, err := c.GetCtx(ctx, pathOpenPositions, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseResponse[[]bingxPosition](body, "open_positions")
+}
+
+// Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
+
+// GetAssets fetches all active margin balances.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	res, err := c.getRawAssets(ctx, bingxWalletBalanceRequest{})
+	if err != nil {
+		return nil, err
 	}
 
 	assets := make([]exchange.AssetInfo, 0, len(res))
@@ -90,23 +124,11 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 	}, nil
 }
 
-func (c *Client) getRawOpenPositions(ctx context.Context, symbol string) ([]bingxPosition, error) {
-	params := map[string]string{}
-	if symbol != "" {
-		params[paramSymbol] = symbol
-	}
-
-	body, err := c.GetCtx(ctx, pathOpenPositions, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[[]bingxPosition](body, "open_positions")
-}
-
 // GetOpenPositions retrieves currently active futures positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	res, err := c.getRawOpenPositions(ctx, symbol)
+	res, err := c.getRawOpenPositions(ctx, bingxPositionsRequest{
+		Symbol: symbol,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -120,9 +142,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		sideVal := 1 // long
+		sideVal := 1 // long.
 		if p.PositionSide == posSideShort || (p.PositionSide == posSideBoth && amt < 0) {
-			sideVal = 2 // short
+			sideVal = 2 // short.
 		}
 
 		absAmt := math.Abs(amt)

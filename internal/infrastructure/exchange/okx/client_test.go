@@ -213,6 +213,48 @@ func TestClient_CreateOrder(t *testing.T) {
 	res, err := client.CreateOrder(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "987654", res.OrderID)
+	assert.False(t, res.TPSLSubmitted)
+}
+
+func TestClient_CreateOrder_TPSL(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/api/v5/trade/order", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "0",
+			"msg": "",
+			"data": [
+				{
+					"ordId": "987654",
+					"clOrdId": "my_client_id",
+					"sCode": "0",
+					"sMsg": "success"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	req := exchange.SubmitOrderRequest{
+		Symbol:          "BTC-USDT-SWAP",
+		Vol:             1,
+		Side:            exchange.SideOpenLong,
+		Type:            exchange.OrderTypeLimit,
+		Price:           50000,
+		PositionMode:    1, // Hedge
+		TakeProfitPrice: 51000,
+		StopLossPrice:   49000,
+	}
+
+	res, err := client.CreateOrder(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "987654", res.OrderID)
+	assert.True(t, res.TPSLSubmitted)
 }
 
 func TestClient_CancelOrder(t *testing.T) {

@@ -12,6 +12,75 @@ import (
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
+type hyperliquidCreateOrderRequest struct {
+	Coin          string
+	IsBuy         bool
+	Price         float64
+	Size          float64
+	ReduceOnly    bool
+	Tif           string
+	ClientOrderID *string
+}
+
+type hyperliquidCancelOrderRequest struct {
+	Symbol  string
+	OrderID int64
+}
+
+type hyperliquidQueryOrderRequest struct {
+	UserAddress string
+	OrderID     int64
+}
+
+type hyperliquidOpenOrdersRequest struct {
+	UserAddress string
+}
+
+type hyperliquidUpdateLeverageRequest struct {
+	Leverage int
+	Symbol   string
+	IsCross  bool
+}
+
+// Private raw methods invoking the Hyperliquid API or SDK.
+
+func (c *Client) createRawOrder(ctx context.Context, req hyperliquidCreateOrderRequest) (hl.OrderStatus, error) {
+	orderReq := hl.CreateOrderRequest{
+		Coin:       req.Coin,
+		IsBuy:      req.IsBuy,
+		Price:      req.Price,
+		Size:       req.Size,
+		ReduceOnly: req.ReduceOnly,
+		OrderType: hl.OrderType{
+			Limit: &hl.LimitOrderType{
+				Tif: hl.Tif(req.Tif),
+			},
+		},
+	}
+	if req.ClientOrderID != nil {
+		orderReq.ClientOrderID = req.ClientOrderID
+	}
+	return c.exchange.Order(ctx, orderReq, nil)
+}
+
+func (c *Client) cancelRawOrder(ctx context.Context, req hyperliquidCancelOrderRequest) (*hl.APIResponse[hl.CancelOrderResponse], error) {
+	return c.exchange.Cancel(ctx, req.Symbol, req.OrderID)
+}
+
+func (c *Client) getRawOrder(ctx context.Context, req hyperliquidQueryOrderRequest) (*hl.OrderQueryResult, error) {
+	return c.info.QueryOrderByOid(ctx, req.UserAddress, req.OrderID)
+}
+
+func (c *Client) getRawOpenOrders(ctx context.Context, req hyperliquidOpenOrdersRequest) ([]hl.OpenOrder, error) {
+	return c.info.OpenOrders(ctx, req.UserAddress)
+}
+
+func (c *Client) changeRawLeverage(ctx context.Context, req hyperliquidUpdateLeverageRequest) (*hl.UserState, error) {
+	return c.exchange.UpdateLeverage(ctx, req.Leverage, req.Symbol, req.IsCross)
+}
+
+// Public mapper methods implementing the exchange.OrderExecutor interface.
+
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	if c.exchange == nil {
@@ -30,24 +99,20 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		tif = tifGtc
 	}
 
-	orderReq := hl.CreateOrderRequest{
+	rawReq := hyperliquidCreateOrderRequest{
 		Coin:       req.Symbol,
 		IsBuy:      isBuy,
 		Price:      req.Price,
 		Size:       req.Vol,
 		ReduceOnly: req.ReduceOnly,
-		OrderType: hl.OrderType{
-			Limit: &hl.LimitOrderType{
-				Tif: hl.Tif(tif),
-			},
-		},
+		Tif:        tif,
 	}
 
 	if req.ExternalOID != "" {
-		orderReq.ClientOrderID = &req.ExternalOID
+		rawReq.ClientOrderID = &req.ExternalOID
 	}
 
-	status, err := c.exchange.Order(ctx, orderReq, nil)
+	status, err := c.createRawOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -80,7 +145,10 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		return fmt.Errorf("invalid orderID format: %w", err)
 	}
 
-	resp, err := c.exchange.Cancel(ctx, symbol, oid)
+	resp, err := c.cancelRawOrder(ctx, hyperliquidCancelOrderRequest{
+		Symbol:  symbol,
+		OrderID: oid,
+	})
 	if err != nil {
 		return err
 	}
@@ -108,7 +176,10 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		return nil, fmt.Errorf("invalid orderID format: %w", err)
 	}
 
-	res, err := c.info.QueryOrderByOid(ctx, c.userAddress, oid)
+	res, err := c.getRawOrder(ctx, hyperliquidQueryOrderRequest{
+		UserAddress: c.userAddress,
+		OrderID:     oid,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +218,9 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}
 
-	openOrders, err := c.info.OpenOrders(ctx, c.userAddress)
+	openOrders, err := c.getRawOpenOrders(ctx, hyperliquidOpenOrdersRequest{
+		UserAddress: c.userAddress,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -180,20 +253,16 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 
 	isBuy := closeSide != domain.SideCloseLong
 
-	orderReq := hl.CreateOrderRequest{
+	req := hyperliquidCreateOrderRequest{
 		Coin:       symbol,
 		IsBuy:      isBuy,
 		Price:      0.0,
 		Size:       volume,
 		ReduceOnly: true,
-		OrderType: hl.OrderType{
-			Limit: &hl.LimitOrderType{
-				Tif: hl.Tif(tifIoc),
-			},
-		},
+		Tif:        tifIoc,
 	}
 
-	status, err := c.exchange.Order(ctx, orderReq, nil)
+	status, err := c.createRawOrder(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -212,7 +281,11 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	}
 
 	isCross := req.OpenType == exchange.OpenTypeCross
-	_, err := c.exchange.UpdateLeverage(ctx, req.Leverage, req.Symbol, isCross)
+	_, err := c.changeRawLeverage(ctx, hyperliquidUpdateLeverageRequest{
+		Leverage: req.Leverage,
+		Symbol:   req.Symbol,
+		IsCross:  isCross,
+	})
 	return err
 }
 

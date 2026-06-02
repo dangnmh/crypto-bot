@@ -47,4 +47,9 @@ const (
 	fieldChannel  = "channel"
 	msgPong       = "pong"
 	paramInstType = "instType"
+
+	// Trigger price types.
+	triggerPxTypeLast  = "last"
+	triggerPxTypeIndex = "index"
+	triggerPxTypeMark  = "mark"
 )

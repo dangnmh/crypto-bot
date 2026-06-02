@@ -11,9 +11,147 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+type kucoinContract struct {
+	Symbol                  string  `json:"symbol"`
+	BaseCurrency            string  `json:"baseCurrency"`
+	QuoteCurrency           string  `json:"quoteCurrency"`
+	SettleCurrency          string  `json:"settleCurrency"`
+	LotSize                 int64   `json:"lotSize"`
+	TickSize                float64 `json:"tickSize"`
+	Multiplier              float64 `json:"multiplier"`
+	Status                  string  `json:"status"`
+	TurnoverOf24h           float64 `json:"turnoverOf24h"`
+	VolumeOf24h             float64 `json:"volumeOf24h"`
+	FundingFeeRate          float64 `json:"fundingFeeRate"`
+	NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
+}
+
+type kucoinServerTimeRequest struct{}
+
+type kucoinContractsRequest struct{}
+
+type kucoinTickersRequest struct{}
+
+type kucoinTickerSingleRequest struct {
+	Symbol string `json:"symbol"`
+}
+
+type kucoinKlinesRequest struct {
+	Symbol      string `json:"symbol"`
+	Granularity string `json:"granularity"`
+	From        string `json:"from,omitempty"`
+	To          string `json:"to,omitempty"`
+}
+
+type kucoinDepthRequest struct {
+	Symbol string `json:"symbol"`
+}
+
+type kucoinSingleTicker struct {
+	Symbol       string `json:"symbol"`
+	BestBidPrice string `json:"bestBidPrice"`
+	BestAskPrice string `json:"bestAskPrice"`
+	Price        string `json:"price"`
+	Size         string `json:"size"`
+	Ts           string `json:"ts"`
+}
+
+type kucoinTicker struct {
+	Symbol       string `json:"symbol"`
+	BestBidPrice string `json:"bestBidPrice"`
+	BestAskPrice string `json:"bestAskPrice"`
+	LastPrice    string `json:"lastPrice"`
+	Price        string `json:"price"`
+	Volume       string `json:"volume"`
+	Vol          string `json:"vol"`
+	Ts           int64  `json:"ts"`
+}
+
+type kucoinDepth struct {
+	Asks [][]float64 `json:"asks"`
+	Bids [][]float64 `json:"bids"`
+	Ts   int64       `json:"ts"`
+}
+
+// Private raw methods invoking the KuCoin REST API.
+
+func (c *Client) getRawServerTime(ctx context.Context, _ kucoinServerTimeRequest) (json.RawMessage, error) {
+	body, err := c.GetCtx(ctx, pathServerTime, nil)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func (c *Client) getRawContractDetails(ctx context.Context, _ kucoinContractsRequest) ([]kucoinContract, error) {
+	body, err := c.GetCtx(ctx, pathContracts, nil)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[[]kucoinContract](body, "contract_details")
+}
+
+func (c *Client) getRawTickerSingle(ctx context.Context, req kucoinTickerSingleRequest) (*kucoinSingleTicker, error) {
+	params := map[string]string{
+		paramSymbol: req.Symbol,
+	}
+	body, err := c.GetCtx(ctx, pathTickerSingle, params)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponse[kucoinSingleTicker](body, "ticker_single")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) getRawTickers(ctx context.Context, _ kucoinTickersRequest) ([]kucoinTicker, error) {
+	body, err := c.GetCtx(ctx, pathTickers, nil)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[[]kucoinTicker](body, "tickers")
+}
+
+func (c *Client) getRawKlines(ctx context.Context, req kucoinKlinesRequest) ([][]float64, error) {
+	params := map[string]string{
+		paramSymbol:   req.Symbol,
+		"granularity": req.Granularity,
+	}
+	if req.From != "" {
+		params["from"] = req.From
+	}
+	if req.To != "" {
+		params["to"] = req.To
+	}
+	body, err := c.GetCtx(ctx, pathKlines, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[[][]float64](body, "klines")
+}
+
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req kucoinDepthRequest) (*kucoinDepth, error) {
+	params := map[string]string{
+		paramSymbol: req.Symbol,
+	}
+	body, err := c.GetCtx(ctx, pathDepth, params)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponse[kucoinDepth](body, "depth_snapshot")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// Public mapper methods implementing the exchange.MarketDataProvider interface.
+
 // GetServerTime returns the KuCoin server timestamp in milliseconds.
 func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	body, err := c.GetCtx(ctx, pathServerTime, nil)
+	body, err := c.getRawServerTime(ctx, kucoinServerTimeRequest{})
 	if err != nil {
 		return 0, err
 	}
@@ -33,23 +171,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 
 // GetContractDetails returns specifications for all active Futures contracts.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	body, err := c.GetCtx(ctx, pathContracts, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	type kucoinContract struct {
-		Symbol         string  `json:"symbol"`
-		BaseCurrency   string  `json:"baseCurrency"`
-		QuoteCurrency  string  `json:"quoteCurrency"`
-		SettleCurrency string  `json:"settleCurrency"`
-		LotSize        int64   `json:"lotSize"`
-		TickSize       float64 `json:"tickSize"`
-		Multiplier     float64 `json:"multiplier"`
-		Status         string  `json:"status"`
-	}
-
-	instruments, err := ParseResponse[[]kucoinContract](body, "contract_details")
+	instruments, err := c.getRawContractDetails(ctx, kucoinContractsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +197,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			Symbol:           inst.Symbol,
 			DisplayName:      inst.Symbol,
 			DisplayNameEn:    inst.Symbol,
-			PositionOpenType: 1, // Isolated/Cross both supported
+			PositionOpenType: 1, // Isolated/Cross both supported.
 			BaseCoin:         inst.BaseCurrency,
 			QuoteCoin:        inst.QuoteCurrency,
 			SettleCoin:       inst.SettleCurrency,
@@ -83,7 +205,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			MinLeverage:      1,
 			MaxLeverage:      100,
 			PriceScale:       priceScale,
-			VolScale:         0, // Defaults to 0 (unit contracts)
+			VolScale:         0, // Defaults to 0 (unit contracts).
 			PriceUnit:        tickSize,
 			MinVol:           1,
 			State:            stateVal,
@@ -96,24 +218,9 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 // GetTickers returns ticker data for all contracts.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	if symbol != "" {
-		params := map[string]string{
-			paramSymbol: symbol,
-		}
-		body, err := c.GetCtx(ctx, pathTickerSingle, params)
-		if err != nil {
-			return nil, err
-		}
-
-		type kucoinSingleTicker struct {
-			Symbol       string `json:"symbol"`
-			BestBidPrice string `json:"bestBidPrice"`
-			BestAskPrice string `json:"bestAskPrice"`
-			Price        string `json:"price"`
-			Size         string `json:"size"`
-			Ts           string `json:"ts"`
-		}
-
-		raw, err := ParseResponse[kucoinSingleTicker](body, "ticker_single")
+		raw, err := c.getRawTickerSingle(ctx, kucoinTickerSingleRequest{
+			Symbol: symbol,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -134,43 +241,19 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		}, nil
 	}
 
-	body, err := c.GetCtx(ctx, pathTickers, nil)
+	tickers, err := c.getRawTickers(ctx, kucoinTickersRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	type kucoinTicker struct {
-		Symbol       string `json:"symbol"`
-		BestBidPrice string `json:"bestBidPrice"`
-		BestAskPrice string `json:"bestAskPrice"`
-		LastPrice    string `json:"lastPrice"`
-		Price        string `json:"price"`
-		Volume       string `json:"volume"`
-		Vol          string `json:"vol"`
-		Ts           int64  `json:"ts"`
-	}
-
-	tickers, err := ParseResponse[[]kucoinTicker](body, "tickers")
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch active contracts in bulk to populate volume & turnover 24h without separate API calls
+	// Fetch active contracts in bulk to populate volume & turnover 24h without separate API calls.
 	cVolMap := make(map[string]float64)
 	cAmtMap := make(map[string]float64)
-	cBody, err := c.GetCtx(ctx, pathContracts, nil)
+	cList, err := c.getRawContractDetails(ctx, kucoinContractsRequest{})
 	if err == nil {
-		type rawActiveContract struct {
-			Symbol        string  `json:"symbol"`
-			TurnoverOf24h float64 `json:"turnoverOf24h"`
-			VolumeOf24h   float64 `json:"volumeOf24h"`
-		}
-		cList, err := ParseResponse[[]rawActiveContract](cBody, "contracts_active")
-		if err == nil {
-			for i := range cList {
-				cVolMap[cList[i].Symbol] = cList[i].VolumeOf24h
-				cAmtMap[cList[i].Symbol] = cList[i].TurnoverOf24h
-			}
+		for i := range cList {
+			cVolMap[cList[i].Symbol] = cList[i].VolumeOf24h
+			cAmtMap[cList[i].Symbol] = cList[i].TurnoverOf24h
 		}
 	}
 
@@ -217,25 +300,14 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	body, err := c.GetCtx(ctx, pathContracts, nil)
+	contracts, err := c.getRawContractDetails(ctx, kucoinContractsRequest{})
 	if err != nil {
 		return nil, err
 	}
 
-	type rawActiveContract struct {
-		Symbol                  string  `json:"symbol"`
-		FundingFeeRate          float64 `json:"fundingFeeRate"`
-		NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
-	}
-
-	contracts, err := ParseResponse[[]rawActiveContract](body, "contracts_active")
-	if err != nil {
-		return nil, err
-	}
-
-	contractMap := make(map[string]rawActiveContract, len(contracts))
-	for _, contract := range contracts {
-		contractMap[contract.Symbol] = contract
+	contractMap := make(map[string]kucoinContract, len(contracts))
+	for i := range contracts {
+		contractMap[contracts[i].Symbol] = contracts[i]
 	}
 
 	rates := make([]exchange.FundingRateResult, 0, len(symbols))
@@ -266,29 +338,22 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		gran = "1"
 	}
 
-	params := map[string]string{
-		paramSymbol:   symbol,
-		"granularity": gran,
+	req := kucoinKlinesRequest{
+		Symbol:      symbol,
+		Granularity: gran,
 	}
 
 	if start > 0 {
-		params["from"] = fmt.Sprintf("%d", start)
+		req.From = fmt.Sprintf("%d", start)
 	}
 	if end > 0 {
-		params["to"] = fmt.Sprintf("%d", end)
+		req.To = fmt.Sprintf("%d", end)
 	}
 
-	body, err := c.GetCtx(ctx, pathKlines, params)
+	rawRows, err := c.getRawKlines(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-
-	var rawRows [][]float64
-	parsedRows, err := ParseResponse[[][]float64](body, "klines")
-	if err != nil {
-		return nil, err
-	}
-	rawRows = parsedRows
 
 	klines := make([]exchange.Kline, 0, len(rawRows))
 	// KuCoin returns newest first. Let's reverse to ascending.
@@ -323,22 +388,9 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
 	}
 
-	params := map[string]string{
-		paramSymbol: symbol,
-	}
-
-	body, err := c.GetCtx(ctx, pathDepth, params)
-	if err != nil {
-		return nil, err
-	}
-
-	type kucoinDepth struct {
-		Asks [][]float64 `json:"asks"`
-		Bids [][]float64 `json:"bids"`
-		Ts   int64       `json:"ts"`
-	}
-
-	book, err := ParseResponse[kucoinDepth](body, "depth_snapshot")
+	book, err := c.getRawDepthSnapshot(ctx, kucoinDepthRequest{
+		Symbol: symbol,
+	})
 	if err != nil {
 		return nil, err
 	}

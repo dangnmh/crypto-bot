@@ -14,13 +14,82 @@ import (
 	"github.com/gateio/gateapi-go/v7"
 )
 
-// GetAssets returns the account assets.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+// Explicit request/response structs for account endpoints.
+
+type gateAssetsRequest struct {
+	Settle string `json:"settle"`
+}
+
+type gatePositionsRequest struct {
+	Settle string `json:"settle"`
+	Symbol string `json:"symbol,omitempty"`
+}
+
+type gateMyTradesRequest struct {
+	Settle   string `json:"settle"`
+	Contract string `json:"contract"`
+	Limit    int32  `json:"limit,omitempty"`
+}
+
+// Private raw methods invoking the Gate.io SDK.
+
+func (c *Client) getRawAssets(ctx context.Context, req gateAssetsRequest) (*gateapi.FuturesAccount, error) {
 	ctx = c.authCtx(ctx)
-	resp, httpResp, err := c.apiClient.FuturesApi.ListFuturesAccounts(ctx, "usdt")
+	resp, httpResp, err := c.apiClient.FuturesApi.ListFuturesAccounts(ctx, req.Settle)
 	if httpResp != nil && httpResp.Body != nil {
 		defer func() { _ = httpResp.Body.Close() }()
 	}
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) (*gateapi.Position, error) {
+	ctx = c.authCtx(ctx)
+	pos, httpResp, err := c.apiClient.FuturesApi.GetPosition(ctx, req.Settle, req.Symbol)
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pos, nil
+}
+
+func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) ([]gateapi.Position, error) {
+	ctx = c.authCtx(ctx)
+	rawPositions, httpResp, err := c.apiClient.FuturesApi.ListPositions(ctx, req.Settle, nil)
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return rawPositions, nil
+}
+
+func (c *Client) getRawMyTrades(ctx context.Context, req gateMyTradesRequest) ([]gateapi.MyFuturesTrade, error) {
+	ctx = c.authCtx(ctx)
+	opts := &gateapi.GetMyTradesOpts{
+		Contract: optional.NewString(req.Contract),
+		Limit:    optional.NewInt32(req.Limit),
+	}
+	trades, httpResp, err := c.apiClient.FuturesApi.GetMyTrades(ctx, req.Settle, opts)
+	if httpResp != nil && httpResp.Body != nil {
+		defer func() { _ = httpResp.Body.Close() }()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return trades, nil
+}
+
+// Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
+
+// GetAssets returns the account assets.
+func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
+	resp, err := c.getRawAssets(ctx, gateAssetsRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list assets: %w", err)
 	}
@@ -51,40 +120,18 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 		}
 	}
 
-	// Fallback to zero value if not found
 	return &exchange.AssetInfo{
 		Currency: currency,
 	}, nil
 }
 
-// mapPosition maps a gateapi.Position to exchange.Position.
-func mapPosition(raw gateapi.Position) exchange.Position {
-	pos := exchange.Position{
-		Symbol:       raw.Contract,
-		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
-		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
-		OpenAvgPrice: decmath.ParseFloat(raw.EntryPrice),
-	}
-
-	if raw.Size > 0 {
-		pos.PositionType = 1 // Long
-	} else if raw.Size < 0 {
-		pos.PositionType = 2 // Short
-	}
-
-	return pos
-}
-
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	ctx = c.authCtx(ctx)
-
-	// If symbol is specified, we can retrieve the specific position.
 	if symbol != "" {
-		pos, httpResp, err := c.apiClient.FuturesApi.GetPosition(ctx, "usdt", symbol)
-		if httpResp != nil && httpResp.Body != nil {
-			defer func() { _ = httpResp.Body.Close() }()
-		}
+		pos, err := c.getRawPosition(ctx, gatePositionsRequest{
+			Settle: gateSettleUsdt,
+			Symbol: symbol,
+		})
 		if err != nil {
 			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
 				return nil, nil
@@ -95,14 +142,10 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		if pos.Size == 0 {
 			return nil, nil
 		}
-		return []exchange.Position{mapPosition(pos)}, nil
+		return []exchange.Position{mapPosition(*pos)}, nil
 	}
 
-	// Retrieve all positions
-	rawPositions, httpResp, err := c.apiClient.FuturesApi.ListPositions(ctx, "usdt", nil)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	rawPositions, err := c.getRawPositions(ctx, gatePositionsRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list positions: %w", err)
 	}
@@ -117,25 +160,19 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries the recent trades from Gate.io for a symbol, aggregates closing fills, and returns closed trade metrics.
+// GetRecentClosedPnL queries recent trades, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// Look up numeric orderID from client order ID (extOrderID / text)
 	orderInfo, err := c.GetOrder(ctx, symbol, "t-"+extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("gate.io get order by external ID %s failed: %w", extOrderID, err)
 	}
 	closingOrderId := orderInfo.OrderID
 
-	ctx = c.authCtx(ctx)
-	opts := &gateapi.GetMyTradesOpts{
-		Contract: optional.NewString(symbol),
-		Limit:    optional.NewInt32(10),
-	}
-
-	trades, httpResp, err := c.apiClient.FuturesApi.GetMyTrades(ctx, "usdt", opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	trades, err := c.getRawMyTrades(ctx, gateMyTradesRequest{
+		Settle:   gateSettleUsdt,
+		Contract: symbol,
+		Limit:    10,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io get closed trades: %w", err)
 	}
@@ -154,7 +191,6 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("no user trades found for symbol %s", symbol)
 	}
 
-	// Find the latest trade based on ID to identify the latest closing execution
 	latestTrade := &trades[0]
 	for i := range trades {
 		t := &trades[i]
@@ -189,12 +225,32 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 
 	return &exchange.ClosedPnLInfo{
 		Symbol:     latestTrade.Contract,
-		EntryPrice: 0, // Fallback to WS estimation
+		EntryPrice: 0, // Fallback to WS estimation.
 		ExitPrice:  exitPrice,
 		ClosedSize: totalQty,
-		GrossPnL:   0, // Fallback to WS estimation
+		GrossPnL:   0, // Fallback to WS estimation.
 		Fee:        totalCommission,
 		FundingFee: 0,
 		DurationMs: 0,
 	}, nil
+}
+
+// Helper mapping functions.
+
+// mapPosition maps a gateapi.Position to exchange.Position.
+func mapPosition(raw gateapi.Position) exchange.Position {
+	pos := exchange.Position{
+		Symbol:       raw.Contract,
+		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
+		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
+		OpenAvgPrice: decmath.ParseFloat(raw.EntryPrice),
+	}
+
+	if raw.Size > 0 {
+		pos.PositionType = 1 // Long.
+	} else if raw.Size < 0 {
+		pos.PositionType = 2 // Short.
+	}
+
+	return pos
 }

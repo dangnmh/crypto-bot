@@ -14,13 +14,47 @@ import (
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
+type hyperliquidUserStateRequest struct {
+	UserAddress string
+}
+
+type hyperliquidQueryOrderByCloidRequest struct {
+	UserAddress string
+	Cloid       string
+}
+
+type hyperliquidUserFillsRequest struct {
+	UserAddress string
+}
+
+// Private raw methods invoking the Hyperliquid API or SDK.
+
+func (c *Client) getRawUserState(ctx context.Context, req hyperliquidUserStateRequest) (*hl.UserState, error) {
+	return c.info.UserState(ctx, req.UserAddress)
+}
+
+func (c *Client) getRawOrderByCloid(ctx context.Context, req hyperliquidQueryOrderByCloidRequest) (*hl.OrderQueryResult, error) {
+	return c.info.QueryOrderByCloid(ctx, req.UserAddress, req.Cloid)
+}
+
+func (c *Client) getRawUserFills(ctx context.Context, req hyperliquidUserFillsRequest) ([]hl.Fill, error) {
+	params := hl.UserFillsParams{
+		Address: req.UserAddress,
+	}
+	return c.info.UserFills(ctx, params)
+}
+
+// Public mapper methods implementing the exchange.AccountDataProvider interface.
+
 // GetAssets retrieves account balances.
 func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
 	if c.userAddress == "" {
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}
 
-	state, err := c.info.UserState(ctx, c.userAddress)
+	state, err := c.getRawUserState(ctx, hyperliquidUserStateRequest{
+		UserAddress: c.userAddress,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +96,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}
 
-	state, err := c.info.UserState(ctx, c.userAddress)
+	state, err := c.getRawUserState(ctx, hyperliquidUserStateRequest{
+		UserAddress: c.userAddress,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +117,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		entryPrice, _ := strconv.ParseFloat(lo.FromPtr(p.EntryPx), 64)
 
-		posSide := 1 // Long
+		posSide := 1 // Long.
 		if szi < 0 {
-			posSide = 2 // Short
+			posSide = 2 // Short.
 		}
 
 		positions = append(positions, exchange.Position{
@@ -97,28 +133,30 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
+// GetRecentClosedPnL queries the recent trade fills from Hyperliquid for a symbol, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	if c.userAddress == "" {
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}
 
-	// Look up numeric orderID from client order ID (extOrderID / cloid)
-	orderRes, err := c.info.QueryOrderByCloid(ctx, c.userAddress, extOrderID)
+	// Look up numeric orderID from client order ID (extOrderID / cloid).
+	orderRes, err := c.getRawOrderByCloid(ctx, hyperliquidQueryOrderByCloidRequest{
+		UserAddress: c.userAddress,
+		Cloid:       extOrderID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("hyperliquid query order by cloid %s failed: %w", extOrderID, err)
 	}
 	closingOrderId := orderRes.Order.Order.Oid
 
-	params := hl.UserFillsParams{
-		Address: c.userAddress,
-	}
-
-	fills, err := c.info.UserFills(ctx, params)
+	fills, err := c.getRawUserFills(ctx, hyperliquidUserFillsRequest{
+		UserAddress: c.userAddress,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("hyperliquid get user fills: %w", err)
 	}
 
-	// Filter by symbol and startTime
+	// Filter by symbol and startTime.
 	var symFills []hl.Fill
 	for i := range fills {
 		f := &fills[i]
@@ -134,7 +172,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
 	}
 
-	// Find the latest fill by time
+	// Find the latest fill by time.
 	latestFill := &symFills[0]
 	for i := range symFills {
 		f := &symFills[i]
