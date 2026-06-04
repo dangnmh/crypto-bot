@@ -3,10 +3,15 @@ package bitget
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"math"
 	"strconv"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
+
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type bitgetAccountAsset struct {
@@ -19,6 +24,7 @@ type bitgetAccountAsset struct {
 
 type bitgetPosition struct {
 	Symbol           string `json:"symbol"`
+	InstID           string `json:"instId"`
 	HoldSide         string `json:"holdSide"`
 	MarginMode       string `json:"marginMode"`
 	Leverage         string `json:"leverage"`
@@ -40,11 +46,36 @@ type bitgetOpenPositionsRequest struct {
 	ProductType string `json:"productType"`
 }
 
-type bitgetTradeFillsRequest struct {
-	ProductType string `json:"productType"`
-	Limit       string `json:"limit,omitempty"`
+type bitgetHistoryPositionsRequest struct {
 	Symbol      string `json:"symbol,omitempty"`
+	ProductType string `json:"productType"`
 	StartTime   string `json:"startTime,omitempty"`
+	EndTime     string `json:"endTime,omitempty"`
+	Limit       string `json:"limit,omitempty"`
+	IDLessThan  string `json:"idLessThan,omitempty"`
+}
+
+type bitgetHistoryPosition struct {
+	PositionID    string `json:"positionId"`
+	MarginCoin    string `json:"marginCoin"`
+	Symbol        string `json:"symbol"`
+	HoldSide      string `json:"holdSide"`
+	OpenAvgPrice  string `json:"openAvgPrice"`
+	CloseAvgPrice string `json:"closeAvgPrice"`
+	OpenTotalPos  string `json:"openTotalPos"`
+	CloseTotalPos string `json:"closeTotalPos"`
+	PnL           string `json:"pnl"`
+	NetProfit     string `json:"netProfit"`
+	TotalFunding  string `json:"totalFunding"`
+	OpenFee       string `json:"openFee"`
+	CloseFee      string `json:"closeFee"`
+	CTime         string `json:"ctime"`
+	UTime         string `json:"utime"`
+}
+
+type bitgetHistoryPositionResponse struct {
+	List  []bitgetHistoryPosition `json:"list"`
+	EndID string                  `json:"endId"`
 }
 
 // Private raw methods invoking the Bitget REST API.
@@ -75,12 +106,9 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req bitgetOpenPosition
 	return ParseResponse[[]bitgetPosition](body, "open_positions")
 }
 
-func (c *Client) getRawTradeFills(ctx context.Context, req bitgetTradeFillsRequest) ([]bitgetTradeFill, error) {
+func (c *Client) getRawHistoryPositions(ctx context.Context, req bitgetHistoryPositionsRequest) (*bitgetHistoryPositionResponse, error) {
 	params := map[string]string{
 		paramProductType: req.ProductType,
-	}
-	if req.Limit != "" {
-		params[paramLimit] = req.Limit
 	}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
@@ -88,13 +116,26 @@ func (c *Client) getRawTradeFills(ctx context.Context, req bitgetTradeFillsReque
 	if req.StartTime != "" {
 		params["startTime"] = req.StartTime
 	}
+	if req.EndTime != "" {
+		params["endTime"] = req.EndTime
+	}
+	if req.Limit != "" {
+		params[paramLimit] = req.Limit
+	}
+	if req.IDLessThan != "" {
+		params["idLessThan"] = req.IDLessThan
+	}
 
-	body, err := c.GetCtx(ctx, "/api/v2/mix/order/fills", params)
+	body, err := c.GetCtx(ctx, pathHistoryPositions, params)
 	if err != nil {
 		return nil, err
 	}
 
-	return ParseResponse[[]bitgetTradeFill](body, "fills")
+	res, err := ParseResponse[bitgetHistoryPositionResponse](body, "history_position")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
 }
 
 // Public mapper methods implementing the exchange.AccountDataProvider interface.
@@ -157,7 +198,11 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	var openPositions []exchange.Position
 	for i := range positions {
 		pos := &positions[i]
-		if symbol != "" && pos.Symbol != symbol {
+		posSym := pos.Symbol
+		if posSym == "" {
+			posSym = pos.InstID
+		}
+		if symbol != "" && posSym != symbol {
 			continue
 		}
 
@@ -174,7 +219,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:       pos.Symbol,
+			Symbol:       posSym,
 			HoldVol:      holdVol,
 			HoldAvgPrice: avgPx,
 			OpenAvgPrice: avgPx,
@@ -185,89 +230,99 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
-type bitgetTradeFill struct {
-	FillID  string `json:"fillId"`
-	OrderID string `json:"orderId"`
-	Symbol  string `json:"symbol"`
-	Side    string `json:"side"`
-	FillPx  string `json:"fillPx"`
-	FillSz  string `json:"fillSz"`
-	Fee     string `json:"fee"`
-	CTime   string `json:"cTime"`
-}
-
 // GetRecentClosedPnL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// Look up numeric orderID from client order ID (extOrderID / clientOid).
+	// Look up numeric orderID from client order ID (extOrderID / clientOid) to get update time.
 	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("bitget get order by external ID %s failed: %w", extOrderID, err)
 	}
-	closingOrderId := orderInfo.OrderID
+	orderTime := orderInfo.UpdateTime
 
-	req := bitgetTradeFillsRequest{
-		ProductType: productTypeUsdtFutures,
-		Limit:       "10",
-	}
-	if !startTime.IsZero() {
-		req.StartTime = strconv.FormatInt(startTime.UnixMilli(), 10)
-	}
-	if symbol != "" {
-		req.Symbol = symbol
+	var matchedPos *bitgetHistoryPosition
+
+	operation := func() error {
+		req := bitgetHistoryPositionsRequest{
+			ProductType: productTypeUsdtFutures,
+			Symbol:      symbol,
+			Limit:       "100",
+		}
+		if !startTime.IsZero() {
+			req.StartTime = strconv.FormatInt(startTime.UnixMilli(), 10)
+		}
+
+		res, err := c.getRawHistoryPositions(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		if res == nil || len(res.List) == 0 {
+			return fmt.Errorf("no history position records found for symbol %s", symbol)
+		}
+
+		// Find the position matching the closing order's UpdateTime.
+		for i := range res.List {
+			p := &res.List[i]
+			pCloseTime := decmath.ParseInt64(p.UTime)
+			// Check if the record close time matches the order update time within a 10s tolerance window
+			if math.Abs(float64(pCloseTime-orderTime)) <= 10000 {
+				matchedPos = p
+				return nil
+			}
+		}
+
+		return fmt.Errorf("no matching history position record found for order update time %d", orderTime)
 	}
 
-	fills, err := c.getRawTradeFills(ctx, req)
-	if err != nil {
-		return nil, err
+	// Retry up to 5 times (4 retries + 1st try) with 1s-2s exponential delay.
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(time.Second),
+				backoff.WithMaxInterval(time.Second*2)),
+			4),
+		ctx,
+	)
+
+	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
+		c.logger.ErrorContext(ctx, "retry closed pnl", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
+	}); err != nil {
+		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}
 
-	if len(fills) == 0 {
-		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
-	}
+	entryPrice := decmath.ParseFloat(matchedPos.OpenAvgPrice)
+	exitPrice := decmath.ParseFloat(matchedPos.CloseAvgPrice)
+	closedSize := decmath.ParseFloat(matchedPos.CloseTotalPos)
+	grossPnL := decmath.ParseFloat(matchedPos.PnL)
+	netPnl := decmath.ParseFloat(matchedPos.NetProfit)
+	fundingFee := decmath.ParseFloat(matchedPos.TotalFunding)
+	openFee := decmath.ParseFloat(matchedPos.OpenFee)
+	closeFee := decmath.ParseFloat(matchedPos.CloseFee)
 
-	// Find the latest fill representing the latest closing execution.
-	latestFill := &fills[0]
-	for i := range fills {
-		f := &fills[i]
-		cTimeF, _ := strconv.ParseInt(f.CTime, 10, 64)
-		cTimeLatest, _ := strconv.ParseInt(latestFill.CTime, 10, 64)
-		if cTimeF > cTimeLatest {
-			latestFill = f
+	ctime := decmath.ParseInt64(matchedPos.CTime)
+	utime := decmath.ParseInt64(matchedPos.UTime)
+	duration := max(utime-ctime, 0)
+
+	pnlRate := 0.0
+	if entryPrice > 0 {
+		switch matchedPos.HoldSide {
+		case posSideLong:
+			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
+		case posSideShort:
+			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
 		}
 	}
-
-	var totalQty float64
-	var totalCommission float64
-	var weightedPriceSum float64
-
-	for i := range fills {
-		item := &fills[i]
-		if item.OrderID != closingOrderId {
-			continue
-		}
-		qty, _ := strconv.ParseFloat(item.FillSz, 64)
-		price, _ := strconv.ParseFloat(item.FillPx, 64)
-		commission, _ := strconv.ParseFloat(item.Fee, 64)
-
-		totalQty += qty
-		totalCommission += commission
-		weightedPriceSum += price * qty
-	}
-
-	if totalQty == 0 {
-		return nil, fmt.Errorf("zero quantity for closing order %s", closingOrderId)
-	}
-
-	exitPrice := weightedPriceSum / totalQty
 
 	return &exchange.ClosedPnLInfo{
-		Symbol:     latestFill.Symbol,
-		EntryPrice: 0, // Fallback to WS estimation.
+		Symbol:     matchedPos.Symbol,
+		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,
-		ClosedSize: totalQty,
-		GrossPnL:   0, // Fallback to WS estimation.
-		Fee:        totalCommission,
-		FundingFee: 0,
-		DurationMs: 0,
+		ClosedSize: closedSize,
+		GrossPnL:   grossPnL,
+		Fee:        openFee + closeFee,
+		FundingFee: fundingFee,
+		DurationMs: duration,
+		NetPnl:     netPnl,
+		PnLRate:    pnlRate,
 	}, nil
 }

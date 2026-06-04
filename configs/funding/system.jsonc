@@ -36,6 +36,16 @@
         "privateURL": "wss://fstream.binance.com/private/ws"
       }
     },
+    "bitget": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://api.bitget.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws.bitget.com/v2/ws/public",
+        "privateURL": "wss://ws.bitget.com/v2/ws/private"
+      }
+    },
     "gate": {
       "enable": false,
       "future": {
@@ -61,15 +71,6 @@
       },
       "websocket": {
         "wsURL": "wss://api.hyperliquid.xyz/ws"
-      }
-    },
-    "bitget": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://api.bitget.com"
-      },
-      "websocket": {
-        "wsURL": "wss://ws.bitget.com/v2/ws/private"
       }
     },
     "kucoin": {
@@ -116,7 +117,7 @@
   // Safety — Ngưỡng bảo vệ hệ thống
   // ══════════════════════════════════════════════════════════════
   "safety": {
-    "minVol24USD": 100000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
+    "minVol24USD": 1000000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
     "maxImpactRatio": 5 // Tự giảm notional xuống tối đa 5% thanh khoản trung bình 1 phút (amount24h / 1440)
   },
   "notifier": {

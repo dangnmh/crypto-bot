@@ -113,6 +113,7 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 		fieldArgs: []map[string]string{
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelOrders, fieldInstId: constantDefault},
 			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelPositions, fieldInstId: constantDefault},
+			{fieldInstType: productTypeUsdtFutures, fieldChannel: channelPositionsHistory, fieldInstId: constantDefault},
 		},
 	}
 	return a.pool.SendPrivate(ctx, msg)
@@ -137,7 +138,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		passphrase := os.Getenv("BITGET_PASSPHRASE")
 
 		msg := map[string]any{
-			"op": opSubscribe,
+			"op": opLogin,
 			fieldArgs: []map[string]any{
 				{
 					"apiKey":     apiKey,
@@ -173,7 +174,9 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		case channelOrders:
 			return "personal.order"
 		case channelPositions:
-			return "personal.position"
+			return chPersonalPosition
+		case channelPositionsHistory:
+			return chPersonalPosition
 		}
 
 		return channel
@@ -417,11 +420,69 @@ func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUp
 	return nil, fmt.Errorf("ParseTrackOrder not implemented on Bitget WS")
 }
 
+type bitgetHistoryPositionWs struct {
+	PosID           string `json:"posId"`
+	InstID          string `json:"instId"`
+	MarginCoin      string `json:"marginCoin"`
+	MarginMode      string `json:"marginMode"`
+	HoldSide        string `json:"holdSide"`
+	PosMode         string `json:"posMode"`
+	OpenPriceAvg    string `json:"openPriceAvg"`
+	ClosePriceAvg   string `json:"closePriceAvg"`
+	OpenSize        string `json:"openSize"`
+	CloseSize       string `json:"closeSize"`
+	AchievedProfits string `json:"achievedProfits"`
+	SettleFee       string `json:"settleFee"`
+	OpenFee         string `json:"openFee"`
+	CloseFee        string `json:"closeFee"`
+	CTime           string `json:"cTime"`
+	UTime           string `json:"uTime"`
+}
+
 // ParsePosition parses positions feed into PersonalPositionUpdate.
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
+	channel, _ := jsonparser.GetString(data, "arg", "channel")
+
 	dataNode, _, _, err := jsonparser.Get(data, "data")
 	if err != nil {
 		return nil, err
+	}
+
+	if channel == channelPositionsHistory {
+		var dataArr []bitgetHistoryPositionWs
+		if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+			return nil, fmt.Errorf("parse history position data: %w", err)
+		}
+
+		p := &dataArr[0]
+		openPx, _ := strconv.ParseFloat(p.OpenPriceAvg, 64)
+		closePx, _ := strconv.ParseFloat(p.ClosePriceAvg, 64)
+		closeVol, _ := strconv.ParseFloat(p.CloseSize, 64)
+		realized, _ := strconv.ParseFloat(p.AchievedProfits, 64)
+		settleFee, _ := strconv.ParseFloat(p.SettleFee, 64)
+		openFee, _ := strconv.ParseFloat(p.OpenFee, 64)
+		closeFee, _ := strconv.ParseFloat(p.CloseFee, 64)
+		uTime := decmath.ParseInt64(p.UTime)
+
+		posType := 1 // long
+		if p.HoldSide == posSideShort {
+			posType = 2
+		}
+
+		update := &exchange.PersonalPositionUpdate{
+			Symbol:          p.InstID,
+			HoldVol:         0.0,
+			PositionType:    posType,
+			OpenAvgPrice:    openPx,
+			HoldAvgPrice:    openPx,
+			CloseVol:        closeVol,
+			CloseAvgPrice:   closePx,
+			CloseProfitLoss: realized,
+			Fee:             openFee + closeFee,
+			HoldFee:         settleFee,
+			UpdateTime:      uTime,
+		}
+		return update, nil
 	}
 
 	var dataArr []bitgetPosition
@@ -441,8 +502,13 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		posType = 2
 	}
 
+	sym := p.Symbol
+	if sym == "" {
+		sym = p.InstID
+	}
+
 	update := &exchange.PersonalPositionUpdate{
-		Symbol:          p.Symbol,
+		Symbol:          sym,
 		HoldVol:         posVal,
 		Leverage:        leverVal,
 		HoldAvgPrice:    avgPx,

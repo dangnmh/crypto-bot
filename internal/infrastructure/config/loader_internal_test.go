@@ -124,7 +124,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 			t.Parallel()
 
 			// Check missing all active exchanges logic
-			if !tt.cfg.ExchangeConfig.Mexc.Enable && !tt.cfg.ExchangeConfig.Gate.Enable && !tt.cfg.ExchangeConfig.Okx.Enable && !tt.cfg.ExchangeConfig.Binance.Enable {
+			if !tt.cfg.ExchangeConfig.Mexc.Enable && !tt.cfg.ExchangeConfig.Gate.Enable && !tt.cfg.ExchangeConfig.Okx.Enable && !tt.cfg.ExchangeConfig.Binance.Enable && !tt.cfg.ExchangeConfig.Bitget.Enable {
 				err := fmt.Errorf("at least one active exchange must be enabled")
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -253,6 +253,8 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 				"GATE_API_SECRET":    " gate-secret ",
 				"BYBIT_API_KEY":      " bybit-key ",
 				"BYBIT_API_SECRET":   " bybit-secret ",
+				"BITGET_API_KEY":     " bitget-key ",
+				"BITGET_API_SECRET":  " bitget-secret ",
 				"TELEGRAM_CHAT_ID":   " 123 ",
 				"TELEGRAM_BOT_TOKEN": " token ",
 			},
@@ -267,6 +269,8 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 	assert.Equal(t, "gate-secret", creds.GateAPISecret)
 	assert.Equal(t, "bybit-key", creds.BybitAPIKey)
 	assert.Equal(t, "bybit-secret", creds.BybitAPISecret)
+	assert.Equal(t, "bitget-key", creds.BitgetAPIKey)
+	assert.Equal(t, "bitget-secret", creds.BitgetAPISecret)
 	assert.Equal(t, "123", creds.TelegramChatID)
 	assert.Equal(t, "token", creds.TelegramBotToken)
 
@@ -298,6 +302,8 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 			"GATE_API_SECRET":    "gate-secret",
 			"BYBIT_API_KEY":      "bybit-key",
 			"BYBIT_API_SECRET":   "bybit-secret",
+			"BITGET_API_KEY":     "bitget-key",
+			"BITGET_API_SECRET":  "bitget-secret",
 			"TELEGRAM_CHAT_ID":   "123",
 			"TELEGRAM_BOT_TOKEN": "token",
 		}}, nil
@@ -305,9 +311,10 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			Mexc:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
-			Gate:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
-			Bybit: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
+			Mexc:   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+			Gate:   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
+			Bybit:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
+			Bitget: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
@@ -318,6 +325,8 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 	assert.Equal(t, "gate-secret", cfg.ExchangeConfig.Gate.APISecret)
 	assert.Equal(t, "bybit-key", cfg.ExchangeConfig.Bybit.APIKey)
 	assert.Equal(t, "bybit-secret", cfg.ExchangeConfig.Bybit.APISecret)
+	assert.Equal(t, "bitget-key", cfg.ExchangeConfig.Bitget.APIKey)
+	assert.Equal(t, "bitget-secret", cfg.ExchangeConfig.Bitget.APISecret)
 	assert.Equal(t, "123", cfg.NotiConfig.TelegramChatID)
 	assert.Equal(t, "token", cfg.NotiConfig.TelegramBotToken)
 

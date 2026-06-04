@@ -39,6 +39,8 @@ func InitializeBase(c *SystemConfig) error {
 	c.ExchangeConfig.Bybit.APISecret = os.Getenv("BYBIT_API_SECRET")
 	c.ExchangeConfig.Binance.APIKey = os.Getenv("BINANCE_API_KEY")
 	c.ExchangeConfig.Binance.APISecret = os.Getenv("BINANCE_API_SECRET")
+	c.ExchangeConfig.Bitget.APIKey = os.Getenv("BITGET_API_KEY")
+	c.ExchangeConfig.Bitget.APISecret = os.Getenv("BITGET_API_SECRET")
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
 	}
@@ -88,6 +90,7 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Gate, creds.GateAPIKey, creds.GateAPISecret)
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bybit, creds.BybitAPIKey, creds.BybitAPISecret)
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Binance, creds.BinanceAPIKey, creds.BinanceAPISecret)
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bitget, creds.BitgetAPIKey, creds.BitgetAPISecret)
 
 	if c.NotiConfig.TelegramChatID == "" {
 		c.NotiConfig.TelegramChatID = creds.TelegramChatID
@@ -112,6 +115,8 @@ func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 	return exchangeCredentialsComplete(c.ExchangeConfig.Mexc) &&
 		exchangeCredentialsComplete(c.ExchangeConfig.Gate) &&
 		exchangeCredentialsComplete(c.ExchangeConfig.Bybit) &&
+		exchangeCredentialsComplete(c.ExchangeConfig.Binance) &&
+		exchangeCredentialsComplete(c.ExchangeConfig.Bitget) &&
 		notificationCredentialsComplete(c.NotiConfig)
 }
 
@@ -155,6 +160,9 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	binanceKey, _ := loader.GetSecret("BINANCE_API_KEY")
 	binanceSecret, _ := loader.GetSecret("BINANCE_API_SECRET")
 
+	bitgetKey, _ := loader.GetSecret("BITGET_API_KEY")
+	bitgetSecret, _ := loader.GetSecret("BITGET_API_SECRET")
+
 	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
 	if err != nil {
 		slog.Error("failed to get TELEGRAM_CHAT_ID from Bitwarden", slog.Any("error", err))
@@ -174,6 +182,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	bybitSecret = strings.TrimSpace(bybitSecret)
 	binanceKey = strings.TrimSpace(binanceKey)
 	binanceSecret = strings.TrimSpace(binanceSecret)
+	bitgetKey = strings.TrimSpace(bitgetKey)
+	bitgetSecret = strings.TrimSpace(bitgetSecret)
 	telegramChatID = strings.TrimSpace(telegramChatID)
 	telegramBotToken = strings.TrimSpace(telegramBotToken)
 
@@ -186,6 +196,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 		BybitAPISecret:   bybitSecret,
 		BinanceAPIKey:    binanceKey,
 		BinanceAPISecret: binanceSecret,
+		BitgetAPIKey:     bitgetKey,
+		BitgetAPISecret:  bitgetSecret,
 		TelegramChatID:   telegramChatID,
 		TelegramBotToken: telegramBotToken,
 	}, nil
@@ -299,6 +311,8 @@ type bitwardenCredentials struct {
 	BybitAPISecret   string
 	BinanceAPIKey    string
 	BinanceAPISecret string
+	BitgetAPIKey     string
+	BitgetAPISecret  string
 	TelegramChatID   string
 	TelegramBotToken string
 }

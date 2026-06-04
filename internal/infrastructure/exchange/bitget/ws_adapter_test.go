@@ -25,6 +25,7 @@ func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 	assert.Equal(t, "depth", extractor([]byte(`{"arg":{"channel":"books","instId":"BTCUSDT"}}`)))
 	assert.Equal(t, "personal.order", extractor([]byte(`{"arg":{"channel":"orders"}}`)))
 	assert.Equal(t, "personal.position", extractor([]byte(`{"arg":{"channel":"positions"}}`)))
+	assert.Equal(t, "personal.position", extractor([]byte(`{"arg":{"channel":"positions-history"}}`)))
 }
 
 func TestWsAdapter_ParseTicker(t *testing.T) {
@@ -157,6 +158,70 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 1.0, update.HoldVol)
 	assert.Equal(t, 10, update.Leverage)
 	assert.Equal(t, 1, update.PositionType)
+
+	// Test fallback to instId if symbol is empty
+	rawFallback := []byte(`{
+		"arg": {"channel": "positions"},
+		"data": [
+			{
+				"instId": "ETHUSDT",
+				"total": "1.5",
+				"leverage": "20",
+				"openPriceAvg": "1900",
+				"liquidationPrice": "1500",
+				"achievedProfits": "0",
+				"marginSize": "9.5",
+				"holdSide": "short",
+				"marginMode": "crossed"
+			}
+		]
+	}`)
+
+	updateFallback, err := adapter.ParsePosition(rawFallback)
+	require.NoError(t, err)
+	assert.Equal(t, "ETHUSDT", updateFallback.Symbol)
+	assert.Equal(t, 1.5, updateFallback.HoldVol)
+	assert.Equal(t, 20, updateFallback.Leverage)
+	assert.Equal(t, 2, updateFallback.PositionType)
+
+	// Test positions-history parsing (total closed positions)
+	rawHistory := []byte(`{
+		"arg": {"channel": "positions-history", "instType": "USDT-FUTURES", "instId": "default"},
+		"data": [
+			{
+				"posId": "1",
+				"instId": "BTCUSDT",
+				"marginCoin": "USDT",
+				"marginMode": "crossed",
+				"holdSide": "short",
+				"posMode": "one_way_mode",
+				"openPriceAvg": "20000.0",
+				"closePriceAvg": "26221.0",
+				"openSize": "0.010",
+				"closeSize": "0.010",
+				"achievedProfits": "-62.21000000",
+				"settleFee": "-0.02277989",
+				"openFee": "-0.12000000",
+				"closeFee": "-0.15732600",
+				"cTime": "1696907951177",
+				"uTime": "1697090609976"
+			}
+		]
+	}`)
+
+	updateHistory, err := adapter.ParsePosition(rawHistory)
+	require.NoError(t, err)
+	assert.Equal(t, "BTCUSDT", updateHistory.Symbol)
+	assert.Equal(t, 0.0, updateHistory.HoldVol)
+	assert.Equal(t, 2, updateHistory.PositionType)
+	assert.Equal(t, 20000.0, updateHistory.OpenAvgPrice)
+	assert.Equal(t, 20000.0, updateHistory.HoldAvgPrice)
+	assert.Equal(t, 0.010, updateHistory.CloseVol)
+	assert.Equal(t, 26221.0, updateHistory.CloseAvgPrice)
+	assert.Equal(t, -62.21000000, updateHistory.CloseProfitLoss)
+	assert.InDelta(t, -0.277326, updateHistory.Fee, 1e-9) // openFee + closeFee = -0.12 + -0.157326 = -0.277326
+	assert.Equal(t, -0.02277989, updateHistory.HoldFee)
+	assert.Equal(t, int64(1697090609976), updateHistory.UpdateTime)
 }
 
 func TestWsAdapter_OtherMethods(t *testing.T) {
