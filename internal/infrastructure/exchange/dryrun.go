@@ -161,6 +161,11 @@ func (d *DryRunClient) ChangeLeverage(ctx context.Context, req ChangeLeverageReq
 	return nil
 }
 
+func (d *DryRunClient) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	d.log.WarnContext(ctx, "🧪 DRY-RUN SwitchMarginMode", slog.String("symbol", symbol), slog.String("marginMode", marginMode), slog.Int("leverage", leverage), slog.String("side", side.String()))
+	return nil
+}
+
 func (d *DryRunClient) SupportLeverageOnOrder() bool {
 	return d.inner.SupportLeverageOnOrder()
 }

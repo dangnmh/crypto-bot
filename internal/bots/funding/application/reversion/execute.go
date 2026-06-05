@@ -75,6 +75,12 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 			return r.handleFireIOC(ctx, evt)
 		},
 	)
+	registerEventSubscription(ctx, bus, runner, TopicReversionMarginModeReady,
+		func(e *MarginModeReadyEvent) (string, string, string) { return e.Exchange, e.ReqID, e.Symbol },
+		func(ctx context.Context, r *StatelessRunner, evt MarginModeReadyEvent) error {
+			return r.handleMarginModeReady(ctx, evt)
+		},
+	)
 
 	// Stage 2
 	registerEventSubscription(ctx, bus, runner, TopicReversionFireTimingReady,

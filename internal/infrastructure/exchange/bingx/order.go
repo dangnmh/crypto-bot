@@ -306,6 +306,24 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	})
 }
 
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for BingX.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	const modeIsolated = "ISOLATED"
+	mgnType := "CROSSED"
+	if marginMode == modeIsolated {
+		mgnType = modeIsolated
+	}
+	bodyMap := map[string]any{
+		"symbol":     symbol,
+		"marginType": mgnType,
+	}
+	body, err := c.PostCtx(ctx, "/openApi/swap/v2/trade/marginType", bodyMap)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "marginType")
+}
+
 // Helper mapping methods.
 
 func mapOrderType(t int) string {

@@ -48,12 +48,13 @@ type RESTConfig struct {
 
 // APIConfig holds API connection parameters.
 type APIConfig struct {
-	Enable      bool            `json:"enable"`
-	Future      RESTConfig      `json:"future"`
-	WebSocket   WebSocketConfig `json:"websocket"`
-	APIKey      string          `json:"-"`
-	APISecret   string          `json:"-"`
-	AccountType string          `json:"accountType,omitempty"`
+	Enable        bool            `json:"enable"`
+	Future        RESTConfig      `json:"future"`
+	WebSocket     WebSocketConfig `json:"websocket"`
+	APIKey        string          `json:"-"`
+	APISecret     string          `json:"-"`
+	APIPassphrase string          `json:"-"`
+	AccountType   string          `json:"accountType,omitempty"`
 }
 
 const (

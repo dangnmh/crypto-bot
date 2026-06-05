@@ -38,6 +38,7 @@ type OrderExecutor interface {
 	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
+	SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error
 }
 
 // TPSLProvider is an optional interface that exchange REST clients can implement

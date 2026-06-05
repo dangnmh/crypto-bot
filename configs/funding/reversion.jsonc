@@ -12,13 +12,19 @@
     "bybit": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-10ms",
+      "bufferTime": "-40ms",
       "postSettleTimeout": "300s"
     },
     "binance": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-10ms",
+      "bufferTime": "-150ms",
+      "postSettleTimeout": "300s"
+    },
+    "kucoin": {
+      "takeProfitPct": 1.5,
+      "stopLossPct": 3,
+      "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
     "gate": {
@@ -51,12 +57,6 @@
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "kucoin": {
-      "takeProfitPct": 1.5,
-      "stopLossPct": 3,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "300s"
-    }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
   // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.

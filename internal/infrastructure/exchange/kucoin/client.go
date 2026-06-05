@@ -52,7 +52,13 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{},
+				BlackListPaths: []string{
+					"GET|/api/v1/timestamp",
+					"GET|/api/v1/allTickers",
+					"GET|/api/v1/contracts/active",
+					"POST|/api/v1/bullet-public",
+					"POST|/api/v1/bullet-private",
+				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey, headerAuthPhrase}),
@@ -234,5 +240,5 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 
 // SupportLeverageOnOrder returns false since KuCoin doesn't support setting leverage directly on orders.
 func (c *Client) SupportLeverageOnOrder() bool {
-	return false
+	return true
 }

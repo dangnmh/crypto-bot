@@ -23,6 +23,7 @@ const (
 	TopicReversionArmed                  = "funding.reversion.armed"
 	TopicReversionWaitComplete           = "funding.reversion.wait_complete"
 	TopicReversionConfirmed              = "funding.reversion.confirmed"
+	TopicReversionMarginModeReady        = "funding.reversion.margin_mode_ready"
 	TopicReversionFireTimingReady        = "funding.reversion.fire_timing_ready"
 	TopicReversionFirePlanChecked        = "funding.reversion.fire_plan_checked"
 	TopicReversionFireWindowReached      = "funding.reversion.fire_window_reached"
@@ -221,6 +222,17 @@ type ConfirmedEvent struct {
 
 func (e ConfirmedEvent) GetMessage() string { return "Recheck confirmed for " + e.Symbol }
 func (e ConfirmedEvent) GetDataMap() map[string]any {
+	return map[string]any{keySymbol: e.Symbol, keyFundingRate: e.FundingRate}
+}
+
+type MarginModeReadyEvent struct {
+	BaseReversionEvent
+	FundingRate float64                 `json:"funding_rate"`
+	Candidate   fundingdomain.Candidate `json:"candidate"`
+}
+
+func (e MarginModeReadyEvent) GetMessage() string { return "Margin mode ready for " + e.Symbol }
+func (e MarginModeReadyEvent) GetDataMap() map[string]any {
 	return map[string]any{keySymbol: e.Symbol, keyFundingRate: e.FundingRate}
 }
 

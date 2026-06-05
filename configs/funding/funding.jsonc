@@ -3,21 +3,27 @@
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
   {
-    "symbol": "VIC_USDT",
-    "marginUSDT": 3,
+    "symbol": "BABY_USDT",
+    "marginUSDT": 4,
     "exchange": "mexc",
-    // "simulateSettle": "2026-05-31T00:00:00.000+07:00"
+    // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
   },
   {
-    "symbol": "AERGOUSDT",
-    "marginUSDT": 3,
+    "symbol": "BABYUSDT",
+    "marginUSDT": 4,
     "exchange": "bybit",
-    // "simulateSettle": "2026-05-31T00:00:00.000+07:00"
+    // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
   },
   {
-    "symbol": "AERGOUSDT",
-    "marginUSDT": 3,
+    "symbol": "BABYUSDT",
+    "marginUSDT": 4,
     "exchange": "binance",
-    // "simulateSettle": "2026-06-01T13:50:00.000+07:00"
+    // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
+  },
+  {
+    "symbol": "BABYUSDTM",
+    "marginUSDT": 4,
+    "exchange": "kucoin",
+    // "simulateSettle": "2026-06-05T23:25:00.000+07:00"
   },
 ]

@@ -289,6 +289,20 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	return err
 }
 
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Hyperliquid.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	if c.exchange == nil {
+		return fmt.Errorf("trading is disabled: exchange signer is not configured")
+	}
+	isCross := marginMode == "CROSS"
+	_, err := c.changeRawLeverage(ctx, hyperliquidUpdateLeverageRequest{
+		Leverage: leverage,
+		Symbol:   symbol,
+		IsCross:  isCross,
+	})
+	return err
+}
+
 // CreateTrackOrder is a stub.
 func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
 	return "", fmt.Errorf("track orders not supported on Hyperliquid")

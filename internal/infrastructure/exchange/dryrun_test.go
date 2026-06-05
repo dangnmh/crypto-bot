@@ -70,6 +70,9 @@ func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _
 func (s *stubClient) ChangeLeverage(_ context.Context, _ exchange.ChangeLeverageRequest) error {
 	return nil
 }
+func (s *stubClient) SwitchMarginMode(_ context.Context, _, _ string, _ int, _ domain.Side) error {
+	return nil
+}
 func (s *stubClient) GetDepthSnapshot(_ context.Context, _ string, _ int) (*exchange.OrderBook, error) {
 	return nil, nil
 }

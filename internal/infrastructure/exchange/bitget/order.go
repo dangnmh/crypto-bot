@@ -425,6 +425,27 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	return err
 }
 
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Bitget.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	mgnMode := modeIsolated
+	if marginMode == "CROSS" {
+		mgnMode = modeCrossed
+	}
+
+	bodyMap := map[string]any{
+		"symbol":      symbol,
+		"productType": productTypeUsdtFutures,
+		"marginCoin":  constantUsdt,
+		"marginMode":  mgnMode,
+	}
+
+	body, err := c.PostCtx(ctx, "/api/v2/mix/account/set-margin-mode", bodyMap)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "set-margin-mode")
+}
+
 func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 	px, _ := strconv.ParseFloat(o.Price, 64)
 	sz, _ := strconv.ParseFloat(o.Size, 64)

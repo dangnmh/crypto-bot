@@ -121,11 +121,7 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 		}
 
 		// 3. Connect WS + subscribe personal channels.
-		s.bgWg.Add(1)
-		go func(p *app.ExchangeProvider) {
-			defer s.bgWg.Done()
-			p.WS.Connect(ctx)
-		}(prov)
+		prov.WS.Connect(ctx)
 
 		if err := prov.WS.WaitReady(ctx); err != nil {
 			return err

@@ -264,6 +264,39 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	})
 }
 
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Gate.io.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	ctx = c.authCtx(ctx)
+	settle := gateSettleUsdt
+	modeStr := "isolated"
+	if marginMode == "CROSS" {
+		modeStr = "cross"
+	}
+
+	opts := gateapi.FuturesPositionCrossMode{
+		Contract: symbol,
+		Mode:     modeStr,
+	}
+	_, httpResp, err := c.apiClient.FuturesApi.UpdatePositionCrossMode(ctx, settle, opts)
+	if httpResp != nil && httpResp.Body != nil {
+		_ = httpResp.Body.Close()
+	}
+	if err != nil {
+		inlineOpts := gateapi.InlineObject{
+			Contract: symbol,
+			Mode:     modeStr,
+		}
+		_, httpRespDual, errDual := c.apiClient.FuturesApi.UpdateDualCompPositionCrossMode(ctx, settle, inlineOpts)
+		if httpRespDual != nil && httpRespDual.Body != nil {
+			_ = httpRespDual.Body.Close()
+		}
+		if errDual != nil {
+			return fmt.Errorf("gate.io update margin mode error (standard: %s, dual: %w)", err.Error(), errDual)
+		}
+	}
+	return nil
+}
+
 // Helper mapping functions.
 
 // mapSubmitOrder maps a SubmitOrderRequest to gateapi.FuturesOrder.

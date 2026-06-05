@@ -36,6 +36,16 @@
         "privateURL": "wss://fstream.binance.com/private/ws"
       }
     },
+    "kucoin": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api-futures.kucoin.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws-api-futures.kucoin.com",
+        "privateURL": "wss://ws-api-futures.kucoin.com"
+      }
+    },
     "bitget": {
       "enable": false,
       "future": {
@@ -71,15 +81,6 @@
       },
       "websocket": {
         "wsURL": "wss://api.hyperliquid.xyz/ws"
-      }
-    },
-    "kucoin": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://api-futures.kucoin.com"
-      },
-      "websocket": {
-        "wsURL": "wss://ws-api-futures.kucoin.com/endpoint"
       }
     },
     "bingx": {

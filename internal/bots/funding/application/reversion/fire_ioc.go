@@ -43,6 +43,38 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		return err
 	}
 
+	evt := MarginModeReadyEvent{
+		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.deps.Clock.Now()),
+		Candidate:          confirmedEvt.Candidate,
+		FundingRate:        confirmedEvt.FundingRate,
+	}
+
+	return r.publishEvent(ctx, TopicReversionMarginModeReady, evt)
+}
+
+func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginModeReadyEvent) error {
+	r.log.Info("handleMarginModeReady", slog.String("symbol", evt.Symbol))
+
+	marginMode := "ISOLATED"
+	if evt.Candidate.Config.ParsedOpenType == 2 {
+		marginMode = "CROSS"
+	}
+
+	err := r.deps.Client.SwitchMarginMode(ctx, evt.Symbol, marginMode, evt.Candidate.Config.Leverage, evt.Candidate.Side)
+	if err != nil {
+		r.log.ErrorContext(ctx, "Failed to switch margin mode", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "switch margin mode failed: "+err.Error())
+		return fmt.Errorf("switch margin mode failed: %w", err)
+	}
+
+	cfg, ok := r.getSymbolConfig(evt.Symbol)
+	if !ok {
+		err := errors.New("symbol config not found")
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, err.Error())
+		return err
+	}
+
+	latencyMs := r.deps.Clock.LatencyMs()
 	oneWayMs := latencyMs / 2
 	bufferTime := time.Duration(cfg.FundingReversion.BufferTime)
 	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
@@ -51,16 +83,16 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	// to avoid race conditions during the price refresh and safety calculation.
 	snapshotOffset := max(fireOffset+300*time.Millisecond, 500*time.Millisecond)
 
-	evt := FireTimingReadyEvent{
-		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.deps.Clock.Now()),
-		Candidate:          confirmedEvt.Candidate,
-		FundingRate:        confirmedEvt.FundingRate,
+	nextEvt := FireTimingReadyEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		Candidate:          evt.Candidate,
+		FundingRate:        evt.FundingRate,
 		LatencyRTTMs:       latencyMs,
 		FireOffsetMs:       fireOffset.Milliseconds(),
 		SnapshotOffsetMs:   snapshotOffset.Milliseconds(),
 	}
 
-	return r.publishEvent(ctx, TopicReversionFireTimingReady, evt)
+	return r.publishEvent(ctx, TopicReversionFireTimingReady, nextEvt)
 }
 
 func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTimingReadyEvent) error {

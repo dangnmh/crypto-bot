@@ -22,4 +22,9 @@ const (
 	accountTypeUnified  = "UNIFIED"
 	paramAccountType    = "accountType"
 	triggerByLastPrice  = "LastPrice"
+
+	utaMarginIsolated  = "ISOLATED_MARGIN"
+	utaMarginRegular   = "REGULAR_MARGIN"
+	paramSetMarginMode = "setMarginMode"
+	constantCross      = "CROSS"
 )

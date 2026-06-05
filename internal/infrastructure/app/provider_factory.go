@@ -274,6 +274,12 @@ func newWSPool(
 			appendCommonOpt(pkgws.WithPreprocessor(preprocessor))
 		}
 	}
+	type PublicURLProvider interface {
+		GetPublicURLFunc(ctx context.Context) func() (string, error)
+	}
+	if up, ok := adapter.(PublicURLProvider); ok {
+		publicOpts = append(publicOpts, pkgws.WithURLFunc(up.GetPublicURLFunc(ctx)))
+	}
 	type PrivateURLProvider interface {
 		GetPrivateURLFunc(ctx context.Context) func() (string, error)
 	}
@@ -399,38 +405,13 @@ func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfi
 		apiCfg.Future.BaseURL,
 		apiCfg.APIKey,
 		apiCfg.APISecret,
-		"", // Passphrase from environment variables or config
+		apiCfg.APIPassphrase,
 		sysCfg.Logging,
 	)
 	client := exchange.Client(kucoinClient)
-	if sysCfg.DryRun {
-		client = exchange.NewDryRunClient(client)
-	}
 
 	adapter := kucoin.NewWsAdapter()
-	urlFunc := kucoin.GetURLFunc(ctx, kucoinClient)
+	adapter.SetClient(kucoinClient)
 
-	wsLogger := cfg.Logger.With("subsystem", "websocket", "exchange", exchange.ExchangeKucoin)
-	wsClientOpts := []pkgws.ClientOption{
-		pkgws.WithURLFunc(urlFunc),
-	}
-	if payload, interval := adapter.GetPingConfig(); payload != nil && interval > 0 {
-		wsClientOpts = append(wsClientOpts, pkgws.WithPing(payload, interval))
-	}
-	if extractor := adapter.GetChannelExtractor(); extractor != nil {
-		wsClientOpts = append(wsClientOpts, pkgws.WithChannelExtractor(extractor))
-	}
-	wsPool := pkgws.NewPool("", apiCfg.WebSocket.MaxPairsPerWSConn, wsLogger, wsClientOpts...)
-	adapter.SetPool(wsPool)
-
-	log := cfg.Logger.With("exchange", exchange.ExchangeKucoin)
-
-	return &ExchangeProvider{
-		Name:     exchange.ExchangeKucoin,
-		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
-		TimeSync: timesync.New(client, log, time.Duration(sysCfg.Sync.Time)),
-		Watcher:  watcher.NewOrderWatcher(cfg.Bus, exchange.ExchangeKucoin, log),
-	}, nil
+	return buildProvider(ctx, exchange.ExchangeKucoin, exchange.ExchangeKucoin, cfg, apiCfg, client, adapter), nil
 }

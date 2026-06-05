@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -18,7 +19,8 @@ import (
 
 // WsAdapter implements ws.ExchangeAdapter for KuCoin Futures.
 type WsAdapter struct {
-	pool *pkgws.Pool
+	pool       *pkgws.Pool
+	restClient *Client
 }
 
 // NewWsAdapter creates a new KuCoin WsAdapter.
@@ -31,10 +33,30 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 	a.pool = pool
 }
 
+// SetClient sets the KuCoin REST client on the adapter.
+func (a *WsAdapter) SetClient(client *Client) {
+	a.restClient = client
+}
+
 // GetURLFunc returns dynamic URL resolution closure using the bullet token requester.
 func GetURLFunc(ctx context.Context, restClient *Client) func() (string, error) {
+	adapter := &WsAdapter{restClient: restClient}
+	return adapter.GetPublicURLFunc(ctx)
+}
+
+// GetPublicURLFunc returns dynamic URL resolution closure using the bullet token requester.
+func (a *WsAdapter) GetPublicURLFunc(ctx context.Context) func() (string, error) {
+	return a.getURLFunc(ctx, pathBulletPublic, "bullet_public")
+}
+
+// GetPrivateURLFunc returns dynamic URL resolution closure for private channel.
+func (a *WsAdapter) GetPrivateURLFunc(ctx context.Context) func() (string, error) {
+	return a.getURLFunc(ctx, pathBulletPrivate, "bullet_private")
+}
+
+func (a *WsAdapter) getURLFunc(ctx context.Context, path, label string) func() (string, error) {
 	return func() (string, error) {
-		body, err := restClient.Post(ctx, pathBulletPublic, nil)
+		body, err := a.restClient.Post(ctx, path, nil)
 		if err != nil {
 			return "", err
 		}
@@ -50,7 +72,7 @@ func GetURLFunc(ctx context.Context, restClient *Client) func() (string, error) 
 			InstanceServers []bulletServer `json:"instanceServers"`
 		}
 
-		data, err := ParseResponse[bulletData](body, "bullet_public")
+		data, err := ParseResponse[bulletData](body, label)
 		if err != nil {
 			return "", err
 		}
@@ -142,9 +164,17 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 	return a.pool.UnsubscribePublic(ctx, symbol+":depth", msg)
 }
 
-// SubscribePersonal is a placeholder.
+// SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	return nil
+	topic := "/contract/positionAll"
+	msg := map[string]any{
+		"id":                "sub-personal-position",
+		paramType:           opSubscribe,
+		paramTopic:          topic,
+		paramPrivateChannel: true,
+		paramResponse:       true,
+	}
+	return a.pool.SendPrivate(ctx, msg)
 }
 
 // GetPingConfig returns application ping config.
@@ -165,13 +195,16 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
 		subject, _ := jsonparser.GetString(data, "subject")
 		if subject == "tickerV2" {
-			return "tickers"
+			return "ticker"
 		}
 		if subject == "level2" {
 			return "depth"
 		}
 		if subject == paramKline {
 			return paramKline
+		}
+		if subject == "position.change" {
+			return "personal.position"
 		}
 		return subject
 	}
@@ -294,7 +327,57 @@ func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUp
 	return nil, fmt.Errorf("ParseTrackOrder not implemented on KuCoin WS")
 }
 
-// ParsePosition is a placeholder.
+// ParsePosition parses position updates from the websocket stream.
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
-	return nil, fmt.Errorf("ParsePosition not implemented on KuCoin WS")
+	dataNode, _, _, err := jsonparser.Get(data, "data")
+	if err != nil {
+		return nil, err
+	}
+
+	symbol, err := jsonparser.GetString(dataNode, "symbol")
+	if err != nil {
+		return nil, err
+	}
+
+	posSize, err := jsonparser.GetFloat(dataNode, "currentQty")
+	if err != nil {
+		return nil, err
+	}
+
+	entryPriceStr, err := jsonparser.GetString(dataNode, "avgEntryPrice")
+	var entryPrice float64
+	if err == nil {
+		entryPrice = decmath.ParseFloat(entryPriceStr)
+	} else {
+		entryPrice, _ = jsonparser.GetFloat(dataNode, "avgEntryPrice")
+	}
+
+	liqPriceStr, err := jsonparser.GetString(dataNode, "liquidationPrice")
+	var liqPrice float64
+	if err == nil {
+		liqPrice = decmath.ParseFloat(liqPriceStr)
+	} else {
+		liqPrice, _ = jsonparser.GetFloat(dataNode, "liquidationPrice")
+	}
+
+	ts, _ := jsonparser.GetInt(dataNode, "currentTimestamp")
+
+	var positionType int
+	if posSize > 0 {
+		positionType = 1 // Long
+	} else if posSize < 0 {
+		positionType = 2 // Short
+	}
+
+	update := &exchange.PersonalPositionUpdate{
+		Symbol:         symbol,
+		HoldVol:        math.Abs(posSize),
+		PositionType:   positionType,
+		HoldAvgPrice:   entryPrice,
+		OpenAvgPrice:   entryPrice,
+		LiquidatePrice: liqPrice,
+		UpdateTime:     ts,
+	}
+
+	return update, nil
 }

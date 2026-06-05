@@ -105,6 +105,7 @@ type okxSetLeverageRequest struct {
 	InstID  string `json:"instId"`
 	Lever   string `json:"lever"`
 	MgnMode string `json:"mgnMode"`
+	PosSide string `json:"posSide,omitempty"`
 }
 
 // Private raw methods invoking the OKX V5 REST API.
@@ -450,6 +451,31 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 		InstID:  req.Symbol,
 		Lever:   fmt.Sprintf("%d", req.Leverage),
 		MgnMode: mgnMode,
+	})
+}
+
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for OKX.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	mgnMode := modeIsolated
+	if marginMode == "CROSS" {
+		mgnMode = modeCross
+	}
+
+	posSide := ""
+	switch side {
+	case domain.SideOpenLong, domain.SideCloseLong:
+		posSide = "long"
+	case domain.SideOpenShort, domain.SideCloseShort:
+		posSide = "short"
+	default:
+		// No action for SideUnknown or other side types
+	}
+
+	return c.setRawLeverage(ctx, okxSetLeverageRequest{
+		InstID:  symbol,
+		Lever:   fmt.Sprintf("%d", leverage),
+		MgnMode: mgnMode,
+		PosSide: posSide,
 	})
 }
 

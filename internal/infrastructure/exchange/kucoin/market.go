@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -185,10 +186,9 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			stateVal = 1
 		}
 
-		lotSize := float64(inst.LotSize)
 		tickSize := inst.TickSize
 
-		priceScale := decmath.DecimalPlaces(fmt.Sprintf("%g", tickSize))
+		priceScale := decmath.DecimalPlaces(strconv.FormatFloat(tickSize, 'f', -1, 64))
 		if priceScale <= 0 {
 			priceScale = 2
 		}
@@ -201,13 +201,13 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			BaseCoin:         inst.BaseCurrency,
 			QuoteCoin:        inst.QuoteCurrency,
 			SettleCoin:       inst.SettleCurrency,
-			ContractSize:     lotSize,
+			ContractSize:     inst.Multiplier,
 			MinLeverage:      1,
 			MaxLeverage:      100,
 			PriceScale:       priceScale,
 			VolScale:         0, // Defaults to 0 (unit contracts).
 			PriceUnit:        tickSize,
-			MinVol:           1,
+			MinVol:           int(inst.LotSize),
 			State:            stateVal,
 		})
 	}

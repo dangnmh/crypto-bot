@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -375,6 +376,63 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 		BuyLeverage:  leverageStr,
 		SellLeverage: leverageStr,
 	})
+}
+
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Bybit.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	if strings.EqualFold(c.accountType, "unified") {
+		return c.switchUnifiedMarginMode(ctx, marginMode)
+	}
+
+	tradeMode := 1 // isolated
+	if marginMode == constantCross {
+		tradeMode = 0 // cross
+	}
+	leverageStr := fmt.Sprintf("%d", leverage)
+	params := map[string]any{
+		"category":     categoryLinear,
+		"symbol":       symbol,
+		"tradeMode":    tradeMode,
+		"buyLeverage":  leverageStr,
+		"sellLeverage": leverageStr,
+	}
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SwitchPositionMargin(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit switch margin mode: %w", err)
+	}
+	if resp.RetCode != 0 {
+		if resp.RetCode == 110026 || strings.Contains(strings.ToLower(resp.RetMsg), "already") {
+			return nil
+		}
+		// Fallback for unified account
+		if resp.RetCode == 100028 || strings.Contains(strings.ToLower(resp.RetMsg), "unified account is forbidden") {
+			c.logger.InfoContext(ctx, "Bybit SwitchPositionMargin returned unified account restriction, falling back to SetMarginMode", slog.String("symbol", symbol), slog.String("marginMode", marginMode))
+			return c.switchUnifiedMarginMode(ctx, marginMode)
+		}
+		return fmt.Errorf("bybit switch margin mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
+}
+
+func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string) error {
+	utaMarginMode := utaMarginIsolated
+	if marginMode == constantCross {
+		utaMarginMode = utaMarginRegular
+	}
+	utaParams := map[string]any{
+		paramSetMarginMode: utaMarginMode,
+	}
+	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(utaParams).SetMarginMode(ctx)
+	if err != nil {
+		return fmt.Errorf("bybit set account margin mode: %w", err)
+	}
+	if resp.RetCode != 0 {
+		if resp.RetCode == 110026 || strings.Contains(strings.ToLower(resp.RetMsg), "already") {
+			return nil
+		}
+		return fmt.Errorf("bybit set account margin mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
 }
 
 // Helper mapping functions.

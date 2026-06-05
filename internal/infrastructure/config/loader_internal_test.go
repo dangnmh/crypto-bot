@@ -34,22 +34,31 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 		APIKey:    "key",
 		APISecret: "secret",
 	}
+	completeKucoin := APIConfig{
+		Enable:        true,
+		Future:        RESTConfig{BaseURL: "https://api.example.com"},
+		APIKey:        "key",
+		APISecret:     "secret",
+		APIPassphrase: "pass",
+	}
 	missingKey := APIConfig{
 		Enable:    true,
 		Future:    RESTConfig{BaseURL: "https://api.example.com"},
 		APISecret: "secret",
 	}
 
-	assert.True(t, exchangeCredentialsComplete(disabled))
-	assert.True(t, exchangeCredentialsComplete(complete))
-	assert.False(t, exchangeCredentialsComplete(missingKey))
+	assert.True(t, exchangeCredentialsComplete("Mexc", disabled))
+	assert.True(t, exchangeCredentialsComplete("Mexc", complete))
+	assert.False(t, exchangeCredentialsComplete("Mexc", missingKey))
+	assert.True(t, exchangeCredentialsComplete("Kucoin", completeKucoin))
+	assert.False(t, exchangeCredentialsComplete("Kucoin", complete))
 	assert.True(t, notificationCredentialsComplete(NotiConfig{
 		TelegramChatID:   "123",
 		TelegramBotToken: "token",
 	}))
 	assert.False(t, notificationCredentialsComplete(NotiConfig{TelegramChatID: "123"}))
 	assert.True(t, bitwardenFallbackNotNeeded(&SystemConfig{
-		ExchangeConfig: ExchangeConfig{Mexc: complete, Gate: disabled, Bybit: disabled},
+		ExchangeConfig: ExchangeConfig{Mexc: complete, Gate: disabled, Bybit: disabled, Kucoin: completeKucoin},
 		NotiConfig:     NotiConfig{TelegramChatID: "123", TelegramBotToken: "token"},
 	}))
 }
@@ -117,6 +126,28 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 			}}},
 			wantErr: "api_config",
 		},
+		{
+			name: "kucoin missing passphrase",
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Kucoin: APIConfig{
+				Enable:    true,
+				Future:    RESTConfig{BaseURL: "https://kucoin.example"},
+				WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"},
+				APIKey:    "key",
+				APISecret: "secret",
+			}}},
+			wantErr: "api_config",
+		},
+		{
+			name: "kucoin missing key",
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Kucoin: APIConfig{
+				Enable:        true,
+				Future:        RESTConfig{BaseURL: "https://kucoin.example"},
+				WebSocket:     WebSocketConfig{WSURL: "wss://kucoin.example"},
+				APISecret:     "secret",
+				APIPassphrase: "pass",
+			}}},
+			wantErr: "api_config",
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,7 +155,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 			t.Parallel()
 
 			// Check missing all active exchanges logic
-			if !tt.cfg.ExchangeConfig.Mexc.Enable && !tt.cfg.ExchangeConfig.Gate.Enable && !tt.cfg.ExchangeConfig.Okx.Enable && !tt.cfg.ExchangeConfig.Binance.Enable && !tt.cfg.ExchangeConfig.Bitget.Enable {
+			if !tt.cfg.ExchangeConfig.Mexc.Enable && !tt.cfg.ExchangeConfig.Gate.Enable && !tt.cfg.ExchangeConfig.Okx.Enable && !tt.cfg.ExchangeConfig.Binance.Enable && !tt.cfg.ExchangeConfig.Bitget.Enable && !tt.cfg.ExchangeConfig.Kucoin.Enable {
 				err := fmt.Errorf("at least one active exchange must be enabled")
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -246,17 +277,20 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 	t.Cleanup(func() { newBitwardenSecretLoader = orig })
 	newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
 		return fakeSecretLoader{
-			values: map[string]string{
-				"MEXC_API_KEY":       " mexc-key ",
-				"MEXC_API_SECRET":    " mexc-secret ",
-				"GATE_API_KEY":       " gate-key ",
-				"GATE_API_SECRET":    " gate-secret ",
-				"BYBIT_API_KEY":      " bybit-key ",
-				"BYBIT_API_SECRET":   " bybit-secret ",
-				"BITGET_API_KEY":     " bitget-key ",
-				"BITGET_API_SECRET":  " bitget-secret ",
-				"TELEGRAM_CHAT_ID":   " 123 ",
-				"TELEGRAM_BOT_TOKEN": " token ",
+			values: map[string]string{ //nolint:gosec // Mock credentials in tests are not real secrets
+				"MEXC_API_KEY":          " mexc-key ",
+				"MEXC_API_SECRET":       " mexc-secret ",
+				"GATE_API_KEY":          " gate-key ",
+				"GATE_API_SECRET":       " gate-secret ",
+				"BYBIT_API_KEY":         " bybit-key ",
+				"BYBIT_API_SECRET":      " bybit-secret ",
+				"BITGET_API_KEY":        " bitget-key ",
+				"BITGET_API_SECRET":     " bitget-secret ",
+				"KUCOIN_API_KEY":        " kucoin-key ",
+				"KUCOIN_API_SECRET":     " kucoin-secret ",
+				"KUCOIN_API_PASSPHRASE": " kucoin-passphrase ",
+				"TELEGRAM_CHAT_ID":      " 123 ",
+				"TELEGRAM_BOT_TOKEN":    " token ",
 			},
 		}, nil
 	}
@@ -271,6 +305,9 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 	assert.Equal(t, "bybit-secret", creds.BybitAPISecret)
 	assert.Equal(t, "bitget-key", creds.BitgetAPIKey)
 	assert.Equal(t, "bitget-secret", creds.BitgetAPISecret)
+	assert.Equal(t, "kucoin-key", creds.KucoinAPIKey)
+	assert.Equal(t, "kucoin-secret", creds.KucoinAPISecret)
+	assert.Equal(t, "kucoin-passphrase", creds.KucoinPassphrase)
 	assert.Equal(t, "123", creds.TelegramChatID)
 	assert.Equal(t, "token", creds.TelegramBotToken)
 
@@ -295,17 +332,20 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 	orig := newBitwardenSecretLoader
 	t.Cleanup(func() { newBitwardenSecretLoader = orig })
 	newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
-		return fakeSecretLoader{values: map[string]string{
-			"MEXC_API_KEY":       "mexc-key",
-			"MEXC_API_SECRET":    "mexc-secret",
-			"GATE_API_KEY":       "gate-key",
-			"GATE_API_SECRET":    "gate-secret",
-			"BYBIT_API_KEY":      "bybit-key",
-			"BYBIT_API_SECRET":   "bybit-secret",
-			"BITGET_API_KEY":     "bitget-key",
-			"BITGET_API_SECRET":  "bitget-secret",
-			"TELEGRAM_CHAT_ID":   "123",
-			"TELEGRAM_BOT_TOKEN": "token",
+		return fakeSecretLoader{values: map[string]string{ //nolint:gosec // Mock credentials in tests are not real secrets
+			"MEXC_API_KEY":          "mexc-key",
+			"MEXC_API_SECRET":       "mexc-secret",
+			"GATE_API_KEY":          "gate-key",
+			"GATE_API_SECRET":       "gate-secret",
+			"BYBIT_API_KEY":         "bybit-key",
+			"BYBIT_API_SECRET":      "bybit-secret",
+			"BITGET_API_KEY":        "bitget-key",
+			"BITGET_API_SECRET":     "bitget-secret",
+			"KUCOIN_API_KEY":        "kucoin-key",
+			"KUCOIN_API_SECRET":     "kucoin-secret",
+			"KUCOIN_API_PASSPHRASE": "kucoin-passphrase",
+			"TELEGRAM_CHAT_ID":      "123",
+			"TELEGRAM_BOT_TOKEN":    "token",
 		}}, nil
 	}
 
@@ -315,6 +355,7 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 			Gate:   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
 			Bybit:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
 			Bitget: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
+			Kucoin: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
@@ -327,6 +368,9 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 	assert.Equal(t, "bybit-secret", cfg.ExchangeConfig.Bybit.APISecret)
 	assert.Equal(t, "bitget-key", cfg.ExchangeConfig.Bitget.APIKey)
 	assert.Equal(t, "bitget-secret", cfg.ExchangeConfig.Bitget.APISecret)
+	assert.Equal(t, "kucoin-key", cfg.ExchangeConfig.Kucoin.APIKey)
+	assert.Equal(t, "kucoin-secret", cfg.ExchangeConfig.Kucoin.APISecret)
+	assert.Equal(t, "kucoin-passphrase", cfg.ExchangeConfig.Kucoin.APIPassphrase)
 	assert.Equal(t, "123", cfg.NotiConfig.TelegramChatID)
 	assert.Equal(t, "token", cfg.NotiConfig.TelegramBotToken)
 

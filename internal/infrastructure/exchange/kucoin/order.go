@@ -2,10 +2,13 @@ package kucoin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -13,12 +16,30 @@ import (
 )
 
 type kucoinCreateOrderRequest struct {
-	Symbol    string  `json:"symbol"`
-	Side      string  `json:"side"`
-	Type      string  `json:"type"`
-	Size      float64 `json:"size"`
-	Price     float64 `json:"price,omitempty"`
-	ClientOid string  `json:"clientOid,omitempty"`
+	ClientOid     string  `json:"clientOid"`
+	Side          string  `json:"side"`
+	Symbol        string  `json:"symbol"`
+	Leverage      int     `json:"leverage,omitempty"`
+	Type          string  `json:"type,omitempty"`
+	Remark        string  `json:"remark,omitempty"`
+	Stop          string  `json:"stop,omitempty"`
+	StopPriceType string  `json:"stopPriceType,omitempty"`
+	StopPrice     string  `json:"stopPrice,omitempty"`
+	ReduceOnly    bool    `json:"reduceOnly,omitempty"`
+	CloseOrder    bool    `json:"closeOrder,omitempty"`
+	ForceHold     bool    `json:"forceHold,omitempty"`
+	Stp           string  `json:"stp,omitempty"`
+	MarginMode    string  `json:"marginMode,omitempty"`
+	Price         string  `json:"price,omitempty"`
+	Size          float64 `json:"size,omitempty"`
+	Qty           string  `json:"qty,omitempty"`
+	ValueQty      string  `json:"valueQty,omitempty"`
+	TimeInForce   string  `json:"timeInForce,omitempty"`
+	PostOnly      bool    `json:"postOnly,omitempty"`
+	Hidden        bool    `json:"hidden,omitempty"`
+	Iceberg       bool    `json:"iceberg,omitempty"`
+	VisibleSize   string  `json:"visibleSize,omitempty"`
+	PositionSide  string  `json:"positionSide,omitempty"`
 }
 
 type kucoinCreateOrderResponse struct {
@@ -40,13 +61,6 @@ type kucoinOpenOrdersRequest struct {
 	Symbol string `json:"symbol,omitempty"`
 }
 
-type kucoinChangeLeverageRequest struct {
-	Symbol   string `json:"symbol"`
-	Leverage string `json:"leverage"`
-}
-
-type kucoinChangeLeverageResponse struct{}
-
 type kucoinOrder struct {
 	OrderID     string `json:"orderId"`
 	ClientOid   string `json:"clientOid"`
@@ -66,20 +80,7 @@ type kucoinOrder struct {
 // Private raw methods invoking the KuCoin REST API.
 
 func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderRequest) (*kucoinCreateOrderResponse, error) {
-	bodyMap := map[string]any{
-		paramSymbol: req.Symbol,
-		"side":      req.Side,
-		paramType:   req.Type,
-		"size":      req.Size,
-	}
-	if req.Price > 0 {
-		bodyMap["price"] = req.Price
-	}
-	if req.ClientOid != "" {
-		bodyMap["clientOid"] = req.ClientOid
-	}
-
-	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
+	body, err := c.PostCtx(ctx, pathPlaceOrder, req)
 	if err != nil {
 		return nil, err
 	}
@@ -168,47 +169,49 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersReque
 	return rawList, nil
 }
 
-func (c *Client) changeRawLeverage(ctx context.Context, req kucoinChangeLeverageRequest) (*kucoinChangeLeverageResponse, error) {
-	bodyMap := map[string]any{
-		paramSymbol: req.Symbol,
-		"leverage":  req.Leverage,
-	}
-
-	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ParseResponseIgnoreData(body, "set_leverage"); err != nil {
-		return nil, err
-	}
-	return &kucoinChangeLeverageResponse{}, nil
-}
-
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	ordType := "limit"
-	if req.Type == exchange.OrderTypeMarket {
-		ordType = "market"
+	ordType, timeInForce, postOnly := mapOrderType(req.Type)
+	side, posSide, reduceOnly := mapSideAndPosition(req.Side, req.PositionMode == 1)
+
+	if req.ReduceOnly {
+		reduceOnly = true
 	}
 
-	side := sideBuy
-	if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseLong {
-		side = sideSell
+	clientOid := req.ExternalOID
+	if clientOid == "" {
+		clientOid = uuid.NewString()
+	}
+
+	marginMode := "ISOLATED"
+	if req.OpenType == exchange.OpenTypeCross {
+		marginMode = "CROSS"
 	}
 
 	rawReq := kucoinCreateOrderRequest{
-		Symbol:    req.Symbol,
-		Side:      side,
-		Type:      ordType,
-		Size:      req.Vol,
-		ClientOid: req.ExternalOID,
+		Symbol:       req.Symbol,
+		Side:         side,
+		Type:         ordType,
+		Size:         req.Vol,
+		ClientOid:    clientOid,
+		ReduceOnly:   reduceOnly,
+		PositionSide: posSide,
+		MarginMode:   marginMode,
 	}
 
-	if req.Type != exchange.OrderTypeMarket {
-		rawReq.Price = req.Price
+	if ordType != constantMarket {
+		rawReq.Price = strconv.FormatFloat(req.Price, 'f', -1, 64)
+	}
+	if req.Leverage > 0 {
+		rawReq.Leverage = req.Leverage
+	}
+	if timeInForce != "" {
+		rawReq.TimeInForce = timeInForce
+	}
+	if postOnly {
+		rawReq.PostOnly = true
 	}
 
 	res, err := c.createRawOrder(ctx, rawReq)
@@ -220,6 +223,64 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		OrderID:       res.OrderID,
 		TPSLSubmitted: false,
 	}, nil
+}
+
+func mapSideAndPosition(reqSide int, isHedge bool) (string, string, bool) {
+	var side string
+	var posSide string
+	var reduceOnly bool
+
+	if isHedge {
+		switch reqSide {
+		case exchange.SideOpenLong:
+			side = sideBuy
+			posSide = constantLong
+		case exchange.SideCloseLong:
+			side = sideSell
+			posSide = constantLong
+			reduceOnly = true
+		case exchange.SideOpenShort:
+			side = sideSell
+			posSide = constantShort
+		case exchange.SideCloseShort:
+			side = sideBuy
+			posSide = constantShort
+			reduceOnly = true
+		default:
+			side = sideBuy
+			posSide = constantLong
+		}
+	} else {
+		posSide = constantBoth
+		switch reqSide {
+		case exchange.SideOpenLong, exchange.SideCloseShort:
+			side = sideBuy
+		case exchange.SideOpenShort, exchange.SideCloseLong:
+			side = sideSell
+		}
+		if reqSide == exchange.SideCloseLong || reqSide == exchange.SideCloseShort {
+			reduceOnly = true
+		}
+	}
+	return side, posSide, reduceOnly
+}
+
+func mapOrderType(t int) (string, string, bool) {
+	ordType := paramLimit
+	var timeInForce string
+	var postOnly bool
+
+	switch t {
+	case exchange.OrderTypeMarket:
+		ordType = constantMarket
+	case exchange.OrderTypePostOnly:
+		postOnly = true
+	case exchange.OrderTypeIOC:
+		timeInForce = "IOC"
+	case exchange.OrderTypeFOK:
+		timeInForce = "GTC"
+	}
+	return ordType, timeInForce, postOnly
 }
 
 // CreateTrackOrder is a placeholder.
@@ -319,13 +380,56 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// ChangeLeverage changes leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	_, err := c.changeRawLeverage(ctx, kucoinChangeLeverageRequest{
-		Symbol:   req.Symbol,
-		Leverage: strconv.Itoa(req.Leverage),
-	})
-	return err
+// PlaceTPSL places Take Profit and Stop Loss conditional orders on KuCoin.
+func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error {
+	var stopUpPrice, stopDownPrice float64
+	if req.Side == exchange.SideOpenLong {
+		stopUpPrice = req.TakeProfitPrice
+		stopDownPrice = req.StopLossPrice
+	} else {
+		stopUpPrice = req.StopLossPrice
+		stopDownPrice = req.TakeProfitPrice
+	}
+
+	bodyMap := map[string]any{
+		constantClientOid: "tpsl-" + req.Symbol + "-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		paramSymbol:       req.Symbol,
+		"type":            constantMarket,
+		"closeOrder":      true,
+		"reduceOnly":      true,
+		"stopPriceType":   "TP",
+		constantSize:      req.Volume,
+	}
+
+	if req.PositionMode == 1 { // Hedge Mode
+		if req.Side == exchange.SideOpenLong {
+			bodyMap["positionSide"] = constantLong
+		} else {
+			bodyMap["positionSide"] = constantShort
+		}
+	} else {
+		bodyMap["positionSide"] = constantBoth
+	}
+
+	if req.Side == exchange.SideOpenLong {
+		bodyMap["side"] = sideSell
+	} else {
+		bodyMap["side"] = sideBuy
+	}
+
+	if stopUpPrice > 0 {
+		bodyMap["triggerStopUpPrice"] = strconv.FormatFloat(stopUpPrice, 'f', -1, 64)
+	}
+	if stopDownPrice > 0 {
+		bodyMap["triggerStopDownPrice"] = strconv.FormatFloat(stopDownPrice, 'f', -1, 64)
+	}
+
+	body, err := c.PostCtx(ctx, "/api/v1/st-orders", bodyMap)
+	if err != nil {
+		return err
+	}
+
+	return ParseResponseIgnoreData(body, "place_tpsl")
 }
 
 func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
@@ -363,4 +467,22 @@ func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 		State:        state,
 		Side:         sideVal,
 	}
+}
+
+// ChangeLeverage changes the leverage for a symbol.
+func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
+	return errors.New("not implemented")
+}
+
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for KuCoin.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	bodyMap := map[string]any{
+		paramSymbol:  symbol,
+		"marginMode": marginMode,
+	}
+	body, err := c.PostCtx(ctx, "/api/v2/position/changeMarginMode", bodyMap)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "changeMarginMode")
 }

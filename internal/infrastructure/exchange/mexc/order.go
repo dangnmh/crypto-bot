@@ -322,3 +322,23 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	}
 	return c.changeRawLeverage(ctx, mexcReq)
 }
+
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for MEXC.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	openType := 1 // Isolated
+	if marginMode == "CROSS" {
+		openType = 2 // Cross
+	}
+
+	positionType := 1 // Long
+	if side == domain.SideOpenShort || side == domain.SideCloseShort {
+		positionType = 2 // Short
+	}
+
+	return c.changeRawLeverage(ctx, mexcChangeLeverageRequest{
+		Symbol:       symbol,
+		Leverage:     leverage,
+		OpenType:     openType,
+		PositionType: positionType,
+	})
+}

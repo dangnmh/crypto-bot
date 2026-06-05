@@ -454,6 +454,28 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	return err
 }
 
+// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Binance.
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+	var mode models.ChangeMarginTypeMarginTypeParameter = "ISOLATED"
+	if marginMode == "CROSS" {
+		mode = "CROSSED"
+	}
+
+	req := c.sdkClient.RestApi.TradeAPI.ChangeMarginType(ctx).
+		Symbol(symbol).
+		MarginType(mode)
+
+	_, err := c.sdkClient.RestApi.TradeAPI.ChangeMarginTypeExecute(req)
+	if err != nil {
+		errMsg := strings.ToLower(err.Error())
+		if strings.Contains(errMsg, "-4046") || strings.Contains(errMsg, "no need to change") {
+			return nil
+		}
+		return fmt.Errorf("binance switch margin mode: %w", err)
+	}
+	return nil
+}
+
 // mapOrder maps a Binance QueryOrderResponse model to exchange.OrderInfo struct.
 func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
 	return mapBinanceOrder(&raw)

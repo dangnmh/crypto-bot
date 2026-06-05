@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,9 +23,10 @@ func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 	adapter := kucoin.NewWsAdapter()
 	extractor := adapter.GetChannelExtractor()
 
-	assert.Equal(t, "tickers", extractor([]byte(`{"subject":"tickerV2"}`)))
+	assert.Equal(t, "ticker", extractor([]byte(`{"subject":"tickerV2"}`)))
 	assert.Equal(t, "depth", extractor([]byte(`{"subject":"level2"}`)))
 	assert.Equal(t, "kline", extractor([]byte(`{"subject":"kline"}`)))
+	assert.Equal(t, "personal.position", extractor([]byte(`{"subject":"position.change"}`)))
 	assert.Equal(t, "unknown", extractor([]byte(`{"subject":"unknown"}`)))
 }
 
@@ -48,6 +50,16 @@ func TestWsAdapter_ParseTicker(t *testing.T) {
 	assert.Equal(t, 50000.5, pd.LastPrice)
 	assert.Equal(t, 50000.0, pd.BestBid)
 	assert.Equal(t, 50001.0, pd.BestAsk)
+
+	// Test case for tickerV2 without 'price' field
+	rawV2 := []byte(`{"topic":"/contractMarket/tickerV2:BABYUSDTM","type":"message","subject":"tickerV2","sn":1744926189248,"data":{"symbol":"BABYUSDTM","sequence":1744926189248,"bestBidSize":2492,"bestBidPrice":"0.02157","bestAskPrice":"0.02162","bestAskSize":636,"ts":1780661588016000000}}`)
+	symbol2, pd2, err2 := adapter.ParseTicker(rawV2)
+	require.NoError(t, err2)
+	assert.Equal(t, "BABYUSDTM", symbol2)
+	assert.Equal(t, 0.02157, pd2.BestBid)
+	assert.Equal(t, 0.02162, pd2.BestAsk)
+	// Last price should fallback to (bestBid + bestAsk) / 2
+	assert.Equal(t, 0.021595, pd2.LastPrice)
 }
 
 func TestWsAdapter_ParseDepth(t *testing.T) {
@@ -85,7 +97,10 @@ func TestWsAdapter_OtherMethods(t *testing.T) {
 	hook := adapter.GetAuthHook("", "")
 	assert.Nil(t, hook)
 
-	// 3. SubscribePersonal
+	// 3. SubscribePersonal (needs mock pool set up since it sends message)
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
+	defer pool.Close()
+	adapter.SetPool(pool)
 	err := adapter.SubscribePersonal(context.Background())
 	assert.NoError(t, err)
 
@@ -105,7 +120,7 @@ func TestWsAdapter_OtherMethods(t *testing.T) {
 	_, err = adapter.ParseTrackOrder([]byte{})
 	assert.Error(t, err)
 
-	// 8. ParsePosition
+	// 8. ParsePosition errors
 	_, err = adapter.ParsePosition([]byte{})
 	assert.Error(t, err)
 
@@ -132,35 +147,63 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	// 1. Mock HTTP server for bullet token
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "/bullet-public")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "200000",
-			"data": {
-				"token": "mockToken",
-				"instanceServers": [
-					{
-						"endpoint": "wss://mock.kucoin.com/endpoint",
-						"pingInterval": 20000,
-						"pingTimeout": 10000
-					}
-				]
-			}
-		}`))
+		if strings.Contains(r.URL.Path, "/bullet-public") {
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": {
+					"token": "mockTokenPublic",
+					"instanceServers": [
+						{
+							"endpoint": "wss://mock.kucoin.com/endpoint",
+							"pingInterval": 20000,
+							"pingTimeout": 10000
+						}
+					]
+				}
+			}`))
+		} else if strings.Contains(r.URL.Path, "/bullet-private") {
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": {
+					"token": "mockTokenPrivate",
+					"instanceServers": [
+						{
+							"endpoint": "wss://mock.kucoin.com/endpoint",
+							"pingInterval": 20000,
+							"pingTimeout": 10000
+						}
+					]
+				}
+			}`))
+		}
 	}))
 	defer server.Close()
 
-	// 2. Initialize REST Client and test GetURLFunc
+	// 2. Initialize REST Client and test GetURLFunc / URL Providers
 	ctx := t.Context()
 
 	restClient := kucoin.NewClient(server.Client(), server.URL, "apiKey", "secret", "phrase", config.LoggingConfig{})
+	adapter := kucoin.NewWsAdapter()
+	adapter.SetClient(restClient)
+
+	pubURLFunc := adapter.GetPublicURLFunc(ctx)
+	resolvedPubURL, err := pubURLFunc()
+	require.NoError(t, err)
+	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockTokenPublic", resolvedPubURL)
+
+	privURLFunc := adapter.GetPrivateURLFunc(ctx)
+	resolvedPrivURL, err := privURLFunc()
+	require.NoError(t, err)
+	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockTokenPrivate", resolvedPrivURL)
+
+	// Verify legacy package-level GetURLFunc
 	urlFunc := kucoin.GetURLFunc(ctx, restClient)
 	resolvedURL, err := urlFunc()
 	require.NoError(t, err)
-	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockToken", resolvedURL)
+	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockTokenPublic", resolvedURL)
 
 	// 3. Test WS Subscriptions
-	adapter := kucoin.NewWsAdapter()
 	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
 	defer pool.Close()
 	adapter.SetPool(pool)
@@ -188,7 +231,48 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	_, err = adapter.ParseTrackOrder([]byte{})
 	assert.Error(t, err)
+}
 
-	_, err = adapter.ParsePosition([]byte{})
-	assert.Error(t, err)
+func TestWsAdapter_ParsePosition(t *testing.T) {
+	t.Parallel()
+
+	adapter := kucoin.NewWsAdapter()
+	raw := []byte(`{
+		"topic": "/contract/position:XBTUSDTM",
+		"subject": "position.change",
+		"data": {
+			"symbol": "XBTUSDTM",
+			"currentQty": -5.0,
+			"avgEntryPrice": "50000.0",
+			"liquidationPrice": "40000.0",
+			"currentTimestamp": 1672531200000
+		}
+	}`)
+
+	update, err := adapter.ParsePosition(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "XBTUSDTM", update.Symbol)
+	assert.Equal(t, 5.0, update.HoldVol)
+	assert.Equal(t, 2, update.PositionType) // 2 for Short
+	assert.Equal(t, 50000.0, update.HoldAvgPrice)
+	assert.Equal(t, 40000.0, update.LiquidatePrice)
+	assert.Equal(t, int64(1672531200000), update.UpdateTime)
+
+	// Test long position
+	rawLong := []byte(`{
+		"topic": "/contract/position:XBTUSDTM",
+		"subject": "position.change",
+		"data": {
+			"symbol": "XBTUSDTM",
+			"currentQty": 3,
+			"avgEntryPrice": 48000.5,
+			"liquidationPrice": 35000,
+			"currentTimestamp": 1672531200000
+		}
+	}`)
+	updateLong, err := adapter.ParsePosition(rawLong)
+	require.NoError(t, err)
+	assert.Equal(t, 3.0, updateLong.HoldVol)
+	assert.Equal(t, 1, updateLong.PositionType) // 1 for Long
+	assert.Equal(t, 48000.5, updateLong.HoldAvgPrice)
 }
