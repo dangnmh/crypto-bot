@@ -63,7 +63,7 @@ type kucoinFillItem struct {
 	Symbol    string `json:"symbol"`
 	Side      string `json:"side"`
 	Price     string `json:"price"`
-	Size      string `json:"size"`
+	Size      int64  `json:"size"`
 	Fee       string `json:"fee"`
 	CreatedAt int64  `json:"createdAt"`
 }
@@ -229,8 +229,26 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 // GetRecentClosedPnL queries historical position records, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// 1. Get closing order by client OID.
-	closingOrder, err := c.getRawOrderByClientOid(ctx, extOrderID)
-	if err != nil {
+	var closingOrder *kucoinOrder
+	opGetOrder := func() error {
+		order, err := c.getRawOrderByClientOid(ctx, extOrderID)
+		if err != nil {
+			return err
+		}
+		closingOrder = order
+		return nil
+	}
+
+	boGetOrder := backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(1*time.Second),
+				backoff.WithMaxInterval(2*time.Second)),
+			5),
+		ctx,
+	)
+
+	if err := backoff.Retry(opGetOrder, boGetOrder); err != nil {
 		return nil, fmt.Errorf("kucoin get order by client OID %s failed: %w", extOrderID, err)
 	}
 
@@ -242,7 +260,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 
 	var closedSize float64
 	for i := range fills {
-		sizeVal := decmath.ParseFloat(fills[i].Size)
+		sizeVal := float64(fills[i].Size)
 		closedSize += sizeVal
 	}
 
@@ -264,8 +282,8 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	bo := backoff.WithContext(
 		backoff.WithMaxRetries(
 			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(100*time.Millisecond),
-				backoff.WithMaxInterval(500*time.Millisecond)),
+				backoff.WithInitialInterval(time.Second),
+				backoff.WithMaxInterval(2*time.Second)),
 			5),
 		ctx,
 	)

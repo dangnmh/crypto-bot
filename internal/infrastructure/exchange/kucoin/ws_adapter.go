@@ -82,7 +82,11 @@ func (a *WsAdapter) getURLFunc(ctx context.Context, path, label string) func() (
 		}
 
 		srv := data.InstanceServers[0]
-		return fmt.Sprintf("%s?token=%s", srv.Endpoint, data.Token), nil
+		separator := "?"
+		if strings.Contains(srv.Endpoint, "?") {
+			separator = "&"
+		}
+		return fmt.Sprintf("%s%stoken=%s&connectId=%d", srv.Endpoint, separator, data.Token, time.Now().UnixMilli()), nil
 	}
 }
 
@@ -166,7 +170,7 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	topic := "/contract/positionAll"
+	topic := pathPositionAll
 	msg := map[string]any{
 		"id":                "sub-personal-position",
 		paramType:           opSubscribe,
@@ -194,6 +198,11 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
 		subject, _ := jsonparser.GetString(data, "subject")
+		topic, _ := jsonparser.GetString(data, "topic")
+		if topic == pathPositionAll {
+			return constantPersonalPosition
+		}
+
 		if subject == "tickerV2" {
 			return "ticker"
 		}
@@ -204,7 +213,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			return paramKline
 		}
 		if subject == "position.change" {
-			return "personal.position"
+			return constantPersonalPosition
 		}
 		return subject
 	}
@@ -362,11 +371,19 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	ts, _ := jsonparser.GetInt(dataNode, "currentTimestamp")
 
+	positionSide, _ := jsonparser.GetString(dataNode, "positionSide")
 	var positionType int
-	if posSize > 0 {
+	switch {
+	case strings.EqualFold(positionSide, "LONG"):
 		positionType = 1 // Long
-	} else if posSize < 0 {
+	case strings.EqualFold(positionSide, "SHORT"):
 		positionType = 2 // Short
+	default:
+		if posSize > 0 {
+			positionType = 1 // Long
+		} else if posSize < 0 {
+			positionType = 2 // Short
+		}
 	}
 
 	update := &exchange.PersonalPositionUpdate{

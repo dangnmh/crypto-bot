@@ -190,18 +190,18 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	pubURLFunc := adapter.GetPublicURLFunc(ctx)
 	resolvedPubURL, err := pubURLFunc()
 	require.NoError(t, err)
-	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockTokenPublic", resolvedPubURL)
+	assert.True(t, strings.HasPrefix(resolvedPubURL, "wss://mock.kucoin.com/endpoint?token=mockTokenPublic&connectId="))
 
 	privURLFunc := adapter.GetPrivateURLFunc(ctx)
 	resolvedPrivURL, err := privURLFunc()
 	require.NoError(t, err)
-	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockTokenPrivate", resolvedPrivURL)
+	assert.True(t, strings.HasPrefix(resolvedPrivURL, "wss://mock.kucoin.com/endpoint?token=mockTokenPrivate&connectId="))
 
 	// Verify legacy package-level GetURLFunc
 	urlFunc := kucoin.GetURLFunc(ctx, restClient)
 	resolvedURL, err := urlFunc()
 	require.NoError(t, err)
-	assert.Equal(t, "wss://mock.kucoin.com/endpoint?token=mockTokenPublic", resolvedURL)
+	assert.True(t, strings.HasPrefix(resolvedURL, "wss://mock.kucoin.com/endpoint?token=mockTokenPublic&connectId="))
 
 	// 3. Test WS Subscriptions
 	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
@@ -275,4 +275,100 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 3.0, updateLong.HoldVol)
 	assert.Equal(t, 1, updateLong.PositionType) // 1 for Long
 	assert.Equal(t, 48000.5, updateLong.HoldAvgPrice)
+
+	// Test closed short position using positionSide
+	rawClosedShort := []byte(`{
+		"topic": "/contract/position:XBTUSDTM",
+		"subject": "position.change",
+		"data": {
+			"symbol": "XBTUSDTM",
+			"currentQty": 0,
+			"avgEntryPrice": 48000.5,
+			"currentTimestamp": 1672531200000,
+			"positionSide": "SHORT"
+		}
+	}`)
+	updateClosedShort, err := adapter.ParsePosition(rawClosedShort)
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, updateClosedShort.HoldVol)
+	assert.Equal(t, 2, updateClosedShort.PositionType) // 2 for Short
+
+	// Test closed long position using positionSide
+	rawClosedLong := []byte(`{
+		"topic": "/contract/position:XBTUSDTM",
+		"subject": "position.change",
+		"data": {
+			"symbol": "XBTUSDTM",
+			"currentQty": 0,
+			"avgEntryPrice": 48000.5,
+			"currentTimestamp": 1672531200000,
+			"positionSide": "LONG"
+		}
+	}`)
+	updateClosedLong, err := adapter.ParsePosition(rawClosedLong)
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, updateClosedLong.HoldVol)
+	assert.Equal(t, 1, updateClosedLong.PositionType) // 1 for Long
+
+	// Test case from user report
+	rawUserEvent := []byte(`{
+		"type": "message",
+		"topic": "/contract/positionAll",
+		"subject": "position.change",
+		"data": {
+			"symbol": "XBTUSDTM",
+			"maintMarginReq": 0.004,
+			"riskLimit": 50000000,
+			"realLeverage": 19.1376874933,
+			"crossMode": false,
+			"delevPercentage": 0.87,
+			"openingTimestamp": 1771400783360,
+			"autoDeposit": false,
+			"currentTimestamp": 1771474169458,
+			"currentQty": -1,
+			"currentCost": -68.0942,
+			"currentComm": 0.03794569,
+			"unrealisedCost": -68.0942,
+			"realisedCost": 0.03794569,
+			"isOpen": true,
+			"markPrice": 66954.6,
+			"markValue": -66.9546,
+			"posCost": -68.0942,
+			"posCross": 1,
+			"posInit": 1.361884,
+			"posComm": 0,
+			"posLoss": 0.00291083,
+			"posMargin": 2.35897317,
+			"posFunding": -0.00291083,
+			"posMaint": 0.30799116,
+			"maintMargin": 3.49857317,
+			"avgEntryPrice": 68094.2,
+			"liquidationPrice": 70130.5725363,
+			"bankruptPrice": 70453.17317,
+			"settleCurrency": "USDT",
+			"changeReason": "changeRiskLimit",
+			"riskLimitLevel": 5,
+			"realisedGrossCost": 0.0,
+			"realisedGrossPnl": 0.0,
+			"realisedPnl": -0.04376735,
+			"unrealisedPnl": 1.1396,
+			"unrealisedPnlPcnt": 0.0167,
+			"unrealisedRoePcnt": 0.8368,
+			"leverage": 19.1376874933,
+			"marginMode": "ISOLATED",
+			"positionSide": "SHORT",
+			"tax": 0,
+			"dealComm": -0.04085652,
+			"fundingFee": -0.00291083,
+			"aggRate": 0.0046
+		}
+	}`)
+	updateUserEvent, err := adapter.ParsePosition(rawUserEvent)
+	require.NoError(t, err)
+	assert.Equal(t, "XBTUSDTM", updateUserEvent.Symbol)
+	assert.Equal(t, 1.0, updateUserEvent.HoldVol)
+	assert.Equal(t, 2, updateUserEvent.PositionType) // Short
+	assert.Equal(t, 68094.2, updateUserEvent.HoldAvgPrice)
+	assert.Equal(t, 70130.5725363, updateUserEvent.LiquidatePrice)
+	assert.Equal(t, int64(1771474169458), updateUserEvent.UpdateTime)
 }

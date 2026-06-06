@@ -387,7 +387,7 @@ func (c *Client) fetchAccountTradesWithRetry(
 		backoff.WithMaxRetries(backoff.NewExponentialBackOff(
 			backoff.WithInitialInterval(time.Second),
 			backoff.WithMaxInterval(time.Second*2)),
-			4),
+			5),
 		ctx,
 	)
 

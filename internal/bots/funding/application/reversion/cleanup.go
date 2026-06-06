@@ -26,7 +26,10 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 
 	// Check if this is a PositionClosedEvent containing rich trade metrics
 	var closedEvt PositionClosedEvent
-	if err := json.Unmarshal(msg.Payload, &closedEvt); err == nil && closedEvt.CloseVol > 0 {
+	err := json.Unmarshal(msg.Payload, &closedEvt)
+	if err != nil {
+		r.log.DebugContext(ctx, "unmarshal failed", slog.Any("error", err))
+	} else if closedEvt.CloseVol > 0 {
 		finalEvt := r.calculateFinalPnL(closedEvt)
 		_ = r.publishEvent(ctx, TopicReversionFinalPnL, finalEvt)
 		completedPrev = finalEvt.BaseReversionEvent

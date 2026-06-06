@@ -6,7 +6,7 @@
     "mexc": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "30ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "bufferTime": "50ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "300s" // Force close if reversion lifecycle does not terminally close
     },
     "bybit": {
@@ -18,7 +18,7 @@
     "binance": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-150ms",
+      "bufferTime": "-200ms",
       "postSettleTimeout": "300s"
     },
     "kucoin": {

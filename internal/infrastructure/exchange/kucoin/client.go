@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptrace"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,11 +34,6 @@ type Client struct {
 // NewClient creates a new KuCoin API client using the provided HTTP client.
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange").With("exchange", "kucoin")
-
-	if passphrase == "" {
-		passphrase = os.Getenv("KUCOIN_PASSPHRASE")
-	}
-
 	var clientCopy http.Client
 	if httpClient != nil {
 		clientCopy = *httpClient

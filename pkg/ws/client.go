@@ -172,15 +172,14 @@ func (c *Client) Connect(ctx context.Context) {
 
 // dial establishes the WebSocket connection.
 func (c *Client) dial() error {
-	u := c.url
 	if c.urlFunc != nil {
-		var err error
-		u, err = c.urlFunc()
+		u, err := c.urlFunc()
 		if err != nil {
 			return fmt.Errorf("dynamic ws url gen: %w", err)
 		}
+		c.url = u
 	}
-	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(c.url, nil)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
@@ -299,7 +298,7 @@ func (c *Client) processMessage(data []byte) {
 
 // SendJSON sends a generic JSON payload.
 func (c *Client) SendJSON(msg any) error {
-	c.logger.Debug("🔍 WS SendJSON", slog.Any("msg", msg))
+	c.logger.Debug("🔍 WS SendJSON", slog.String("url", c.url), slog.Any("msg", msg))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {

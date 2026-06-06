@@ -16,30 +16,32 @@ import (
 )
 
 type kucoinCreateOrderRequest struct {
-	ClientOid     string  `json:"clientOid"`
-	Side          string  `json:"side"`
-	Symbol        string  `json:"symbol"`
-	Leverage      int     `json:"leverage,omitempty"`
-	Type          string  `json:"type,omitempty"`
-	Remark        string  `json:"remark,omitempty"`
-	Stop          string  `json:"stop,omitempty"`
-	StopPriceType string  `json:"stopPriceType,omitempty"`
-	StopPrice     string  `json:"stopPrice,omitempty"`
-	ReduceOnly    bool    `json:"reduceOnly,omitempty"`
-	CloseOrder    bool    `json:"closeOrder,omitempty"`
-	ForceHold     bool    `json:"forceHold,omitempty"`
-	Stp           string  `json:"stp,omitempty"`
-	MarginMode    string  `json:"marginMode,omitempty"`
-	Price         string  `json:"price,omitempty"`
-	Size          float64 `json:"size,omitempty"`
-	Qty           string  `json:"qty,omitempty"`
-	ValueQty      string  `json:"valueQty,omitempty"`
-	TimeInForce   string  `json:"timeInForce,omitempty"`
-	PostOnly      bool    `json:"postOnly,omitempty"`
-	Hidden        bool    `json:"hidden,omitempty"`
-	Iceberg       bool    `json:"iceberg,omitempty"`
-	VisibleSize   string  `json:"visibleSize,omitempty"`
-	PositionSide  string  `json:"positionSide,omitempty"`
+	ClientOid            string  `json:"clientOid"`
+	Side                 string  `json:"side"`
+	Symbol               string  `json:"symbol"`
+	Leverage             int     `json:"leverage,omitempty"`
+	Type                 string  `json:"type,omitempty"`
+	Remark               string  `json:"remark,omitempty"`
+	Stop                 string  `json:"stop,omitempty"`
+	StopPriceType        string  `json:"stopPriceType,omitempty"`
+	StopPrice            string  `json:"stopPrice,omitempty"`
+	ReduceOnly           bool    `json:"reduceOnly,omitempty"`
+	CloseOrder           bool    `json:"closeOrder,omitempty"`
+	ForceHold            bool    `json:"forceHold,omitempty"`
+	Stp                  string  `json:"stp,omitempty"`
+	MarginMode           string  `json:"marginMode,omitempty"`
+	Price                string  `json:"price,omitempty"`
+	Size                 float64 `json:"size,omitempty"`
+	Qty                  string  `json:"qty,omitempty"`
+	ValueQty             string  `json:"valueQty,omitempty"`
+	TimeInForce          string  `json:"timeInForce,omitempty"`
+	PostOnly             bool    `json:"postOnly,omitempty"`
+	Hidden               bool    `json:"hidden,omitempty"`
+	Iceberg              bool    `json:"iceberg,omitempty"`
+	VisibleSize          string  `json:"visibleSize,omitempty"`
+	PositionSide         string  `json:"positionSide,omitempty"`
+	TriggerStopUpPrice   string  `json:"triggerStopUpPrice,omitempty"`
+	TriggerStopDownPrice string  `json:"triggerStopDownPrice,omitempty"`
 }
 
 type kucoinCreateOrderResponse struct {
@@ -80,7 +82,11 @@ type kucoinOrder struct {
 // Private raw methods invoking the KuCoin REST API.
 
 func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderRequest) (*kucoinCreateOrderResponse, error) {
-	body, err := c.PostCtx(ctx, pathPlaceOrder, req)
+	path := pathPlaceOrder
+	if req.TriggerStopUpPrice != "" || req.TriggerStopDownPrice != "" {
+		path = "/api/v1/st-orders"
+	}
+	body, err := c.PostCtx(ctx, path, req)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +144,7 @@ func (c *Client) getRawOrder(ctx context.Context, req kucoinOrderRequest) (*kuco
 
 func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersRequest) ([]kucoinOrder, error) {
 	params := map[string]string{
-		"status": "active",
+		paramStatus: stateLive,
 	}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
@@ -214,14 +220,34 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.PostOnly = true
 	}
 
+	var stopUpPrice, stopDownPrice float64
+	if req.Side == exchange.SideOpenLong {
+		stopUpPrice = req.TakeProfitPrice
+		stopDownPrice = req.StopLossPrice
+	} else {
+		stopUpPrice = req.StopLossPrice
+		stopDownPrice = req.TakeProfitPrice
+	}
+
+	if stopUpPrice > 0 {
+		rawReq.TriggerStopUpPrice = strconv.FormatFloat(stopUpPrice, 'f', -1, 64)
+	}
+	if stopDownPrice > 0 {
+		rawReq.TriggerStopDownPrice = strconv.FormatFloat(stopDownPrice, 'f', -1, 64)
+	}
+	if req.TakeProfitPrice > 0 || req.StopLossPrice > 0 {
+		rawReq.StopPriceType = "TP"
+	}
+
 	res, err := c.createRawOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
 
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
 	return exchange.CreateOrderResult{
 		OrderID:       res.OrderID,
-		TPSLSubmitted: false,
+		TPSLSubmitted: tpslSubmitted,
 	}, nil
 }
 
@@ -395,7 +421,6 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 		constantClientOid: "tpsl-" + req.Symbol + "-" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		paramSymbol:       req.Symbol,
 		"type":            constantMarket,
-		"closeOrder":      true,
 		"reduceOnly":      true,
 		"stopPriceType":   "TP",
 		constantSize:      req.Volume,
@@ -435,7 +460,7 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 	state := 0 // default active/pending
 	if !o.IsActive {
-		if o.Status == stateFilled || o.StatusVal == "done" {
+		if o.Status == stateFilled || o.StatusVal == stateFilled {
 			state = exchange.OrderStateFilled
 		} else {
 			state = exchange.OrderStateCanceled

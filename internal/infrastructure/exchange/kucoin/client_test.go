@@ -205,6 +205,77 @@ func TestClient_CreateOrder_HedgeAndOptions(t *testing.T) {
 	assert.Equal(t, "1234567", res.OrderID)
 }
 
+func TestClient_CreateOrder_WithTPSL(t *testing.T) {
+	t.Parallel()
+
+	var receivedBody map[string]any
+	var receivedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		receivedPath = r.URL.Path
+
+		w.Header().Set("Content-Type", "application/json")
+
+		var reqBody map[string]any
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&reqBody); err == nil {
+			receivedBody = reqBody
+		}
+
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"msg": "success",
+			"data": {
+				"orderId": "tpsl_order_123",
+				"clientOid": "external_tpsl"
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	// 1. Long position TP/SL
+	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:          "XBTUSDTM",
+		Vol:             1.0,
+		Side:            exchange.SideOpenLong,
+		Type:            exchange.OrderTypeMarket,
+		TakeProfitPrice: 55000.0,
+		StopLossPrice:   45000.0,
+		ExternalOID:     "external_tpsl",
+	})
+	require.NoError(t, err)
+	assert.True(t, res.TPSLSubmitted)
+	assert.Equal(t, "tpsl_order_123", res.OrderID)
+	assert.Equal(t, "/api/v1/st-orders", receivedPath)
+	assert.Equal(t, "55000", receivedBody["triggerStopUpPrice"])
+	assert.Equal(t, "45000", receivedBody["triggerStopDownPrice"])
+	assert.Equal(t, "TP", receivedBody["stopPriceType"])
+
+	// Reset received variables
+	receivedBody = nil
+	receivedPath = ""
+
+	// 2. Short position TP/SL
+	res, err = client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:          "XBTUSDTM",
+		Vol:             1.0,
+		Side:            exchange.SideOpenShort,
+		Type:            exchange.OrderTypeMarket,
+		TakeProfitPrice: 45000.0,
+		StopLossPrice:   55000.0,
+		ExternalOID:     "external_tpsl",
+	})
+	require.NoError(t, err)
+	assert.True(t, res.TPSLSubmitted)
+	assert.Equal(t, "tpsl_order_123", res.OrderID)
+	assert.Equal(t, "/api/v1/st-orders", receivedPath)
+	assert.Equal(t, "55000", receivedBody["triggerStopUpPrice"])
+	assert.Equal(t, "45000", receivedBody["triggerStopDownPrice"])
+	assert.Equal(t, "TP", receivedBody["stopPriceType"])
+}
+
 func TestClient_CancelOrder(t *testing.T) {
 	t.Parallel()
 
@@ -579,6 +650,9 @@ func TestClient_PlaceTPSL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "LONG", receivedBody["positionSide"])
 	assert.Equal(t, "sell", receivedBody["side"])
+	assert.NotContains(t, receivedBody, "closeOrder")
+	assert.Equal(t, "55000", receivedBody["triggerStopUpPrice"])
+	assert.Equal(t, "45000", receivedBody["triggerStopDownPrice"])
 
 	// 2. Test Short position TP/SL (Hedge Mode)
 	err = client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
@@ -592,6 +666,8 @@ func TestClient_PlaceTPSL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "SHORT", receivedBody["positionSide"])
 	assert.Equal(t, "buy", receivedBody["side"])
+	assert.Equal(t, "55000", receivedBody["triggerStopUpPrice"])
+	assert.Equal(t, "45000", receivedBody["triggerStopDownPrice"])
 
 	// 3. Test One-Way Mode
 	err = client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
@@ -604,6 +680,8 @@ func TestClient_PlaceTPSL(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "BOTH", receivedBody["positionSide"])
+	assert.Equal(t, "55000", receivedBody["triggerStopUpPrice"])
+	assert.Equal(t, "45000", receivedBody["triggerStopDownPrice"])
 }
 
 func TestClient_GetRecentClosedPnL(t *testing.T) {
@@ -637,7 +715,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 							"symbol": "XBTUSDTM",
 							"side": "sell",
 							"price": "94443.5",
-							"size": "2",
+							"size": 2,
 							"fee": "0.03766066",
 							"createdAt": 1735589352069
 						}
@@ -693,4 +771,97 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	assert.Equal(t, -0.03389521, res.FundingFee)
 	assert.Equal(t, int64(1735589352069-1735549162120), res.DurationMs)
 	assert.Equal(t, 0.51214413, res.NetPnl)
+}
+
+func TestClient_GetRecentClosedPnL_Retry(t *testing.T) {
+	t.Parallel()
+
+	var callCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v1/orders/byClientOid":
+			assert.Equal(t, "external_close_oid", r.URL.Query().Get("clientOid"))
+			callCount++
+			if callCount == 1 {
+				_, _ = w.Write([]byte(`{
+					"code": "100001",
+					"msg": "error.getOrder.orderNotExist"
+				}`))
+			} else {
+				_, _ = w.Write([]byte(`{
+					"code": "200000",
+					"msg": "success",
+					"data": {
+						"orderId": "close_order_id_123",
+						"clientOid": "external_close_oid"
+					}
+				}`))
+			}
+		case "/api/v1/fills":
+			assert.Equal(t, "close_order_id_123", r.URL.Query().Get("orderId"))
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success",
+				"data": {
+					"items": [
+						{
+							"tradeId": "trade_1",
+							"orderId": "close_order_id_123",
+							"symbol": "XBTUSDTM",
+							"side": "sell",
+							"price": "94443.5",
+							"size": 2,
+							"fee": "0.03766066",
+							"createdAt": 1735589352069
+						}
+					]
+				}
+			}`))
+		case "/api/v1/history-positions":
+			assert.Equal(t, "XBTUSDTM", r.URL.Query().Get("symbol"))
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success",
+				"data": {
+					"items": [
+						{
+							"closeId": "500000000036305465",
+							"userId": "633559791e1cbc0001f319bc",
+							"symbol": "XBTUSDTM",
+							"settleCurrency": "USDT",
+							"leverage": "1.0",
+							"type": "CLOSE_LONG",
+							"pnl": "0.51214413",
+							"realisedGrossCost": "-0.5837",
+							"withdrawPnl": "0.0",
+							"tradeFee": "0.03766066",
+							"fundingFee": "-0.03389521",
+							"openTime": 1735549162120,
+							"closeTime": 1735589352069,
+							"openPrice": "93859.8",
+							"closePrice": "94443.5",
+							"marginMode": "CROSS",
+							"positionSide": "BOTH",
+							"side": "LONG"
+						}
+					]
+				}
+			}`))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "XBTUSDTM", "external_close_oid", time.Time{})
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, callCount) // Checked once failed, second time succeeded
+	assert.Equal(t, "XBTUSDTM", res.Symbol)
+	assert.Equal(t, 93859.8, res.EntryPrice)
+	assert.Equal(t, 94443.5, res.ExitPrice)
 }

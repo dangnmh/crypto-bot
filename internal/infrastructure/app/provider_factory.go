@@ -274,12 +274,14 @@ func newWSPool(
 			appendCommonOpt(pkgws.WithPreprocessor(preprocessor))
 		}
 	}
+
 	type PublicURLProvider interface {
 		GetPublicURLFunc(ctx context.Context) func() (string, error)
 	}
 	if up, ok := adapter.(PublicURLProvider); ok {
 		publicOpts = append(publicOpts, pkgws.WithURLFunc(up.GetPublicURLFunc(ctx)))
 	}
+
 	type PrivateURLProvider interface {
 		GetPrivateURLFunc(ctx context.Context) func() (string, error)
 	}

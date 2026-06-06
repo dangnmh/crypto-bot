@@ -280,7 +280,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 			backoff.NewExponentialBackOff(
 				backoff.WithInitialInterval(time.Second),
 				backoff.WithMaxInterval(time.Second*2)),
-			4),
+			5),
 		ctx,
 	)
 
