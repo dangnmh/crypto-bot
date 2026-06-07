@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	pkgws "crypto-bot/pkg/ws"
 
@@ -52,83 +51,6 @@ func TestWsAdapter_ParseTicker(t *testing.T) {
 	assert.Equal(t, 50000.0, pd.BestBid)
 	assert.Equal(t, 50001.0, pd.BestAsk)
 	assert.Equal(t, 1000.0, pd.Volume24)
-}
-
-func TestWsAdapter_ParseDepth(t *testing.T) {
-	t.Parallel()
-
-	adapter := bitget.NewWsAdapter()
-	raw := []byte(`{
-		"arg": {"channel": "books", "instId": "BTCUSDT"},
-		"data": [
-			{
-				"symbol": "BTCUSDT",
-				"asks": [["50001.0", "1.5"]],
-				"bids": [["50000.0", "2.0"]],
-				"ts": "1695812285073"
-			}
-		]
-	}`)
-
-	symbol, ob, err := adapter.ParseDepth(raw)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", symbol)
-	assert.Equal(t, int64(1695812285073), ob.Version)
-	require.Len(t, ob.Asks, 1)
-	require.Len(t, ob.Bids, 1)
-	assert.Equal(t, 50001.0, ob.Asks[0].Price)
-	assert.Equal(t, 1.5, ob.Asks[0].Volume)
-}
-
-func TestWsAdapter_ParseKline(t *testing.T) {
-	t.Parallel()
-
-	adapter := bitget.NewWsAdapter()
-	raw := []byte(`{
-		"arg": {"channel": "candle1m", "instId": "BTCUSDT"},
-		"data": [
-			["1695812285000", "50000.0", "50001.0", "49999.0", "50000.5", "10", "500000"]
-		]
-	}`)
-
-	symbol, k, err := adapter.ParseKline(raw)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", symbol)
-	assert.Equal(t, int64(1695812285000), k.Timestamp)
-	assert.Equal(t, 50000.0, k.Open)
-	assert.Equal(t, 50000.5, k.Close)
-}
-
-func TestWsAdapter_ParseOrder(t *testing.T) {
-	t.Parallel()
-
-	adapter := bitget.NewWsAdapter()
-	raw := []byte(`{
-		"arg": {"channel": "orders"},
-		"data": [
-			{
-				"symbol": "BTCUSDT",
-				"orderId": "12345",
-				"clientOid": "my_client_id",
-				"price": "50000",
-				"size": "2",
-				"side": "buy",
-				"posSide": "long",
-				"state": "filled",
-				"baseVolume": "2",
-				"priceAvg": "50000",
-				"cTime": "1695812285000",
-				"uTime": "1695812285073"
-			}
-		]
-	}`)
-
-	deal, err := adapter.ParseOrder(raw)
-	require.NoError(t, err)
-	assert.Equal(t, "12345", deal.OrderID)
-	assert.Equal(t, "BTCUSDT", deal.Symbol)
-	assert.Equal(t, exchange.SideOpenLong, deal.Side)
-	assert.Equal(t, exchange.OrderStateFilled, deal.State)
 }
 
 func TestWsAdapter_ParsePosition(t *testing.T) {
@@ -241,14 +163,6 @@ func TestWsAdapter_OtherMethods(t *testing.T) {
 	hookNil := adapter.GetAuthHook("", "")
 	assert.Nil(t, hookNil)
 
-	// 3. ParseOrderDeal (stub, returns error)
-	_, err := adapter.ParseOrderDeal([]byte{})
-	assert.Error(t, err)
-
-	// 4. ParseTrackOrder (stub, returns error)
-	_, err = adapter.ParseTrackOrder([]byte{})
-	assert.Error(t, err)
-
 	// 5. Extractor other cases
 	extractor := adapter.GetChannelExtractor()
 	assert.Equal(t, "pong", extractor([]byte("pong")))
@@ -256,34 +170,10 @@ func TestWsAdapter_OtherMethods(t *testing.T) {
 	assert.Equal(t, "custom", extractor([]byte(`{"arg":{"channel":"custom"}}`)))
 
 	// 6. ParseTicker errors
-	_, _, err = adapter.ParseTicker([]byte(`{}`))
+	_, _, err := adapter.ParseTicker([]byte(`{}`))
 	assert.Error(t, err)
 
 	_, _, err = adapter.ParseTicker([]byte(`{"arg":{"instId":"BTCUSDT"}, "data":[]}`))
-	assert.Error(t, err)
-
-	// 7. ParseDepth errors
-	_, _, err = adapter.ParseDepth([]byte(`{}`))
-	assert.Error(t, err)
-
-	_, _, err = adapter.ParseDepth([]byte(`{"arg":{"instId":"BTCUSDT"}, "data":[]}`))
-	assert.Error(t, err)
-
-	// 8. ParseKline errors
-	_, _, err = adapter.ParseKline([]byte(`{}`))
-	assert.Error(t, err)
-
-	_, _, err = adapter.ParseKline([]byte(`{"arg":{"instId":"BTCUSDT"}, "data":[]}`))
-	assert.Error(t, err)
-
-	_, _, err = adapter.ParseKline([]byte(`{"arg":{"instId":"BTCUSDT"}, "data":[["1695812285000"]]}`))
-	assert.Error(t, err)
-
-	// 9. ParseOrder errors
-	_, err = adapter.ParseOrder([]byte(`{}`))
-	assert.Error(t, err)
-
-	_, err = adapter.ParseOrder([]byte(`{"data":[]}`))
 	assert.Error(t, err)
 
 	// 10. ParsePosition errors
@@ -319,101 +209,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	// 2. Test GetAuthHook with apiKey & secret (valid and invalid paths)
 	hookWithKey := adapter.GetAuthHook("apiKey", "apiSecret")
 	assert.NotNil(t, hookWithKey)
-
-	// 3. Test ParseOrder with different sides (posSide = short/long/default, side = sell/buy)
-	rawShortSell := []byte(`{
-		"arg": {"channel": "orders"},
-		"data": [
-			{
-				"symbol": "BTCUSDT",
-				"orderId": "12345",
-				"clientOid": "my_client_id",
-				"price": "50000",
-				"size": "2",
-				"side": "sell",
-				"posSide": "short",
-				"state": "filled",
-				"baseVolume": "2",
-				"priceAvg": "50000",
-				"cTime": "1695812285000",
-				"uTime": "1695812285073"
-			}
-		]
-	}`)
-	deal, err := adapter.ParseOrder(rawShortSell)
-	require.NoError(t, err)
-	assert.Equal(t, exchange.SideOpenShort, deal.Side)
-
-	rawShortBuy := []byte(`{
-		"arg": {"channel": "orders"},
-		"data": [
-			{
-				"symbol": "BTCUSDT",
-				"orderId": "12345",
-				"clientOid": "my_client_id",
-				"price": "50000",
-				"size": "2",
-				"side": "buy",
-				"posSide": "short",
-				"state": "filled",
-				"baseVolume": "2",
-				"priceAvg": "50000",
-				"cTime": "1695812285000",
-				"uTime": "1695812285073"
-			}
-		]
-	}`)
-	deal, err = adapter.ParseOrder(rawShortBuy)
-	require.NoError(t, err)
-	assert.Equal(t, exchange.SideCloseShort, deal.Side)
-
-	rawNetBuy := []byte(`{
-		"arg": {"channel": "orders"},
-		"data": [
-			{
-				"symbol": "BTCUSDT",
-				"orderId": "12345",
-				"clientOid": "my_client_id",
-				"price": "50000",
-				"size": "2",
-				"side": "buy",
-				"posSide": "net",
-				"state": "canceled",
-				"baseVolume": "2",
-				"priceAvg": "50000",
-				"cTime": "1695812285000",
-				"uTime": "1695812285073"
-			}
-		]
-	}`)
-	deal, err = adapter.ParseOrder(rawNetBuy)
-	require.NoError(t, err)
-	assert.Equal(t, exchange.SideOpenLong, deal.Side)
-	assert.Equal(t, exchange.OrderStateCanceled, deal.State)
-
-	rawNetSell := []byte(`{
-		"arg": {"channel": "orders"},
-		"data": [
-			{
-				"symbol": "BTCUSDT",
-				"orderId": "12345",
-				"clientOid": "my_client_id",
-				"price": "50000",
-				"size": "2",
-				"side": "sell",
-				"posSide": "net",
-				"state": "new",
-				"baseVolume": "2",
-				"priceAvg": "50000",
-				"cTime": "1695812285000",
-				"uTime": "1695812285073"
-			}
-		]
-	}`)
-	deal, err = adapter.ParseOrder(rawNetSell)
-	require.NoError(t, err)
-	assert.Equal(t, exchange.SideOpenShort, deal.Side)
-	assert.Equal(t, exchange.OrderStatePartial, deal.State)
 
 	// 4. Test ParsePosition with crossed and isolated margin modes
 	rawCrossed := []byte(`{

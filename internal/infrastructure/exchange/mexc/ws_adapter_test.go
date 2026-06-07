@@ -1,14 +1,12 @@
 package mexc_test
 
 import (
-	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	pkgws "crypto-bot/pkg/ws"
 )
@@ -151,158 +149,6 @@ func TestWsAdapter_ParseTicker_InvalidJSON(t *testing.T) {
 	_, _, err := a.ParseTicker([]byte(`invalid`))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-// ── WsAdapter — ParseDepth ──────────────────────────────────────────.
-
-func TestWsAdapter_ParseDepth(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	input := `{"channel":"push.depth.full","symbol":"BTC_USDT","data":{"version":1,"asks":[[50001,10],[50002,20]],"bids":[[49999,15],[49998,25]]}}`
-
-	sym, ob, err := a.ParseDepth([]byte(input))
-	if err != nil {
-		t.Fatalf("ParseDepth failed: %v", err)
-	}
-	if sym != "BTC_USDT" {
-		t.Errorf("symbol: want BTC_USDT, got %s", sym)
-	}
-	if ob.Version != 1 {
-		t.Errorf("version: want 1, got %d", ob.Version)
-	}
-	if len(ob.Asks) != 2 {
-		t.Errorf("asks: want 2, got %d", len(ob.Asks))
-	}
-	if len(ob.Bids) != 2 {
-		t.Errorf("bids: want 2, got %d", len(ob.Bids))
-	}
-	if ob.Asks[0].Price != 50001 {
-		t.Errorf("ask[0] price: want 50001, got %f", ob.Asks[0].Price)
-	}
-	if ob.Bids[0].Volume != 15 {
-		t.Errorf("bid[0] volume: want 15, got %f", ob.Bids[0].Volume)
-	}
-}
-
-func TestWsAdapter_ParseDepth_InvalidJSON(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-	_, _, err := a.ParseDepth([]byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error for missing symbol")
-	}
-}
-
-// ── WsAdapter — ParseKline ──────────────────────────────────────────.
-
-func TestWsAdapter_ParseKline(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	input := `{"channel":"push.kline","symbol":"ETH_USDT","data":{"t":1609459200,"o":3000,"h":3100,"l":2900,"c":3050,"v":500,"a":1500000}}`
-
-	sym, k, err := a.ParseKline([]byte(input))
-	if err != nil {
-		t.Fatalf("ParseKline failed: %v", err)
-	}
-	if sym != "ETH_USDT" {
-		t.Errorf("symbol: want ETH_USDT, got %s", sym)
-	}
-	if k.Open != 3000 {
-		t.Errorf("open: want 3000, got %f", k.Open)
-	}
-	if k.Timestamp != 1609459200000 {
-		t.Errorf("timestamp: want 1609459200000, got %d", k.Timestamp)
-	}
-}
-
-func TestWsAdapter_ParseKline_InvalidJSON(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-	_, _, err := a.ParseKline([]byte(`not json`))
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-// ── WsAdapter — ParseOrder ──────────────────────────────────────────.
-
-func TestWsAdapter_ParseOrder(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	deal := exchange.WsOrderDeal{
-		Symbol:       "BTC_USDT",
-		OrderID:      "12345",
-		DealAvgPrice: 50000,
-		DealVol:      1,
-		State:        3,
-	}
-	inner, _ := json.Marshal(deal)
-	input, _ := json.Marshal(map[string]json.RawMessage{"data": inner})
-
-	order, err := a.ParseOrder(input)
-	if err != nil {
-		t.Fatalf("ParseOrder failed: %v", err)
-	}
-	if order.Symbol != "BTC_USDT" {
-		t.Errorf("symbol: want BTC_USDT, got %s", order.Symbol)
-	}
-	if order.DealAvgPrice != 50000 {
-		t.Errorf("DealAvgPrice: want 50000, got %f", order.DealAvgPrice)
-	}
-}
-
-func TestWsAdapter_ParseOrder_InvalidJSON(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-	_, err := a.ParseOrder([]byte(`invalid`))
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestWsAdapter_ParseFuturePersonalOrderSpec(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	orderRaw := readFutureWSSpec(t, "order.json")
-	order, err := a.ParseOrder(orderRaw)
-	if err != nil {
-		t.Fatalf("ParseOrder spec failed: %v", err)
-	}
-	if order.GetOrderID() != "123456789" || order.Symbol != "BTC_USDT" || order.RemainVol != 5 {
-		t.Fatalf("unexpected order parse: id=%s symbol=%s remain=%v", order.GetOrderID(), order.Symbol, order.RemainVol)
-	}
-}
-
-func TestWsAdapter_ParseFuturePersonalOrderDealSpec(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	dealRaw := readFutureWSSpec(t, "fill.json")
-	deal, err := a.ParseOrderDeal(dealRaw)
-	if err != nil {
-		t.Fatalf("ParseOrderDeal spec failed: %v", err)
-	}
-	if deal.GetOrderID() != "123456789" || deal.Vol != 10 || deal.Price != 45000.5 {
-		t.Fatalf("unexpected deal parse: id=%s vol=%v price=%v", deal.GetOrderID(), deal.Vol, deal.Price)
-	}
-}
-
-func TestWsAdapter_ParseFuturePersonalTrackOrderSpec(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	trackRaw := readFutureWSSpec(t, "track.json")
-	track, err := a.ParseTrackOrder(trackRaw)
-	if err != nil {
-		t.Fatalf("ParseTrackOrder spec failed: %v", err)
-	}
-	if track.GetID() != "987654321" || track.GetOrderID() != "123456789" || track.BackValue != 0.5 {
-		t.Fatalf("unexpected track parse: id=%s order=%s back=%v", track.GetID(), track.GetOrderID(), track.BackValue)
 	}
 }
 

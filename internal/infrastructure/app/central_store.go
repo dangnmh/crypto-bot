@@ -236,30 +236,4 @@ func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapter) {
 			cs.price.UpdatePrice(symbol, pd)
 		})
 	}
-
-	if cs.depth != nil {
-		pool.On("depth", func(data []byte) {
-			symbol, ob, err := adapter.ParseDepth(data)
-			if err != nil {
-				slog.Error("WireWS ParseDepth error", slog.String("data", string(data)), slog.Any("error", err))
-				return
-			}
-			if ob != nil {
-				cs.depth.UpdateDepth(symbol, ob)
-			}
-		})
-	}
-
-	if cs.kline != nil {
-		pool.On("kline", func(data []byte) {
-			symbol, kl, err := adapter.ParseKline(data)
-			if err != nil {
-				slog.Error("WireWS ParseKline error", slog.String("data", string(data)), slog.Any("error", err))
-				return
-			}
-			if kl != nil {
-				cs.kline.AddKline(symbol, *kl)
-			}
-		})
-	}
 }

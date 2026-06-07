@@ -2,21 +2,17 @@ package hyperliquid
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/samber/lo"
-	hl "github.com/sonirico/go-hyperliquid"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Hyperliquid WebSocket.
@@ -204,158 +200,9 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	return parsedSymbol, pd, nil
 }
 
-// ParseDepth parses l2Book levels.
-func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error) {
-	symbol, err = jsonparser.GetString(data, "data", "coin")
-	if err != nil {
-		return "", nil, err
-	}
-
-	bidsBytes, _, _, err := jsonparser.Get(data, "data", "levels", "[0]")
-	if err != nil {
-		return "", nil, err
-	}
-
-	asksBytes, _, _, err := jsonparser.Get(data, "data", "levels", "[1]")
-	if err != nil {
-		return "", nil, err
-	}
-
-	var hlBids []hl.Level
-	if err := json.Unmarshal(bidsBytes, &hlBids); err != nil {
-		return "", nil, err
-	}
-
-	var hlAsks []hl.Level
-	if err := json.Unmarshal(asksBytes, &hlAsks); err != nil {
-		return "", nil, err
-	}
-
-	bids := make([]exchange.OrderBookEntry, 0, len(hlBids))
-	for i := range hlBids {
-		bids = append(bids, exchange.OrderBookEntry{
-			Price:  hlBids[i].Px,
-			Volume: hlBids[i].Sz,
-		})
-	}
-
-	asks := make([]exchange.OrderBookEntry, 0, len(hlAsks))
-	for i := range hlAsks {
-		asks = append(asks, exchange.OrderBookEntry{
-			Price:  hlAsks[i].Px,
-			Volume: hlAsks[i].Sz,
-		})
-	}
-
-	ob = &domain.OrderBook{
-		Symbol: symbol,
-		Bids:   bids,
-		Asks:   asks,
-	}
-
-	return symbol, ob, nil
-}
-
 // ParseDepthCommit is a stub.
 func (a *WsAdapter) ParseDepthCommit(data []byte) (symbol string, commit *exchange.DepthCommit, err error) {
 	return "", nil, nil
-}
-
-// ParseKline parses candle push.
-func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *exchange.Kline, err error) {
-	candleBytes, _, _, err := jsonparser.Get(data, "data")
-	if err != nil {
-		return "", nil, err
-	}
-
-	var cand hl.Candle
-	if err := json.Unmarshal(candleBytes, &cand); err != nil {
-		return "", nil, err
-	}
-
-	open, _ := strconv.ParseFloat(cand.Open, 64)
-	high, _ := strconv.ParseFloat(cand.High, 64)
-	low, _ := strconv.ParseFloat(cand.Low, 64)
-	closeVal, _ := strconv.ParseFloat(cand.Close, 64)
-	vol, _ := strconv.ParseFloat(cand.Volume, 64)
-
-	k = &exchange.Kline{
-		Timestamp: cand.TimeOpen,
-		Open:      open,
-		High:      high,
-		Low:       low,
-		Close:     closeVal,
-		Volume:    vol,
-		Amount:    vol * closeVal,
-	}
-	return cand.Symbol, k, nil
-}
-
-// ParseOrder parses private userEvents order updates.
-func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
-	ordersBytes, _, _, err := jsonparser.Get(data, "data", "orders")
-	if err != nil {
-		return nil, err
-	}
-
-	var orders []hl.WsOrder
-	if err := json.Unmarshal(ordersBytes, &orders); err != nil {
-		return nil, err
-	}
-
-	if len(orders) == 0 {
-		return nil, fmt.Errorf("empty orders array")
-	}
-
-	o := &orders[0]
-	raw := o.Order
-
-	price, _ := strconv.ParseFloat(raw.LimitPx, 64)
-	origSz, _ := strconv.ParseFloat(raw.OrigSz, 64)
-	sz, _ := strconv.ParseFloat(raw.Sz, 64)
-
-	isBuy := raw.Side == "B"
-	side := exchange.SideOpenLong
-	if !isBuy {
-		side = exchange.SideOpenShort
-	}
-
-	state := exchange.OrderStatePartial
-	switch o.Status {
-	case stateFilled:
-		state = exchange.OrderStateFilled
-	case stateCanceled:
-		state = exchange.OrderStateCanceled
-	default:
-	}
-
-	deal := &exchange.WsOrderDeal{
-		Symbol:       raw.Coin,
-		OrderID:      strconv.FormatInt(raw.Oid, 10),
-		Price:        price,
-		Vol:          origSz,
-		DealVol:      origSz - sz,
-		DealAvgPrice: price,
-		Side:         side,
-		State:        state,
-		PositionMode: 1,
-	}
-
-	if raw.Cloid != nil {
-		deal.ExternalOID = lo.FromPtr(raw.Cloid)
-	}
-
-	return deal, nil
-}
-
-// ParseOrderDeal is a stub.
-func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	return nil, nil
-}
-
-// ParseTrackOrder is a stub.
-func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	return nil, nil
 }
 
 // ParsePosition is a stub.

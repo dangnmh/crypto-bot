@@ -704,42 +704,6 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "ping", pingMap["op"])
 
-	// Check parse kline topic extraction
-	rawKline := []byte(`{
-		"topic": "kline.1.BTCUSDT",
-		"data": [{
-			"start": 1672531200000,
-			"open": "50000",
-			"close": "50050",
-			"high": "50100",
-			"low": "49950",
-			"volume": "10.5"
-		}]
-	}`)
-	sym, k, err := adapter.ParseKline(rawKline)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", sym)
-	assert.Equal(t, int64(1672531200000), k.Timestamp)
-	assert.Equal(t, 50000.0, k.Open)
-	assert.Equal(t, 50050.0, k.Close)
-
-	// Check parse depth
-	rawDepth := []byte(`{
-		"topic": "orderbook.50.BTCUSDT",
-		"data": {
-			"s": "BTCUSDT",
-			"b": [["49999", "1.5"]],
-			"a": [["50001", "2.5"]],
-			"ts": 1672531200000,
-			"u": 12345
-		}
-	}`)
-	sym, ob, err := adapter.ParseDepth(rawDepth)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", sym)
-	require.Len(t, ob.Bids, 1)
-	assert.Equal(t, 49999.0, ob.Bids[0].Price)
-
 	// Check parse ticker
 	rawTicker := []byte(`{
 		"topic": "tickers.BTCUSDT",
@@ -756,21 +720,6 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", sym)
 	assert.Equal(t, 50000.0, pd.LastPrice)
 	assert.Equal(t, 49999.0, pd.BestBid)
-
-	// Check parse order
-	rawOrder := []byte(`{
-		"topic": "order",
-		"data": [{
-			"symbol": "BTCUSDT",
-			"orderId": "bybit-ord-987654",
-			"orderStatus": "Filled",
-			"side": "Buy"
-		}]
-	}`)
-	deal, err := adapter.ParseOrder(rawOrder)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", deal.Symbol)
-	assert.Equal(t, exchange.OrderStateFilled, deal.State)
 
 	// Check parse position
 	rawPos := []byte(`{
@@ -817,32 +766,11 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	_ = adapter.SubscribeDepth(ctx, "BTCUSDT", "1")
 	_ = adapter.UnsubscribeDepth(ctx, "BTCUSDT", "1")
 	_ = adapter.SubscribePersonal(ctx)
-	d, _ := adapter.ParseOrderDeal(nil)
-	assert.Nil(t, d)
-	tr, _ := adapter.ParseTrackOrder(nil)
-	assert.Nil(t, tr)
 
 	// Additional parsing error cases
 	_, _, err = adapter.ParseTicker([]byte("{"))
 	assert.Error(t, err)
 	_, _, err = adapter.ParseTicker([]byte(`{"topic":"tickers","data":[]}`))
-	assert.Error(t, err)
-
-	_, _, err = adapter.ParseDepth([]byte("{"))
-	assert.Error(t, err)
-	_, ob, err = adapter.ParseDepth([]byte(`{"topic":"orderbook","data":{"s":"BTCUSDT","b":[["49000"]],"a":[["50000"]]}}`)) // less than 2 items in entries
-	require.NoError(t, err)
-	assert.Len(t, ob.Bids, 0)
-	assert.Len(t, ob.Asks, 0)
-
-	_, _, err = adapter.ParseKline([]byte("{"))
-	assert.Error(t, err)
-	_, _, err = adapter.ParseKline([]byte(`{"topic":"kline","data":[]}`))
-	assert.Error(t, err)
-
-	_, err = adapter.ParseOrder([]byte("{"))
-	assert.Error(t, err)
-	_, err = adapter.ParseOrder([]byte(`{"topic":"order","data":[]}`))
 	assert.Error(t, err)
 
 	_, err = adapter.ParsePosition([]byte("{"))

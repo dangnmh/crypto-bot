@@ -10,7 +10,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/app"
 
-	"crypto-bot/internal/domain"
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
@@ -52,15 +51,6 @@ func (m *mockAdapter) SubscribePersonal(context.Context) error                { 
 
 // Parser methods.
 func (m *mockAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) { return "", nil, nil }
-func (m *mockAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) { return "", nil, nil }
-func (m *mockAdapter) ParseKline(data []byte) (string, *domain.Kline, error)     { return "", nil, nil }
-func (m *mockAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error)     { return nil, nil }
-func (m *mockAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	return nil, nil
-}
-func (m *mockAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	return nil, nil
-}
 func (m *mockAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	return nil, nil
 }

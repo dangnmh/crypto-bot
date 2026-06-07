@@ -62,19 +62,6 @@ func (f *fakeExchangeAdapter) GetChannelExtractor() func([]byte) string         
 func (f *fakeExchangeAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
 	return "", nil, nil
 }
-func (f *fakeExchangeAdapter) ParseDepth(data []byte) (symbol string, ob *shared.OrderBook, err error) {
-	return "", nil, nil
-}
-func (f *fakeExchangeAdapter) ParseKline(data []byte) (symbol string, k *shared.Kline, err error) {
-	return "", nil, nil
-}
-func (f *fakeExchangeAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) { return nil, nil }
-func (f *fakeExchangeAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	return nil, nil
-}
-func (f *fakeExchangeAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	return nil, nil
-}
 func (f *fakeExchangeAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	return nil, nil
 }

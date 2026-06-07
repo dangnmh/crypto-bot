@@ -2,7 +2,6 @@ package ws
 
 import (
 	"context"
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"time"
@@ -39,10 +38,5 @@ type ExchangeAdapter interface {
 
 	// Parsers (raw JSON []byte to domain objects).
 	ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error)
-	ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error)
-	ParseKline(data []byte) (symbol string, k *domain.Kline, err error)
-	ParseOrder(data []byte) (*exchange.WsOrderDeal, error)
-	ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error)
-	ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error)
 	ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error)
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	pkgws "crypto-bot/pkg/ws"
 	"log/slog"
@@ -102,63 +101,6 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	assert.Equal(t, 0.0025, pdM.FairPrice)
 	assert.Equal(t, 10000.0, pdM.Volume24)
 
-	// Check ParseDepth
-	rawDepth := []byte(`{
-		"s": "BTCUSDT",
-		"b": [["49999", "1.5"]],
-		"a": [["50001", "2.5"]],
-		"u": 12345
-	}`)
-	sym, ob, err := adapter.ParseDepth(rawDepth)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", sym)
-	assert.Equal(t, int64(12345), ob.Version)
-	require.Len(t, ob.Bids, 1)
-	assert.Equal(t, 49999.0, ob.Bids[0].Price)
-	assert.Equal(t, 1.5, ob.Bids[0].Volume)
-
-	// Check ParseKline
-	rawKline := []byte(`{
-		"s": "BTCUSDT",
-		"k": {
-			"t": 1672531200000,
-			"o": "50000",
-			"c": "50050",
-			"h": "50100",
-			"l": "49950",
-			"v": "10.5",
-			"q": "500000"
-		}
-	}`)
-	sym, k, err := adapter.ParseKline(rawKline)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", sym)
-	assert.Equal(t, int64(1672531200000), k.Timestamp)
-	assert.Equal(t, 50000.0, k.Open)
-	assert.Equal(t, 50050.0, k.Close)
-
-	// Check ParseOrder
-	rawOrder := []byte(`{
-		"o": {
-			"s": "BTCUSDT",
-			"i": 1234567,
-			"c": "external_123",
-			"p": "50000",
-			"q": "0.5",
-			"z": "0.5",
-			"ap": "50000",
-			"S": "BUY",
-			"ps": "LONG",
-			"X": "FILLED"
-		}
-	}`)
-	deal, err := adapter.ParseOrder(rawOrder)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", deal.Symbol)
-	assert.Equal(t, "1234567", deal.GetOrderID())
-	assert.Equal(t, exchange.OrderStateFilled, deal.State)
-	assert.Equal(t, exchange.SideOpenLong, deal.Side)
-
 	// Check ParsePosition
 	rawPos := []byte(`{
 		"a": {
@@ -200,14 +142,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	hook := adapter.GetAuthHook("apiKey", "apiSecret")
 	assert.Nil(t, hook)
-
-	dealStub, err := adapter.ParseOrderDeal([]byte{})
-	assert.NoError(t, err)
-	assert.Nil(t, dealStub)
-
-	trackStub, err := adapter.ParseTrackOrder([]byte{})
-	assert.NoError(t, err)
-	assert.Nil(t, trackStub)
 }
 
 func TestWsAdapter_GetPrivateURLFunc(t *testing.T) {

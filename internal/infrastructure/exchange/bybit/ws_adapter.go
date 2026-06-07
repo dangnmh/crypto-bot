@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
@@ -205,123 +204,6 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		UpdatedAt: time.Now(),
 	}
 	return raw.Symbol, pd, nil
-}
-
-// ParseDepth parses raw JSON into exchange.OrderBook.
-func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error) {
-	var msg struct {
-		Topic string               `json:"topic"`
-		Data  bybitOrderbookResult `json:"data"`
-	}
-	if err = json.Unmarshal(data, &msg); err != nil {
-		return "", nil, err
-	}
-	raw := msg.Data
-	ob = &domain.OrderBook{
-		Symbol: raw.Symbol,
-		Asks:   make([]exchange.OrderBookEntry, 0, len(raw.Asks)),
-		Bids:   make([]exchange.OrderBookEntry, 0, len(raw.Bids)),
-	}
-	for _, item := range raw.Asks {
-		if len(item) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(item[0])
-		v := decmath.ParseFloat(item[1])
-		if p > 0 {
-			ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-	for _, item := range raw.Bids {
-		if len(item) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(item[0])
-		v := decmath.ParseFloat(item[1])
-		if p > 0 {
-			ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-	return raw.Symbol, ob, nil
-}
-
-// ParseKline parses raw JSON into exchange.Kline.
-func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *exchange.Kline, err error) {
-	var msg struct {
-		Topic string `json:"topic"`
-		Data  []struct {
-			Start  int64  `json:"start"`
-			Open   string `json:"open"`
-			Close  string `json:"close"`
-			High   string `json:"high"`
-			Low    string `json:"low"`
-			Volume string `json:"volume"`
-		} `json:"data"`
-	}
-	if err = json.Unmarshal(data, &msg); err != nil {
-		return "", nil, err
-	}
-	if len(msg.Data) == 0 {
-		return "", nil, fmt.Errorf("empty data in kline push")
-	}
-	raw := msg.Data[0]
-
-	// Extract symbol from topic (e.g. kline.1.BTCUSDT -> BTCUSDT)
-	parts := strings.Split(msg.Topic, ".")
-	if len(parts) >= 3 {
-		symbol = parts[2]
-	}
-
-	k = &exchange.Kline{
-		Timestamp: raw.Start,
-		Open:      decmath.ParseFloat(raw.Open),
-		Close:     decmath.ParseFloat(raw.Close),
-		High:      decmath.ParseFloat(raw.High),
-		Low:       decmath.ParseFloat(raw.Low),
-		Volume:    decmath.ParseFloat(raw.Volume),
-	}
-	return symbol, k, nil
-}
-
-// ParseOrder parses raw JSON into exchange.WsOrderDeal.
-func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
-	var msg struct {
-		Topic string       `json:"topic"`
-		Data  []bybitOrder `json:"data"`
-	}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return nil, err
-	}
-	if len(msg.Data) == 0 {
-		return nil, fmt.Errorf("empty data in order push")
-	}
-	raw := msg.Data[0]
-	deal := mapOrderInfo(raw)
-
-	wsDeal := &exchange.WsOrderDeal{
-		Symbol:       deal.Symbol,
-		OrderID:      deal.OrderID,
-		Price:        deal.Price,
-		Vol:          deal.Vol,
-		DealVol:      deal.DealVol,
-		DealAvgPrice: deal.DealAvgPrice,
-		State:        deal.State,
-		ExternalOID:  deal.ExternalOID,
-		Side:         deal.Side,
-		PositionMode: deal.PositionMode,
-	}
-
-	return wsDeal, nil
-}
-
-// ParseOrderDeal is stubbed since we use WsOrderDeal for routing.
-func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	return nil, nil
-}
-
-// ParseTrackOrder is stubbed.
-func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	return nil, nil
 }
 
 // ParsePosition parses push.personal.position.

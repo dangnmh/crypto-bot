@@ -62,27 +62,6 @@ func TestWsAdapter_ParseTicker(t *testing.T) {
 	assert.Equal(t, 0.021595, pd2.LastPrice)
 }
 
-func TestWsAdapter_ParseDepth(t *testing.T) {
-	t.Parallel()
-
-	adapter := kucoin.NewWsAdapter()
-	raw := []byte(`{
-		"topic": "/contractMarket/level2:XBTUSDTM",
-		"data": {
-			"asks": [{"price": "50001.0", "volume": "1.5"}],
-			"bids": [{"price": "50000.0", "volume": "2.0"}]
-		}
-	}`)
-
-	symbol, ob, err := adapter.ParseDepth(raw)
-	require.NoError(t, err)
-	assert.Equal(t, "XBTUSDTM", symbol)
-	require.Len(t, ob.Asks, 1)
-	require.Len(t, ob.Bids, 1)
-	assert.Equal(t, 50001.0, ob.Asks[0].Price)
-	assert.Equal(t, 1.5, ob.Asks[0].Volume)
-}
-
 func TestWsAdapter_OtherMethods(t *testing.T) {
 	t.Parallel()
 
@@ -104,41 +83,15 @@ func TestWsAdapter_OtherMethods(t *testing.T) {
 	err := adapter.SubscribePersonal(context.Background())
 	assert.NoError(t, err)
 
-	// 4. ParseKline
-	_, _, err = adapter.ParseKline([]byte{})
-	assert.Error(t, err)
-
-	// 5. ParseOrder
-	_, err = adapter.ParseOrder([]byte{})
-	assert.Error(t, err)
-
-	// 6. ParseOrderDeal
-	_, err = adapter.ParseOrderDeal([]byte{})
-	assert.Error(t, err)
-
-	// 7. ParseTrackOrder
-	_, err = adapter.ParseTrackOrder([]byte{})
-	assert.Error(t, err)
-
-	// 8. ParsePosition errors
+	// 4. ParsePosition errors
 	_, err = adapter.ParsePosition([]byte{})
 	assert.Error(t, err)
 
-	// 9. ParseTicker errors
+	// 5. ParseTicker errors
 	_, _, err = adapter.ParseTicker([]byte(`{}`))
 	assert.Error(t, err)
 
 	_, _, err = adapter.ParseTicker([]byte(`{"data":"invalid"}`))
-	assert.Error(t, err)
-
-	// 10. ParseDepth errors
-	_, _, err = adapter.ParseDepth([]byte(`{}`))
-	assert.Error(t, err)
-
-	_, _, err = adapter.ParseDepth([]byte(`{"topic":"invalid_topic"}`))
-	assert.Error(t, err)
-
-	_, _, err = adapter.ParseDepth([]byte(`{"topic":"depth:BTC", "data":"invalid"}`))
 	assert.Error(t, err)
 }
 
@@ -218,19 +171,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	_ = adapter.UnsubscribeKline(subCtx, "BTC-USDT")
 	_ = adapter.SubscribeDepth(subCtx, "BTC-USDT", "1")
 	_ = adapter.UnsubscribeDepth(subCtx, "BTC-USDT", "1")
-
-	// 4. Test Placeholders
-	_, _, err = adapter.ParseKline([]byte{})
-	assert.Error(t, err)
-
-	_, err = adapter.ParseOrder([]byte{})
-	assert.Error(t, err)
-
-	_, err = adapter.ParseOrderDeal([]byte{})
-	assert.Error(t, err)
-
-	_, err = adapter.ParseTrackOrder([]byte{})
-	assert.Error(t, err)
 }
 
 func TestWsAdapter_ParsePosition(t *testing.T) {

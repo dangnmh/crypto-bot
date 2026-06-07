@@ -203,34 +203,3 @@ func TestWsAdapter_ParseTicker_InvalidDataField(t *testing.T) {
 	_, _, err := a.ParseTicker([]byte(input))
 	assert.Error(t, err)
 }
-
-func TestWsAdapter_ParseKline_InvalidDataField(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	input := `{"channel":"push.kline","symbol":"BTC_USDT","data":"invalid"}`
-	_, _, err := a.ParseKline([]byte(input))
-	assert.Error(t, err)
-}
-
-func TestWsAdapter_ParseOrder_InvalidDataField(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	input := `{"data":"invalid"}`
-	_, err := a.ParseOrder([]byte(input))
-	assert.Error(t, err)
-}
-
-func TestWsAdapter_ParseDepth_StringPrices(t *testing.T) {
-	t.Parallel()
-	a := mexc.NewWsAdapter()
-
-	// Test with string-typed prices (exercises parseFloatValue string branch).
-	input := `{"channel":"push.depth.full","symbol":"BTC_USDT","data":{"version":1,"asks":[["50001","10"]],"bids":[["49999","15"]]}}`
-	sym, ob, err := a.ParseDepth([]byte(input))
-	require.NoError(t, err)
-	assert.Equal(t, "BTC_USDT", sym)
-	assert.Len(t, ob.Asks, 1)
-	assert.Equal(t, 50001.0, ob.Asks[0].Price)
-}

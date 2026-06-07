@@ -7,15 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
-
-	"github.com/buger/jsonparser"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for MEXC Futures.
@@ -240,148 +237,6 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	return msg.Symbol, pd, nil
 }
 
-// ParseDepth parses raw JSON into exchange.OrderBook using jsonparser for speed.
-func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *exchange.OrderBook, err error) {
-	symbolVal, err := jsonparser.GetString(data, paramSymbol)
-	if err != nil {
-		return "", nil, err
-	}
-	symbol = symbolVal
-
-	dataNode, _, _, err := jsonparser.Get(data, "data")
-	if err != nil {
-		return "", nil, err
-	}
-
-	version, _ := jsonparser.GetInt(dataNode, "version")
-
-	ob = &exchange.OrderBook{
-		Symbol:  symbol,
-		Version: version,
-		Asks:    make([]exchange.OrderBookEntry, 0, 20),
-		Bids:    make([]exchange.OrderBookEntry, 0, 20),
-	}
-
-	parseLevel := func(value []byte, isAsk bool) {
-		var price, vol float64
-		idx := 0
-		_, _ = jsonparser.ArrayEach(value, func(v []byte, dt jsonparser.ValueType, offset int, err error) {
-			switch idx {
-			case 0:
-				price = parseFloatValue(v, dt)
-			case 1:
-				vol = parseFloatValue(v, dt)
-			}
-			idx++
-		})
-
-		if price > 0 {
-			if isAsk {
-				ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: price, Volume: vol})
-			} else {
-				ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: price, Volume: vol})
-			}
-		}
-	}
-
-	_, _ = jsonparser.ArrayEach(dataNode, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-		parseLevel(value, true)
-	}, "asks")
-
-	_, _ = jsonparser.ArrayEach(dataNode, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-		parseLevel(value, false)
-	}, "bids")
-
-	return symbol, ob, nil
-}
-
-// ParseKline parses raw JSON into exchange.Kline.
-func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *exchange.Kline, err error) {
-	var msg struct {
-		Symbol string          `json:"symbol"`
-		Data   json.RawMessage `json:"data"`
-	}
-	if err = json.Unmarshal(data, &msg); err != nil {
-		return "", nil, err
-	}
-
-	var kData struct {
-		A float64 `json:"a"`
-		C float64 `json:"c"`
-		H float64 `json:"h"`
-		L float64 `json:"l"`
-		O float64 `json:"o"`
-		T int64   `json:"t"`
-		V float64 `json:"v"`
-	}
-	if err = json.Unmarshal(msg.Data, &kData); err != nil {
-		return "", nil, err
-	}
-
-	kl := &exchange.Kline{
-		Timestamp: kData.T * 1000,
-		Open:      kData.O,
-		Close:     kData.C,
-		High:      kData.H,
-		Low:       kData.L,
-		Volume:    kData.V,
-		Amount:    kData.A,
-	}
-
-	return msg.Symbol, kl, nil
-}
-
-// ParseOrder parses raw JSON into exchange.WsOrderDeal.
-func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
-	var msg struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return nil, err
-	}
-
-	var deal exchange.WsOrderDeal
-	if err := json.Unmarshal(msg.Data, &deal); err != nil {
-		return nil, err
-	}
-
-	return &deal, nil
-}
-
-// ParseOrderDeal parses push.personal.order.deal into execution data.
-func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	var msg struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return nil, err
-	}
-
-	var deal exchange.PersonalOrderDeal
-	if err := json.Unmarshal(msg.Data, &deal); err != nil {
-		return nil, err
-	}
-
-	return &deal, nil
-}
-
-// ParseTrackOrder parses push.personal.track.order into trailing order data.
-func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	var msg struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return nil, err
-	}
-
-	var update exchange.PersonalTrackOrderUpdate
-	if err := json.Unmarshal(msg.Data, &update); err != nil {
-		return nil, err
-	}
-
-	return &update, nil
-}
-
 // ParsePosition parses push.personal.position into position exposure data.
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	var msg struct {
@@ -404,14 +259,4 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	update := exchange.PersonalPositionUpdate(raw.updateAlias)
 
 	return &update, nil
-}
-
-func parseFloatValue(v []byte, dt jsonparser.ValueType) float64 {
-	var val float64
-	if dt == jsonparser.String {
-		val, _ = strconv.ParseFloat(string(v), 64)
-	} else {
-		val, _ = jsonparser.ParseFloat(v)
-	}
-	return val
 }

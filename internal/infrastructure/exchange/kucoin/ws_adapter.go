@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
@@ -261,79 +260,6 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	}
 
 	return raw.Symbol, pd, nil
-}
-
-// ParseDepth parses books feed into domain.OrderBook.
-func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error) {
-	topic, _ := jsonparser.GetString(data, "topic")
-	parts := strings.Split(topic, ":")
-	if len(parts) < 2 {
-		return "", nil, fmt.Errorf("invalid topic for depth: %s", topic)
-	}
-	sym := parts[1]
-
-	dataNode, _, _, err := jsonparser.Get(data, "data")
-	if err != nil {
-		return "", nil, err
-	}
-
-	type wsDepthLevel struct {
-		Price  string `json:"price"`
-		Volume string `json:"volume"`
-	}
-
-	type wsDepth struct {
-		Asks []wsDepthLevel `json:"asks"`
-		Bids []wsDepthLevel `json:"bids"`
-		Ts   int64          `json:"ts"`
-	}
-
-	var raw wsDepth
-	if err := json.Unmarshal(dataNode, &raw); err != nil {
-		return "", nil, err
-	}
-
-	book := &domain.OrderBook{
-		Symbol: sym,
-		Asks:   make([]domain.OrderBookEntry, 0, len(raw.Asks)),
-		Bids:   make([]domain.OrderBookEntry, 0, len(raw.Bids)),
-	}
-
-	for _, level := range raw.Asks {
-		book.Asks = append(book.Asks, domain.OrderBookEntry{
-			Price:  decmath.ParseFloat(level.Price),
-			Volume: decmath.ParseFloat(level.Volume),
-		})
-	}
-
-	for _, level := range raw.Bids {
-		book.Bids = append(book.Bids, domain.OrderBookEntry{
-			Price:  decmath.ParseFloat(level.Price),
-			Volume: decmath.ParseFloat(level.Volume),
-		})
-	}
-
-	return sym, book, nil
-}
-
-// ParseKline is a placeholder.
-func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *domain.Kline, err error) {
-	return "", nil, fmt.Errorf("ParseKline not implemented on KuCoin WS")
-}
-
-// ParseOrder is a placeholder.
-func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
-	return nil, fmt.Errorf("ParseOrder not implemented on KuCoin WS")
-}
-
-// ParseOrderDeal is a placeholder.
-func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	return nil, fmt.Errorf("ParseOrderDeal not implemented on KuCoin WS")
-}
-
-// ParseTrackOrder is a placeholder.
-func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	return nil, fmt.Errorf("ParseTrackOrder not implemented on KuCoin WS")
 }
 
 // ParsePosition parses position updates from the websocket stream.

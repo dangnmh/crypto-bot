@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -91,12 +90,6 @@ func main() {
 	slog.Info("Unsubscribing from channels...")
 	if err := adapter.UnsubscribeTicker(context.Background(), *symbol); err != nil {
 		slog.Warn("Failed to unsubscribe from ticker", slog.Any("error", err))
-	}
-	if err := adapter.UnsubscribeKline(context.Background(), *symbol); err != nil {
-		slog.Warn("Failed to unsubscribe from kline", slog.Any("error", err))
-	}
-	if err := adapter.UnsubscribeDepth(context.Background(), *symbol, "1"); err != nil {
-		slog.Warn("Failed to unsubscribe from depth", slog.Any("error", err))
 	}
 
 	// Close pool
@@ -189,66 +182,6 @@ func registerCallbacks(adapter *binance.WsAdapter, wsPool *pkgws.Pool) {
 		)
 	})
 
-	// 2. Depth callback
-	wsPool.On("depth", func(data []byte) {
-		symbol, ob, err := adapter.ParseDepth(data)
-		if err != nil {
-			slog.Warn("Failed to parse depth payload", slog.Any("error", err), slog.String("raw", string(data)))
-			return
-		}
-		var bidStr, askStr string
-		if len(ob.Bids) > 0 {
-			bidStr = fmt.Sprintf("%.4f@%.4f", ob.Bids[0].Price, ob.Bids[0].Volume)
-		}
-		if len(ob.Asks) > 0 {
-			askStr = fmt.Sprintf("%.4f@%.4f", ob.Asks[0].Price, ob.Asks[0].Volume)
-		}
-		slog.Info("📚 [DEPTH UPDATE]",
-			slog.String("symbol", symbol),
-			slog.Int64("version", ob.Version),
-			slog.String("best_bid", bidStr),
-			slog.String("best_ask", askStr),
-		)
-	})
-
-	// 3. Kline callback
-	wsPool.On("kline", func(data []byte) {
-		symbol, k, err := adapter.ParseKline(data)
-		if err != nil {
-			slog.Warn("Failed to parse kline payload", slog.Any("error", err), slog.String("raw", string(data)))
-			return
-		}
-		slog.Info("🕯️ [KLINE UPDATE]",
-			slog.String("symbol", symbol),
-			slog.Int64("timestamp", k.Timestamp),
-			slog.Float64("open", k.Open),
-			slog.Float64("close", k.Close),
-			slog.Float64("high", k.High),
-			slog.Float64("low", k.Low),
-			slog.Float64("volume", k.Volume),
-		)
-	})
-
-	// 4. Personal Order Update callback
-	wsPool.On("personal.order", func(data []byte) {
-		deal, err := adapter.ParseOrder(data)
-		if err != nil {
-			slog.Warn("Failed to parse order payload", slog.Any("error", err), slog.String("raw", string(data)))
-			return
-		}
-		slog.Info("🔔 [ORDER UPDATE]",
-			slog.String("symbol", deal.Symbol),
-			slog.String("order_id", deal.GetOrderID()),
-			slog.String("client_oid", deal.ExternalOID),
-			slog.Float64("price", deal.Price),
-			slog.Float64("vol", deal.Vol),
-			slog.Float64("deal_vol", deal.DealVol),
-			slog.Float64("avg_price", deal.DealAvgPrice),
-			slog.Any("side", deal.Side),
-			slog.Any("state", deal.State),
-		)
-	})
-
 	// 5. Personal Position Update callback
 	wsPool.On("personal.position", func(data []byte) {
 		pos, err := adapter.ParsePosition(data)
@@ -272,18 +205,6 @@ func subscribePublicChannels(ctx context.Context, adapter *binance.WsAdapter, sy
 		slog.Error("Failed to subscribe to ticker", slog.Any("error", err))
 	} else {
 		slog.Info("Subscribed to ticker stream")
-	}
-
-	if err := adapter.SubscribeKline(ctx, symbol); err != nil {
-		slog.Error("Failed to subscribe to kline", slog.Any("error", err))
-	} else {
-		slog.Info("Subscribed to kline stream")
-	}
-
-	if err := adapter.SubscribeDepth(ctx, symbol, "1"); err != nil {
-		slog.Error("Failed to subscribe to depth", slog.Any("error", err))
-	} else {
-		slog.Info("Subscribed to depth stream")
 	}
 }
 

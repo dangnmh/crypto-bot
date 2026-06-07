@@ -7,11 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
@@ -234,143 +231,6 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		UpdatedAt: time.Now(),
 	}
 	return raw.Contract, pd, nil
-}
-
-// ParseDepth parses raw JSON into exchange.OrderBook.
-func (a *WsAdapter) ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error) {
-	var msg struct {
-		Result struct {
-			Contract string `json:"contract"`
-			Asks     []struct {
-				P string `json:"p"`
-				S string `json:"s"`
-			} `json:"asks"`
-			Bids []struct {
-				P string `json:"p"`
-				S string `json:"s"`
-			} `json:"bids"`
-		} `json:"result"`
-	}
-	if err = json.Unmarshal(data, &msg); err != nil {
-		return "", nil, err
-	}
-	raw := msg.Result
-	ob = &domain.OrderBook{
-		Symbol: raw.Contract,
-		Asks:   make([]exchange.OrderBookEntry, 0, len(raw.Asks)),
-		Bids:   make([]exchange.OrderBookEntry, 0, len(raw.Bids)),
-	}
-	for _, item := range raw.Asks {
-		p := decmath.ParseFloat(item.P)
-		v := decmath.ParseFloat(item.S)
-		if p > 0 {
-			ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-	for _, item := range raw.Bids {
-		p := decmath.ParseFloat(item.P)
-		v := decmath.ParseFloat(item.S)
-		if p > 0 {
-			ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-	return raw.Contract, ob, nil
-}
-
-// ParseKline parses raw JSON into exchange.Kline.
-func (a *WsAdapter) ParseKline(data []byte) (symbol string, k *exchange.Kline, err error) {
-	var msg struct {
-		Result []struct {
-			T int64  `json:"t"`
-			V string `json:"v"`
-			C string `json:"c"`
-			H string `json:"h"`
-			L string `json:"l"`
-			O string `json:"o"`
-			N string `json:"n"`
-		} `json:"result"`
-	}
-	if err = json.Unmarshal(data, &msg); err != nil {
-		return "", nil, err
-	}
-	if len(msg.Result) == 0 {
-		return "", nil, fmt.Errorf("empty result in kline push")
-	}
-	raw := msg.Result[0]
-	parts := strings.SplitN(raw.N, "_", 2)
-	symbol = raw.N
-	if len(parts) == 2 {
-		symbol = parts[1]
-	}
-	k = &exchange.Kline{
-		Timestamp: raw.T * 1000,
-		Open:      decmath.ParseFloat(raw.O),
-		Close:     decmath.ParseFloat(raw.C),
-		High:      decmath.ParseFloat(raw.H),
-		Low:       decmath.ParseFloat(raw.L),
-		Volume:    decmath.ParseFloat(raw.V),
-	}
-	return symbol, k, nil
-}
-
-// ParseOrder parses raw JSON into exchange.WsOrderDeal.
-func (a *WsAdapter) ParseOrder(data []byte) (*exchange.WsOrderDeal, error) {
-	var msg struct {
-		Result []struct {
-			Id       int64  `json:"id"`
-			Contract string `json:"contract"`
-			Size     int64  `json:"size"`
-			Price    string `json:"price"`
-			Status   string `json:"status"`
-			FinishAs string `json:"finish_as"`
-			Left     int64  `json:"left"`
-			Text     string `json:"text"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return nil, err
-	}
-	if len(msg.Result) == 0 {
-		return nil, fmt.Errorf("empty result in order push")
-	}
-	raw := msg.Result[0]
-
-	deal := &exchange.WsOrderDeal{
-		Symbol:  raw.Contract,
-		OrderID: strconv.FormatInt(raw.Id, 10),
-		Price:   decmath.ParseFloat(raw.Price),
-		Vol:     float64(decmath.AbsInt64(raw.Size)),
-		DealVol: float64(decmath.AbsInt64(raw.Size) - decmath.AbsInt64(raw.Left)),
-	}
-
-	switch raw.Status {
-	case gateOrderStatusFinished:
-		if raw.FinishAs == gateFinishAsFilled {
-			deal.State = exchange.OrderStateFilled
-		} else {
-			deal.State = exchange.OrderStateCanceled
-		}
-	case gateOrderStatusOpen:
-		deal.State = exchange.OrderStatePartial
-	}
-
-	if after, ok := strings.CutPrefix(raw.Text, "t-"); ok {
-		deal.ExternalOID = after
-	} else {
-		deal.ExternalOID = raw.Text
-	}
-
-	return deal, nil
-}
-
-// ParseOrderDeal is stubbed since we use WsOrderDeal for routing.
-func (a *WsAdapter) ParseOrderDeal(data []byte) (*exchange.PersonalOrderDeal, error) {
-	return nil, nil
-}
-
-// ParseTrackOrder is stubbed.
-func (a *WsAdapter) ParseTrackOrder(data []byte) (*exchange.PersonalTrackOrderUpdate, error) {
-	return nil, nil
 }
 
 // ParsePosition parses push.personal.position.
