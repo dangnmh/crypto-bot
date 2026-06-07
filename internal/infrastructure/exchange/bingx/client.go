@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +48,13 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{},
+				BlackListPaths: []string{
+					"GET|/openApi/swap/v2/server/time",
+					"GET|/openApi/swap/v2/quote/premiumIndex",
+					"POST|/openApi/user/auth/userDataStream",
+					"GET|/openApi/swap/v2/quote/contracts",
+					"GET|/openApi/swap/v2/quote/ticker",
+				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey}),
@@ -95,28 +104,29 @@ func (c *Client) Get(ctx context.Context, path string, params map[string]string)
 
 // GetCtx makes a signed GET request with context.
 func (c *Client) GetCtx(ctx context.Context, path string, params map[string]string) ([]byte, error) {
-	if params == nil {
-		params = make(map[string]string)
+	u, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse path: %w", err)
 	}
+
+	allParams := make(map[string]string)
+	for k, vs := range u.Query() {
+		if len(vs) > 0 {
+			allParams[k] = vs[0]
+		}
+	}
+	maps.Copy(allParams, params)
 
 	isPrivate := !strings.Contains(path, "/server/") && !strings.Contains(path, "/quote/")
 	if isPrivate && c.apiKey != "" {
-		params["timestamp"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
-		sig := SignParams(c.apiSecret, params)
-		params["signature"] = sig
+		allParams["timestamp"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
+		sig := SignParams(c.apiSecret, allParams)
+		allParams["signature"] = sig
 	}
 
-	urlPath := path
-	if len(params) > 0 {
-		parts := make([]string, 0, len(params))
-		for k, v := range params {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
-		}
-		urlPath += "?" + strings.Join(parts, "&")
-	}
-
-	url := c.baseURL + urlPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	urlPath := buildQueryString(u.Path, allParams)
+	fullURL := c.baseURL + urlPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create GET request: %w", err)
 	}
@@ -131,46 +141,71 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 
 // Post makes a signed POST request.
 func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error) {
-	return c.PostCtx(ctx, path, body)
+	return c.PostCtx(ctx, path, nil, body)
 }
 
 // PostCtx makes a signed POST request with context.
-func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, error) {
-	params := make(map[string]string)
+func (c *Client) PostCtx(ctx context.Context, path string, params map[string]string, body any) ([]byte, error) {
+	return c.requestCtx(ctx, http.MethodPost, path, params, body)
+}
+
+// PutCtx makes a signed PUT request with context.
+func (c *Client) PutCtx(ctx context.Context, path string, params map[string]string, body any) ([]byte, error) {
+	return c.requestCtx(ctx, http.MethodPut, path, params, body)
+}
+
+// DeleteCtx makes a signed DELETE request with context.
+func (c *Client) DeleteCtx(ctx context.Context, path string, params map[string]string, body any) ([]byte, error) {
+	return c.requestCtx(ctx, http.MethodDelete, path, params, body)
+}
+
+func (c *Client) requestCtx(ctx context.Context, method, path string, params map[string]string, body any) ([]byte, error) {
+	u, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse path: %w", err)
+	}
+
+	allParams := make(map[string]string)
+	for k, vs := range u.Query() {
+		if len(vs) > 0 {
+			allParams[k] = vs[0]
+		}
+	}
+	maps.Copy(allParams, params)
+
 	if body != nil {
 		bodyBytes, err := json.Marshal(body)
 		if err == nil {
 			var m map[string]any
 			if err := json.Unmarshal(bodyBytes, &m); err == nil {
 				for k, v := range m {
-					params[k] = fmt.Sprintf("%v", v)
+					allParams[k] = fmt.Sprintf("%v", v)
 				}
 			}
 		}
 	}
 
 	if c.apiKey != "" {
-		params["timestamp"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
-		sig := SignParams(c.apiSecret, params)
-		params["signature"] = sig
+		allParams["timestamp"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
+		sig := SignParams(c.apiSecret, allParams)
+		allParams["signature"] = sig
 	}
 
-	urlPath := path
-	if len(params) > 0 {
-		parts := make([]string, 0, len(params))
-		for k, v := range params {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
-		}
-		urlPath += "?" + strings.Join(parts, "&")
+	qStr := formatQueryParams(allParams)
+	fullURL := c.baseURL + u.Path
+	var bodyReader io.Reader
+	if qStr != "" {
+		bodyReader = strings.NewReader(qStr)
+	} else {
+		bodyReader = http.NoBody
 	}
 
-	url := c.baseURL + urlPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("create POST request: %w", err)
+		return nil, fmt.Errorf("create %s request: %w", method, err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if c.apiKey != "" {
 		req.Header.Set(headerKey, c.apiKey)
 	}
@@ -229,4 +264,61 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 // SupportLeverageOnOrder returns false since BingX doesn't support setting leverage directly on orders.
 func (c *Client) SupportLeverageOnOrder() bool {
 	return false
+}
+func formatQueryParams(params map[string]string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	hasJson := false
+	for _, v := range params {
+		if strings.Contains(v, "[") || strings.Contains(v, "{") {
+			hasJson = true
+			break
+		}
+	}
+
+	var parts []string
+	for _, k := range keys {
+		val := params[k]
+		if hasJson {
+			escaped := url.QueryEscape(val)
+			escaped = strings.ReplaceAll(escaped, "+", "%20")
+			parts = append(parts, k+"="+escaped)
+		} else {
+			parts = append(parts, k+"="+val)
+		}
+	}
+	return strings.Join(parts, "&")
+}
+
+func buildQueryString(path string, params map[string]string) string {
+	u, err := url.Parse(path)
+	if err != nil {
+		qStr := formatQueryParams(params)
+		if qStr == "" {
+			return path
+		}
+		return path + "?" + qStr
+	}
+
+	allParams := make(map[string]string)
+	for k, vs := range u.Query() {
+		if len(vs) > 0 {
+			allParams[k] = vs[0]
+		}
+	}
+	maps.Copy(allParams, params)
+
+	qStr := formatQueryParams(allParams)
+	if qStr == "" {
+		return path
+	}
+
+	return u.Path + "?" + qStr
 }

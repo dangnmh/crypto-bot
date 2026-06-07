@@ -386,7 +386,10 @@ func (BingxProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig
 		sysCfg.Logging,
 	))
 
-	adapter := bingx.NewWsAdapter()
+	adapter := bingx.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+	if concreteClient, ok := client.(*bingx.Client); ok {
+		adapter.SetClient(concreteClient)
+	}
 	return buildProvider(ctx, exchange.ExchangeBingx, exchange.ExchangeBingx, cfg, apiCfg, client, adapter), nil
 }
 

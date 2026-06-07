@@ -29,21 +29,23 @@ var newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
 func InitializeBase(c *SystemConfig) error {
 	_ = godotenv.Load()
 
-	c.ExchangeConfig.Mexc.APIKey = os.Getenv("MEXC_API_KEY")
-	c.ExchangeConfig.Mexc.APISecret = os.Getenv("MEXC_API_SECRET")
-	c.ExchangeConfig.Gate.APIKey = os.Getenv("GATE_API_KEY")
-	c.ExchangeConfig.Gate.APISecret = os.Getenv("GATE_API_SECRET")
-	c.ExchangeConfig.Okx.APIKey = os.Getenv("OKX_API_KEY")
-	c.ExchangeConfig.Okx.APISecret = os.Getenv("OKX_API_SECRET")
-	c.ExchangeConfig.Bybit.APIKey = os.Getenv("BYBIT_API_KEY")
-	c.ExchangeConfig.Bybit.APISecret = os.Getenv("BYBIT_API_SECRET")
-	c.ExchangeConfig.Binance.APIKey = os.Getenv("BINANCE_API_KEY")
-	c.ExchangeConfig.Binance.APISecret = os.Getenv("BINANCE_API_SECRET")
-	c.ExchangeConfig.Bitget.APIKey = os.Getenv("BITGET_API_KEY")
-	c.ExchangeConfig.Bitget.APISecret = os.Getenv("BITGET_API_SECRET")
-	c.ExchangeConfig.Kucoin.APIKey = os.Getenv("KUCOIN_API_KEY")
-	c.ExchangeConfig.Kucoin.APISecret = os.Getenv("KUCOIN_API_SECRET")
-	c.ExchangeConfig.Kucoin.APIPassphrase = os.Getenv("KUCOIN_API_PASSPHRASE")
+	c.ExchangeConfig.Mexc.APIKey = strings.TrimSpace(os.Getenv("MEXC_API_KEY"))
+	c.ExchangeConfig.Mexc.APISecret = strings.TrimSpace(os.Getenv("MEXC_API_SECRET"))
+	c.ExchangeConfig.Gate.APIKey = strings.TrimSpace(os.Getenv("GATE_API_KEY"))
+	c.ExchangeConfig.Gate.APISecret = strings.TrimSpace(os.Getenv("GATE_API_SECRET"))
+	c.ExchangeConfig.Okx.APIKey = strings.TrimSpace(os.Getenv("OKX_API_KEY"))
+	c.ExchangeConfig.Okx.APISecret = strings.TrimSpace(os.Getenv("OKX_API_SECRET"))
+	c.ExchangeConfig.Bybit.APIKey = strings.TrimSpace(os.Getenv("BYBIT_API_KEY"))
+	c.ExchangeConfig.Bybit.APISecret = strings.TrimSpace(os.Getenv("BYBIT_API_SECRET"))
+	c.ExchangeConfig.Binance.APIKey = strings.TrimSpace(os.Getenv("BINANCE_API_KEY"))
+	c.ExchangeConfig.Binance.APISecret = strings.TrimSpace(os.Getenv("BINANCE_API_SECRET"))
+	c.ExchangeConfig.Bitget.APIKey = strings.TrimSpace(os.Getenv("BITGET_API_KEY"))
+	c.ExchangeConfig.Bitget.APISecret = strings.TrimSpace(os.Getenv("BITGET_API_SECRET"))
+	c.ExchangeConfig.Kucoin.APIKey = strings.TrimSpace(os.Getenv("KUCOIN_API_KEY"))
+	c.ExchangeConfig.Kucoin.APISecret = strings.TrimSpace(os.Getenv("KUCOIN_API_SECRET"))
+	c.ExchangeConfig.Kucoin.APIPassphrase = strings.TrimSpace(os.Getenv("KUCOIN_API_PASSPHRASE"))
+	c.ExchangeConfig.Bingx.APIKey = strings.TrimSpace(os.Getenv("BINGX_API_KEY"))
+	c.ExchangeConfig.Bingx.APISecret = strings.TrimSpace(os.Getenv("BINGX_API_SECRET"))
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
 	}
@@ -95,6 +97,7 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Binance, creds.BinanceAPIKey, creds.BinanceAPISecret, "")
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bitget, creds.BitgetAPIKey, creds.BitgetAPISecret, "")
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Kucoin, creds.KucoinAPIKey, creds.KucoinAPISecret, creds.KucoinPassphrase)
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bingx, creds.BingxAPIKey, creds.BingxAPISecret, "")
 
 	if c.NotiConfig.TelegramChatID == "" {
 		c.NotiConfig.TelegramChatID = creds.TelegramChatID
@@ -126,6 +129,7 @@ func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 		exchangeCredentialsComplete("Bybit", c.ExchangeConfig.Bybit) &&
 		exchangeCredentialsComplete("Binance", c.ExchangeConfig.Binance) &&
 		exchangeCredentialsComplete("Bitget", c.ExchangeConfig.Bitget) &&
+		exchangeCredentialsComplete("Bingx", c.ExchangeConfig.Bingx) &&
 		exchangeCredentialsComplete(kucoinName, c.ExchangeConfig.Kucoin) &&
 		notificationCredentialsComplete(c.NotiConfig)
 }
@@ -179,6 +183,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	kucoinKey, _ := loader.GetSecret("KUCOIN_API_KEY")
 	kucoinSecret, _ := loader.GetSecret("KUCOIN_API_SECRET")
 	kucoinPassphrase, _ := loader.GetSecret("KUCOIN_API_PASSPHRASE")
+	bingxKey, _ := loader.GetSecret("BINGX_API_KEY")
+	bingxSecret, _ := loader.GetSecret("BINGX_API_SECRET")
 
 	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
 	if err != nil {
@@ -204,6 +210,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	kucoinKey = strings.TrimSpace(kucoinKey)
 	kucoinSecret = strings.TrimSpace(kucoinSecret)
 	kucoinPassphrase = strings.TrimSpace(kucoinPassphrase)
+	bingxKey = strings.TrimSpace(bingxKey)
+	bingxSecret = strings.TrimSpace(bingxSecret)
 	telegramChatID = strings.TrimSpace(telegramChatID)
 	telegramBotToken = strings.TrimSpace(telegramBotToken)
 
@@ -221,6 +229,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 		KucoinAPIKey:     kucoinKey,
 		KucoinAPISecret:  kucoinSecret,
 		KucoinPassphrase: kucoinPassphrase,
+		BingxAPIKey:      bingxKey,
+		BingxAPISecret:   bingxSecret,
 		TelegramChatID:   telegramChatID,
 		TelegramBotToken: telegramBotToken,
 	}, nil
@@ -342,6 +352,8 @@ type bitwardenCredentials struct {
 	KucoinAPIKey     string
 	KucoinAPISecret  string
 	KucoinPassphrase string
+	BingxAPIKey      string
+	BingxAPISecret   string
 	TelegramChatID   string
 	TelegramBotToken string
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -52,12 +53,12 @@ func TestClient_GetContractDetails(t *testing.T) {
 			"data": [
 				{
 					"symbol": "BTC-USDT",
-					"quantity_precision": 3,
-					"price_precision": 1,
-					"maker_fee_rate": 0.0002,
-					"taker_fee_rate": 0.0005,
-					"trade_min_quantity": 1,
-					"trade_min_usdt": 5,
+					"quantityPrecision": 3,
+					"pricePrecision": 1,
+					"makerFeeRate": 0.0002,
+					"takerFeeRate": 0.0005,
+					"tradeMinQuantity": 1,
+					"tradeMinUSDT": 5,
 					"currency": "USDT",
 					"asset": "BTC",
 					"status": 1
@@ -174,8 +175,10 @@ func TestClient_CreateOrder(t *testing.T) {
 			"code": 0,
 			"msg": "success",
 			"data": {
-				"orderId": "123456",
-				"clientOid": "external_123"
+				"order": {
+					"orderId": "123456",
+					"clientOid": "external_123"
+				}
 			}
 		}`))
 	}))
@@ -193,6 +196,54 @@ func TestClient_CreateOrder(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "123456", res.OrderID)
+}
+
+func TestClient_CreateOrder_WithTPSL(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/openApi/swap/v2/trade/order", r.URL.Path)
+
+		_ = r.ParseForm()
+		q := r.Form
+		tp := q.Get("takeProfit")
+		sl := q.Get("stopLoss")
+
+		assert.Contains(t, tp, `"type":"TAKE_PROFIT_MARKET"`)
+		assert.Contains(t, tp, `"stopPrice":55000`)
+		assert.Contains(t, sl, `"type":"STOP_MARKET"`)
+		assert.Contains(t, sl, `"stopPrice":45000`)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": 0,
+			"msg": "success",
+			"data": {
+				"order": {
+					"orderId": "123456",
+					"clientOid": "external_123"
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:          "BTC-USDT",
+		Vol:             0.5,
+		Side:            exchange.SideOpenLong,
+		Type:            exchange.OrderTypeLimit,
+		Price:           50000.0,
+		PositionMode:    1,
+		ExternalOID:     "external_123",
+		TakeProfitPrice: 55000.0,
+		StopLossPrice:   45000.0,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "123456", res.OrderID)
+	assert.True(t, res.TPSLSubmitted)
 }
 
 func TestClient_CancelOrder(t *testing.T) {
@@ -227,16 +278,18 @@ func TestClient_GetOrder(t *testing.T) {
 			"code": 0,
 			"msg": "success",
 			"data": {
-				"orderId": "123456",
-				"symbol": "BTC-USDT",
-				"side": "BUY",
-				"positionSide": "LONG",
-				"type": "LIMIT",
-				"quantity": "0.5",
-				"price": "50000.0",
-				"status": "FILLED",
-				"executedQty": "0.5",
-				"avgPrice": "50000.0"
+				"order": {
+					"orderId": 123456,
+					"symbol": "BTC-USDT",
+					"side": "BUY",
+					"positionSide": "LONG",
+					"type": "LIMIT",
+					"origQty": "0.5",
+					"price": "50000.0",
+					"status": "FILLED",
+					"executedQty": "0.5",
+					"avgPrice": "50000.0"
+				}
 			}
 		}`))
 	}))
@@ -248,6 +301,7 @@ func TestClient_GetOrder(t *testing.T) {
 	require.NotNil(t, info)
 	assert.Equal(t, "123456", info.OrderID)
 	assert.Equal(t, 50000.0, info.Price)
+	assert.Equal(t, 0.5, info.Vol)
 }
 
 func TestClient_GetOpenOrders(t *testing.T) {
@@ -365,6 +419,11 @@ func TestClient_ChangeLeverage(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "/openApi/swap/v2/trade/leverage", r.URL.Path)
 
+		_ = r.ParseForm()
+		q := r.Form
+		assert.Equal(t, "10", q.Get("leverage"))
+		assert.Contains(t, []string{"LONG", "SHORT"}, q.Get("side"))
+
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"code": 0,
@@ -432,7 +491,9 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 				"code": 0,
 				"msg": "success",
 				"data": {
-					"orderId": "1234567"
+					"order": {
+						"orderId": "1234567"
+					}
 				}
 			}`))
 		}
@@ -492,4 +553,113 @@ func TestClient_ErrorPaths(t *testing.T) {
 	clientInvalidJSON := bingx.NewClient(serverInvalidJSON.Client(), serverInvalidJSON.URL, "key", "secret", config.LoggingConfig{})
 	_, err = clientInvalidJSON.GetAssets(context.Background())
 	assert.Error(t, err)
+}
+
+func TestClient_ListenKeys(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" && r.URL.Path == "/openApi/user/auth/userDataStream" {
+			_, _ = w.Write([]byte(`{"code": 0, "msg": "success", "data": {"listenKey": "lk-1234"}}`))
+			return
+		}
+		if r.Method == "PUT" && r.URL.Path == "/openApi/user/auth/userDataStream" {
+			_ = r.ParseForm()
+			assert.Equal(t, "lk-1234", r.Form.Get("listenKey"))
+			_, _ = w.Write([]byte(`{"code": 0, "msg": "success", "data": {}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	lk, err := client.CreateListenKey(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "lk-1234", lk)
+
+	err = client.KeepAliveListenKey(context.Background(), lk)
+	require.NoError(t, err)
+}
+
+func TestClient_GetRecentClosedPnL(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "GET /openApi/swap/v2/trade/order":
+			// Mock order query details
+			_, _ = w.Write([]byte(`{
+				"code": 0,
+				"msg": "success",
+				"data": {
+					"order": {
+						"orderId": 123456,
+						"symbol": "BTC-USDT",
+						"side": "BUY",
+						"positionSide": "LONG",
+						"type": "LIMIT",
+						"origQty": "0.5",
+						"price": "50000.0",
+						"status": "FILLED",
+						"executedQty": "0.5",
+						"avgPrice": "50000.0",
+						"time": 1695812285000
+					}
+				}
+			}`))
+		case "GET /openApi/swap/v2/user/income":
+			// Mock user income history query
+			_, _ = w.Write([]byte(`{
+				"code": 0,
+				"msg": "success",
+				"data": [
+					{
+						"symbol": "BTC-USDT",
+						"incomeType": "REALIZED_PNL",
+						"income": "150.50",
+						"time": 1695812295000,
+						"id": "income-1"
+					},
+					{
+						"symbol": "BTC-USDT",
+						"incomeType": "TRADING_FEE",
+						"income": "-5.50",
+						"time": 1695812295000,
+						"id": "income-2"
+					},
+					{
+						"symbol": "BTC-USDT",
+						"incomeType": "FUNDING_FEE",
+						"income": "-2.00",
+						"time": 1695812290000,
+						"id": "income-3"
+					}
+				]
+			}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	startTime := time.UnixMilli(1695812280000)
+	closedInfo, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT", "ext-123", startTime)
+	require.NoError(t, err)
+	require.NotNil(t, closedInfo)
+
+	assert.Equal(t, "BTC-USDT", closedInfo.Symbol)
+	assert.Equal(t, 50000.0, closedInfo.EntryPrice)
+	assert.Equal(t, 0.5, closedInfo.ClosedSize)
+	assert.Equal(t, 150.50, closedInfo.GrossPnL)
+	assert.Equal(t, 5.50, closedInfo.Fee)
+	assert.Equal(t, -2.00, closedInfo.FundingFee)
+	assert.Equal(t, int64(15000), closedInfo.DurationMs)   // 1695812295000 - 1695812280000 = 15000
+	assert.Equal(t, 143.00, closedInfo.NetPnl)             // 150.50 - 5.50 + (-2.00) = 143.00
+	assert.InDelta(t, 50301.0, closedInfo.ExitPrice, 1e-9) // 50000 + (150.50 / 0.5) = 50301.0
 }

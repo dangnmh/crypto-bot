@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -257,7 +258,7 @@ func (c *Client) readLoop(ctx context.Context) {
 
 // processMessage parses and dispatches a single WebSocket message.
 func (c *Client) processMessage(data []byte) {
-	if string(data) == "Ping" {
+	if strings.ToLower(strings.TrimSpace(string(data))) == "ping" {
 		c.mu.Lock()
 		if c.conn != nil {
 			_ = c.conn.WriteMessage(websocket.TextMessage, []byte("Pong"))
@@ -265,7 +266,6 @@ func (c *Client) processMessage(data []byte) {
 		c.mu.Unlock()
 		return
 	}
-
 	if c.channelExtractor == nil {
 		c.mu.Lock()
 		gh := c.globalHandler

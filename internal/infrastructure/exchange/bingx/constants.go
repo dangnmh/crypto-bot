@@ -19,11 +19,18 @@ const (
 	pathSetLeverage    = "/openApi/swap/v2/trade/leverage"
 	pathAccountBalance = "/openApi/swap/v2/user/balance"
 	pathOpenPositions  = "/openApi/swap/v2/user/positions"
+	pathUserIncome     = "/openApi/swap/v2/user/income"
+
+	// Income Types.
+	incomeTypeRealizedPnL = "REALIZED_PNL"
+	incomeTypeFundingFee  = "FUNDING_FEE"
+	incomeTypeTradingFee  = "TRADING_FEE"
 
 	// WS Channels.
-	channelTicker = "ticker"
-	channelKline  = "kline"
-	channelDepth  = "depth"
+	channelTicker     = "ticker"
+	channelKline      = "kline"
+	channelDepth      = "depth"
+	channelBookTicker = "bookTicker"
 
 	// String literals used frequently.
 	sideBuy       = "BUY"
@@ -42,6 +49,7 @@ const (
 	paramSymbol     = "symbol"
 	paramLimit      = "limit"
 	constantUsdt    = "USDT"
+	orderTypeLimit  = "LIMIT"
 	opSubscribe     = "subscribe"
 	opUnsubscribe   = "unsubscribe"
 	constantSuccess = "success"
@@ -55,4 +63,11 @@ const (
 	msgPing           = "Ping"
 	opUnsub           = "unsub"
 	opSub             = "sub"
+
+	paramType        = "type"
+	paramStopPrice   = "stopPrice"
+	paramPrice       = "price"
+	valMarkPrice     = "MARK_PRICE"
+	paramWorkingType = "workingType"
+	paramSide        = "side"
 )

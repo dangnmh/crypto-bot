@@ -16,12 +16,12 @@ import (
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
-	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
+	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -76,10 +76,10 @@ func main() {
 	mexcClient := mexc.NewClient(httpPool, "https://contract.mexc.com", "", "", logCfg)
 	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", logCfg)
 	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", logCfg)
-	// okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
+	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
 	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
 	// bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
-	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
+	// bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 
@@ -88,13 +88,13 @@ func main() {
 	defer cancel()
 
 	allClients := map[string]exchange.Client{
-		"mexc":  mexcClient,
-		"gate":  gateClient,
-		"bybit": bybitClient,
-		// "okx":         okxClient,
+		"mexc":        mexcClient,
+		"gate":        gateClient,
+		"bybit":       bybitClient,
+		"okx":         okxClient,
 		"hyperliquid": hlClient,
 		// "bitget":      bitgetClient,
-		"bingx":   bingxClient,
+		// "bingx":   bingxClient,
 		"kucoin":  kucoinClient,
 		"binance": binanceClient,
 	}

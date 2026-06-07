@@ -4,14 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
+	"strconv"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 // Explicit request/response structs for account endpoints.
+
+type bingxUserIncomeRequest struct {
+	Symbol     string `json:"symbol,omitempty"`
+	IncomeType string `json:"incomeType,omitempty"`
+	StartTime  int64  `json:"startTime,omitempty"`
+	EndTime    int64  `json:"endTime,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
+}
+
+type bingxIncomeRow struct {
+	Symbol     string `json:"symbol"`
+	IncomeType string `json:"incomeType"`
+	Income     string `json:"income"`
+	Time       int64  `json:"time"`
+	ID         string `json:"id"`
+}
 
 type bingxWalletBalanceRequest struct{}
 
@@ -77,6 +97,32 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req bingxPositionsRequ
 	}
 
 	return ParseResponse[[]bingxPosition](body, "open_positions")
+}
+
+func (c *Client) getRawUserIncome(ctx context.Context, req bingxUserIncomeRequest) ([]bingxIncomeRow, error) {
+	params := map[string]string{}
+	if req.Symbol != "" {
+		params[paramSymbol] = req.Symbol
+	}
+	if req.IncomeType != "" {
+		params["incomeType"] = req.IncomeType
+	}
+	if req.StartTime > 0 {
+		params["startTime"] = strconv.FormatInt(req.StartTime, 10)
+	}
+	if req.EndTime > 0 {
+		params["endTime"] = strconv.FormatInt(req.EndTime, 10)
+	}
+	if req.Limit > 0 {
+		params[paramLimit] = strconv.Itoa(req.Limit)
+	}
+
+	body, err := c.GetCtx(ctx, pathUserIncome, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseResponse[[]bingxIncomeRow](body, "user_income")
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
@@ -162,7 +208,155 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL is not supported on BingX client yet.
+// GetRecentClosedPnL queries recent trades from BingX, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	return nil, exchange.ErrNotSupported
+	// Look up the opening order details.
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("bingx get order by external ID %s failed: %w", extOrderID, err)
+	}
+
+	if orderInfo.DealVol == 0 {
+		return nil, fmt.Errorf("zero deal volume for opening order %s", extOrderID)
+	}
+
+	incomeEntries, err := c.fetchUserIncomeWithRetry(ctx, symbol, startTime)
+	if err != nil {
+		return nil, err
+	}
+
+	agg := c.aggregateUserIncome(incomeEntries)
+
+	entryPrice := orderInfo.DealAvgPrice
+	if entryPrice == 0 {
+		entryPrice = orderInfo.Price
+	}
+	closedSize := orderInfo.DealVol
+
+	isOpenLong := orderInfo.Side == exchange.SideOpenLong
+	var exitPrice float64
+	if isOpenLong {
+		exitPrice = entryPrice + (agg.grossPnl / closedSize)
+	} else {
+		exitPrice = entryPrice - (agg.grossPnl / closedSize)
+	}
+
+	durationMs := int64(0)
+	if agg.latestTime > 0 {
+		durationMs = max(agg.latestTime-startTime.UnixMilli(), 0)
+	}
+
+	return &exchange.ClosedPnLInfo{
+		Symbol:     symbol,
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: closedSize,
+		GrossPnL:   agg.grossPnl,
+		Fee:        agg.fee,
+		FundingFee: agg.fundingFee,
+		DurationMs: durationMs,
+		NetPnl:     agg.grossPnl - agg.fee + agg.fundingFee,
+	}, nil
+}
+
+func (c *Client) fetchUserIncomeWithRetry(ctx context.Context, symbol string, startTime time.Time) ([]bingxIncomeRow, error) {
+	var incomeEntries []bingxIncomeRow
+	operation := func() error {
+		var err error
+		req := bingxUserIncomeRequest{
+			Symbol:    symbol,
+			StartTime: startTime.UnixMilli(),
+			Limit:     100,
+		}
+		incomeEntries, err = c.getRawUserIncome(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		// Ensure we have at least one REALIZED_PNL entry
+		hasRealizedPnl := false
+		for _, row := range incomeEntries {
+			if row.IncomeType == incomeTypeRealizedPnL {
+				hasRealizedPnl = true
+				break
+			}
+		}
+
+		if !hasRealizedPnl {
+			return fmt.Errorf("closing realized PnL trade not found yet (propagation delay)")
+		}
+		return nil
+	}
+
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(backoff.NewExponentialBackOff(
+			backoff.WithInitialInterval(time.Second),
+			backoff.WithMaxInterval(time.Second*2)),
+			5),
+		ctx,
+	)
+
+	err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
+		c.logger.InfoContext(ctx, "retry closed PnL query", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
+	})
+
+	if err != nil && len(incomeEntries) == 0 {
+		return nil, err
+	}
+	return incomeEntries, nil
+}
+
+type aggregatedIncome struct {
+	grossPnl   float64
+	fee        float64
+	fundingFee float64
+	latestTime int64
+}
+
+func (c *Client) aggregateUserIncome(entries []bingxIncomeRow) aggregatedIncome {
+	var agg aggregatedIncome
+	for _, row := range entries {
+		val := decmath.ParseFloat(row.Income)
+		switch row.IncomeType {
+		case incomeTypeRealizedPnL:
+			agg.grossPnl += val
+			if row.Time > agg.latestTime {
+				agg.latestTime = row.Time
+			}
+		case incomeTypeTradingFee:
+			agg.fee += math.Abs(val)
+		case incomeTypeFundingFee:
+			agg.fundingFee += val
+		}
+	}
+	return agg
+}
+
+// CreateListenKey starts a new user data stream and returns its listenKey.
+func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
+	body, err := c.PostCtx(ctx, "/openApi/user/auth/userDataStream", nil, nil)
+	if err != nil {
+		return "", err
+	}
+
+	type listenKeyData struct {
+		ListenKey string `json:"listenKey"`
+	}
+	resp, err := ParseResponse[listenKeyData](body, "create_listen_key")
+	if err != nil {
+		return "", err
+	}
+	return resp.ListenKey, nil
+}
+
+// KeepAliveListenKey pings the active user data stream to keep it open.
+func (c *Client) KeepAliveListenKey(ctx context.Context, listenKey string) error {
+	params := map[string]string{
+		"listenKey": listenKey,
+	}
+	body, err := c.PutCtx(ctx, "/openApi/user/auth/userDataStream", params, nil)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "keepalive_listen_key")
 }

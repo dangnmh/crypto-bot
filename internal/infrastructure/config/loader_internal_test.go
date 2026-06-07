@@ -47,9 +47,17 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 		APISecret: "secret",
 	}
 
+	completeBingx := APIConfig{
+		Enable:    true,
+		Future:    RESTConfig{BaseURL: "https://api.example.com"},
+		APIKey:    "key",
+		APISecret: "secret",
+	}
+
 	assert.True(t, exchangeCredentialsComplete("Mexc", disabled))
 	assert.True(t, exchangeCredentialsComplete("Mexc", complete))
 	assert.False(t, exchangeCredentialsComplete("Mexc", missingKey))
+	assert.True(t, exchangeCredentialsComplete("Bingx", completeBingx))
 	assert.True(t, exchangeCredentialsComplete("Kucoin", completeKucoin))
 	assert.False(t, exchangeCredentialsComplete("Kucoin", complete))
 	assert.True(t, notificationCredentialsComplete(NotiConfig{
@@ -289,6 +297,8 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 				"KUCOIN_API_KEY":        " kucoin-key ",
 				"KUCOIN_API_SECRET":     " kucoin-secret ",
 				"KUCOIN_API_PASSPHRASE": " kucoin-passphrase ",
+				"BINGX_API_KEY":         " bingx-key ",
+				"BINGX_API_SECRET":      " bingx-secret ",
 				"TELEGRAM_CHAT_ID":      " 123 ",
 				"TELEGRAM_BOT_TOKEN":    " token ",
 			},
@@ -305,6 +315,8 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 	assert.Equal(t, "bybit-secret", creds.BybitAPISecret)
 	assert.Equal(t, "bitget-key", creds.BitgetAPIKey)
 	assert.Equal(t, "bitget-secret", creds.BitgetAPISecret)
+	assert.Equal(t, "bingx-key", creds.BingxAPIKey)
+	assert.Equal(t, "bingx-secret", creds.BingxAPISecret)
 	assert.Equal(t, "kucoin-key", creds.KucoinAPIKey)
 	assert.Equal(t, "kucoin-secret", creds.KucoinAPISecret)
 	assert.Equal(t, "kucoin-passphrase", creds.KucoinPassphrase)
@@ -344,6 +356,8 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 			"KUCOIN_API_KEY":        "kucoin-key",
 			"KUCOIN_API_SECRET":     "kucoin-secret",
 			"KUCOIN_API_PASSPHRASE": "kucoin-passphrase",
+			"BINGX_API_KEY":         "bingx-key",
+			"BINGX_API_SECRET":      "bingx-secret",
 			"TELEGRAM_CHAT_ID":      "123",
 			"TELEGRAM_BOT_TOKEN":    "token",
 		}}, nil
@@ -356,6 +370,7 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 			Bybit:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
 			Bitget: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
 			Kucoin: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
+			Bingx:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
@@ -371,6 +386,8 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 	assert.Equal(t, "kucoin-key", cfg.ExchangeConfig.Kucoin.APIKey)
 	assert.Equal(t, "kucoin-secret", cfg.ExchangeConfig.Kucoin.APISecret)
 	assert.Equal(t, "kucoin-passphrase", cfg.ExchangeConfig.Kucoin.APIPassphrase)
+	assert.Equal(t, "bingx-key", cfg.ExchangeConfig.Bingx.APIKey)
+	assert.Equal(t, "bingx-secret", cfg.ExchangeConfig.Bingx.APISecret)
 	assert.Equal(t, "123", cfg.NotiConfig.TelegramChatID)
 	assert.Equal(t, "token", cfg.NotiConfig.TelegramBotToken)
 

@@ -2,6 +2,7 @@ package bingx
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -19,7 +20,10 @@ type bingxCreateOrderRequest struct {
 	Type          string `json:"type"`
 	Quantity      string `json:"quantity"`
 	Price         string `json:"price,omitempty"`
-	ClientOrderID string `json:"clientOrderID,omitempty"`
+	TimeInForce   string `json:"timeInForce,omitempty"`
+	ClientOrderID string `json:"clientOrderId,omitempty"`
+	TakeProfit    string `json:"takeProfit,omitempty"`
+	StopLoss      string `json:"stopLoss,omitempty"`
 }
 
 type bingxCancelOrderRequest struct {
@@ -37,56 +41,100 @@ type bingxListOpenOrdersRequest struct {
 }
 
 type bingxChangeLeverageRequest struct {
-	Symbol       string `json:"symbol"`
-	Leverage     string `json:"leverage"`
-	PositionSide string `json:"positionSide"`
+	Symbol   string `json:"symbol"`
+	Leverage string `json:"leverage"`
+	Side     string `json:"side"`
 }
 
-type bingxOrderResult struct {
-	OrderID   string `json:"orderId"`
-	ClientOid string `json:"clientOid"`
+type bingxCreateOrderResponse struct {
+	Order struct {
+		OrderID       flexInt64 `json:"orderId"`
+		UpperOrderID  string    `json:"orderID"`
+		ClientOrderID string    `json:"clientOrderId"`
+	} `json:"order"`
+}
+
+type bingxGetOrderResponse struct {
+	Order bingxOrder `json:"order"`
+}
+
+type flexInt64 int64
+
+func (f *flexInt64) UnmarshalJSON(data []byte) error {
+	var val any
+	if err := json.Unmarshal(data, &val); err != nil {
+		return err
+	}
+	switch v := val.(type) {
+	case float64:
+		*f = flexInt64(v)
+	case int64:
+		*f = flexInt64(v)
+	case string:
+		parsed, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return err
+		}
+		*f = flexInt64(parsed)
+	default:
+		return fmt.Errorf("unexpected type for flexInt64: %T", val)
+	}
+	return nil
 }
 
 type bingxOrder struct {
-	OrderID      string `json:"orderId"`
-	ClientOid    string `json:"clientOid"`
-	Symbol       string `json:"symbol"`
-	Side         string `json:"side"`
-	PositionSide string `json:"positionSide"`
-	Type         string `json:"type"`
-	Quantity     string `json:"quantity"`
-	Price        string `json:"price"`
-	Status       string `json:"status"`
-	ExecutedQty  string `json:"executedQty"`
-	AvgPrice     string `json:"avgPrice"`
-	Time         string `json:"time"`
+	OrderID      flexInt64 `json:"orderId"`
+	ClientOid    string    `json:"clientOid"`
+	Symbol       string    `json:"symbol"`
+	Side         string    `json:"side"`
+	PositionSide string    `json:"positionSide"`
+	Type         string    `json:"type"`
+	Quantity     string    `json:"quantity"`
+	OrigQty      string    `json:"origQty"`
+	Price        string    `json:"price"`
+	Status       string    `json:"status"`
+	ExecutedQty  string    `json:"executedQty"`
+	AvgPrice     string    `json:"avgPrice"`
+	Time         int64     `json:"time"`
 }
 
 // Private raw methods invoking the BingX REST API.
 
-func (c *Client) createRawOrder(ctx context.Context, req bingxCreateOrderRequest) (*bingxOrderResult, error) {
+func (c *Client) createRawOrder(ctx context.Context, req bingxCreateOrderRequest) (*bingxCreateOrderResponse, error) {
 	bodyMap := map[string]any{
 		paramSymbol:       req.Symbol,
-		"side":            req.Side,
+		paramSide:         req.Side,
 		paramPositionSide: req.PositionSide,
-		"type":            req.Type,
+		paramType:         req.Type,
 		"quantity":        req.Quantity,
 	}
 
 	if req.Price != "" {
-		bodyMap["price"] = req.Price
+		bodyMap[paramPrice] = req.Price
+	}
+
+	if req.TimeInForce != "" {
+		bodyMap["timeInForce"] = req.TimeInForce
 	}
 
 	if req.ClientOrderID != "" {
-		bodyMap["clientOrderID"] = req.ClientOrderID
+		bodyMap["clientOrderId"] = req.ClientOrderID
 	}
 
-	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
+	if req.TakeProfit != "" {
+		bodyMap["takeProfit"] = req.TakeProfit
+	}
+
+	if req.StopLoss != "" {
+		bodyMap["stopLoss"] = req.StopLoss
+	}
+
+	body, err := c.PostCtx(ctx, pathPlaceOrder, nil, bodyMap)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := ParseResponse[bingxOrderResult](body, "create_order")
+	res, err := ParseResponse[bingxCreateOrderResponse](body, "create_order")
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +147,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bingxCancelOrderRequest
 		paramOrderId: req.OrderID,
 	}
 
-	body, err := c.PostCtx(ctx, pathCancelOrder, bodyMap)
+	body, err := c.PostCtx(ctx, pathCancelOrder, nil, bodyMap)
 	if err != nil {
 		return err
 	}
@@ -118,11 +166,11 @@ func (c *Client) getRawOrder(ctx context.Context, req bingxGetOrderRequest) (*bi
 		return nil, err
 	}
 
-	res, err := ParseResponse[bingxOrder](body, "get_order")
+	res, err := ParseResponse[bingxGetOrderResponse](body, "get_order")
 	if err != nil {
 		return nil, err
 	}
-	return &res, nil
+	return &res.Order, nil
 }
 
 func (c *Client) getRawOpenOrders(ctx context.Context, req bingxListOpenOrdersRequest) ([]bingxOrder, error) {
@@ -141,11 +189,11 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req bingxListOpenOrdersRe
 
 func (c *Client) changeRawLeverage(ctx context.Context, req bingxChangeLeverageRequest) error {
 	bodyMap := map[string]any{
-		paramSymbol:       req.Symbol,
-		paramLeverage:     req.Leverage,
-		paramPositionSide: req.PositionSide,
+		paramSymbol:   req.Symbol,
+		paramLeverage: req.Leverage,
+		paramSide:     req.Side,
 	}
-	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
+	body, err := c.PostCtx(ctx, pathSetLeverage, nil, bodyMap)
 	if err != nil {
 		return err
 	}
@@ -156,7 +204,7 @@ func (c *Client) changeRawLeverage(ctx context.Context, req bingxChangeLeverageR
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	ordType := mapOrderType(req.Type)
+	ordType, tif := mapOrderTypeAndTif(req.Type)
 	side, posSide := mapSideAndPosSide(req.Side, req.PositionMode)
 
 	rawReq := bingxCreateOrderRequest{
@@ -165,6 +213,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		PositionSide: posSide,
 		Type:         ordType,
 		Quantity:     fmt.Sprintf("%g", req.Vol),
+		TimeInForce:  tif,
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
@@ -175,14 +224,48 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.ClientOrderID = req.ExternalOID
 	}
 
+	tpslSubmitted := false
+	if req.TakeProfitPrice > 0 {
+		tpObj := map[string]any{
+			paramType:        "TAKE_PROFIT_MARKET",
+			paramStopPrice:   req.TakeProfitPrice,
+			paramPrice:       req.TakeProfitPrice,
+			paramWorkingType: valMarkPrice,
+		}
+		tpBytes, err := json.Marshal(tpObj)
+		if err == nil {
+			rawReq.TakeProfit = string(tpBytes)
+			tpslSubmitted = true
+		}
+	}
+
+	if req.StopLossPrice > 0 {
+		slObj := map[string]any{
+			paramType:        "STOP_MARKET",
+			paramStopPrice:   req.StopLossPrice,
+			paramPrice:       req.StopLossPrice,
+			paramWorkingType: valMarkPrice,
+		}
+		slBytes, err := json.Marshal(slObj)
+		if err == nil {
+			rawReq.StopLoss = string(slBytes)
+			tpslSubmitted = true
+		}
+	}
+
 	res, err := c.createRawOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
 
+	orderIDStr := strconv.FormatInt(int64(res.Order.OrderID), 10)
+	if orderIDStr == "0" {
+		orderIDStr = res.Order.UpperOrderID
+	}
+
 	return exchange.CreateOrderResult{
-		OrderID:       res.OrderID,
-		TPSLSubmitted: false,
+		OrderID:       orderIDStr,
+		TPSLSubmitted: tpslSubmitted,
 	}, nil
 }
 
@@ -290,9 +373,9 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 
 	// Set for LONG.
 	err := c.changeRawLeverage(ctx, bingxChangeLeverageRequest{
-		Symbol:       req.Symbol,
-		Leverage:     levStr,
-		PositionSide: posSideLong,
+		Symbol:   req.Symbol,
+		Leverage: levStr,
+		Side:     posSideLong,
 	})
 	if err != nil {
 		return err
@@ -300,9 +383,9 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 
 	// Set for SHORT.
 	return c.changeRawLeverage(ctx, bingxChangeLeverageRequest{
-		Symbol:       req.Symbol,
-		Leverage:     levStr,
-		PositionSide: posSideShort,
+		Symbol:   req.Symbol,
+		Leverage: levStr,
+		Side:     posSideShort,
 	})
 }
 
@@ -313,11 +396,13 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 	if marginMode == modeIsolated {
 		mgnType = modeIsolated
 	}
-	bodyMap := map[string]any{
+
+	params := map[string]string{
 		"symbol":     symbol,
 		"marginType": mgnType,
 	}
-	body, err := c.PostCtx(ctx, "/openApi/swap/v2/trade/marginType", bodyMap)
+
+	body, err := c.PostCtx(ctx, "/openApi/swap/v2/trade/marginType", params, nil)
 	if err != nil {
 		return err
 	}
@@ -326,18 +411,18 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 
 // Helper mapping methods.
 
-func mapOrderType(t int) string {
-	switch t {
+func mapOrderTypeAndTif(orderType int) (string, string) {
+	switch orderType {
 	case exchange.OrderTypeMarket:
-		return "MARKET"
+		return "MARKET", ""
 	case exchange.OrderTypePostOnly:
-		return "POST_ONLY"
+		return orderTypeLimit, "PO"
 	case exchange.OrderTypeIOC:
-		return "IOC"
+		return orderTypeLimit, "IOC"
 	case exchange.OrderTypeFOK:
-		return "FOK"
+		return orderTypeLimit, "FOK"
 	default:
-		return "LIMIT"
+		return orderTypeLimit, "GTC"
 	}
 }
 
@@ -401,18 +486,23 @@ func (c *Client) toOrderInfo(o *bingxOrder) *exchange.OrderInfo {
 	}
 
 	price := decmath.ParseFloat(o.Price)
-	qty := decmath.ParseFloat(o.Quantity)
+	qtyStr := o.Quantity
+	if qtyStr == "" {
+		qtyStr = o.OrigQty
+	}
+	qty := decmath.ParseFloat(qtyStr)
 	exec := decmath.ParseFloat(o.ExecutedQty)
 	avg := decmath.ParseFloat(o.AvgPrice)
 
 	return &exchange.OrderInfo{
-		OrderID:      o.OrderID,
+		OrderID:      strconv.FormatInt(int64(o.OrderID), 10),
 		Symbol:       o.Symbol,
 		Price:        price,
 		Vol:          qty,
 		DealVol:      exec,
 		DealAvgPrice: avg,
 		State:        state,
+		ExternalOID:  o.ClientOid,
 		Side:         sideVal,
 	}
 }

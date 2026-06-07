@@ -91,7 +91,7 @@
       "websocket": {
         "wsURL": "wss://open-api-ws.bingx.com/market"
       }
-    }
+    },
   },
   // ══════════════════════════════════════════════════════════════
   // Sync — Tần suất đồng bộ dữ liệu
@@ -130,7 +130,7 @@
   // ══════════════════════════════════════════════════════════════
   "tradingDefaults": {
     // ── 1. Entry Filter ──────────────────────────────────────────
-    "minFundingRate": 0.3, // FR tối thiểu (%). < 0.3% → phí ăn hết lời → skip
+    "minFundingRate": 0.1, // FR tối thiểu (%). < 0.3%
     "maxPriceDiffPercent": 0.8, // Slippage tĩnh fallback (%)
     // ── 2. Position ──────────────────────────────────────────────
     "leverage": 5,

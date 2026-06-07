@@ -43,12 +43,12 @@ type bingxTimeData struct {
 
 type bingxContract struct {
 	Symbol            string  `json:"symbol"`
-	QuantityPrecision int     `json:"quantity_precision"`
-	PricePrecision    int     `json:"price_precision"`
-	MakerFeeRate      float64 `json:"maker_fee_rate"`
-	TakerFeeRate      float64 `json:"taker_fee_rate"`
-	TradeMinQuantity  float64 `json:"trade_min_quantity"`
-	TradeMinUsdt      float64 `json:"trade_min_usdt"`
+	QuantityPrecision int     `json:"quantityPrecision"`
+	PricePrecision    int     `json:"pricePrecision"`
+	MakerFeeRate      float64 `json:"makerFeeRate"`
+	TakerFeeRate      float64 `json:"takerFeeRate"`
+	TradeMinQuantity  float64 `json:"tradeMinQuantity"`
+	TradeMinUsdt      float64 `json:"tradeMinUSDT"`
 	Currency          string  `json:"currency"`
 	Asset             string  `json:"asset"`
 	Status            int     `json:"status"`
@@ -294,21 +294,44 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 	rates := make([]exchange.FundingRateResult, 0, len(symbols))
-	for _, sym := range symbols {
-		rawList, err := c.getRawFundingRate(ctx, bingxFundingRateRequest{Symbol: sym})
+	if len(symbols) > 1 {
+		rawList, err := c.getRawFundingRate(ctx, bingxFundingRateRequest{})
 		if err != nil {
 			return nil, err
 		}
-		if len(rawList) == 0 {
-			return nil, fmt.Errorf("bingx funding rate not found for symbol: %s", sym)
+		rawMap := make(map[string]rawPremiumIndex)
+		for _, raw := range rawList {
+			rawMap[raw.Symbol] = raw
 		}
-		raw := &rawList[0]
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     raw.Symbol,
-			Rate:       decmath.ParseFloat(raw.LastFundingRate),
-			SettleTime: raw.NextFundingTime,
-		})
+		for _, sym := range symbols {
+			raw, ok := rawMap[sym]
+			if !ok {
+				return nil, fmt.Errorf("bingx funding rate not found for symbol: %s", sym)
+			}
+			rates = append(rates, exchange.FundingRateResult{
+				Symbol:     raw.Symbol,
+				Rate:       decmath.ParseFloat(raw.LastFundingRate),
+				SettleTime: raw.NextFundingTime,
+			})
+		}
+		return rates, nil
 	}
+
+	// Single symbol path
+	sym := symbols[0]
+	rawList, err := c.getRawFundingRate(ctx, bingxFundingRateRequest{Symbol: sym})
+	if err != nil {
+		return nil, err
+	}
+	if len(rawList) == 0 {
+		return nil, fmt.Errorf("bingx funding rate not found for symbol: %s", sym)
+	}
+	raw := &rawList[0]
+	rates = append(rates, exchange.FundingRateResult{
+		Symbol:     raw.Symbol,
+		Rate:       decmath.ParseFloat(raw.LastFundingRate),
+		SettleTime: raw.NextFundingTime,
+	})
 	return rates, nil
 }
 
