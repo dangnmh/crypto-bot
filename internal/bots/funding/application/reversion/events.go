@@ -304,19 +304,20 @@ func (e PositionWatchReadyEvent) GetDataMap() map[string]any {
 
 type IOCSubmittedEvent struct {
 	BaseReversionEvent
-	OrderID       string      `json:"order_id"`
-	ExternalID    string      `json:"external_id"`
-	Side          shared.Side `json:"side"`
-	CloseSide     shared.Side `json:"close_side"`
-	OrderType     int         `json:"order_type"`
-	IntendedPrice float64     `json:"intended_price"`
-	Volume        float64     `json:"volume"`
-	TPPrice       float64     `json:"tp_price,omitempty"`
-	SLPrice       float64     `json:"sl_price,omitempty"`
-	TPSLSubmitted bool        `json:"tpsl_submitted"`
-	FireTimestamp time.Time   `json:"fire_timestamp"`
-	LatencyRTTMs  int64       `json:"latency_rtt_ms,omitempty"`
-	Error         string      `json:"error,omitempty"`
+	Candidate     fundingdomain.Candidate `json:"candidate"`
+	OrderID       string                  `json:"order_id"`
+	ExternalID    string                  `json:"external_id"`
+	Side          shared.Side             `json:"side"`
+	CloseSide     shared.Side             `json:"close_side"`
+	OrderType     int                     `json:"order_type"`
+	IntendedPrice float64                 `json:"intended_price"`
+	Volume        float64                 `json:"volume"`
+	TPPrice       float64                 `json:"tp_price,omitempty"`
+	SLPrice       float64                 `json:"sl_price,omitempty"`
+	TPSLSubmitted bool                    `json:"tpsl_submitted"`
+	FireTimestamp time.Time               `json:"fire_timestamp"`
+	LatencyRTTMs  int64                   `json:"latency_rtt_ms,omitempty"`
+	Error         string                  `json:"error,omitempty"`
 }
 
 func (e IOCSubmittedEvent) GetMessage() string {

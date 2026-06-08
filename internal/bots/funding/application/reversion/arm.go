@@ -15,6 +15,13 @@ import (
 
 func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
 	r.log.InfoContext(ctx, "handleArm SettleTime", slog.Time("settle", startEvt.SettleTime))
+	type syncer interface {
+		SyncNow(ctx context.Context)
+	}
+	if s, ok := r.deps.Clock.(syncer); ok {
+		r.log.InfoContext(ctx, "Forcing clock sync on arm")
+		s.SyncNow(ctx)
+	}
 	c := startEvt.Candidate
 	maxWait := 5 * time.Second
 

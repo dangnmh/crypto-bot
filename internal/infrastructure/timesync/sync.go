@@ -111,6 +111,11 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 	}
 }
 
+// SyncNow forces an immediate time synchronization round synchronously.
+func (ts *TimeSync) SyncNow(ctx context.Context) {
+	ts.syncOnce(ctx)
+}
+
 // GetServerTime returns the estimated current server time in milliseconds.
 func (ts *TimeSync) GetServerTime() int64 {
 	ts.mu.RLock()

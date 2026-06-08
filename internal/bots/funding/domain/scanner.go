@@ -40,6 +40,7 @@ type TradeConfig struct {
 	Leverage            int
 	FundingReversion    FundingReversionConfig
 	FundingTrap         FundingTrapConfig
+	MinFundingRate      float64
 
 	// Parsed exchange-specific values.
 	ParsedOpenType     int

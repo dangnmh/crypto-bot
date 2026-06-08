@@ -11,13 +11,7 @@ func (r *StatelessRunner) scheduleTimeoutGuard(ctx context.Context, evt IOCOutco
 }
 
 func (r *StatelessRunner) scheduleTimeoutGuardAfter(ctx context.Context, prev BaseReversionEvent, evt IOCSubmittedEvent) error {
-	cfg, ok := r.getSymbolConfig(evt.Symbol)
-	if !ok {
-		r.log.Error("Symbol config not found for timeout handler", slog.String("symbol", evt.Symbol))
-		return nil
-	}
-
-	timeout := time.Duration(cfg.FundingReversion.PostSettleTimeout)
+	timeout := time.Duration(evt.Candidate.Config.FundingReversion.PostSettleTimeout)
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}

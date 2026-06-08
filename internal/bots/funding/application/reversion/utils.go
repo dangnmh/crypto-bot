@@ -105,6 +105,10 @@ type StatelessRunner struct {
 	stores   map[string]strategy.FundingStoreSet
 	notifier notifier.Notifier
 
+	// Target context to resolve configuration conflicts across multiple exchanges
+	exchange string
+	symbol   string
+
 	// Test fallbacks
 	clock         shared.Clock
 	orderNotifier infrawatcher.OrderNotifier
@@ -112,59 +116,62 @@ type StatelessRunner struct {
 }
 
 func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
-	prov, err := r.engine.GetProvider(exch)
-	if err != nil {
-		r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
-		return r
-	}
-	stores := r.stores[exch]
-	if stores == nil {
-		r.log.Error("Failed to locate stores for clone", slog.String("exchange", exch))
-		return r
-	}
-
-	var clock shared.Clock = prov.TimeSync
-	if r.clock != nil {
-		clock = r.clock
-	}
-
-	var orderNotifier infrawatcher.OrderNotifier = prov.Watcher
-	if r.orderNotifier != nil {
-		orderNotifier = r.orderNotifier
-	}
-
-	var wsSub infraws.Subscriber = prov.Adapter
-	if r.wsSub != nil {
-		wsSub = r.wsSub
-	}
-
 	local := *r
-	clonedLog := r.log.With("exchange", exch, "req", reqID, "symbol", symbol)
+	local.exchange = exch
+	local.symbol = symbol
+	var clonedLog *slog.Logger
+	if r.log != nil {
+		clonedLog = r.log.With("exchange", exch, "req", reqID, "symbol", symbol)
+	} else {
+		clonedLog = slog.Default()
+	}
 	local.log = clonedLog
-	local.deps = strategy.Deps{
-		Client:        prov.Client,
-		WsSub:         wsSub,
-		OrderNotifier: orderNotifier,
-		TickerStore:   stores.Ticker(),
-		ContractStore: stores.Contract(),
-		PriceStore:    stores.Price(),
-		FundingStore:  stores.Funding(),
-		DepthStore:    stores.Depth(),
-		Clock:         clock,
-		Log:           clonedLog,
-		Notifier:      r.notifier,
-		EventBus:      r.engine.Bus,
+
+	if r.engine != nil {
+		prov, err := r.engine.GetProvider(exch)
+		if err != nil {
+			r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
+			return r
+		}
+		stores := r.stores[exch]
+		if stores == nil {
+			r.log.Error("Failed to locate stores for clone", slog.String("exchange", exch))
+			return r
+		}
+
+		var clock shared.Clock = prov.TimeSync
+		if r.clock != nil {
+			clock = r.clock
+		}
+
+		var orderNotifier infrawatcher.OrderNotifier = prov.Watcher
+		if r.orderNotifier != nil {
+			orderNotifier = r.orderNotifier
+		}
+
+		var wsSub infraws.Subscriber = prov.Adapter
+		if r.wsSub != nil {
+			wsSub = r.wsSub
+		}
+
+		local.deps = strategy.Deps{
+			Client:        prov.Client,
+			WsSub:         wsSub,
+			OrderNotifier: orderNotifier,
+			TickerStore:   stores.Ticker(),
+			ContractStore: stores.Contract(),
+			PriceStore:    stores.Price(),
+			FundingStore:  stores.Funding(),
+			DepthStore:    stores.Depth(),
+			Clock:         clock,
+			Log:           clonedLog,
+			Notifier:      r.notifier,
+			EventBus:      r.engine.Bus,
+		}
+	} else {
+		local.deps.Log = clonedLog
 	}
 	return &local
-}
-
-func (r *StatelessRunner) getSymbolConfig(symbol string) (config.SymbolConfig, bool) {
-	for i := range r.globalCfg.Symbols {
-		if r.globalCfg.Symbols[i].Symbol == symbol {
-			return r.globalCfg.Symbols[i], true
-		}
-	}
-	return config.SymbolConfig{}, false
 }
 
 func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payload any) error {

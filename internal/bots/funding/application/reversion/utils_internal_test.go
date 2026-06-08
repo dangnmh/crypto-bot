@@ -354,12 +354,6 @@ func TestStatelessRunnerGetSymbolAndWaitUntilBranches(t *testing.T) {
 		log:       reversionTestLogger(),
 	}
 
-	symCfg, ok := runner.getSymbolConfig("BTC_USDT")
-	require.True(t, ok)
-	assert.Equal(t, "BTC_USDT", symCfg.Symbol)
-	_, ok = runner.getSymbolConfig("ETH_USDT")
-	assert.False(t, ok)
-
 	assert.True(t, runner.WaitUntil(context.Background(), "BTC_USDT", target))
 	assert.True(t, runner.WaitUntil(context.Background(), "BTC_USDT", target))
 }
@@ -568,6 +562,7 @@ func TestWatcherFillBeforeOutcomeDoesNotDuplicateOrderFilled(t *testing.T) {
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
 		IOCEvent: IOCSubmittedEvent{
 			BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
+			Candidate:          reversionTestCandidate(),
 			OrderID:            "ord-fill",
 		},
 		OrderID: "ord-fill",
@@ -630,6 +625,7 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 
 			submitted := IOCSubmittedEvent{
 				BaseReversionEvent: BaseReversionEvent{ReqID: tt.reqID, Symbol: "BTC_USDT"},
+				Candidate:          reversionTestCandidate(),
 				OrderID:            "ord-none",
 			}
 			outcome := runner.resolveIOCOutcome(context.Background(), submitted)
@@ -667,6 +663,7 @@ func TestIOCPartialFillSchedulesTimeoutGuard(t *testing.T) {
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
 		IOCEvent: IOCSubmittedEvent{
 			BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
+			Candidate:          reversionTestCandidate(),
 			OrderID:            "ord-partial",
 		},
 		OrderID: "ord-partial",
@@ -704,6 +701,7 @@ func TestTimeoutForceClosePathCompletes(t *testing.T) {
 	reqID := "trace-req-force-close"
 	ioc := IOCSubmittedEvent{
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
+		Candidate:          reversionTestCandidate(),
 		OrderID:            "ord-timeout",
 		Side:               shared.SideOpenLong,
 	}
@@ -794,21 +792,16 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 		bus:       bus,
 		log:       reversionTestLogger(),
 	}
-	err := runner.handleRecheck(context.Background(), WaitCompleteEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-		Candidate: fundingdomain.Candidate{
-			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
-		},
-	})
-	require.ErrorContains(t, err, "symbol config not found")
 
 	fundingStore := mocks.NewMockFundingReader(ctrl)
 	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(nil, errors.New("missing funding"))
 	runner.deps.FundingStore = fundingStore
-	runner.globalCfg.Symbols = []config.SymbolConfig{{Symbol: "BTC_USDT", MinFundingRate: 0.001}}
-	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
+	err := runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		Candidate: fundingdomain.Candidate{
+			Config: fundingdomain.TradeConfig{
+				MinFundingRate: 0.001,
+			},
 			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
 		},
 	})
@@ -821,6 +814,9 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		Candidate: fundingdomain.Candidate{
+			Config: fundingdomain.TradeConfig{
+				MinFundingRate: 0.001,
+			},
 			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
 		},
 	})
@@ -833,6 +829,9 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		Candidate: fundingdomain.Candidate{
+			Config: fundingdomain.TradeConfig{
+				MinFundingRate: 0.001,
+			},
 			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
 		},
 	})
@@ -859,20 +858,16 @@ func TestStatelessRunnerHandleFireIOCEarlyErrors(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "settle time not found")
 
-	err = runner.handleFireIOC(context.Background(), ConfirmedEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: time.Now().Add(time.Second)},
-	})
-	require.ErrorContains(t, err, "symbol config not found")
-
 	clock.EXPECT().LatencyMs().Return(int64(200))
-	runner.globalCfg.Symbols = []config.SymbolConfig{{
-		Symbol: "BTC_USDT",
-		FundingReversion: fundingdomain.FundingReversionConfig{
-			MaxLatency: 50_000_000,
-		},
-	}}
 	err = runner.handleFireIOC(context.Background(), ConfirmedEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: time.Now().Add(time.Second)},
+		Candidate: fundingdomain.Candidate{
+			Config: fundingdomain.TradeConfig{
+				FundingReversion: fundingdomain.FundingReversionConfig{
+					MaxLatency: 50_000_000,
+				},
+			},
+		},
 	})
 	require.ErrorContains(t, err, "latency too high")
 }
@@ -955,10 +950,12 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 		log: reversionTestLogger(),
 	}
 
+	cand := reversionTestCandidate()
 	require.NoError(t, runner.waitTimeoutDeadline(context.Background(), TimeoutGuardScheduledEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		IOCEvent: IOCSubmittedEvent{
 			BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: now.Add(-time.Second)},
+			Candidate:          cand,
 		},
 		Timeout:   10 * time.Millisecond,
 		StartedAt: now,
@@ -966,17 +963,23 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 
 	require.NoError(t, runner.timeoutGuard(context.Background(), IOCSubmittedEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "ETH_USDT"},
+		Candidate:          cand,
 	}))
 }
 
 type reversionManualClock struct {
-	now       time.Time
-	latencyMs int64
-	offsetMs  int64
+	now        time.Time
+	latencyMs  int64
+	offsetMs   int64
+	syncCalled bool
 }
 
 func newReversionManualClock(now time.Time) *reversionManualClock {
 	return &reversionManualClock{now: now, latencyMs: 20}
+}
+
+func (c *reversionManualClock) SyncNow(ctx context.Context) {
+	c.syncCalled = true
 }
 
 func (c *reversionManualClock) Now() time.Time {
@@ -1021,7 +1024,14 @@ func reversionTestCandidate() fundingdomain.Candidate {
 			Symbol:              "BTC_USDT",
 			MaxPriceDiffPercent: 0.01,
 			MarginUSDT:          100,
-			Leverage:            1,
+			Leverage:            0,
+			MinFundingRate:      0.001,
+			FundingReversion: fundingdomain.FundingReversionConfig{
+				Enabled:           true,
+				PostSettleTimeout: 10_000_000_000, // 10s
+				BufferTime:        150_000_000,    // 150ms
+				MaxLatency:        50_000_000,     // 50ms
+			},
 		},
 		TradeIntent: fundingdomain.TradeIntent{
 			Symbol:    "BTC_USDT",
@@ -1093,4 +1103,78 @@ func countTopic(bus *eventbus.Bus, topic string) int {
 		}
 	}
 	return count
+}
+
+func TestStatelessRunnerSyncNowInvocation(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	clock := newReversionManualClock(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC))
+	bus := eventbus.New(reversionTestLogger())
+	t.Cleanup(func() { _ = bus.Close() })
+
+	fundingStore := mocks.NewMockFundingReader(ctrl)
+	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.01,
+	}, nil).AnyTimes()
+
+	ws := mocks.NewMockSubscriber(ctrl)
+	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
+
+	priceStore := mocks.NewMockPriceReader(ctrl)
+	priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
+		LastPrice: 100,
+		BestBid:   99,
+		BestAsk:   101,
+	}, nil).AnyTimes()
+	priceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes() // mock subscription
+
+	runner := &StatelessRunner{
+		deps: strategy.Deps{
+			Clock:        clock,
+			FundingStore: fundingStore,
+			WsSub:        ws,
+			PriceStore:   priceStore,
+		},
+		globalCfg: &config.Config{
+			Symbols: []config.SymbolConfig{
+				{
+					Symbol:         "BTC_USDT",
+					Exchange:       "mexc",
+					MinFundingRate: 0.001,
+				},
+			},
+		},
+		bus: bus,
+		log: reversionTestLogger(),
+	}
+
+	// 1. Verify handleArm triggers SyncNow
+	assert.False(t, clock.syncCalled)
+	err := runner.handleArm(context.Background(), CandidateFoundEvent{
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
+		Candidate: fundingdomain.Candidate{
+			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
+		},
+	})
+	require.NoError(t, err)
+	assert.True(t, clock.syncCalled)
+
+	// Reset tracker
+	clock.syncCalled = false
+
+	// 2. Verify handleRecheck triggers SyncNow
+	assert.False(t, clock.syncCalled)
+	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
+		Candidate: fundingdomain.Candidate{
+			Config: fundingdomain.TradeConfig{
+				MinFundingRate: 0.001,
+			},
+			TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT", FundingRate: 0.01},
+		},
+	})
+	require.NoError(t, err)
+	assert.True(t, clock.syncCalled)
 }

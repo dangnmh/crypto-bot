@@ -28,15 +28,8 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		return err
 	}
 
-	cfg, ok := r.getSymbolConfig(confirmedEvt.Symbol)
-	if !ok {
-		err := errors.New("symbol config not found")
-		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
-		return err
-	}
-
 	latencyMs := r.deps.Clock.LatencyMs()
-	maxLatency := time.Duration(cfg.FundingReversion.MaxLatency)
+	maxLatency := time.Duration(confirmedEvt.Candidate.Config.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
 		err := errors.New("latency too high")
 		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
@@ -67,21 +60,14 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 		return fmt.Errorf("switch margin mode failed: %w", err)
 	}
 
-	cfg, ok := r.getSymbolConfig(evt.Symbol)
-	if !ok {
-		err := errors.New("symbol config not found")
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, err.Error())
-		return err
-	}
-
 	latencyMs := r.deps.Clock.LatencyMs()
 	oneWayMs := latencyMs / 2
-	bufferTime := time.Duration(cfg.FundingReversion.BufferTime)
+	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
 	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
 
-	// Ensure snapshotOffset is at least fireOffset + 300ms, and at least 500ms overall
+	// Ensure snapshotOffset is at least fireOffset + 300ms, and at least 300ms overall
 	// to avoid race conditions during the price refresh and safety calculation.
-	snapshotOffset := max(fireOffset+300*time.Millisecond, 500*time.Millisecond)
+	snapshotOffset := max(fireOffset+300*time.Millisecond, 300*time.Millisecond)
 
 	nextEvt := FireTimingReadyEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
@@ -156,6 +142,7 @@ func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePla
 	if !evt.Passed {
 		submitted := IOCSubmittedEvent{
 			BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
+			Candidate:          c,
 			Side:               c.Side,
 			CloseSide:          c.CloseSide,
 			FireTimestamp:      r.deps.Clock.Now(),
@@ -188,22 +175,18 @@ func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePla
 }
 
 func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireWindowReachedEvent) error {
-	cfg, ok := r.getSymbolConfig(evt.Symbol)
-	if !ok {
-		r.log.Error("Symbol config not found for position watch", slog.String("symbol", evt.Symbol))
-		return nil
-	}
-	timeout := time.Duration(cfg.FundingReversion.PostSettleTimeout)
+	timeout := time.Duration(evt.Candidate.Config.FundingReversion.PostSettleTimeout)
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
 
 	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
-	if cfg.Leverage > 0 && !evt.SupportLeverageOnOrder {
-		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", cfg.Leverage))
+	leverage := evt.Candidate.Config.Leverage
+	if leverage > 0 && !evt.SupportLeverageOnOrder {
+		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
 		err := r.deps.Client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
 			Symbol:   evt.Symbol,
-			Leverage: cfg.Leverage,
+			Leverage: leverage,
 		})
 		if err != nil {
 			r.log.ErrorContext(ctx, "Failed to adjust leverage", slog.Any("error", err), slog.String("symbol", evt.Symbol))
@@ -237,6 +220,7 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 		base.ExternalID = res.ExternalID
 		next := IOCSubmittedEvent{
 			BaseReversionEvent: base,
+			Candidate:          c,
 			OrderID:            res.OrderID,
 			ExternalID:         res.ExternalID,
 			Side:               c.Side,
@@ -276,6 +260,7 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 	base.ExternalID = res.ExternalID
 	next := IOCSubmittedEvent{
 		BaseReversionEvent: base,
+		Candidate:          c,
 		OrderID:            res.OrderID,
 		ExternalID:         res.ExternalID,
 		Side:               c.Side,

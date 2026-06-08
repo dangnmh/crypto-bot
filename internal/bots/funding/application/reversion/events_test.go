@@ -34,6 +34,7 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 	}
 	ioc := reversion.IOCSubmittedEvent{
 		BaseReversionEvent: base,
+		Candidate:          candidate,
 		OrderID:            "ord-1",
 		Side:               shared.SideOpenLong,
 		CloseSide:          shared.SideCloseLong,
@@ -246,8 +247,8 @@ func TestReversionEventsNotifyOnErrorsEvenWhenSendNotifyFalse(t *testing.T) {
 	t.Parallel()
 
 	base := reversion.BaseReversionEvent{Symbol: "ETH_USDT"}
-
-	ioc := reversion.IOCSubmittedEvent{BaseReversionEvent: base, Error: "exchange rejected"}
+	candidate := fundingdomain.Candidate{TradeIntent: fundingdomain.TradeIntent{Symbol: "ETH_USDT"}}
+	ioc := reversion.IOCSubmittedEvent{BaseReversionEvent: base, Candidate: candidate, Error: "exchange rejected"}
 	assert.True(t, ioc.ShouldNotify())
 	assert.Contains(t, ioc.GetMessage(), "failed")
 

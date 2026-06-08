@@ -706,6 +706,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
 		{Symbol: "BTC_USDT", HoldVol: 1},
 	}, nil).AnyTimes()
+	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	// 4. Watcher/notifier expectations
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(

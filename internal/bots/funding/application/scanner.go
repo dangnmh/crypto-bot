@@ -306,5 +306,6 @@ func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 		FundingTrap:         sc.FundingTrap,
 		ParsedOpenType:      sc.ParsedOpenType,
 		ParsedPositionMode:  sc.ParsedPositionMode,
+		MinFundingRate:      sc.MinFundingRate,
 	}
 }
