@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -70,14 +71,56 @@ func toAPIError(code int, message, path string) *exchange.APIError {
 
 // toHTTPError creates an APIError for non-200 HTTP status codes.
 func toHTTPError(statusCode int, body []byte, path string) *exchange.APIError {
-	return &exchange.APIError{
+	apiErr := &exchange.APIError{
 		StatusCode: statusCode,
 		Message:    string(body),
 		Path:       path,
 	}
+
+	var resp struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	if err := json.Unmarshal(body, &resp); err == nil && resp.Code != "" {
+		var codeVal int
+		if _, err := fmt.Sscanf(resp.Code, "%d", &codeVal); err == nil {
+			apiErr.Code = codeVal
+		}
+		if resp.Msg != "" {
+			apiErr.Message = resp.Msg
+		}
+	}
+
+	return apiErr
 }
 
 // isRateLimited checks if an HTTP response indicates rate limiting.
 func isRateLimited(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests
+}
+
+// mapPositionType determines the exchange-agnostic position side type (1 = long, 2 = short).
+func mapPositionType(posSide string, pos float64, instID, posCcy string) int {
+	if posSide == posSideShort {
+		return 2 // short
+	}
+	if posSide == posSideLong {
+		return 1 // long
+	}
+	if posSide == posSideNet {
+		if posCcy != "" {
+			// Margin: posCcy being base currency means long position, posCcy being quote currency means short position.
+			parts := strings.Split(instID, "-")
+			if len(parts) >= 2 && posCcy == parts[0] {
+				return 1 // long
+			}
+			return 2 // short
+		}
+		// Futures/Swap/Option: positive pos means long position, negative pos means short position.
+		if pos < 0 {
+			return 2 // short
+		}
+		return 1 // long
+	}
+	return 1 // default to long
 }

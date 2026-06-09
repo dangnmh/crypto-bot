@@ -2,9 +2,12 @@ package okx_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -26,7 +29,7 @@ func TestClient_GetServerTime(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"code": "0",
 			"msg": "",
-			"data": [{"epoch": "1597026383085"}]
+			"data": [{"ts": "1597026383085"}]
 		}`))
 	}))
 	defer server.Close()
@@ -344,6 +347,52 @@ func TestClient_GetOpenPositions(t *testing.T) {
 					"margin": "5000",
 					"posSide": "long",
 					"mgnMode": "isolated"
+				},
+				{
+					"instId": "BTC-USDT-SWAP",
+					"pos": "1.5",
+					"lever": "10",
+					"avgPx": "50000",
+					"liqPx": "45000",
+					"realizedPnl": "5.5",
+					"margin": "5000",
+					"posSide": "short",
+					"mgnMode": "isolated"
+				},
+				{
+					"instId": "BTC-USDT-SWAP",
+					"pos": "-2.5",
+					"lever": "10",
+					"avgPx": "50000",
+					"liqPx": "45000",
+					"realizedPnl": "5.5",
+					"margin": "5000",
+					"posSide": "net",
+					"mgnMode": "isolated"
+				},
+				{
+					"instId": "BTC-USDT",
+					"pos": "0.5",
+					"lever": "1",
+					"avgPx": "50000",
+					"liqPx": "45000",
+					"realizedPnl": "5.5",
+					"margin": "5000",
+					"posSide": "net",
+					"mgnMode": "isolated",
+					"posCcy": "BTC"
+				},
+				{
+					"instId": "BTC-USDT",
+					"pos": "100.0",
+					"lever": "1",
+					"avgPx": "50000",
+					"liqPx": "45000",
+					"realizedPnl": "5.5",
+					"margin": "5000",
+					"posSide": "net",
+					"mgnMode": "isolated",
+					"posCcy": "USDT"
 				}
 			]
 		}`))
@@ -353,10 +402,32 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
 	positions, err := client.GetOpenPositions(context.Background(), "")
 	require.NoError(t, err)
-	require.Len(t, positions, 1)
+	require.Len(t, positions, 5)
+
+	// 1. Long position in hedge mode
 	assert.Equal(t, "BTC-USDT-SWAP", positions[0].Symbol)
 	assert.Equal(t, 1.0, positions[0].HoldVol)
 	assert.Equal(t, 1, positions[0].PositionType)
+
+	// 2. Short position in hedge mode
+	assert.Equal(t, "BTC-USDT-SWAP", positions[1].Symbol)
+	assert.Equal(t, 1.5, positions[1].HoldVol)
+	assert.Equal(t, 2, positions[1].PositionType)
+
+	// 3. Short position in net mode (negative quantity)
+	assert.Equal(t, "BTC-USDT-SWAP", positions[2].Symbol)
+	assert.Equal(t, 2.5, positions[2].HoldVol)
+	assert.Equal(t, 2, positions[2].PositionType)
+
+	// 4. Margin position in net mode matching base currency (long)
+	assert.Equal(t, "BTC-USDT", positions[3].Symbol)
+	assert.Equal(t, 0.5, positions[3].HoldVol)
+	assert.Equal(t, 1, positions[3].PositionType)
+
+	// 5. Margin position in net mode matching quote currency (short)
+	assert.Equal(t, "BTC-USDT", positions[4].Symbol)
+	assert.Equal(t, 100.0, positions[4].HoldVol)
+	assert.Equal(t, 2, positions[4].PositionType)
 }
 
 func TestClient_GetKlines(t *testing.T) {
@@ -445,29 +516,163 @@ func TestClient_ClosePosition(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func newMockSetLeverageServer(t *testing.T, requestCount *int, expectedPosSide string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/api/v5/account/set-leverage", r.URL.Path)
+		*requestCount++
+
+		bodyBytes, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		var req struct {
+			InstID  string `json:"instId"`
+			Lever   string `json:"lever"`
+			MgnMode string `json:"mgnMode"`
+			PosSide string `json:"posSide"`
+		}
+		err = json.Unmarshal(bodyBytes, &req)
+		require.NoError(t, err)
+
+		w.Header().Set("Content-Type", "application/json")
+		switch *requestCount {
+		case 1:
+			assert.Equal(t, expectedPosSide, req.PosSide)
+			_, _ = w.Write([]byte(`{
+				"code": "51000",
+				"msg": "Parameter posSide error"
+			}`))
+		case 2:
+			assert.Equal(t, "", req.PosSide)
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": []
+			}`))
+		default:
+			t.Fatalf("unexpected request count %d", *requestCount)
+		}
+	}))
+}
+
 func TestClient_ChangeLeverage(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "/api/v5/account/set-leverage", r.URL.Path)
+	t.Run("Success first try", func(t *testing.T) {
+		t.Parallel()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/api/v5/account/set-leverage", r.URL.Path)
 
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": []
-		}`))
-	}))
-	defer server.Close()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": []
+			}`))
+		}))
+		defer server.Close()
 
-	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	req := exchange.ChangeLeverageRequest{
-		Symbol:   "BTC-USDT-SWAP",
-		Leverage: 20,
-		OpenType: exchange.OpenTypeIsolated,
-	}
-	err := client.ChangeLeverage(context.Background(), req)
+		client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+		req := exchange.ChangeLeverageRequest{
+			Symbol:   "BTC-USDT-SWAP",
+			Leverage: 20,
+			OpenType: exchange.OpenTypeIsolated,
+		}
+		err := client.ChangeLeverage(context.Background(), req)
+		require.NoError(t, err)
+	})
+
+	t.Run("Success first try cross margin", func(t *testing.T) {
+		t.Parallel()
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/api/v5/account/set-leverage", r.URL.Path)
+
+			bodyBytes, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+
+			var req struct {
+				MgnMode string `json:"mgnMode"`
+				PosSide string `json:"posSide"`
+			}
+			err = json.Unmarshal(bodyBytes, &req)
+			require.NoError(t, err)
+
+			assert.Equal(t, "cross", req.MgnMode)
+			assert.Empty(t, req.PosSide)
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": []
+			}`))
+		}))
+		defer server.Close()
+
+		client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+		req := exchange.ChangeLeverageRequest{
+			Symbol:       "BTC-USDT-SWAP",
+			Leverage:     20,
+			OpenType:     exchange.OpenTypeCross,
+			PositionType: 1,
+		}
+		err := client.ChangeLeverage(context.Background(), req)
+		require.NoError(t, err)
+	})
+
+	t.Run("Fallback on 51000 posSide error", func(t *testing.T) {
+		t.Parallel()
+		var requestCount int
+		server := newMockSetLeverageServer(t, &requestCount, "long")
+		defer server.Close()
+
+		client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+		req := exchange.ChangeLeverageRequest{
+			Symbol:       "BTC-USDT-SWAP",
+			Leverage:     20,
+			OpenType:     exchange.OpenTypeIsolated,
+			PositionType: 1, // Long -> posSide = "long"
+		}
+		err := client.ChangeLeverage(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, 2, requestCount)
+	})
+
+	t.Run("Other error does not retry", func(t *testing.T) {
+		t.Parallel()
+		var requestCount int
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			requestCount++
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"code": "50001",
+				"msg": "Some other error"
+			}`))
+		}))
+		defer server.Close()
+
+		client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+		req := exchange.ChangeLeverageRequest{
+			Symbol:       "BTC-USDT-SWAP",
+			Leverage:     20,
+			OpenType:     exchange.OpenTypeIsolated,
+			PositionType: 1,
+		}
+		err := client.ChangeLeverage(context.Background(), req)
+		require.Error(t, err)
+		assert.Equal(t, 1, requestCount)
+	})
+}
+
+func TestClient_SwitchMarginMode(t *testing.T) {
+	t.Parallel()
+
+	client := okx.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
+	err := client.SwitchMarginMode(context.Background(), "BTC-USDT-SWAP", "ISOLATED", 10, domain.SideOpenLong)
 	require.NoError(t, err)
 }
 
@@ -650,4 +855,140 @@ func TestClient_ErrorPaths(t *testing.T) {
 	// 2. CancelOrders unimplemented
 	err = client.CancelOrders(context.Background(), []string{"1"})
 	assert.ErrorContains(t, err, "order not found")
+}
+
+func TestClient_GetRecentClosedPnL(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v5/account/positions-history", r.URL.Path)
+		assert.Equal(t, "SWAP", r.URL.Query().Get("instType"))
+		assert.Equal(t, "BTC-USDT-SWAP", r.URL.Query().Get("instId"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "0",
+			"msg": "",
+			"data": [
+				{
+					"instId": "BTC-USDT-SWAP",
+					"openAvgPx": "50000.0",
+					"closeAvgPx": "51000.0",
+					"closeTotalPos": "0.1",
+					"pnl": "100.0",
+					"fee": "-0.5",
+					"fundingFee": "-0.1",
+					"realizedPnl": "99.4",
+					"cTime": "1597026383000",
+					"uTime": "1597026385000",
+					"posSide": "long",
+					"pos": "1"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "", time.Time{})
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
+	assert.Equal(t, 50000.0, res.EntryPrice)
+	assert.Equal(t, 51000.0, res.ExitPrice)
+	assert.Equal(t, 0.1, res.ClosedSize)
+	assert.Equal(t, 100.0, res.GrossPnL)
+	assert.Equal(t, 0.5, res.Fee) // Math.Abs
+	assert.Equal(t, -0.1, res.FundingFee)
+	assert.Equal(t, int64(2000), res.DurationMs)
+	assert.Equal(t, 99.4, res.NetPnl)
+	assert.InDelta(t, 2.0, res.PnLRate, 0.0001)
+}
+
+func TestClient_GetRecentClosedPnL_Retry(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v5/account/positions-history", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		calls++
+		if calls == 1 {
+			// First call returns empty data
+			_, _ = w.Write([]byte(`{"code": "0", "msg": "", "data": []}`))
+			return
+		}
+
+		// Second call returns successful data
+		_, _ = w.Write([]byte(`{
+			"code": "0",
+			"msg": "",
+			"data": [
+				{
+					"instId": "BTC-USDT-SWAP",
+					"openAvgPx": "50000.0",
+					"closeAvgPx": "51000.0",
+					"closeTotalPos": "0.1",
+					"pnl": "100.0",
+					"fee": "-0.5",
+					"fundingFee": "-0.1",
+					"realizedPnl": "99.4",
+					"cTime": "1597026383000",
+					"uTime": "1597026385000",
+					"posSide": "long",
+					"pos": "1"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "", time.Time{})
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
+	assert.Equal(t, 2, calls)
+	assert.InDelta(t, 2.0, res.PnLRate, 0.0001)
+}
+
+func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v5/account/positions-history", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "0",
+			"msg": "",
+			"data": [
+				{
+					"instId": "BTC-USDT-SWAP",
+					"openAvgPx": "50000.0",
+					"closeAvgPx": "51000.0",
+					"closeTotalPos": "0.1",
+					"pnl": "-100.0",
+					"fee": "-0.5",
+					"fundingFee": "-0.1",
+					"realizedPnl": "-100.6",
+					"cTime": "1597026383000",
+					"uTime": "1597026385000",
+					"posSide": "short",
+					"pos": "-1"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "", time.Time{})
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
+	assert.Equal(t, 50000.0, res.EntryPrice)
+	assert.Equal(t, 51000.0, res.ExitPrice)
+	assert.InDelta(t, -2.0, res.PnLRate, 0.0001)
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
@@ -24,9 +23,14 @@ import (
 func TestExternalOrderID(t *testing.T) {
 	t.Parallel()
 
-	id := orders.ExternalOrderID("ioc", "BTC_USDT")
-	assert.True(t, strings.HasPrefix(id, "ioc_"))
-	assert.LessOrEqual(t, len(id), 30)
+	settleTime := time.Date(2026, 6, 9, 11, 4, 1, 0, time.UTC)
+	id := orders.ExternalOrderID("BTC_USDT", settleTime, "bybit")
+	assert.Equal(t, "BTCUSDT09062026180401BYBIT", id)
+	assert.LessOrEqual(t, len(id), 32)
+
+	idLong := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "bybit")
+	assert.Equal(t, "ALONGANDVERYCOMPLEXSYMBOLNAMEHER", idLong)
+	assert.Equal(t, 32, len(idLong))
 }
 
 func TestOrderResultIsSuccess(t *testing.T) {
@@ -54,7 +58,8 @@ func TestFireIOC(t *testing.T) {
 			assert.Equal(t, int(shared.SideOpenLong), req.Side)
 			assert.Equal(t, 2.0, req.Vol)
 			assert.NotZero(t, req.Price)
-			assert.True(t, strings.HasPrefix(req.ExternalOID, "ioc_"))
+			expectedOID := orders.ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
+			assert.Equal(t, expectedOID, req.ExternalOID)
 			return exchange.CreateOrderResult{OrderID: "order-1", TPSLSubmitted: false}, nil
 		},
 	)
@@ -101,7 +106,8 @@ func TestFireLimitTrap(t *testing.T) {
 		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			assert.Equal(t, exchange.OrderTypeLimit, req.Type)
 			assert.Equal(t, int(shared.SideOpenShort), req.Side)
-			assert.True(t, strings.HasPrefix(req.ExternalOID, "trp_"))
+			expectedOID := orders.ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
+			assert.Equal(t, expectedOID, req.ExternalOID)
 			assert.NotZero(t, req.TakeProfitPrice)
 			assert.NotZero(t, req.StopLossPrice)
 			return exchange.CreateOrderResult{OrderID: "trap-1", TPSLSubmitted: false}, nil
@@ -133,9 +139,11 @@ func testCandidate(side shared.Side) fundingdomain.Candidate {
 	if side == shared.SideOpenShort {
 		ref = "bestBid"
 	}
+	settleTime := time.Date(2026, 6, 9, 11, 4, 1, 0, time.UTC)
 	return fundingdomain.Candidate{
 		Config: fundingdomain.TradeConfig{
 			Symbol:              "BTC_USDT",
+			Exchange:            "bybit",
 			MaxPriceDiffPercent: 1,
 			MarginUSDT:          100,
 			Leverage:            10,
@@ -160,7 +168,7 @@ func testCandidate(side shared.Side) fundingdomain.Candidate {
 			Side:         side,
 			CloseSide:    closeSide,
 			RefPriceType: ref,
-			ExternalID:   "ioc_btc_usdt",
+			ExternalID:   orders.ExternalOrderID("BTC_USDT", settleTime, "bybit"),
 		},
 		ContractSpec: fundingdomain.ContractSpec{
 			PriceUnit:    0.1,
@@ -174,7 +182,8 @@ func testCandidate(side shared.Side) fundingdomain.Candidate {
 			BestBid:   99.9,
 			BestAsk:   100.1,
 		},
-		TradePlan: fundingdomain.TradePlan{Volume: 2},
+		TradePlan:  fundingdomain.TradePlan{Volume: 2},
+		SettleTime: settleTime,
 	}
 }
 

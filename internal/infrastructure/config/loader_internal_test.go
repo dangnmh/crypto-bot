@@ -60,6 +60,15 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 	assert.True(t, exchangeCredentialsComplete("Bingx", completeBingx))
 	assert.True(t, exchangeCredentialsComplete("Kucoin", completeKucoin))
 	assert.False(t, exchangeCredentialsComplete("Kucoin", complete))
+	completeOkx := APIConfig{
+		Enable:        true,
+		Future:        RESTConfig{BaseURL: "https://api.example.com"},
+		APIKey:        "key",
+		APISecret:     "secret",
+		APIPassphrase: "pass",
+	}
+	assert.True(t, exchangeCredentialsComplete("Okx", completeOkx))
+	assert.False(t, exchangeCredentialsComplete("Okx", complete))
 	assert.True(t, notificationCredentialsComplete(NotiConfig{
 		TelegramChatID:   "123",
 		TelegramBotToken: "token",
@@ -140,6 +149,17 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://kucoin.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"},
+				APIKey:    "key",
+				APISecret: "secret",
+			}}},
+			wantErr: "api_config",
+		},
+		{
+			name: "okx missing passphrase",
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Okx: APIConfig{
+				Enable:    true,
+				Future:    RESTConfig{BaseURL: "https://okx.example"},
+				WebSocket: WebSocketConfig{WSURL: "wss://okx.example"},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
@@ -299,6 +319,9 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 				"KUCOIN_API_PASSPHRASE": " kucoin-passphrase ",
 				"BINGX_API_KEY":         " bingx-key ",
 				"BINGX_API_SECRET":      " bingx-secret ",
+				"OKX_API_KEY":           " okx-key ",
+				"OKX_API_SECRET":        " okx-secret ",
+				"OKX_API_PASSPHRASE":    " okx-passphrase ",
 				"TELEGRAM_CHAT_ID":      " 123 ",
 				"TELEGRAM_BOT_TOKEN":    " token ",
 			},
@@ -320,6 +343,9 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 	assert.Equal(t, "kucoin-key", creds.KucoinAPIKey)
 	assert.Equal(t, "kucoin-secret", creds.KucoinAPISecret)
 	assert.Equal(t, "kucoin-passphrase", creds.KucoinPassphrase)
+	assert.Equal(t, "okx-key", creds.OkxAPIKey)
+	assert.Equal(t, "okx-secret", creds.OkxAPISecret)
+	assert.Equal(t, "okx-passphrase", creds.OkxAPIPassphrase)
 	assert.Equal(t, "123", creds.TelegramChatID)
 	assert.Equal(t, "token", creds.TelegramBotToken)
 
@@ -358,6 +384,9 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 			"KUCOIN_API_PASSPHRASE": "kucoin-passphrase",
 			"BINGX_API_KEY":         "bingx-key",
 			"BINGX_API_SECRET":      "bingx-secret",
+			"OKX_API_KEY":           "okx-key",
+			"OKX_API_SECRET":        "okx-secret",
+			"OKX_API_PASSPHRASE":    "okx-passphrase",
 			"TELEGRAM_CHAT_ID":      "123",
 			"TELEGRAM_BOT_TOKEN":    "token",
 		}}, nil
@@ -371,6 +400,7 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 			Bitget: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
 			Kucoin: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
 			Bingx:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
+			Okx:    APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://okx.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
@@ -388,6 +418,9 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 	assert.Equal(t, "kucoin-passphrase", cfg.ExchangeConfig.Kucoin.APIPassphrase)
 	assert.Equal(t, "bingx-key", cfg.ExchangeConfig.Bingx.APIKey)
 	assert.Equal(t, "bingx-secret", cfg.ExchangeConfig.Bingx.APISecret)
+	assert.Equal(t, "okx-key", cfg.ExchangeConfig.Okx.APIKey)
+	assert.Equal(t, "okx-secret", cfg.ExchangeConfig.Okx.APISecret)
+	assert.Equal(t, "okx-passphrase", cfg.ExchangeConfig.Okx.APIPassphrase)
 	assert.Equal(t, "123", cfg.NotiConfig.TelegramChatID)
 	assert.Equal(t, "token", cfg.NotiConfig.TelegramBotToken)
 

@@ -35,6 +35,8 @@ func InitializeBase(c *SystemConfig) error {
 	c.ExchangeConfig.Gate.APISecret = strings.TrimSpace(os.Getenv("GATE_API_SECRET"))
 	c.ExchangeConfig.Okx.APIKey = strings.TrimSpace(os.Getenv("OKX_API_KEY"))
 	c.ExchangeConfig.Okx.APISecret = strings.TrimSpace(os.Getenv("OKX_API_SECRET"))
+	c.ExchangeConfig.Okx.APIPassphrase = strings.TrimSpace(os.Getenv("OKX_API_PASSPHRASE"))
+
 	c.ExchangeConfig.Bybit.APIKey = strings.TrimSpace(os.Getenv("BYBIT_API_KEY"))
 	c.ExchangeConfig.Bybit.APISecret = strings.TrimSpace(os.Getenv("BYBIT_API_SECRET"))
 	c.ExchangeConfig.Binance.APIKey = strings.TrimSpace(os.Getenv("BINANCE_API_KEY"))
@@ -98,6 +100,7 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bitget, creds.BitgetAPIKey, creds.BitgetAPISecret, "")
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Kucoin, creds.KucoinAPIKey, creds.KucoinAPISecret, creds.KucoinPassphrase)
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bingx, creds.BingxAPIKey, creds.BingxAPISecret, "")
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Okx, creds.OkxAPIKey, creds.OkxAPISecret, creds.OkxAPIPassphrase)
 
 	if c.NotiConfig.TelegramChatID == "" {
 		c.NotiConfig.TelegramChatID = creds.TelegramChatID
@@ -122,6 +125,7 @@ func fallbackExchangeAPIConfig(cfg *APIConfig, key, secret, passphrase string) {
 }
 
 const kucoinName = "Kucoin"
+const okxName = "Okx"
 
 func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 	return exchangeCredentialsComplete("Mexc", c.ExchangeConfig.Mexc) &&
@@ -130,6 +134,7 @@ func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 		exchangeCredentialsComplete("Binance", c.ExchangeConfig.Binance) &&
 		exchangeCredentialsComplete("Bitget", c.ExchangeConfig.Bitget) &&
 		exchangeCredentialsComplete("Bingx", c.ExchangeConfig.Bingx) &&
+		exchangeCredentialsComplete(okxName, c.ExchangeConfig.Okx) &&
 		exchangeCredentialsComplete(kucoinName, c.ExchangeConfig.Kucoin) &&
 		notificationCredentialsComplete(c.NotiConfig)
 }
@@ -138,7 +143,7 @@ func exchangeCredentialsComplete(name string, c APIConfig) bool {
 	if !c.Enable {
 		return true
 	}
-	if name == kucoinName && c.APIPassphrase == "" {
+	if (name == kucoinName || name == okxName) && c.APIPassphrase == "" {
 		return false
 	}
 	return c.APIKey != "" && c.APISecret != ""
@@ -186,6 +191,10 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	bingxKey, _ := loader.GetSecret("BINGX_API_KEY")
 	bingxSecret, _ := loader.GetSecret("BINGX_API_SECRET")
 
+	okxKey, _ := loader.GetSecret("OKX_API_KEY")
+	okxSecret, _ := loader.GetSecret("OKX_API_SECRET")
+	okxPassphrase, _ := loader.GetSecret("OKX_API_PASSPHRASE")
+
 	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
 	if err != nil {
 		slog.Error("failed to get TELEGRAM_CHAT_ID from Bitwarden", slog.Any("error", err))
@@ -212,6 +221,9 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	kucoinPassphrase = strings.TrimSpace(kucoinPassphrase)
 	bingxKey = strings.TrimSpace(bingxKey)
 	bingxSecret = strings.TrimSpace(bingxSecret)
+	okxKey = strings.TrimSpace(okxKey)
+	okxSecret = strings.TrimSpace(okxSecret)
+	okxPassphrase = strings.TrimSpace(okxPassphrase)
 	telegramChatID = strings.TrimSpace(telegramChatID)
 	telegramBotToken = strings.TrimSpace(telegramBotToken)
 
@@ -231,6 +243,9 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 		KucoinPassphrase: kucoinPassphrase,
 		BingxAPIKey:      bingxKey,
 		BingxAPISecret:   bingxSecret,
+		OkxAPIKey:        okxKey,
+		OkxAPISecret:     okxSecret,
+		OkxAPIPassphrase: okxPassphrase,
 		TelegramChatID:   telegramChatID,
 		TelegramBotToken: telegramBotToken,
 	}, nil
@@ -283,28 +298,27 @@ func ValidateAPIConfigField(fl validator.FieldLevel) bool {
 	if fl.StructFieldName() == "Bybit" && !IsSupportedBybitAccountType(cfg.AccountType) {
 		return false
 	}
-	if fl.StructFieldName() == "Kucoin" && cfg.APIPassphrase == "" {
+	if (fl.StructFieldName() == "Kucoin" || fl.StructFieldName() == okxName) && cfg.APIPassphrase == "" {
 		return false
 	}
-	if cfg.Future.BaseURL == "" {
+	if !isValidURL(cfg.Future.BaseURL) {
 		return false
 	}
-	if _, err := url.ParseRequestURI(cfg.Future.BaseURL); err != nil {
-		return false
-	}
-	if cfg.WebSocket.PublicEndpoint() == "" || cfg.WebSocket.PrivateEndpoint() == "" {
-		return false
-	}
-	if _, err := url.ParseRequestURI(cfg.WebSocket.PublicEndpoint()); err != nil {
-		return false
-	}
-	if _, err := url.ParseRequestURI(cfg.WebSocket.PrivateEndpoint()); err != nil {
+	if !isValidURL(cfg.WebSocket.PublicEndpoint()) || !isValidURL(cfg.WebSocket.PrivateEndpoint()) {
 		return false
 	}
 	if cfg.APIKey == "" || cfg.APISecret == "" {
 		return false
 	}
 	return true
+}
+
+func isValidURL(rawURL string) bool {
+	if rawURL == "" {
+		return false
+	}
+	_, err := url.ParseRequestURI(rawURL)
+	return err == nil
 }
 
 func applySystemDefaults(c *SystemConfig) {
@@ -354,6 +368,9 @@ type bitwardenCredentials struct {
 	KucoinPassphrase string
 	BingxAPIKey      string
 	BingxAPISecret   string
+	OkxAPIKey        string
+	OkxAPISecret     string
+	OkxAPIPassphrase string
 	TelegramChatID   string
 	TelegramBotToken string
 }

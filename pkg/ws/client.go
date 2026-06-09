@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -210,7 +211,12 @@ func (c *Client) heartbeat(ctx context.Context) {
 	ticker.Run(ctx, c.pingPeriod, func() bool {
 		c.mu.Lock()
 		if c.conn != nil {
-			err := c.conn.WriteJSON(c.pingPayload)
+			var err error
+			if strPayload, ok := c.pingPayload.(string); ok {
+				err = c.conn.WriteMessage(websocket.TextMessage, []byte(strPayload))
+			} else {
+				err = c.conn.WriteJSON(c.pingPayload)
+			}
 			if err != nil {
 				c.logger.WarnContext(ctx, "🟡 Heartbeat ping failed", slog.Any("error", err))
 			}
@@ -265,6 +271,28 @@ func (c *Client) processMessage(data []byte) {
 		}
 		c.mu.Unlock()
 		return
+	}
+
+	// Log special events like notice, error or connection warnings
+	var eventHeader struct {
+		Event string `json:"event"`
+		Code  string `json:"code"`
+		Msg   string `json:"msg"`
+	}
+	if err := json.Unmarshal(data, &eventHeader); err == nil && eventHeader.Event != "" {
+		switch eventHeader.Event {
+		case "error", "channel-conn-count-error":
+			c.logger.Error("🔴 WebSocket event error received",
+				slog.String("event", eventHeader.Event),
+				slog.String("code", eventHeader.Code),
+				slog.String("msg", eventHeader.Msg),
+			)
+		case "notice":
+			c.logger.Warn("🟡 WebSocket notice received",
+				slog.String("code", eventHeader.Code),
+				slog.String("msg", eventHeader.Msg),
+			)
+		}
 	}
 	if c.channelExtractor == nil {
 		c.mu.Lock()

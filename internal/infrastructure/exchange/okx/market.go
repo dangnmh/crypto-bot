@@ -14,7 +14,7 @@ import (
 // Explicit request/response structs for market data endpoints.
 
 type okxServerTimeResponse struct {
-	Epoch string `json:"epoch"`
+	Ts string `json:"ts"`
 }
 
 type okxInstrumentsRequest struct {
@@ -194,7 +194,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	val, err := strconv.ParseInt(res.Epoch, 10, 64)
+	val, err := strconv.ParseInt(res.Ts, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("parse server time: %w", err)
 	}

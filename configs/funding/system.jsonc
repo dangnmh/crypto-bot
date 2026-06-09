@@ -46,6 +46,16 @@
         "privateURL": "wss://ws-api-futures.kucoin.com"
       }
     },
+    "okx": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://openapi.okx.com"
+      },
+      "websocket": {
+        "privateURL": "wss://ws.okx.com:8443/ws/v5/private",
+        "publicURL": "wss://ws.okx.com:8443/ws/v5/public"
+      }
+    },
     "bitget": {
       "enable": false,
       "future": {
@@ -63,15 +73,6 @@
       },
       "websocket": {
         "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt"
-      }
-    },
-    "okx": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://aws.okx.com"
-      },
-      "websocket": {
-        "wsURL": "wss://ws.okx.com:8443/ws/v5/private"
       }
     },
     "hyperliquid": {

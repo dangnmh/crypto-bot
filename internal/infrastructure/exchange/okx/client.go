@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -51,10 +52,15 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{},
+				BlackListPaths: []string{
+					"GET|/api/v5/public/time",
+					"GET|/api/v5/public/funding-rate",
+					"GET|/api/v5/market/tickers",
+					"GET|/api/v5/public/instruments",
+				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"ACCESS-KEY", "ACCESS-PASSPHRASE"}),
+			transportlog.LogOptionRedactSensitiveKeys([]string{"OK-ACCESS-KEY", "OK-ACCESS-PASSPHRASE"}),
 			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
@@ -100,9 +106,14 @@ func (c *Client) Get(ctx context.Context, path string, params map[string]string)
 func (c *Client) GetCtx(ctx context.Context, path string, params map[string]string) ([]byte, error) {
 	urlPath := path
 	if len(params) > 0 {
+		keys := make([]string, 0, len(params))
+		for k := range params {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 		parts := make([]string, 0, len(params))
-		for k, v := range params {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%s", k, params[k]))
 		}
 		urlPath += "?" + strings.Join(parts, "&")
 	}

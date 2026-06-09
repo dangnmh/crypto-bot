@@ -2,6 +2,7 @@ package okx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -202,7 +203,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		TdMode:     tdMode,
 		Side:       side,
 		OrdType:    ordType,
-		Sz:         fmt.Sprintf("%g", req.Vol),
+		Sz:         strconv.FormatFloat(req.Vol, 'f', -1, 64),
 		ReduceOnly: req.ReduceOnly,
 	}
 
@@ -211,7 +212,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		okxReq.Px = fmt.Sprintf("%g", req.Price)
+		okxReq.Px = strconv.FormatFloat(req.Price, 'f', -1, 64)
 	}
 
 	if req.ExternalOID != "" {
@@ -221,13 +222,13 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	if req.TakeProfitPrice > 0 || req.StopLossPrice > 0 {
 		algo := okxAttachAlgoOrd{}
 		if req.TakeProfitPrice > 0 {
-			algo.TpTriggerPx = fmt.Sprintf("%g", req.TakeProfitPrice)
+			algo.TpTriggerPx = strconv.FormatFloat(req.TakeProfitPrice, 'f', -1, 64)
 			algo.TpOrdPx = "-1"
 			algo.TpTriggerPxType = triggerPxTypeLast
 			algo.TpOrdKind = "condition"
 		}
 		if req.StopLossPrice > 0 {
-			algo.SlTriggerPx = fmt.Sprintf("%g", req.StopLossPrice)
+			algo.SlTriggerPx = strconv.FormatFloat(req.StopLossPrice, 'f', -1, 64)
 			algo.SlOrdPx = "-1"
 			algo.SlTriggerPxType = triggerPxTypeLast
 		}
@@ -447,36 +448,42 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 		mgnMode = modeCross
 	}
 
-	return c.setRawLeverage(ctx, okxSetLeverageRequest{
+	posSide := ""
+	if mgnMode == modeIsolated {
+		switch req.PositionType {
+		case exchange.PositionTypeLong:
+			posSide = posSideLong
+		case exchange.PositionTypeShort:
+			posSide = posSideShort
+		case exchange.PositionTypeUnknown:
+			// Default to empty posSide.
+		}
+	}
+
+	err := c.setRawLeverage(ctx, okxSetLeverageRequest{
 		InstID:  req.Symbol,
 		Lever:   fmt.Sprintf("%d", req.Leverage),
 		MgnMode: mgnMode,
+		PosSide: posSide,
 	})
+	if err != nil {
+		var apiErr *exchange.APIError
+		if errors.As(err, &apiErr) && apiErr.Code == 51000 {
+			return c.setRawLeverage(ctx, okxSetLeverageRequest{
+				InstID:  req.Symbol,
+				Lever:   fmt.Sprintf("%d", req.Leverage),
+				MgnMode: mgnMode,
+				PosSide: "",
+			})
+		}
+		return err
+	}
+	return nil
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for OKX.
 func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	mgnMode := modeIsolated
-	if marginMode == "CROSS" {
-		mgnMode = modeCross
-	}
-
-	posSide := ""
-	switch side {
-	case domain.SideOpenLong, domain.SideCloseLong:
-		posSide = "long"
-	case domain.SideOpenShort, domain.SideCloseShort:
-		posSide = "short"
-	default:
-		// No action for SideUnknown or other side types
-	}
-
-	return c.setRawLeverage(ctx, okxSetLeverageRequest{
-		InstID:  symbol,
-		Lever:   fmt.Sprintf("%d", leverage),
-		MgnMode: mgnMode,
-		PosSide: posSide,
-	})
+	return nil
 }
 
 func mapOkxOrder(o okxOrder) exchange.OrderInfo {

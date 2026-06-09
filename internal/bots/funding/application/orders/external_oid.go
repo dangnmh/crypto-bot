@@ -1,26 +1,37 @@
 package orders
 
 import (
-	"hash/fnv"
-	"strconv"
+	"strings"
 	"time"
 )
 
-const maxExternalOrderIDLen = 30
-
-func ExternalOrderID(prefix, symbol string) string {
-	return externalOrderID(prefix, symbol, time.Now())
-}
-
-func externalOrderID(prefix, symbol string, now time.Time) string {
-	symbolHash := fnv.New32a()
-	_, _ = symbolHash.Write([]byte(symbol))
-
-	id := prefix + "_" +
-		strconv.FormatUint(uint64(symbolHash.Sum32()), 36) + "_" +
-		strconv.FormatInt(now.UnixMilli(), 36)
-	if len(id) <= maxExternalOrderIDLen {
-		return id
+// ExternalOrderID generates a client order ID following the format:
+// SYMBOL (alphanumeric only) + SETTLETIME (alphanumeric DDMMYYYYHHmmss in GMT+7) + "_" + EXCHANGE.
+// The entire string is converted to upper case and truncated to a maximum of 32 characters.
+func ExternalOrderID(symbol string, settleTime time.Time, exchange string) string {
+	// 1. Filter symbol: alphanumeric characters only
+	var sb strings.Builder
+	for _, r := range symbol {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			sb.WriteRune(r)
+		}
 	}
-	return id[:maxExternalOrderIDLen]
+	symFiltered := sb.String()
+
+	// 2. Format settle time in GMT+7 time zone directly as alphanumeric DDMMYYYYHHmmss
+	loc := time.FixedZone("GMT+7", 7*60*60)
+	settleLocal := settleTime.In(loc)
+	settleStr := settleLocal.Format("02012006150405")
+
+	// 3. Concatenate: symbol + settletime_ + exchange (note the trailing underscore for settletime)
+	rawID := symFiltered + settleStr + exchange
+
+	// 4. Upper case the whole string
+	upperID := strings.ToUpper(rawID)
+
+	// 5. Truncate to max 32 characters
+	if len(upperID) > 32 {
+		return upperID[:32]
+	}
+	return upperID
 }

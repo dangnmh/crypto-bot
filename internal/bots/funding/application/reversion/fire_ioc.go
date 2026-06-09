@@ -184,9 +184,16 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 	leverage := evt.Candidate.Config.Leverage
 	if leverage > 0 && !evt.SupportLeverageOnOrder {
 		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
+		posType := exchange.PositionTypeLong
+		if !evt.Candidate.Side.IsLong() {
+			posType = exchange.PositionTypeShort
+		}
+
 		err := r.deps.Client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
-			Symbol:   evt.Symbol,
-			Leverage: leverage,
+			Symbol:       evt.Symbol,
+			Leverage:     leverage,
+			OpenType:     evt.Candidate.Config.ParsedOpenType,
+			PositionType: posType,
 		})
 		if err != nil {
 			r.log.ErrorContext(ctx, "Failed to adjust leverage", slog.Any("error", err), slog.String("symbol", evt.Symbol))

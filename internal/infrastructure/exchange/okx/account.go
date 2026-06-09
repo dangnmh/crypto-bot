@@ -3,8 +3,12 @@ package okx
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"math"
 	"strconv"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -37,6 +41,8 @@ type okxPosition struct {
 	Margin      string `json:"margin"`
 	PosSide     string `json:"posSide"`
 	MgnMode     string `json:"mgnMode"`
+	PosCcy      string `json:"posCcy"`
+	Ccy         string `json:"ccy"`
 }
 
 type okxPositionsRequest struct {
@@ -45,13 +51,19 @@ type okxPositionsRequest struct {
 }
 
 type okxClosedPosition struct {
-	InstID       string `json:"instId"`
-	CloseAvgPx   string `json:"closeAvgPx"`
-	OpenAvgPx    string `json:"openAvgPx"`
-	Pnl          string `json:"pnl"`
-	CloseTotalSz string `json:"closeTotalSz"`
-	CTime        string `json:"cTime"`
-	UTime        string `json:"uTime"`
+	InstID        string `json:"instId"`
+	CloseAvgPx    string `json:"closeAvgPx"`
+	OpenAvgPx     string `json:"openAvgPx"`
+	Pnl           string `json:"pnl"`
+	CloseTotalPos string `json:"closeTotalPos"`
+	CTime         string `json:"cTime"`
+	UTime         string `json:"uTime"`
+	Fee           string `json:"fee"`
+	FundingFee    string `json:"fundingFee"`
+	RealizedPnl   string `json:"realizedPnl"`
+	PosSide       string `json:"posSide"`
+	Direction     string `json:"direction"`
+	Pos           string `json:"pos"`
 }
 
 type okxClosedPositionsRequest struct {
@@ -100,7 +112,7 @@ func (c *Client) getRawClosedPositions(ctx context.Context, req okxClosedPositio
 		params[paramInstId] = req.InstID
 	}
 	if req.Begin != "" {
-		params["begin"] = req.Begin
+		params["before"] = req.Begin
 	}
 	body, err := c.GetCtx(ctx, "/api/v5/account/positions-history", params)
 	if err != nil {
@@ -184,17 +196,15 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	var openPositions []exchange.Position
 	for i := range positions {
 		pos := positions[i]
-		holdVol, _ := strconv.ParseFloat(pos.Pos, 64)
-		if holdVol <= 0 {
+		posVal, _ := strconv.ParseFloat(pos.Pos, 64)
+		if posVal == 0 {
 			continue
 		}
 
+		holdVol := math.Abs(posVal)
 		avgPx, _ := strconv.ParseFloat(pos.AvgPx, 64)
 
-		posType := 1 // long
-		if pos.PosSide == posSideShort {
-			posType = 2
-		}
+		posType := mapPositionType(pos.PosSide, posVal, pos.InstID, pos.PosCcy)
 
 		openPositions = append(openPositions, exchange.Position{
 			Symbol:       pos.InstID,
@@ -219,24 +229,68 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		req.Begin = strconv.FormatInt(startTime.UnixMilli(), 10)
 	}
 
-	positions, err := c.getRawClosedPositions(ctx, req)
-	if err != nil {
-		return nil, err
+	var positions []okxClosedPosition
+
+	operation := func() error {
+		var err error
+		positions, err = c.getRawClosedPositions(ctx, req)
+		if err != nil {
+			return err
+		}
+
+		if len(positions) == 0 {
+			return fmt.Errorf("no closed position history found for symbol %s", symbol)
+		}
+
+		return nil
 	}
 
-	if len(positions) == 0 {
-		return nil, fmt.Errorf("no closed position history found for symbol %s", symbol)
+	// Retry up to 5 times (4 retries + 1st try) with 1s-2s exponential delay.
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(time.Second),
+				backoff.WithMaxInterval(time.Second*2)),
+			5),
+		ctx,
+	)
+
+	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
+		c.logger.ErrorContext(ctx, "retry closed pnl", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
+	}); err != nil {
+		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}
 
 	pos := positions[0]
 	entryPrice, _ := strconv.ParseFloat(pos.OpenAvgPx, 64)
 	exitPrice, _ := strconv.ParseFloat(pos.CloseAvgPx, 64)
-	closedSize, _ := strconv.ParseFloat(pos.CloseTotalSz, 64)
+	closedSize, _ := strconv.ParseFloat(pos.CloseTotalPos, 64)
 	closedPnl, _ := strconv.ParseFloat(pos.Pnl, 64)
+	feeVal, _ := strconv.ParseFloat(pos.Fee, 64)
+	fundingFeeVal, _ := strconv.ParseFloat(pos.FundingFee, 64)
+	netPnlVal, _ := strconv.ParseFloat(pos.RealizedPnl, 64)
 
 	cTime, _ := strconv.ParseInt(pos.CTime, 10, 64)
 	uTime, _ := strconv.ParseInt(pos.UTime, 10, 64)
 	duration := max(uTime-cTime, 0)
+
+	posVal, _ := strconv.ParseFloat(pos.Pos, 64)
+	side := mapPositionType(pos.PosSide, posVal, pos.InstID, "")
+	switch pos.Direction {
+	case "short":
+		side = 2
+	case "long":
+		side = 1
+	}
+
+	pnlRate := 0.0
+	if entryPrice > 0 {
+		if side == 2 { // short
+			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
+		} else { // long/default
+			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
+		}
+	}
 
 	return &exchange.ClosedPnLInfo{
 		Symbol:     pos.InstID,
@@ -244,8 +298,10 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		ExitPrice:  exitPrice,
 		ClosedSize: closedSize,
 		GrossPnL:   closedPnl,
-		Fee:        0,
-		FundingFee: 0,
+		Fee:        math.Abs(feeVal),
+		FundingFee: fundingFeeVal,
 		DurationMs: duration,
+		NetPnl:     netPnlVal,
+		PnLRate:    pnlRate,
 	}, nil
 }

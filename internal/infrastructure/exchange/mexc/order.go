@@ -318,7 +318,7 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 		Symbol:       req.Symbol,
 		Leverage:     req.Leverage,
 		OpenType:     req.OpenType,
-		PositionType: req.PositionType,
+		PositionType: int(req.PositionType),
 	}
 	return c.changeRawLeverage(ctx, mexcReq)
 }

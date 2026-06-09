@@ -2,10 +2,18 @@ package domain
 
 import (
 	"math"
+	"time"
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/pkg/types"
 )
+
+// MarketData holds live market prices from the store/WS.
+// ... (lines omitted for brevity, let's just keep the code structure)
+// Actually we can specify targetContent for the imports and for the struct.
+// Let's do them in two separate contiguous blocks if needed, but since they are non-contiguous edits, we should use multi_replace_file_content! Or wait, can we do a single replace_file_content for each or multi_replace_file_content?
+// Rule 5: To edit multiple, non-adjacent lines of code in the same file, make a single call to multi_replace_file_content.
+// Yes! Let's use multi_replace_file_content for domain/scanner.go.
 
 // MarketData holds live market prices from the store/WS.
 type MarketData struct {
@@ -110,10 +118,11 @@ type TradePlan struct {
 type Candidate struct {
 	Config TradeConfig // Domain trade config
 
-	TradeIntent  // Embedded — c.Symbol, c.Side etc. work directly
-	ContractSpec // Enriched from contract details
-	MarketData   // From ticker / WS push
-	TradePlan    // Calculated values
+	TradeIntent            // Embedded — c.Symbol, c.Side etc. work directly
+	ContractSpec           // Enriched from contract details
+	MarketData             // From ticker / WS push
+	TradePlan              // Calculated values
+	SettleTime   time.Time `json:"settle_time"`
 }
 
 // ScanResult holds a scanned ticker for domain processing.

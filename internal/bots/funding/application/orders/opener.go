@@ -127,7 +127,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 
 func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
 	log := logger
-	extOID := ExternalOrderID("trp", candidate.Symbol)
+	extOID := ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
 
 	trapPrice := candidate.CalculateTrapPrice()
 	if trapPrice <= 0 {

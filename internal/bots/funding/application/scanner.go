@@ -114,7 +114,7 @@ func (j *ScannerJob) trigger(ctx context.Context, candidate domain.Candidate, se
 	}
 	runCtx := observability.WithReversionIDValue(ctx, reqID)
 
-	candidate.ExternalID = orders.ExternalOrderID("ioc", candidate.Symbol)
+	candidate.ExternalID = orders.ExternalOrderID(candidate.Symbol, settle, candidate.Config.Exchange)
 
 	j.log.InfoContext(runCtx, "Opportunity found! Triggering reversion event flow",
 		slog.String("symbol", candidate.Symbol),
@@ -233,6 +233,7 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 
 		// Build and enrich candidate opportunity
 		candidate := s.buildCandidate(symCfg, td, fd.FundingRate)
+		candidate.SettleTime = settle
 		if !s.enrich(ctx, storeSet.Contract(), &candidate) {
 			s.log.DebugContext(ctx, "Contract enrichment failed for candidate", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol))
 			continue

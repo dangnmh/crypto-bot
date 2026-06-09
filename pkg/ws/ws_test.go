@@ -1044,3 +1044,52 @@ func TestPool_SubscribePublicWithURL(t *testing.T) {
 		t.Fatal("srv2 did not receive connection")
 	}
 }
+
+func TestClient_LogSpecialEvents(t *testing.T) {
+	t.Parallel()
+
+	noticeChan := make(chan struct{}, 1)
+	errorChan := make(chan struct{}, 1)
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		// Send a notice event
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"event":"notice","code":"64008","msg":"Upgrade warning"}`))
+		// Send an error event
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"event":"error","code":"60009","msg":"Login failed"}`))
+		time.Sleep(200 * time.Millisecond)
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Capture logs or just verify it does not crash and processes the events
+	c := ws.NewClient(wsURL(srv), nil)
+	c.SetGlobalHandler(func(data []byte) {
+		if strings.Contains(string(data), "notice") {
+			noticeChan <- struct{}{}
+		}
+		if strings.Contains(string(data), "error") {
+			errorChan <- struct{}{}
+		}
+	})
+
+	go c.Connect(ctx)
+	if err := c.WaitReady(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-noticeChan:
+	case <-time.After(1 * time.Second):
+		t.Fatal("notice event not received")
+	}
+
+	select {
+	case <-errorChan:
+	case <-time.After(1 * time.Second):
+		t.Fatal("error event not received")
+	}
+
+	c.Close()
+}

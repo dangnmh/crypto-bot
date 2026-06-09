@@ -237,12 +237,21 @@ type SubmitTrackOrderRequest struct {
 	ReduceOnly   bool    `json:"reduceOnly,omitempty"`
 }
 
+// PositionType represents a position side (1=Long, 2=Short, etc.).
+type PositionType int
+
+const (
+	PositionTypeUnknown PositionType = 0
+	PositionTypeLong    PositionType = 1
+	PositionTypeShort   PositionType = 2
+)
+
 // ChangeLeverageRequest is the request body for changing leverage.
 type ChangeLeverageRequest struct {
-	Symbol       string `json:"symbol"`
-	Leverage     int    `json:"leverage"`
-	OpenType     int    `json:"openType"`
-	PositionType int    `json:"positionType"`
+	Symbol       string       `json:"symbol"`
+	Leverage     int          `json:"leverage"`
+	OpenType     int          `json:"openType"`
+	PositionType PositionType `json:"positionType"`
 }
 
 // WsOrderDeal represents the parsed data from push.personal.order.

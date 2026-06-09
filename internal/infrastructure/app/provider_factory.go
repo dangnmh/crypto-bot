@@ -153,11 +153,11 @@ func (OkxProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) 
 		apiCfg.Future.BaseURL,
 		apiCfg.APIKey,
 		apiCfg.APISecret,
-		"", // Passphrase from environment variables in okx.NewClient
+		apiCfg.APIPassphrase,
 		sysCfg.Logging,
 	))
 
-	adapter := okx.NewWsAdapter()
+	adapter := okx.NewWsAdapter(apiCfg.APIPassphrase)
 	return buildProvider(ctx, exchange.ExchangeOkx, exchange.ExchangeOkx, cfg, apiCfg, client, adapter), nil
 }
 
@@ -265,6 +265,15 @@ func newWSPool(
 	if hook := adapter.GetAuthHook(apiKey, apiSecret); hook != nil {
 		privateOpts = append(privateOpts, pkgws.WithOnConnected(hook))
 	}
+	privateOpts = append(privateOpts, pkgws.WithOnReady(func(c *pkgws.Client) {
+		go func() {
+			if err := adapter.SubscribePersonal(ctx); err != nil {
+				wsLogger.Error("🔴 Failed to automatically subscribe/re-subscribe to personal channels", slog.Any("error", err))
+			} else {
+				wsLogger.Info("🟢 Automatically subscribed/re-subscribed to personal channels")
+			}
+		}()
+	}))
 
 	type PreprocessorProvider interface {
 		GetPreprocessor() func([]byte) ([]byte, error)

@@ -1,31 +1,37 @@
 {
   // Funding Reversion (Dao chieu sau Funding)
   "enabled": true,
-  "maxLatency": "300ms", // Abort if RTT > 200ms
+  "maxLatency": "400ms", // Abort if RTT > 400ms
   "exchanges": {
     "mexc": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-50ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "bufferTime": "-100ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "300s" // Force close if reversion lifecycle does not terminally close
     },
     "bybit": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-80ms",
+      "bufferTime": "-100ms",
       "postSettleTimeout": "300s"
     },
     "binance": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-350ms",
+      "bufferTime": "-200ms",
       "postSettleTimeout": "300s"
     },
     "kucoin": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-50ms",
+      "bufferTime": "-100ms",
       "postSettleTimeout": "300s"
+    },
+    "okx": {
+      "takeProfitPct": 1.5,
+      "stopLossPct": 3,
+      "bufferTime": "0ms",
+      "postSettleTimeout": "5s"
     },
     "bingx": {
       "takeProfitPct": 1.5,
@@ -34,12 +40,6 @@
       "postSettleTimeout": "300s"
     },
     "gate": {
-      "takeProfitPct": 1.5,
-      "stopLossPct": 3,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "300s"
-    },
-    "okx": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
       "bufferTime": "30ms",

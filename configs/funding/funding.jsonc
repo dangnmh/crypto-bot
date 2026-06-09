@@ -3,27 +3,33 @@
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
   // {
-  //   "symbol": "MBOX_USDT",
-  //   "marginUSDT": 4,
+  //   "symbol": "MOVE_USDT",
+  //   "marginUSDT": 3,
   //   "exchange": "mexc",
   //   // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
   // },
   // {
-  //   "symbol": "MBOXUSDT",
-  //   "marginUSDT": 4,
+  //   "symbol": "MOVEUSDT",
+  //   "marginUSDT": 3,
   //   "exchange": "bybit",
   //   // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
   // },
   // {
-  //   "symbol": "MBOXUSDT",
-  //   "marginUSDT": 4,
+  //   "symbol": "MOVEUSDT",
+  //   "marginUSDT": 3,
   //   "exchange": "binance",
   //   // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
   // },
+  // {
+  //   "symbol": "MOVEUSDTM",
+  //   "marginUSDT": 3,
+  //   "exchange": "kucoin",
+  //   // "simulateSettle": "2026-06-06T20:50:00.000+07:00"
+  // },
   {
-    "symbol": "HEIUSDTM",
+    "symbol": "H-USDT-SWAP",
     "marginUSDT": 3,
-    "exchange": "kucoin",
-    "simulateSettle": "2026-06-06T20:50:00.000+07:00"
+    "exchange": "okx",
+    "simulateSettle": "2026-06-09T12:05:00.000+07:00"
   },
 ]

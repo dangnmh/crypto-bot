@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -67,7 +66,7 @@ func (f *fakeExchangeAdapter) ParsePosition(data []byte) (*exchange.PersonalPosi
 }
 
 func executeReversionHelper(t *testing.T, bus *eventbus.Bus, reqID string, candidate domain.Candidate, settleTime time.Time) error {
-	candidate.ExternalID = orders.ExternalOrderID("ioc", candidate.Symbol)
+	candidate.ExternalID = orders.ExternalOrderID(candidate.Symbol, settleTime, candidate.Config.Exchange)
 
 	startEvt := reversion.CandidateFoundEvent{
 		BaseReversionEvent: reversion.BaseReversionEvent{
@@ -546,10 +545,11 @@ Verified:
 		t.Fatal("Timeout waiting for CreateOrder to be called")
 	}
 
-	// Verify that the generated ExternalID is <= 30 chars, not empty, starts with "ioc_"
+	// Verify that the generated ExternalID is <= 32 chars, not empty, and matches the new format
 	assert.NotEmpty(t, candidateEvt.ExternalID)
-	assert.True(t, strings.HasPrefix(candidateEvt.ExternalID, "ioc_"))
-	assert.LessOrEqual(t, len(candidateEvt.ExternalID), 30)
+	expectedID := orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange)
+	assert.Equal(t, expectedID, candidateEvt.ExternalID)
+	assert.LessOrEqual(t, len(candidateEvt.ExternalID), 32)
 
 	// CRITICAL ASSERTION: The external ID sent to exchange exactly matches the one generated at the start of the flow!
 	assert.Equal(t, candidateEvt.ExternalID, capturedExtOID)
@@ -758,7 +758,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			EventID:                watermill.NewUUID(),
 			Seq:                    1,
 			Topic:                  reversion.TopicReversionCandidate,
-			ExternalID:             orders.ExternalOrderID("ioc", candidate.Symbol),
+			ExternalID:             orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
 			SettleTime:             now.Add(10 * time.Second),
 			SupportLeverageOnOrder: true, // We explicitly set this to true to verify skipping ChangeLeverage!
 		},

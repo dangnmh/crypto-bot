@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
+	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -16,12 +18,18 @@ import (
 
 // WsAdapter implements ws.ExchangeAdapter for OKX V5.
 type WsAdapter struct {
-	pool *pkgws.Pool
+	pool          *pkgws.Pool
+	passphrase    string
+	authMu        sync.Mutex
+	authenticated chan struct{}
 }
 
 // NewWsAdapter creates a new OKX WsAdapter.
-func NewWsAdapter() *WsAdapter {
-	return &WsAdapter{}
+func NewWsAdapter(passphrase string) *WsAdapter {
+	return &WsAdapter{
+		passphrase:    passphrase,
+		authenticated: make(chan struct{}),
+	}
 }
 
 // SetPool injects the websocket pool.
@@ -103,6 +111,16 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to OKX private channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
+	a.authMu.Lock()
+	authCh := a.authenticated
+	a.authMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-authCh:
+	}
+
 	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
@@ -121,18 +139,33 @@ func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 // GetAuthHook returns connection hook for OKX private auth.
 func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	if apiKey == "" {
+		a.authMu.Lock()
+		select {
+		case <-a.authenticated:
+		default:
+			close(a.authenticated)
+		}
+		a.authMu.Unlock()
 		return nil
 	}
+	passphrase := a.passphrase
+	if passphrase == "" {
+		passphrase = "default_passphrase"
+	}
 	return func(c *pkgws.Client) {
+		a.authMu.Lock()
+		a.authenticated = make(chan struct{})
+		a.authMu.Unlock()
+
 		ts := strconv.FormatInt(time.Now().Unix(), 10)
 		sig := SignRequest(apiSecret, ts, "GET", "/users/self/verify", "")
 
 		msg := map[string]any{
-			"op": "login",
+			"op": opLogin,
 			"args": []map[string]any{
 				{
 					"apiKey":     apiKey,
-					"passphrase": "default_passphrase", // Overridden by runtime OKX_PASSPHRASE env
+					"passphrase": passphrase,
 					"timestamp":  ts,
 					"sign":       sig,
 				},
@@ -149,6 +182,20 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			return msgPong
 		}
 
+		if event, err := jsonparser.GetString(data, "event"); err == nil && event == opLogin {
+			code, _ := jsonparser.GetString(data, "code")
+			if code == "0" {
+				a.authMu.Lock()
+				select {
+				case <-a.authenticated:
+				default:
+					close(a.authenticated)
+				}
+				a.authMu.Unlock()
+			}
+			return opLogin
+		}
+
 		channel, err := jsonparser.GetString(data, "arg", "channel")
 		if err != nil {
 			return ""
@@ -156,7 +203,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 
 		switch channel {
 		case channelTicker:
-			return "tickers"
+			return "ticker"
 		case channelKline:
 			return "kline"
 		case channelDepth:
@@ -175,11 +222,17 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
 	instID, err := jsonparser.GetString(data, "arg", "instId")
 	if err != nil {
+		if event, _ := jsonparser.GetString(data, "event"); event != "" {
+			return "", nil, nil
+		}
 		return "", nil, err
 	}
 
 	dataNode, _, _, err := jsonparser.Get(data, "data")
 	if err != nil {
+		if event, _ := jsonparser.GetString(data, "event"); event != "" {
+			return "", nil, nil
+		}
 		return "", nil, err
 	}
 
@@ -222,12 +275,18 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	dataNode, _, _, err := jsonparser.Get(data, "data")
 	if err != nil {
+		if event, _ := jsonparser.GetString(data, "event"); event != "" {
+			return nil, nil
+		}
 		return nil, err
 	}
 
 	var dataArr []okxPosition
-	if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+	if err := json.Unmarshal(dataNode, &dataArr); err != nil {
 		return nil, fmt.Errorf("parse position data: %w", err)
+	}
+	if len(dataArr) == 0 {
+		return nil, nil
 	}
 
 	p := dataArr[0]
@@ -237,14 +296,11 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	liqPx, _ := strconv.ParseFloat(p.LiqPx, 64)
 	realized, _ := strconv.ParseFloat(p.RealizedPnl, 64)
 
-	posType := 1 // long
-	if p.PosSide == posSideShort {
-		posType = 2
-	}
+	posType := mapPositionType(p.PosSide, posVal, p.InstID, p.PosCcy)
 
 	update := &exchange.PersonalPositionUpdate{
 		Symbol:          p.InstID,
-		HoldVol:         posVal,
+		HoldVol:         math.Abs(posVal),
 		Leverage:        leverVal,
 		HoldAvgPrice:    avgPx,
 		LiquidatePrice:  liqPx,
