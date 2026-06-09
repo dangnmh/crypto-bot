@@ -24,14 +24,14 @@
     "kucoin": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "-100ms",
+      "bufferTime": "-200ms",
       "postSettleTimeout": "300s"
     },
     "okx": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
       "bufferTime": "0ms",
-      "postSettleTimeout": "5s"
+      "postSettleTimeout": "300s"
     },
     "bingx": {
       "takeProfitPct": 1.5,

@@ -308,7 +308,7 @@ func TestClient_GetOrder(t *testing.T) {
 			"code": "200000",
 			"msg": "success",
 			"data": {
-				"orderId": "123456",
+				"id": "123456",
 				"symbol": "XBTUSDTM",
 				"side": "buy",
 				"type": "limit",
@@ -345,7 +345,7 @@ func TestClient_GetOpenOrders(t *testing.T) {
 			"data": {
 				"items": [
 					{
-						"orderId": "123456",
+						"id": "123456",
 						"symbol": "XBTUSDTM",
 						"side": "sell",
 						"type": "limit",
@@ -448,7 +448,7 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 				"data": {
 					"items": [
 						{
-							"orderId": "123456",
+							"id": "123456",
 							"symbol": "XBTUSDTM",
 							"side": "buy",
 							"type": "limit",
@@ -698,7 +698,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"code": "200000",
 				"msg": "success",
 				"data": {
-					"orderId": "close_order_id_123",
+					"id": "close_order_id_123",
 					"clientOid": "external_close_oid"
 				}
 			}`))
@@ -795,7 +795,7 @@ func TestClient_GetRecentClosedPnL_Retry(t *testing.T) {
 					"code": "200000",
 					"msg": "success",
 					"data": {
-						"orderId": "close_order_id_123",
+						"id": "close_order_id_123",
 						"clientOid": "external_close_oid"
 					}
 				}`))
