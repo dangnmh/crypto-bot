@@ -29,9 +29,15 @@ func ExternalOrderID(symbol string, settleTime time.Time, exchange string) strin
 	// 4. Upper case the whole string
 	upperID := strings.ToUpper(rawID)
 
-	// 5. Truncate to max 32 characters
-	if len(upperID) > 32 {
-		return upperID[:32]
+	// 5. Truncate based on exchange limit (Gate.io has a 30-character limit for the client order ID,
+	// so with the "t-" prefix, the external ID is limited to 28 characters).
+	maxLen := 32
+	if strings.EqualFold(exchange, "gate") {
+		maxLen = 28
+	}
+
+	if len(upperID) > maxLen {
+		return upperID[:maxLen]
 	}
 	return upperID
 }

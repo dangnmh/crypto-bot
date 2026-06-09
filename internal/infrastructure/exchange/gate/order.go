@@ -3,120 +3,87 @@ package gate
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"github.com/antihax/optional"
-	"github.com/gateio/gateapi-go/v7"
 )
 
 // Explicit request/response structs for order endpoints.
 
-type gateCreateOrderRequest struct {
-	Settle string               `json:"settle"`
-	Order  gateapi.FuturesOrder `json:"order"`
-}
-
-type gateCancelOrderRequest struct {
-	Settle  string `json:"settle"`
-	OrderID string `json:"orderId"`
-}
-
-type gateCancelAllOpenOrdersRequest struct {
-	Settle string `json:"settle"`
-	Symbol string `json:"symbol"`
-}
-
-type gateGetOrderRequest struct {
-	Settle  string `json:"settle"`
-	OrderID string `json:"orderId"`
-}
-
-type gateListOpenOrdersRequest struct {
-	Settle string `json:"settle"`
-	Symbol string `json:"symbol,omitempty"`
-}
-
 type gateChangeLeverageRequest struct {
-	Settle   string `json:"settle"`
-	Symbol   string `json:"symbol"`
-	Leverage string `json:"leverage"`
+	Symbol             string `json:"symbol"`
+	Leverage           string `json:"leverage"`
+	CrossLeverageLimit string `json:"cross_leverage_limit,omitempty"`
 }
 
-// Private raw methods invoking the Gate.io SDK.
+type gatePositionCrossModeRequest struct {
+	Mode     string `json:"mode"`
+	Contract string `json:"contract"`
+}
 
-func (c *Client) createRawOrder(ctx context.Context, req gateCreateOrderRequest) (*gateapi.FuturesOrder, error) {
-	ctx = c.authCtx(ctx)
-	resp, httpResp, err := c.apiClient.FuturesApi.CreateFuturesOrder(ctx, req.Settle, req.Order, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+// Private raw methods invoking raw HTTP requests.
+
+func (c *Client) createRawOrder(ctx context.Context, settle string, order gateFuturesOrder) (*gateFuturesOrder, error) {
+	var result gateFuturesOrder
+	path := fmt.Sprintf("/futures/%s/orders", settle)
+	err := c.sendRequest(ctx, "POST", path, nil, &order, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return &result, nil
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, req gateCancelOrderRequest) error {
-	ctx = c.authCtx(ctx)
-	_, httpResp, err := c.apiClient.FuturesApi.CancelFuturesOrder(ctx, req.Settle, req.OrderID, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
-	return err
+func (c *Client) cancelRawOrder(ctx context.Context, settle, orderID string) error {
+	path := fmt.Sprintf("/futures/%s/orders/%s", settle, orderID)
+	return c.sendRequest(ctx, "DELETE", path, nil, nil, nil)
 }
 
-func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req gateCancelAllOpenOrdersRequest) error {
-	ctx = c.authCtx(ctx)
-	_, httpResp, err := c.apiClient.FuturesApi.CancelFuturesOrders(ctx, req.Settle, req.Symbol, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
-	return err
+func (c *Client) cancelRawAllOpenOrders(ctx context.Context, settle, symbol string) error {
+	query := url.Values{}
+	query.Set("contract", symbol)
+	path := fmt.Sprintf("/futures/%s/orders", settle)
+	return c.sendRequest(ctx, "DELETE", path, query, nil, nil)
 }
 
-func (c *Client) getRawOrder(ctx context.Context, req gateGetOrderRequest) (*gateapi.FuturesOrder, error) {
-	ctx = c.authCtx(ctx)
-	resp, httpResp, err := c.apiClient.FuturesApi.GetFuturesOrder(ctx, req.Settle, req.OrderID)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+func (c *Client) getRawOrder(ctx context.Context, settle, orderID string) (*gateFuturesOrder, error) {
+	var result gateFuturesOrder
+	path := fmt.Sprintf("/futures/%s/orders/%s", settle, orderID)
+	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return &result, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req gateListOpenOrdersRequest) ([]gateapi.FuturesOrder, error) {
-	ctx = c.authCtx(ctx)
-	opts := &gateapi.ListFuturesOrdersOpts{
-		Contract: optional.NewString(req.Symbol),
-	}
-	resp, httpResp, err := c.apiClient.FuturesApi.ListFuturesOrders(ctx, req.Settle, "open", opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+func (c *Client) getRawOpenOrders(ctx context.Context, settle, symbol string) ([]gateFuturesOrder, error) {
+	var result []gateFuturesOrder
+	query := url.Values{}
+	query.Set("contract", symbol)
+	query.Set("status", "open")
+	path := fmt.Sprintf("/futures/%s/orders", settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return resp, nil
+	return result, nil
 }
 
-func (c *Client) changeRawLeverage(ctx context.Context, req gateChangeLeverageRequest) error {
-	ctx = c.authCtx(ctx)
-	_, httpResp, err := c.apiClient.FuturesApi.UpdatePositionLeverage(ctx, req.Settle, req.Symbol, req.Leverage, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
+func (c *Client) changeRawLeverage(ctx context.Context, settle string, req gateChangeLeverageRequest) error {
+	query := url.Values{}
+	query.Set("leverage", req.Leverage)
+	if req.CrossLeverageLimit != "" {
+		query.Set("cross_leverage_limit", req.CrossLeverageLimit)
 	}
+
+	path := fmt.Sprintf("/futures/%s/positions/%s/leverage", settle, req.Symbol)
+	err := c.sendRequest(ctx, "POST", path, query, nil, nil)
 	if err != nil {
-		_, httpRespDual, errDual := c.apiClient.FuturesApi.UpdateDualModePositionLeverage(ctx, req.Settle, req.Symbol, req.Leverage, nil)
-		if httpRespDual != nil && httpRespDual.Body != nil {
-			_ = httpRespDual.Body.Close()
-		}
+		dualPath := fmt.Sprintf("/futures/%s/dual_comp/positions/%s/leverage", settle, req.Symbol)
+		errDual := c.sendRequest(ctx, "POST", dualPath, query, nil, nil)
 		if errDual != nil {
 			return fmt.Errorf("gate.io update leverage error (standard: %s, dual: %w)", err.Error(), errDual)
 		}
@@ -129,15 +96,13 @@ func (c *Client) changeRawLeverage(ctx context.Context, req gateChangeLeverageRe
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	order := c.mapSubmitOrder(req)
-	resp, err := c.createRawOrder(ctx, gateCreateOrderRequest{
-		Settle: gateSettleUsdt,
-		Order:  order,
-	})
+	resp, err := c.createRawOrder(ctx, gateSettleUsdt, order)
 	if err != nil {
 		return exchange.CreateOrderResult{}, fmt.Errorf("gate.io create order: %w", err)
 	}
 
-	return exchange.CreateOrderResult{OrderID: strconv.FormatInt(resp.Id, 10), TPSLSubmitted: false}, nil
+	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
+	return exchange.CreateOrderResult{OrderID: strconv.FormatInt(resp.Id, 10), TPSLSubmitted: tpslSubmitted}, nil
 }
 
 // CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
@@ -147,10 +112,7 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	err := c.cancelRawOrder(ctx, gateCancelOrderRequest{
-		Settle:  gateSettleUsdt,
-		OrderID: orderID,
-	})
+	err := c.cancelRawOrder(ctx, gateSettleUsdt, orderID)
 	if err != nil {
 		return fmt.Errorf("gate.io cancel order: %w", err)
 	}
@@ -160,10 +122,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 // CancelOrders cancels multiple orders.
 func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 	for _, id := range orderIDs {
-		err := c.cancelRawOrder(ctx, gateCancelOrderRequest{
-			Settle:  gateSettleUsdt,
-			OrderID: id,
-		})
+		err := c.cancelRawOrder(ctx, gateSettleUsdt, id)
 		if err != nil {
 			return fmt.Errorf("gate.io cancel bulk order %s: %w", id, err)
 		}
@@ -173,63 +132,69 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	err := c.cancelRawAllOpenOrders(ctx, gateCancelAllOpenOrdersRequest{
-		Settle: gateSettleUsdt,
-		Symbol: symbol,
-	})
+	err := c.cancelRawAllOpenOrders(ctx, gateSettleUsdt, symbol)
 	if err != nil {
 		return fmt.Errorf("gate.io cancel all open orders for %s: %w", symbol, err)
 	}
 	return nil
 }
 
-// GetOrder queries a single order by ID.
+// GetOrder retrieves detailed information about a specific order.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	resp, err := c.getRawOrder(ctx, gateGetOrderRequest{
-		Settle:  gateSettleUsdt,
-		OrderID: orderID,
-	})
+	resp, err := c.getRawOrder(ctx, gateSettleUsdt, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("gate.io get order %s: %w", orderID, err)
+		// Fallback to checking open orders if not found by ID directly
+		openOrders, openErr := c.getRawOpenOrders(ctx, gateSettleUsdt, symbol)
+		if openErr == nil {
+			for i := range openOrders {
+				if openOrders[i].Text == orderID || strconv.FormatInt(openOrders[i].Id, 10) == orderID {
+					mapped := mapOrderInfo(openOrders[i])
+					return &mapped, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("gate.io get order: %w", err)
 	}
 
-	info := mapOrderInfo(*resp)
-	return &info, nil
+	mapped := mapOrderInfo(*resp)
+	return &mapped, nil
 }
 
-// GetOpenOrders returns all open orders.
+// GetOpenOrders retrieves all currently open/active orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	resp, err := c.getRawOpenOrders(ctx, gateListOpenOrdersRequest{
-		Settle: gateSettleUsdt,
-		Symbol: symbol,
-	})
+	resp, err := c.getRawOpenOrders(ctx, gateSettleUsdt, symbol)
 	if err != nil {
-		return nil, fmt.Errorf("gate.io get open orders for %s: %w", symbol, err)
+		return nil, fmt.Errorf("gate.io list open orders for %s: %w", symbol, err)
 	}
 
 	orders := make([]exchange.OrderInfo, 0, len(resp))
 	for i := range resp {
-		raw := &resp[i]
-		orders = append(orders, mapOrderInfo(*raw))
+		orders = append(orders, mapOrderInfo(resp[i]))
 	}
 	return orders, nil
 }
 
-// ClosePosition closes one position leg using a market order.
+// ClosePosition submits a market order to close an open position.
 func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
-	req := exchange.SubmitOrderRequest{
+	orderSide := exchange.SideCloseLong
+	if closeSide == domain.SideCloseShort {
+		orderSide = exchange.SideCloseShort
+	}
+
+	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
-		Side:         int(closeSide),
+		Side:         orderSide,
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
-		ReduceOnly:   true,
+	})
+	if err != nil {
+		return fmt.Errorf("gate.io close position: %w", err)
 	}
-	_, err := c.CreateOrder(ctx, req)
-	return err
+	return nil
 }
 
-// CloseAllPositions closes all positions for a symbol.
+// CloseAllPositions closes all open positions for the given symbol.
 func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 	positions, err := c.GetOpenPositions(ctx, symbol)
 	if err != nil {
@@ -256,40 +221,54 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 // ChangeLeverage changes the leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	leverageStr := fmt.Sprintf("%d", req.Leverage)
-	return c.changeRawLeverage(ctx, gateChangeLeverageRequest{
-		Settle:   gateSettleUsdt,
-		Symbol:   req.Symbol,
-		Leverage: leverageStr,
+	var leverageStr string
+	var crossLimitStr string
+
+	if req.OpenType == exchange.OpenTypeCross {
+		leverageStr = "0"
+		crossLimitStr = fmt.Sprintf("%d", req.Leverage)
+	} else {
+		leverageStr = fmt.Sprintf("%d", req.Leverage)
+		crossLimitStr = ""
+	}
+
+	return c.changeRawLeverage(ctx, gateSettleUsdt, gateChangeLeverageRequest{
+		Symbol:             req.Symbol,
+		Leverage:           leverageStr,
+		CrossLeverageLimit: crossLimitStr,
 	})
+}
+
+// SetPositionMode sets the position mode (Hedge Mode vs One-Way Mode) on Gate.io.
+func (c *Client) SetPositionMode(ctx context.Context, settle string, dualMode bool) error {
+	query := url.Values{}
+	query.Set("dual_mode", strconv.FormatBool(dualMode))
+
+	var result struct{}
+	path := fmt.Sprintf("/futures/%s/dual_mode", settle)
+	return c.sendRequest(ctx, "POST", path, query, nil, &result)
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Gate.io.
 func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	ctx = c.authCtx(ctx)
 	settle := gateSettleUsdt
-	modeStr := "isolated"
-	if marginMode == "CROSS" {
-		modeStr = "cross"
+	modeStr := gateMarginModeIsolated
+	if marginMode == gateMarginModeCross {
+		modeStr = gateMarginModeCross
 	}
 
-	opts := gateapi.FuturesPositionCrossMode{
+	body := gatePositionCrossModeRequest{
 		Contract: symbol,
 		Mode:     modeStr,
 	}
-	_, httpResp, err := c.apiClient.FuturesApi.UpdatePositionCrossMode(ctx, settle, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+
+	var result []gatePosition
+	path := fmt.Sprintf("/futures/%s/positions/cross_mode", settle)
+	err := c.sendRequest(ctx, "POST", path, nil, &body, &result)
 	if err != nil {
-		inlineOpts := gateapi.InlineObject{
-			Contract: symbol,
-			Mode:     modeStr,
-		}
-		_, httpRespDual, errDual := c.apiClient.FuturesApi.UpdateDualCompPositionCrossMode(ctx, settle, inlineOpts)
-		if httpRespDual != nil && httpRespDual.Body != nil {
-			_ = httpRespDual.Body.Close()
-		}
+		dualPath := fmt.Sprintf("/futures/%s/dual_comp/positions/cross_mode", settle)
+		var dualResult []gatePosition
+		errDual := c.sendRequest(ctx, "POST", dualPath, nil, &body, &dualResult)
 		if errDual != nil {
 			return fmt.Errorf("gate.io update margin mode error (standard: %s, dual: %w)", err.Error(), errDual)
 		}
@@ -299,66 +278,87 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 
 // Helper mapping functions.
 
-// mapSubmitOrder maps a SubmitOrderRequest to gateapi.FuturesOrder.
-func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) gateapi.FuturesOrder {
-	order := gateapi.FuturesOrder{
-		Contract: req.Symbol,
+func mapOrderPriceAndTif(reqType int, price float64) (priceStr, tif string) {
+	if reqType == exchange.OrderTypeMarket {
+		return "0", gateTifIOC
 	}
-
-	if req.Type == exchange.OrderTypeMarket {
-		order.Price = "0"
-		order.Tif = gateTifIOC
-	} else {
-		order.Price = fmt.Sprintf("%g", req.Price)
-		switch req.Type {
-		case exchange.OrderTypePostOnly:
-			order.Tif = "poc"
-		case exchange.OrderTypeIOC:
-			order.Tif = gateTifIOC
-		case exchange.OrderTypeFOK:
-			order.Tif = "fok"
-		default:
-			order.Tif = "gtc"
-		}
+	priceStr = strconv.FormatFloat(price, 'f', -1, 64)
+	switch reqType {
+	case exchange.OrderTypePostOnly:
+		tif = "poc"
+	case exchange.OrderTypeIOC:
+		tif = gateTifIOC
+	case exchange.OrderTypeFOK:
+		tif = "fok"
+	default:
+		tif = "gtc"
 	}
+	return priceStr, tif
+}
 
-	isHedge := req.PositionMode == 1
-	volInt := int64(req.Vol)
+func mapOrderSizeAndClose(side int, vol float64, positionMode int, reduceOnly bool) (size int64, autoSize string, isClose bool) {
+	isHedge := positionMode == 1
+	volInt := int64(vol)
 
 	if isHedge {
-		switch req.Side {
+		switch side {
 		case exchange.SideOpenLong:
-			order.Size = volInt
+			size = volInt
 		case exchange.SideOpenShort:
-			order.Size = -volInt
+			size = -volInt
 		case exchange.SideCloseLong:
-			order.Size = 0
-			order.AutoSize = "close_long"
+			size = 0
+			autoSize = "close_long"
 		case exchange.SideCloseShort:
-			order.Size = 0
-			order.AutoSize = "close_short"
+			size = 0
+			autoSize = "close_short"
 		}
 	} else {
-		switch req.Side {
+		switch side {
 		case exchange.SideOpenLong, exchange.SideCloseShort:
-			order.Size = volInt
+			size = volInt
 		case exchange.SideOpenShort, exchange.SideCloseLong:
-			order.Size = -volInt
+			size = -volInt
 		}
-		if req.ReduceOnly {
-			order.Close = true
+		if reduceOnly {
+			isClose = true
 		}
+	}
+	return size, autoSize, isClose
+}
+
+// mapSubmitOrder maps a SubmitOrderRequest to gateFuturesOrder.
+func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) gateFuturesOrder {
+	priceStr, tifVal := mapOrderPriceAndTif(req.Type, req.Price)
+	sizeVal, autoSizeVal, closeVal := mapOrderSizeAndClose(req.Side, req.Vol, req.PositionMode, req.ReduceOnly)
+
+	order := gateFuturesOrder{
+		Contract: req.Symbol,
+		Price:    priceStr,
+		Tif:      tifVal,
+		Size:     sizeVal,
+		AutoSize: autoSizeVal,
+		Close:    closeVal,
 	}
 
 	if req.ExternalOID != "" {
 		order.Text = "t-" + req.ExternalOID
 	}
 
+	if req.TakeProfitPrice > 0 {
+		order.TpslTpTriggerPrice = strconv.FormatFloat(req.TakeProfitPrice, 'f', -1, 64)
+		order.TpslTpPriceType = gatePriceTypeLast
+	}
+	if req.StopLossPrice > 0 {
+		order.TpslSlTriggerPrice = strconv.FormatFloat(req.StopLossPrice, 'f', -1, 64)
+		order.TpslSlPriceType = gatePriceTypeLast
+	}
+
 	return order
 }
 
-// mapOrderInfo maps a gateapi.FuturesOrder to exchange.OrderInfo.
-func mapOrderInfo(raw gateapi.FuturesOrder) exchange.OrderInfo {
+// mapOrderInfo maps a gateFuturesOrder to exchange.OrderInfo.
+func mapOrderInfo(raw gateFuturesOrder) exchange.OrderInfo {
 	info := exchange.OrderInfo{
 		OrderID:      strconv.FormatInt(raw.Id, 10),
 		Symbol:       raw.Contract,

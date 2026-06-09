@@ -3,15 +3,14 @@ package gate
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"github.com/antihax/optional"
-	"github.com/gateio/gateapi-go/v7"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -39,85 +38,73 @@ type gateDepthRequest struct {
 	Limit    int    `json:"limit,omitempty"`
 }
 
-// Private raw methods invoking the Gate.io SDK.
+// Private raw methods using raw HTTP requests.
 
-func (c *Client) getRawServerTime(ctx context.Context) (*gateapi.SystemTime, error) {
-	resp, httpResp, err := c.apiClient.SpotApi.GetSystemTime(ctx)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+func (c *Client) getRawServerTime(ctx context.Context) (*gateSystemTime, error) {
+	var result gateSystemTime
+	err := c.sendRequest(ctx, "GET", "/spot/time", nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return &result, nil
 }
 
-func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsRequest) ([]gateapi.Contract, error) {
-	contracts, httpResp, err := c.apiClient.FuturesApi.ListFuturesContracts(ctx, req.Settle, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsRequest) ([]gateContract, error) {
+	var result []gateContract
+	path := fmt.Sprintf("/futures/%s/contracts", req.Settle)
+	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return contracts, nil
+	return result, nil
 }
 
-func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]gateapi.FuturesTicker, error) {
-	var opts *gateapi.ListFuturesTickersOpts
+func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]gateFuturesTicker, error) {
+	var result []gateFuturesTicker
+	query := url.Values{}
 	if req.Contract != "" {
-		opts = &gateapi.ListFuturesTickersOpts{
-			Contract: optional.NewString(req.Contract),
-		}
+		query.Set("contract", req.Contract)
 	}
-
-	rawTickers, httpResp, err := c.apiClient.FuturesApi.ListFuturesTickers(ctx, req.Settle, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+	path := fmt.Sprintf("/futures/%s/tickers", req.Settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return rawTickers, nil
+	return result, nil
 }
 
-func (c *Client) getRawKlines(ctx context.Context, req gateKlinesRequest) ([]gateapi.FuturesCandlestick, error) {
-	opts := &gateapi.ListFuturesCandlesticksOpts{
-		Interval: optional.NewString(req.Interval),
-	}
+func (c *Client) getRawKlines(ctx context.Context, req gateKlinesRequest) ([]gateFuturesCandlestick, error) {
+	var result []gateFuturesCandlestick
+	query := url.Values{}
+	query.Set("contract", req.Contract)
+	query.Set("interval", req.Interval)
 	if req.From > 0 {
-		opts.From = optional.NewInt64(req.From)
+		query.Set("from", strconv.FormatInt(req.From, 10))
 	}
 	if req.To > 0 {
-		opts.To = optional.NewInt64(req.To)
+		query.Set("to", strconv.FormatInt(req.To, 10))
 	}
-
-	candles, httpResp, err := c.apiClient.FuturesApi.ListFuturesCandlesticks(ctx, req.Settle, req.Contract, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+	path := fmt.Sprintf("/futures/%s/candlesticks", req.Settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return candles, nil
+	return result, nil
 }
 
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req gateDepthRequest) (*gateapi.FuturesOrderBook, error) {
-	var opts *gateapi.ListFuturesOrderBookOpts
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req gateDepthRequest) (*gateFuturesOrderBook, error) {
+	var result gateFuturesOrderBook
+	query := url.Values{}
+	query.Set("contract", req.Contract)
 	if req.Limit > 0 {
-		opts = &gateapi.ListFuturesOrderBookOpts{
-			Limit: optional.NewInt32(int32(req.Limit)),
-		}
+		query.Set("limit", strconv.Itoa(req.Limit))
 	}
-
-	ob, httpResp, err := c.apiClient.FuturesApi.ListFuturesOrderBook(ctx, req.Settle, req.Contract, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		_ = httpResp.Body.Close()
-	}
+	path := fmt.Sprintf("/futures/%s/order_book", req.Settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &ob, nil
+	return &result, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -201,7 +188,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	needUsdt, needBtc := determineNeededSettleCoins(symbols)
-	contractMap := make(map[string]*gateapi.Contract)
+	contractMap := make(map[string]*gateContract)
 
 	if needUsdt {
 		if err := c.fetchContracts(ctx, gateSettleUsdt, contractMap); err != nil {
@@ -241,7 +228,7 @@ func determineNeededSettleCoins(symbols []string) (needUsdt, needBtc bool) {
 	return
 }
 
-func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap map[string]*gateapi.Contract) error {
+func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap map[string]*gateContract) error {
 	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: settle})
 	if err != nil {
 		return fmt.Errorf("gate.io list %s contracts: %w", settle, err)
@@ -296,7 +283,7 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	klines := make([]exchange.Kline, 0, len(candles))
 	for _, candle := range candles {
 		klines = append(klines, exchange.Kline{
-			Timestamp: int64(candle.T * 1000), // convert to ms
+			Timestamp: candle.T * 1000, // convert to ms
 			Open:      decmath.ParseFloat(candle.O),
 			Close:     decmath.ParseFloat(candle.C),
 			High:      decmath.ParseFloat(candle.H),
@@ -332,7 +319,7 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 
 	for _, item := range ob.Asks {
 		p := decmath.ParseFloat(item.P)
-		v := float64(item.S)
+		v := item.S
 		if p > 0 {
 			book.Asks = append(book.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
 		}
@@ -340,7 +327,7 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 
 	for _, item := range ob.Bids {
 		p := decmath.ParseFloat(item.P)
-		v := float64(item.S)
+		v := item.S
 		if p > 0 {
 			book.Bids = append(book.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
 		}

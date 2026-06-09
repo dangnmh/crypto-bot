@@ -25,11 +25,16 @@ const (
 	gateChannelOrderBook    = "futures.order_book"
 	gateChannelOrders       = "futures.orders"
 	gateChannelPositions    = "futures.positions"
-	gateChannelTickers      = "futures.tickers"
+	gateChannelTickers      = "futures.book_ticker"
 	gateChannelPing         = "futures.ping"
 
 	gateAuthMethodAPIKey = "api_key"
 	gatePayloadAll       = "!all"
 	gateJSONMethod       = "method"
 	gateSettleUsdt       = "usdt"
+
+	gatePriceTypeLast = "last"
+
+	gateMarginModeCross    = "CROSS"
+	gateMarginModeIsolated = "ISOLATED"
 )

@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"github.com/antihax/optional"
-	"github.com/gateio/gateapi-go/v7"
 )
 
 // Explicit request/response structs for account endpoints.
@@ -25,64 +24,51 @@ type gatePositionsRequest struct {
 	Symbol string `json:"symbol,omitempty"`
 }
 
-type gateMyTradesRequest struct {
-	Settle   string `json:"settle"`
-	Contract string `json:"contract"`
-	Limit    int32  `json:"limit,omitempty"`
-}
+// Private raw methods invoking HTTP requests.
 
-// Private raw methods invoking the Gate.io SDK.
-
-func (c *Client) getRawAssets(ctx context.Context, req gateAssetsRequest) (*gateapi.FuturesAccount, error) {
-	ctx = c.authCtx(ctx)
-	resp, httpResp, err := c.apiClient.FuturesApi.ListFuturesAccounts(ctx, req.Settle)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+func (c *Client) getRawAssets(ctx context.Context, req gateAssetsRequest) (*gateFuturesAccount, error) {
+	var result gateFuturesAccount
+	path := fmt.Sprintf("/futures/%s/accounts", req.Settle)
+	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return &result, nil
 }
 
-func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) (*gateapi.Position, error) {
-	ctx = c.authCtx(ctx)
-	pos, httpResp, err := c.apiClient.FuturesApi.GetPosition(ctx, req.Settle, req.Symbol)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) (*gatePosition, error) {
+	var result gatePosition
+	path := fmt.Sprintf("/futures/%s/positions/%s", req.Settle, req.Symbol)
+	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &pos, nil
+	return &result, nil
 }
 
-func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) ([]gateapi.Position, error) {
-	ctx = c.authCtx(ctx)
-	rawPositions, httpResp, err := c.apiClient.FuturesApi.ListPositions(ctx, req.Settle, nil)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
+	var result []gatePosition
+	path := fmt.Sprintf("/futures/%s/positions", req.Settle)
+	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return rawPositions, nil
+	return result, nil
 }
 
-func (c *Client) getRawMyTrades(ctx context.Context, req gateMyTradesRequest) ([]gateapi.MyFuturesTrade, error) {
-	ctx = c.authCtx(ctx)
-	opts := &gateapi.GetMyTradesOpts{
-		Contract: optional.NewString(req.Contract),
-		Limit:    optional.NewInt32(req.Limit),
+func (c *Client) getRawPositionClose(ctx context.Context, settle, contract string) ([]gatePositionClose, error) {
+	var result []gatePositionClose
+	query := url.Values{}
+	if contract != "" {
+		query.Set("contract", contract)
 	}
-	trades, httpResp, err := c.apiClient.FuturesApi.GetMyTrades(ctx, req.Settle, opts)
-	if httpResp != nil && httpResp.Body != nil {
-		defer func() { _ = httpResp.Body.Close() }()
-	}
+	query.Set("limit", "10")
+	path := fmt.Sprintf("/futures/%s/position_close", settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return trades, nil
+	return result, nil
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
@@ -160,85 +146,85 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries recent trades, aggregates closing fills, and returns closed trade metrics.
+// GetRecentClosedPnL queries position close history directly using a retry loop and maps the closed position metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrder(ctx, symbol, "t-"+extOrderID)
-	if err != nil {
-		return nil, fmt.Errorf("gate.io get order by external ID %s failed: %w", extOrderID, err)
-	}
-	closingOrderId := orderInfo.OrderID
+	var closeHistory []gatePositionClose
+	var matchedClose *gatePositionClose
 
-	trades, err := c.getRawMyTrades(ctx, gateMyTradesRequest{
-		Settle:   gateSettleUsdt,
-		Contract: symbol,
-		Limit:    10,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gate.io get closed trades: %w", err)
-	}
-
-	if !startTime.IsZero() {
-		temp := trades[:0]
-		for i := range trades {
-			if int64(trades[i].CreateTime) >= startTime.Unix() {
-				temp = append(temp, trades[i])
-			}
+	// Retry up to 5 times (with 1s delay) to allow the exchange to process the position closure.
+	for attempt := 1; attempt <= 5; attempt++ {
+		var err error
+		closeHistory, err = c.getRawPositionClose(ctx, gateSettleUsdt, symbol)
+		if err == nil {
+			matchedClose = findMatchingCloseRecord(closeHistory, symbol, startTime)
 		}
-		trades = temp
-	}
 
-	if len(trades) == 0 {
-		return nil, fmt.Errorf("no user trades found for symbol %s", symbol)
-	}
+		if matchedClose != nil {
+			break
+		}
 
-	latestTrade := &trades[0]
-	for i := range trades {
-		t := &trades[i]
-		if t.Id > latestTrade.Id {
-			latestTrade = t
+		// Sleep 1s before retrying, respecting context cancellation
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Second):
 		}
 	}
 
-	var totalQty float64
-	var totalCommission float64
-	var weightedPriceSum float64
+	if matchedClose == nil {
+		return nil, fmt.Errorf("no matching position close record found in history for symbol %s (start time: %s)", symbol, startTime.Format(time.RFC3339))
+	}
 
-	for i := range trades {
-		item := &trades[i]
-		if item.OrderId != closingOrderId {
-			continue
+	pnlVal, _ := strconv.ParseFloat(matchedClose.Pnl, 64)
+	pnlPnlVal, _ := strconv.ParseFloat(matchedClose.PnlPnl, 64)
+	pnlFundVal, _ := strconv.ParseFloat(matchedClose.PnlFund, 64)
+	pnlFeeVal, _ := strconv.ParseFloat(matchedClose.PnlFee, 64)
+	longPriceVal, _ := strconv.ParseFloat(matchedClose.LongPrice, 64)
+	shortPriceVal, _ := strconv.ParseFloat(matchedClose.ShortPrice, 64)
+	closedSizeVal, _ := strconv.ParseFloat(matchedClose.AccumSize, 64)
+
+	entryPrice := 0.0
+	exitPrice := 0.0
+	pnlRate := 0.0
+
+	if matchedClose.Side == "long" {
+		entryPrice = longPriceVal
+		exitPrice = shortPriceVal
+		if entryPrice > 0 {
+			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
 		}
-		qty := math.Abs(float64(item.Size))
-		price := decmath.ParseFloat(item.Price)
-		commission := decmath.ParseFloat(item.Fee)
-
-		totalQty += qty
-		totalCommission += commission
-		weightedPriceSum += price * qty
+	} else {
+		entryPrice = shortPriceVal
+		exitPrice = longPriceVal
+		if entryPrice > 0 {
+			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
+		}
 	}
 
-	if totalQty == 0 {
-		return nil, fmt.Errorf("zero quantity for closing order %s", closingOrderId)
+	durationMs := int64(0)
+	durationSec := int64(matchedClose.Time) - matchedClose.FirstOpenTime
+	if durationSec > 0 {
+		durationMs = durationSec * 1000
 	}
-
-	exitPrice := weightedPriceSum / totalQty
 
 	return &exchange.ClosedPnLInfo{
-		Symbol:     latestTrade.Contract,
-		EntryPrice: 0, // Fallback to WS estimation.
+		Symbol:     matchedClose.Contract,
+		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,
-		ClosedSize: totalQty,
-		GrossPnL:   0, // Fallback to WS estimation.
-		Fee:        totalCommission,
-		FundingFee: 0,
-		DurationMs: 0,
+		ClosedSize: closedSizeVal,
+		GrossPnL:   pnlPnlVal,
+		Fee:        math.Abs(pnlFeeVal),
+		FundingFee: pnlFundVal,
+		DurationMs: durationMs,
+		NetPnl:     pnlVal,
+		PnLRate:    pnlRate,
 	}, nil
 }
 
 // Helper mapping functions.
 
-// mapPosition maps a gateapi.Position to exchange.Position.
-func mapPosition(raw gateapi.Position) exchange.Position {
+// mapPosition maps a gatePosition to exchange.Position.
+func mapPosition(raw gatePosition) exchange.Position {
 	pos := exchange.Position{
 		Symbol:       raw.Contract,
 		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
@@ -253,4 +239,17 @@ func mapPosition(raw gateapi.Position) exchange.Position {
 	}
 
 	return pos
+}
+
+// findMatchingCloseRecord searches a slice of gatePositionClose for the newest matching close history item.
+func findMatchingCloseRecord(closeHistory []gatePositionClose, symbol string, startTime time.Time) *gatePositionClose {
+	for i := range closeHistory {
+		item := &closeHistory[i]
+		if item.Contract == symbol {
+			if startTime.IsZero() || int64(item.Time) >= startTime.Unix() {
+				return item
+			}
+		}
+	}
+	return nil
 }

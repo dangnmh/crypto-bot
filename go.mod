@@ -4,7 +4,6 @@ go 1.26.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.2
-	github.com/antihax/optional v1.0.0
 	github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures v1.9.0
 	github.com/binance/binance-connector-go/common/v2 v2.2.0
 	github.com/bitwarden/sdk-go/v2 v2.1.0
@@ -13,7 +12,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/dangnmh/transport v0.0.0-20250317091120-3bd599167d13
 	github.com/ethereum/go-ethereum v1.17.3
-	github.com/gateio/gateapi-go/v7 v7.1.8
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/google/uuid v1.6.0

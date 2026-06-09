@@ -56,23 +56,13 @@
         "publicURL": "wss://ws.okx.com:8443/ws/v5/public"
       }
     },
-    "bitget": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://api.bitget.com"
-      },
-      "websocket": {
-        "publicURL": "wss://ws.bitget.com/v2/ws/public",
-        "privateURL": "wss://ws.bitget.com/v2/ws/private"
-      }
-    },
     "gate": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://api.gateio.ws/api/v4"
       },
       "websocket": {
-        "wsURL": "wss://fx-api.gateio.ws/v4/ws/usdt"
+        "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt"
       }
     },
     "hyperliquid": {
@@ -82,6 +72,16 @@
       },
       "websocket": {
         "wsURL": "wss://api.hyperliquid.xyz/ws"
+      }
+    },
+    "bitget": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://api.bitget.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws.bitget.com/v2/ws/public",
+        "privateURL": "wss://ws.bitget.com/v2/ws/private"
       }
     },
     "bingx": {

@@ -30,7 +30,7 @@ func TestWsAdapter_ChannelExtractorAndAuth(t *testing.T) {
 		msg  string
 		want string
 	}{
-		{"ticker", `{"channel":"futures.tickers"}`, "ticker"},
+		{"ticker", `{"channel":"futures.book_ticker"}`, "ticker"},
 		{"depth", `{"channel":"futures.order_book"}`, "depth"},
 		{"kline", `{"channel":"futures.candlesticks"}`, "kline"},
 		{"order", `{"channel":"futures.orders"}`, "personal.order"},
@@ -82,7 +82,7 @@ func TestWsAdapter_ParseMarketMessages(t *testing.T) {
 
 	a := gate.NewWsAdapter()
 
-	symbol, price, err := a.ParseTicker([]byte(`{"result":[{"contract":"BTC_USDT","last":"100.5","lowest_ask":"101","highest_bid":"100","volume_24h":"12.5"}]}`))
+	symbol, price, err := a.ParseTicker([]byte(`{"time":1716384000,"channel":"futures.book_ticker","event":"update","result":{"t":1716384000123,"u":48733182,"s":"BTC_USDT","b":"100.0","B":"0.5","a":"101.0","A":"0.35"}}`))
 	require.NoError(t, err)
 	assert.Equal(t, "BTC_USDT", symbol)
 	assert.Equal(t, 100.5, price.LastPrice)
@@ -90,18 +90,35 @@ func TestWsAdapter_ParseMarketMessages(t *testing.T) {
 	assert.Equal(t, 101.0, price.BestAsk)
 }
 
+//nolint:misspell // Gate.io uses British spelling realised_pnl in JSON.
 func TestWsAdapter_ParsePersonalMessages(t *testing.T) {
 	t.Parallel()
 
 	a := gate.NewWsAdapter()
 
-	//nolint:misspell // Gate.io uses the British spelling in the API field name.
-	position, err := a.ParsePosition([]byte(`{"result":[{"contract":"ETH_USDT","size":-3,"entry_price":"2000.5","leverage":20,"realised_pnl":"1.2"}]}`))
-	require.NoError(t, err)
-	assert.Equal(t, "ETH_USDT", position.Symbol)
-	assert.Equal(t, 3.0, position.HoldVol)
-	assert.Equal(t, 2, position.PositionType)
-	assert.Equal(t, 2000.5, position.HoldAvgPrice)
+	t.Run("isolated margin position string inputs", func(t *testing.T) {
+		t.Parallel()
+		position, err := a.ParsePosition([]byte(`{"result":[{"contract":"ETH_USDT","size":-3,"entry_price":"2000.5","leverage":20,"realised_pnl":"1.2"}]}`))
+		require.NoError(t, err)
+		assert.Equal(t, "ETH_USDT", position.Symbol)
+		assert.Equal(t, 3.0, position.HoldVol)
+		assert.Equal(t, 2, position.PositionType)
+		assert.Equal(t, 2000.5, position.HoldAvgPrice)
+		assert.Equal(t, 20, position.Leverage)
+		assert.Equal(t, 1.2, position.CloseProfitLoss)
+	})
+
+	t.Run("cross margin position float inputs and fallback leverage", func(t *testing.T) {
+		t.Parallel()
+		position, err := a.ParsePosition([]byte(`{"result":[{"contract":"BTC_USDT","size":3.5,"entry_price":40000.36,"leverage":0,"cross_leverage_limit":10,"realised_pnl":-1.25e-8}]}`))
+		require.NoError(t, err)
+		assert.Equal(t, "BTC_USDT", position.Symbol)
+		assert.Equal(t, 3.5, position.HoldVol)
+		assert.Equal(t, 1, position.PositionType)
+		assert.Equal(t, 40000.36, position.HoldAvgPrice)
+		assert.Equal(t, 10, position.Leverage)
+		assert.Equal(t, -1.25e-8, position.CloseProfitLoss)
+	})
 }
 
 func TestWsAdapter_ParseErrors(t *testing.T) {

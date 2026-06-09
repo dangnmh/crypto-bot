@@ -326,7 +326,6 @@ func (c *Client) processMessage(data []byte) {
 
 // SendJSON sends a generic JSON payload.
 func (c *Client) SendJSON(msg any) error {
-	c.logger.Debug("🔍 WS SendJSON", slog.String("url", c.url), slog.Any("msg", msg))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {
