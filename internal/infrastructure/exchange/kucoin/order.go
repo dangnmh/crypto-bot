@@ -64,7 +64,7 @@ type kucoinOpenOrdersRequest struct {
 }
 
 type kucoinOrder struct {
-	OrderID     string `json:"orderId"`
+	OrderID     string `json:"id"`
 	ClientOid   string `json:"clientOid"`
 	Symbol      string `json:"symbol"`
 	Side        string `json:"side"`
