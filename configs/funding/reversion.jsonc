@@ -33,16 +33,10 @@
       "bufferTime": "0ms",
       "postSettleTimeout": "300s"
     },
-    "bingx": {
-      "takeProfitPct": 1.5,
-      "stopLossPct": 3,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "300s"
-    },
     "gate": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
-      "bufferTime": "30ms",
+      "bufferTime": "-50ms",
       "postSettleTimeout": "300s"
     },
     "hyperliquid": {
@@ -52,6 +46,12 @@
       "postSettleTimeout": "300s"
     },
     "bitget": {
+      "takeProfitPct": 1.5,
+      "stopLossPct": 3,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "bingx": {
       "takeProfitPct": 1.5,
       "stopLossPct": 3,
       "bufferTime": "30ms",
