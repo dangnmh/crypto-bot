@@ -175,7 +175,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition submits a market order to close an open position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	orderSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		orderSide = exchange.SideCloseShort
@@ -205,12 +205,12 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		pos := &positions[i]
 		if pos.HoldVol > 0 {
 			var side domain.Side
-			if pos.PositionType == 1 { // Long
+			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			} else { // Short
 				side = domain.SideCloseShort
 			}
-			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1) // default hedge mode close
+			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge) // default hedge mode close
 			if posErr != nil {
 				return posErr
 			}
@@ -278,7 +278,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 
 // Helper mapping functions.
 
-func mapOrderPriceAndTif(reqType int, price float64) (priceStr, tif string) {
+func mapOrderPriceAndTif(reqType domain.OrderType, price float64) (priceStr, tif string) {
 	if reqType == exchange.OrderTypeMarket {
 		return "0", gateTifIOC
 	}
@@ -296,8 +296,8 @@ func mapOrderPriceAndTif(reqType int, price float64) (priceStr, tif string) {
 	return priceStr, tif
 }
 
-func mapOrderSizeAndClose(side int, vol float64, positionMode int, reduceOnly bool) (size int64, autoSize string, isClose bool) {
-	isHedge := positionMode == 1
+func mapOrderSizeAndClose(side domain.Side, vol float64, positionMode domain.PositionMode, reduceOnly bool) (size int64, autoSize string, isClose bool) {
+	isHedge := positionMode == domain.PositionModeHedge
 	volInt := int64(vol)
 
 	if isHedge {
@@ -312,6 +312,8 @@ func mapOrderSizeAndClose(side int, vol float64, positionMode int, reduceOnly bo
 		case exchange.SideCloseShort:
 			size = 0
 			autoSize = "close_short"
+		default:
+			// SideUnknown or unhandled
 		}
 	} else {
 		switch side {
@@ -319,6 +321,8 @@ func mapOrderSizeAndClose(side int, vol float64, positionMode int, reduceOnly bo
 			size = volInt
 		case exchange.SideOpenShort, exchange.SideCloseLong:
 			size = -volInt
+		default:
+			// SideUnknown or unhandled
 		}
 		if reduceOnly {
 			isClose = true

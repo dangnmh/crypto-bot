@@ -168,15 +168,15 @@ func TestIsTerminalOrderState(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
-		state int
+		state domain.OrderState
 		want  bool
 	}{
 		{"filled", domain.OrderStateFilled, true},
 		{"canceled", domain.OrderStateCanceled, true},
 		{"partial canceled", domain.OrderStatePartial, true},
-		{"new", 0, false},
-		{"partially filled", 1, false},
-		{"untriggered", 6, false},
+		{"new", domain.OrderState(0), false},
+		{"partially filled", domain.OrderState(1), false},
+		{"untriggered", domain.OrderState(6), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -192,20 +192,20 @@ func TestIsTerminalOrderState(t *testing.T) {
 
 func TestOrderTypeConstants(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, 1, domain.OrderTypeLimit)
-	assert.Equal(t, 2, domain.OrderTypePostOnly)
-	assert.Equal(t, 3, domain.OrderTypeIOC)
-	assert.Equal(t, 4, domain.OrderTypeFOK)
-	assert.Equal(t, 5, domain.OrderTypeMarket)
+	assert.Equal(t, domain.OrderType(1), domain.OrderTypeLimit)
+	assert.Equal(t, domain.OrderType(2), domain.OrderTypePostOnly)
+	assert.Equal(t, domain.OrderType(3), domain.OrderTypeIOC)
+	assert.Equal(t, domain.OrderType(4), domain.OrderTypeFOK)
+	assert.Equal(t, domain.OrderType(5), domain.OrderTypeMarket)
 }
 
 func TestOpenTypeConstants(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, 1, domain.OpenTypeIsolated)
-	assert.Equal(t, 2, domain.OpenTypeCross)
+	assert.Equal(t, domain.OpenType(1), domain.OpenTypeIsolated)
+	assert.Equal(t, domain.OpenType(2), domain.OpenTypeCross)
 }
 
 func TestIntervalMin1(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "Min1", domain.IntervalMin1)
+	assert.Equal(t, domain.Interval("Min1"), domain.IntervalMin1)
 }

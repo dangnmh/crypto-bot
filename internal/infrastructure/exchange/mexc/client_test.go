@@ -503,9 +503,15 @@ func TestClient_CancelAllOpenOrders(t *testing.T) {
 //nolint:dupl // test
 func TestClient_GetOrder(t *testing.T) {
 	t.Parallel()
-	order := exchange.OrderInfo{OrderID: "ord1", Symbol: "BTC_USDT", Price: 50000}
+	order := map[string]any{
+		"orderId": "ord1",
+		"symbol":  "BTC_USDT",
+		"price":   50000.0,
+		"side":    1,
+		"state":   2,
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[exchange.OrderInfo]{Success: true, Code: 0, Data: order}))
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[map[string]any]{Success: true, Code: 0, Data: order}))
 	}))
 	defer srv.Close()
 
@@ -524,12 +530,12 @@ func TestClient_GetOrder(t *testing.T) {
 //nolint:dupl // test
 func TestClient_GetOpenOrders(t *testing.T) {
 	t.Parallel()
-	orders := []exchange.OrderInfo{
-		{OrderID: "o1", Symbol: "BTC_USDT"},
-		{OrderID: "o2", Symbol: "BTC_USDT"},
+	orders := []map[string]any{
+		{"orderId": "o1", "symbol": "BTC_USDT", "side": 1, "state": 2},
+		{"orderId": "o2", "symbol": "BTC_USDT", "side": 1, "state": 2},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]exchange.OrderInfo]{Success: true, Code: 0, Data: orders}))
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]map[string]any]{Success: true, Code: 0, Data: orders}))
 	}))
 	defer srv.Close()
 

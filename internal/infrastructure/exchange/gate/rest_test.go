@@ -80,7 +80,7 @@ func TestClient_MarketAndAccountEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
 	assert.Equal(t, 2.0, positions[0].HoldVol)
-	assert.Equal(t, 1, positions[0].PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType)
 
 	positions, err = client.GetOpenPositions(ctx, "")
 	require.NoError(t, err)

@@ -193,14 +193,17 @@ type OrderBook struct {
 // OrderState — terminal state of an order
 // ──────────────────────────────────────────────────────────────────────.
 
+// OrderState represents the terminal or execution state of an order.
+type OrderState int
+
 const (
-	OrderStateFilled   = 3
-	OrderStateCanceled = 4
-	OrderStatePartial  = 5
+	OrderStateFilled   OrderState = 3
+	OrderStateCanceled OrderState = 4
+	OrderStatePartial  OrderState = 5
 )
 
 // IsTerminalOrderState returns true if the order state is a terminal state.
-func IsTerminalOrderState(state int) bool {
+func IsTerminalOrderState(state OrderState) bool {
 	return state == OrderStateFilled || state == OrderStateCanceled || state == OrderStatePartial
 }
 
@@ -208,27 +211,48 @@ func IsTerminalOrderState(state int) bool {
 // OrderType — execution strategy for an order
 // ──────────────────────────────────────────────────────────────────────.
 
+// OrderType represents the execution type of an order.
+type OrderType int
+
 const (
-	OrderTypeLimit    = 1
-	OrderTypePostOnly = 2
-	OrderTypeIOC      = 3
-	OrderTypeFOK      = 4
-	OrderTypeMarket   = 5
+	OrderTypeLimit    OrderType = 1
+	OrderTypePostOnly OrderType = 2
+	OrderTypeIOC      OrderType = 3
+	OrderTypeFOK      OrderType = 4
+	OrderTypeMarket   OrderType = 5
 )
 
 // ──────────────────────────────────────────────────────────────────────
 // OpenType — margin mode
 // ──────────────────────────────────────────────────────────────────────.
 
+// OpenType represents the margin mode (isolated vs cross).
+type OpenType int
+
 const (
-	OpenTypeIsolated = 1
-	OpenTypeCross    = 2
+	OpenTypeIsolated OpenType = 1
+	OpenTypeCross    OpenType = 2
+)
+
+// ──────────────────────────────────────────────────────────────────────
+// PositionMode — position mode setting
+// ──────────────────────────────────────────────────────────────────────.
+
+// PositionMode represents the position mode setting (hedge vs one-way).
+type PositionMode int
+
+const (
+	PositionModeHedge  PositionMode = 1
+	PositionModeOneWay PositionMode = 2
 )
 
 // ──────────────────────────────────────────────────────────────────────
 // Interval — kline interval constants
 // ──────────────────────────────────────────────────────────────────────.
 
+// Interval represents the timeframe interval for candlesticks.
+type Interval string
+
 const (
-	IntervalMin1 = "Min1"
+	IntervalMin1 Interval = "Min1"
 )

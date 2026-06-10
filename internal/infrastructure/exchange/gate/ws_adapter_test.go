@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	pkgws "crypto-bot/pkg/ws"
 
@@ -102,7 +103,7 @@ func TestWsAdapter_ParsePersonalMessages(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "ETH_USDT", position.Symbol)
 		assert.Equal(t, 3.0, position.HoldVol)
-		assert.Equal(t, 2, position.PositionType)
+		assert.Equal(t, exchange.PositionTypeShort, position.PositionType)
 		assert.Equal(t, 2000.5, position.HoldAvgPrice)
 		assert.Equal(t, 20, position.Leverage)
 		assert.Equal(t, 1.2, position.CloseProfitLoss)
@@ -114,7 +115,7 @@ func TestWsAdapter_ParsePersonalMessages(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "BTC_USDT", position.Symbol)
 		assert.Equal(t, 3.5, position.HoldVol)
-		assert.Equal(t, 1, position.PositionType)
+		assert.Equal(t, exchange.PositionTypeLong, position.PositionType)
 		assert.Equal(t, 40000.36, position.HoldAvgPrice)
 		assert.Equal(t, 10, position.Leverage)
 		assert.Equal(t, -1.25e-8, position.CloseProfitLoss)

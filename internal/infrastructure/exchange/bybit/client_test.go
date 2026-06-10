@@ -403,7 +403,7 @@ func TestClient_GetOrder_And_GetOpenOrders(t *testing.T) {
 	assert.Equal(t, 50000.0, info.DealAvgPrice)
 	assert.Equal(t, exchange.OrderStateFilled, info.State)
 	assert.Equal(t, exchange.SideOpenLong, info.Side)
-	assert.Equal(t, 1, info.PositionMode) // Hedge mode
+	assert.Equal(t, domain.PositionModeHedge, info.PositionMode) // Hedge mode
 
 	// GetOpenOrders
 	infos, err := client.GetOpenOrders(context.Background(), "BTCUSDT")
@@ -448,7 +448,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", p.Symbol)
 	assert.Equal(t, 1.5, p.HoldVol)
 	assert.Equal(t, 50000.0, p.HoldAvgPrice)
-	assert.Equal(t, 1, p.PositionType) // Long
+	assert.Equal(t, exchange.PositionTypeLong, p.PositionType) // Long
 }
 
 func TestClient_GetContractDetails(t *testing.T) {
@@ -734,7 +734,7 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", pos.Symbol)
 	assert.Equal(t, 2.0, pos.HoldVol)
-	assert.Equal(t, 1, pos.PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, pos.PositionType)
 
 	// Check extractor routing
 	extractor := adapter.GetChannelExtractor()
@@ -844,9 +844,9 @@ func TestClient_GetServerTime_WarmUp_OtherCases(t *testing.T) {
 	positions, err := client.GetOpenPositions(context.Background(), "BTCUSDT")
 	require.NoError(t, err)
 	require.Len(t, positions, 3)
-	assert.Equal(t, 2, positions[0].PositionType) // Short (Idx=2)
-	assert.Equal(t, 1, positions[1].PositionType) // Long (Idx=0, buy)
-	assert.Equal(t, 2, positions[2].PositionType) // Short (Idx=0, sell)
+	assert.Equal(t, exchange.PositionTypeShort, positions[0].PositionType) // Short (Idx=2)
+	assert.Equal(t, exchange.PositionTypeLong, positions[1].PositionType)  // Long (Idx=0, buy)
+	assert.Equal(t, exchange.PositionTypeShort, positions[2].PositionType) // Short (Idx=0, sell)
 }
 
 func TestClient_ErrorAndEdgeCases(t *testing.T) {
@@ -951,7 +951,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	info, err := client2.GetOrder(ctx, "BTCUSDT", "bybit-ord-987654")
 	require.NoError(t, err)
 	assert.Equal(t, exchange.OrderStateCanceled, info.State)
-	assert.Equal(t, 0, info.Side) // Unknown side is mapped to 0
+	assert.Equal(t, domain.SideUnknown, info.Side) // Unknown side is mapped to 0
 }
 
 func TestClient_GetRecentClosedPnL(t *testing.T) {

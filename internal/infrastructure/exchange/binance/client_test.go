@@ -367,7 +367,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", p.Symbol)
 	assert.Equal(t, 0.5, p.HoldVol)
 	assert.Equal(t, 50000.0, p.HoldAvgPrice)
-	assert.Equal(t, 1, p.PositionType) // Long
+	assert.Equal(t, exchange.PositionTypeLong, p.PositionType) // Long
 }
 
 func TestClient_ExtendedPrivateMethods(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	pkgws "crypto-bot/pkg/ws"
 
@@ -193,7 +194,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "XBTUSDTM", update.Symbol)
 	assert.Equal(t, 5.0, update.HoldVol)
-	assert.Equal(t, 2, update.PositionType) // 2 for Short
+	assert.Equal(t, exchange.PositionTypeShort, update.PositionType) // 2 for Short
 	assert.Equal(t, 50000.0, update.HoldAvgPrice)
 	assert.Equal(t, 40000.0, update.LiquidatePrice)
 	assert.Equal(t, int64(1672531200000), update.UpdateTime)
@@ -213,7 +214,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateLong, err := adapter.ParsePosition(rawLong)
 	require.NoError(t, err)
 	assert.Equal(t, 3.0, updateLong.HoldVol)
-	assert.Equal(t, 1, updateLong.PositionType) // 1 for Long
+	assert.Equal(t, exchange.PositionTypeLong, updateLong.PositionType) // 1 for Long
 	assert.Equal(t, 48000.5, updateLong.HoldAvgPrice)
 
 	// Test closed short position using positionSide
@@ -231,7 +232,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateClosedShort, err := adapter.ParsePosition(rawClosedShort)
 	require.NoError(t, err)
 	assert.Equal(t, 0.0, updateClosedShort.HoldVol)
-	assert.Equal(t, 2, updateClosedShort.PositionType) // 2 for Short
+	assert.Equal(t, exchange.PositionTypeShort, updateClosedShort.PositionType) // 2 for Short
 
 	// Test closed long position using positionSide
 	rawClosedLong := []byte(`{
@@ -248,7 +249,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateClosedLong, err := adapter.ParsePosition(rawClosedLong)
 	require.NoError(t, err)
 	assert.Equal(t, 0.0, updateClosedLong.HoldVol)
-	assert.Equal(t, 1, updateClosedLong.PositionType) // 1 for Long
+	assert.Equal(t, exchange.PositionTypeLong, updateClosedLong.PositionType) // 1 for Long
 
 	// Test case from user report
 	rawUserEvent := []byte(`{
@@ -307,7 +308,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "XBTUSDTM", updateUserEvent.Symbol)
 	assert.Equal(t, 1.0, updateUserEvent.HoldVol)
-	assert.Equal(t, 2, updateUserEvent.PositionType) // Short
+	assert.Equal(t, exchange.PositionTypeShort, updateUserEvent.PositionType) // Short
 	assert.Equal(t, 68094.2, updateUserEvent.HoldAvgPrice)
 	assert.Equal(t, 70130.5725363, updateUserEvent.LiquidatePrice)
 	assert.Equal(t, int64(1771474169458), updateUserEvent.UpdateTime)

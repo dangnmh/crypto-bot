@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
@@ -129,10 +130,10 @@ func (o *mexcOrder) toOrderInfo() *exchange.OrderInfo {
 		Vol:          o.Vol,
 		DealAvgPrice: o.DealAvgPrice,
 		DealVol:      o.DealVol,
-		State:        o.State,
+		State:        domain.OrderState(o.State),
 		ExternalOID:  o.ExternalOID,
-		Side:         o.Side,
-		PositionMode: o.PositionMode,
+		Side:         domain.Side(o.Side),
+		PositionMode: domain.PositionMode(o.PositionMode),
 		CreateTime:   o.CreateTime,
 		UpdateTime:   o.UpdateTime,
 	}
@@ -142,7 +143,7 @@ func (p *mexcPosition) toPosition() exchange.Position {
 	return exchange.Position{
 		Symbol:          p.Symbol,
 		HoldVol:         p.HoldVol,
-		PositionType:    p.PositionType,
+		PositionType:    exchange.PositionType(p.PositionType),
 		OpenAvgPrice:    p.OpenAvgPrice,
 		HoldAvgPrice:    p.HoldAvgPrice,
 		CloseAvgPrice:   p.CloseAvgPrice,

@@ -117,9 +117,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		entryPrice, _ := strconv.ParseFloat(lo.FromPtr(p.EntryPx), 64)
 
-		posSide := 1 // Long.
+		posSide := exchange.PositionTypeLong // Long.
 		if szi < 0 {
-			posSide = 2 // Short.
+			posSide = exchange.PositionTypeShort // Short.
 		}
 
 		positions = append(positions, exchange.Position{

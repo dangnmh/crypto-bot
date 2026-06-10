@@ -456,7 +456,7 @@ func TestEventTraceSeqAndPreviousTopic(t *testing.T) {
 		BaseReversionEvent: armBase,
 	}))
 	armBase.Topic = TopicReversionArmMarketReady
-	runner.abortAfter(context.Background(), armBase, "BTC_USDT", "trace_abort")
+	runner.abortAfter(context.Background(), armBase, "BTC_USDT", ReversionReason("trace_abort"))
 
 	events := timelineBaseEvents(t, bus)
 	require.Len(t, events, 3)
@@ -580,8 +580,8 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 	tests := []struct {
 		name       string
 		reqID      string
-		orderState int
-		wantReason string
+		orderState shared.OrderState
+		wantReason ReversionReason
 	}{
 		{
 			name:       "canceled no fill",
@@ -592,7 +592,7 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 		{
 			name:       "unknown no position",
 			reqID:      "trace-req-ioc-unknown",
-			orderState: 1,
+			orderState: shared.OrderState(1),
 			wantReason: reversionReasonIOCUnknownNoPosition,
 		},
 	}

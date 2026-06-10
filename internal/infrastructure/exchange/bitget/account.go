@@ -213,9 +213,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		avgPx, _ := strconv.ParseFloat(pos.OpenPriceAvg, 64)
 
-		posType := 1 // Long.
+		posType := exchange.PositionTypeLong // Long.
 		if pos.HoldSide == posSideShort {
-			posType = 2
+			posType = exchange.PositionTypeShort
 		}
 
 		openPositions = append(openPositions, exchange.Position{

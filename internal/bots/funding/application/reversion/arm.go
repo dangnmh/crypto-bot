@@ -27,19 +27,19 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 
 	if err := r.subscribeWS(ctx, c.Symbol); err != nil {
 		r.log.ErrorContext(ctx, "Failed to subscribe WS channels", slog.Any("error", err))
-		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "WS subscribe failed: "+err.Error())
+		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, ReversionReason("WS subscribe failed: "+err.Error()))
 		return fmt.Errorf("WS subscribe failed: %w", err)
 	}
 
 	if err := r.waitForFreshPrice(ctx, c.Symbol, maxWait); err != nil {
 		r.log.WarnContext(ctx, "Price data wait failed", slog.Any("error", err))
-		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "fresh price wait failed: "+err.Error())
+		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, ReversionReason("fresh price wait failed: "+err.Error()))
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
 	if err := r.refreshPrice(ctx, &c); err != nil {
 		r.log.WarnContext(ctx, "Refresh price failed", slog.Any("error", err))
-		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, "refresh price failed: "+err.Error())
+		r.abortAfter(ctx, startEvt.BaseReversionEvent, c.Symbol, ReversionReason("refresh price failed: "+err.Error()))
 		return fmt.Errorf("refresh price failed: %w", err)
 	}
 
@@ -60,7 +60,7 @@ func (r *StatelessRunner) handleArmMarketReady(ctx context.Context, evt ArmMarke
 	ioc, err := c.CalculateIOCPrice()
 	if err != nil {
 		r.log.WarnContext(ctx, "IOC calc failed", slog.Any("error", err))
-		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "IOC calc failed: "+err.Error())
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, ReversionReason("IOC calc failed: "+err.Error()))
 		return fmt.Errorf("IOC calc failed: %w", err)
 	}
 
@@ -115,7 +115,7 @@ func (r *StatelessRunner) handleSafetyChecked(ctx context.Context, safetyEvt Saf
 	c := safetyEvt.Candidate
 	if !safetyEvt.Passed {
 		r.log.WarnContext(ctx, "Safety FAIL", slog.String("reason", safetyEvt.RejectReason))
-		r.abortAfter(ctx, safetyEvt.BaseReversionEvent, c.Symbol, "safety fail: "+safetyEvt.RejectReason)
+		r.abortAfter(ctx, safetyEvt.BaseReversionEvent, c.Symbol, ReversionReason("safety fail: "+safetyEvt.RejectReason))
 		return fmt.Errorf("safety fail: %s", safetyEvt.RejectReason)
 	}
 

@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	reversionReasonNoFill        = "no_fill"
-	reversionMethodFallbackClose = "fallback_close"
+	reversionReasonNoFill        ReversionReason = "no_fill"
+	reversionMethodFallbackClose ReversionReason = "fallback_close"
 )
 
 // Strategy implements strategy.BackgroundStrategy interface in a lightweight, stateless manner.
@@ -200,7 +200,7 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 				Exchange:  revEvt.GetExchange(),
 				Symbol:    revEvt.GetSymbol(),
 				Message:   revEvt.GetMessage(),
-				Color:     revEvt.GetColor(),
+				Color:     string(revEvt.GetColor()),
 				Data:      revEvt.GetDataMap(),
 				Timestamp: r.deps.Clock.Now(),
 			}
@@ -354,7 +354,7 @@ func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate)
 	return nil
 }
 
-func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, exchangeName, reason string) {
+func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, exchangeName string, reason ReversionReason) {
 	evt := AbortEvent{
 		BaseReversionEvent: BaseReversionEvent{
 			Flow:      FlowReversion,
@@ -368,7 +368,7 @@ func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, exchangeName
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }
 
-func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEvent, symbol, reason string) {
+func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEvent, symbol string, reason ReversionReason) {
 	evt := AbortEvent{
 		BaseReversionEvent: nextReversionBase(prev, symbol, r.deps.Clock.Now()),
 		Reason:             reason,
@@ -428,7 +428,7 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 
 	side := shared.SideOpenLong
 	closeSide := shared.SideCloseLong
-	if pos.PositionType == 2 { // Short position
+	if pos.PositionType == exchange.PositionTypeShort { // Short position
 		side = shared.SideOpenShort
 		closeSide = shared.SideCloseShort
 	}

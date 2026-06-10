@@ -298,17 +298,17 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	ts, _ := jsonparser.GetInt(dataNode, "currentTimestamp")
 
 	positionSide, _ := jsonparser.GetString(dataNode, "positionSide")
-	var positionType int
+	var positionType exchange.PositionType
 	switch {
 	case strings.EqualFold(positionSide, "LONG"):
-		positionType = 1 // Long
+		positionType = exchange.PositionTypeLong // Long
 	case strings.EqualFold(positionSide, "SHORT"):
-		positionType = 2 // Short
+		positionType = exchange.PositionTypeShort // Short
 	default:
 		if posSize > 0 {
-			positionType = 1 // Long
+			positionType = exchange.PositionTypeLong // Long
 		} else if posSize < 0 {
-			positionType = 2 // Short
+			positionType = exchange.PositionTypeShort // Short
 		}
 	}
 

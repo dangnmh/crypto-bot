@@ -261,9 +261,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	if sizeVal > 0 {
-		update.PositionType = 1
+		update.PositionType = exchange.PositionTypeLong
 	} else if sizeVal < 0 {
-		update.PositionType = 2
+		update.PositionType = exchange.PositionTypeShort
 	}
 
 	return update, nil

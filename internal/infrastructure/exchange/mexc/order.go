@@ -202,12 +202,12 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		Price:           req.Price,
 		Vol:             req.Vol,
 		Leverage:        req.Leverage,
-		Side:            req.Side,
-		Type:            req.Type,
-		OpenType:        req.OpenType,
+		Side:            int(req.Side),
+		Type:            int(req.Type),
+		OpenType:        int(req.OpenType),
 		ExternalOID:     req.ExternalOID,
 		PositionID:      req.PositionID,
-		PositionMode:    req.PositionMode,
+		PositionMode:    int(req.PositionMode),
 		ReduceOnly:      req.ReduceOnly,
 		FlashClose:      req.FlashClose,
 		StopLossPrice:   req.StopLossPrice,
@@ -228,14 +228,14 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 	mexcReq := mexcSubmitTrackOrderRequest{
 		Symbol:       req.Symbol,
 		Leverage:     req.Leverage,
-		Side:         req.Side,
+		Side:         int(req.Side),
 		Vol:          req.Vol,
-		OpenType:     req.OpenType,
+		OpenType:     int(req.OpenType),
 		Trend:        req.Trend,
 		ActivePrice:  req.ActivePrice,
 		BackType:     req.BackType,
 		BackValue:    req.BackValue,
-		PositionMode: req.PositionMode,
+		PositionMode: int(req.PositionMode),
 		ReduceOnly:   req.ReduceOnly,
 	}
 
@@ -299,13 +299,13 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 }
 
 // ClosePosition closes one position leg using a reduce-only market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	req := mexcCreateOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
 		Side:         int(closeSide),
-		Type:         exchange.OrderTypeMarket,
-		PositionMode: positionMode,
+		Type:         int(exchange.OrderTypeMarket),
+		PositionMode: int(positionMode),
 		ReduceOnly:   true,
 	}
 	_, err := c.createRawOrder(ctx, req)
@@ -317,7 +317,7 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 	mexcReq := mexcChangeLeverageRequest{
 		Symbol:       req.Symbol,
 		Leverage:     req.Leverage,
-		OpenType:     req.OpenType,
+		OpenType:     int(req.OpenType),
 		PositionType: int(req.PositionType),
 	}
 	return c.changeRawLeverage(ctx, mexcReq)

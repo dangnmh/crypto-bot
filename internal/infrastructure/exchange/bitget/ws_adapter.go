@@ -278,9 +278,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		closeFee, _ := strconv.ParseFloat(p.CloseFee, 64)
 		uTime := decmath.ParseInt64(p.UTime)
 
-		posType := 1 // long
+		posType := exchange.PositionTypeLong // long
 		if p.HoldSide == posSideShort {
-			posType = 2
+			posType = exchange.PositionTypeShort
 		}
 
 		update := &exchange.PersonalPositionUpdate{
@@ -311,9 +311,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	liqPx, _ := strconv.ParseFloat(p.LiquidationPrice, 64)
 	realized, _ := strconv.ParseFloat(p.AchievedProfits, 64)
 
-	posType := 1 // long
+	posType := exchange.PositionTypeLong // long
 	if p.HoldSide == posSideShort {
-		posType = 2
+		posType = exchange.PositionTypeShort
 	}
 
 	sym := p.Symbol

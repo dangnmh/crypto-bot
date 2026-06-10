@@ -206,9 +206,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		posType := 1 // Long.
+		posType := exchange.PositionTypeLong // Long.
 		if amt < 0 {
-			posType = 2 // Short.
+			posType = exchange.PositionTypeShort // Short.
 		}
 
 		absAmt := math.Abs(amt)

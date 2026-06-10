@@ -299,7 +299,7 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	return nil
 }
 
-func (c *Client) placeAlgoOrder(ctx context.Context, symbol string, side models.NewAlgoOrderSideParameter, algoType string, price float64, positionMode int, posSide models.NewAlgoOrderPositionSideParameter) error {
+func (c *Client) placeAlgoOrder(ctx context.Context, symbol string, side models.NewAlgoOrderSideParameter, algoType string, price float64, positionMode domain.PositionMode, posSide models.NewAlgoOrderPositionSideParameter) error {
 	rawReq := binancePlaceAlgoOrderRequest{
 		AlgoType:      "CONDITIONAL",
 		Symbol:        symbol,
@@ -309,7 +309,7 @@ func (c *Client) placeAlgoOrder(ctx context.Context, symbol string, side models.
 		ClosePosition: binanceTrueStr,
 	}
 
-	if positionMode == 1 {
+	if positionMode == domain.PositionModeHedge {
 		rawReq.PositionSide = posSide
 	}
 
@@ -409,11 +409,11 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition closes a single position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	req := exchange.SubmitOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
-		Side:         int(closeSide),
+		Side:         closeSide,
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
@@ -433,10 +433,10 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		pos := positions[i]
 		if pos.HoldVol > 0 {
 			side := domain.SideCloseShort
-			if pos.PositionType == 1 { // Long
+			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1)
+			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge)
 			if err != nil {
 				return err
 			}
@@ -557,9 +557,9 @@ func mapBinanceOrder(raw binanceOrderModel) exchange.OrderInfo {
 	return info
 }
 
-func mapBinanceSideAndMode(positionSide, side string) (int, int) {
-	posMode := 2 // default OneWay
-	var orderSide int
+func mapBinanceSideAndMode(positionSide, side string) (domain.Side, domain.PositionMode) {
+	posMode := domain.PositionModeOneWay // default OneWay
+	var orderSide domain.Side
 
 	switch positionSide {
 	case posSideLong:
@@ -567,13 +567,13 @@ func mapBinanceSideAndMode(positionSide, side string) (int, int) {
 		if side == sideSell {
 			orderSide = exchange.SideCloseLong
 		}
-		posMode = 1
+		posMode = domain.PositionModeHedge
 	case posSideShort:
 		orderSide = exchange.SideOpenShort
 		if side == sideBuy {
 			orderSide = exchange.SideCloseShort
 		}
-		posMode = 1
+		posMode = domain.PositionModeHedge
 	default:
 		if side == sideBuy {
 			orderSide = exchange.SideOpenLong
@@ -584,7 +584,7 @@ func mapBinanceSideAndMode(positionSide, side string) (int, int) {
 	return orderSide, posMode
 }
 
-func mapBinanceStatus(status string) int {
+func mapBinanceStatus(status string) domain.OrderState {
 	switch status {
 	case statusNew:
 		return exchange.OrderStatePartial

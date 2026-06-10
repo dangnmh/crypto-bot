@@ -59,7 +59,7 @@ func TestFireIOC(t *testing.T) {
 		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			assert.Equal(t, "BTC_USDT", req.Symbol)
 			assert.Equal(t, exchange.OrderTypeIOC, req.Type)
-			assert.Equal(t, int(shared.SideOpenLong), req.Side)
+			assert.Equal(t, shared.SideOpenLong, req.Side)
 			assert.Equal(t, 2.0, req.Vol)
 			assert.NotZero(t, req.Price)
 			expectedOID := orders.ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
@@ -109,7 +109,7 @@ func TestFireLimitTrap(t *testing.T) {
 	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			assert.Equal(t, exchange.OrderTypeLimit, req.Type)
-			assert.Equal(t, int(shared.SideOpenShort), req.Side)
+			assert.Equal(t, shared.SideOpenShort, req.Side)
 			expectedOID := orders.ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
 			assert.Equal(t, expectedOID, req.ExternalOID)
 			assert.NotZero(t, req.TakeProfitPrice)

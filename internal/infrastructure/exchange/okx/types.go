@@ -100,27 +100,27 @@ func isRateLimited(statusCode int) bool {
 }
 
 // mapPositionType determines the exchange-agnostic position side type (1 = long, 2 = short).
-func mapPositionType(posSide string, pos float64, instID, posCcy string) int {
+func mapPositionType(posSide string, pos float64, instID, posCcy string) exchange.PositionType {
 	if posSide == posSideShort {
-		return 2 // short
+		return exchange.PositionTypeShort // short
 	}
 	if posSide == posSideLong {
-		return 1 // long
+		return exchange.PositionTypeLong // long
 	}
 	if posSide == posSideNet {
 		if posCcy != "" {
 			// Margin: posCcy being base currency means long position, posCcy being quote currency means short position.
 			parts := strings.Split(instID, "-")
 			if len(parts) >= 2 && posCcy == parts[0] {
-				return 1 // long
+				return exchange.PositionTypeLong // long
 			}
-			return 2 // short
+			return exchange.PositionTypeShort // short
 		}
 		// Futures/Swap/Option: positive pos means long position, negative pos means short position.
 		if pos < 0 {
-			return 2 // short
+			return exchange.PositionTypeShort // short
 		}
-		return 1 // long
+		return exchange.PositionTypeLong // long
 	}
-	return 1 // default to long
+	return exchange.PositionTypeLong // default to long
 }

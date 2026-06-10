@@ -397,9 +397,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	amt := decmath.ParseFloat(raw.Amount)
-	posType := 1
+	posType := exchange.PositionTypeLong
 	if amt < 0 || raw.PositionSide == posSideShort {
-		posType = 2
+		posType = exchange.PositionTypeShort
 	}
 
 	update := &exchange.PersonalPositionUpdate{

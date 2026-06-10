@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	pkgws "crypto-bot/pkg/ws"
 
@@ -79,7 +80,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", update.Symbol)
 	assert.Equal(t, 1.0, update.HoldVol)
 	assert.Equal(t, 10, update.Leverage)
-	assert.Equal(t, 1, update.PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
 	// Test fallback to instId if symbol is empty
 	rawFallback := []byte(`{
@@ -104,7 +105,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, "ETHUSDT", updateFallback.Symbol)
 	assert.Equal(t, 1.5, updateFallback.HoldVol)
 	assert.Equal(t, 20, updateFallback.Leverage)
-	assert.Equal(t, 2, updateFallback.PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, updateFallback.PositionType)
 
 	// Test positions-history parsing (total closed positions)
 	rawHistory := []byte(`{
@@ -135,7 +136,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", updateHistory.Symbol)
 	assert.Equal(t, 0.0, updateHistory.HoldVol)
-	assert.Equal(t, 2, updateHistory.PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, updateHistory.PositionType)
 	assert.Equal(t, 20000.0, updateHistory.OpenAvgPrice)
 	assert.Equal(t, 20000.0, updateHistory.HoldAvgPrice)
 	assert.Equal(t, 0.010, updateHistory.CloseVol)
@@ -229,7 +230,7 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	}`)
 	update, err := adapter.ParsePosition(rawCrossed)
 	require.NoError(t, err)
-	assert.Equal(t, 2, update.PositionType) // Short
+	assert.Equal(t, exchange.PositionTypeShort, update.PositionType) // Short
 
 	rawIsolated := []byte(`{
 		"arg": {"channel": "positions"},
@@ -249,5 +250,5 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	}`)
 	update, err = adapter.ParsePosition(rawIsolated)
 	require.NoError(t, err)
-	assert.Equal(t, 1, update.PositionType) // Long
+	assert.Equal(t, exchange.PositionTypeLong, update.PositionType) // Long
 }

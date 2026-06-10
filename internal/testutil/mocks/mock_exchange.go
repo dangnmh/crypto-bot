@@ -234,7 +234,7 @@ func (c *MockClientCloseAllPositionsCall) DoAndReturn(f func(context.Context, st
 }
 
 // ClosePosition mocks base method.
-func (m *MockClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (m *MockClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ClosePosition", ctx, symbol, closeSide, volume, positionMode)
 	ret0, _ := ret[0].(error)
@@ -260,13 +260,13 @@ func (c *MockClientClosePositionCall) Return(arg0 error) *MockClientClosePositio
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockClientClosePositionCall) Do(f func(context.Context, string, domain.Side, float64, int) error) *MockClientClosePositionCall {
+func (c *MockClientClosePositionCall) Do(f func(context.Context, string, domain.Side, float64, domain.PositionMode) error) *MockClientClosePositionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientClosePositionCall) DoAndReturn(f func(context.Context, string, domain.Side, float64, int) error) *MockClientClosePositionCall {
+func (c *MockClientClosePositionCall) DoAndReturn(f func(context.Context, string, domain.Side, float64, domain.PositionMode) error) *MockClientClosePositionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

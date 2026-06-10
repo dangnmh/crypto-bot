@@ -276,7 +276,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.Len(t, positions, 1)
 	assert.Equal(t, "BTC", positions[0].Symbol)
 	assert.Equal(t, 0.01, positions[0].HoldVol)
-	assert.Equal(t, 1, positions[0].PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType)
 }
 
 //nolint:dupl // standard mock setup contains high structural similarity

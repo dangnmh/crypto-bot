@@ -257,6 +257,8 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 			positionIdx = 1
 		case exchange.SideOpenShort:
 			positionIdx = 2
+		default:
+			// SideUnknown or default
 		}
 	}
 	rawReq.PositionIdx = positionIdx
@@ -329,11 +331,11 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition closes one position leg using a market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	req := exchange.SubmitOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
-		Side:         int(closeSide),
+		Side:         closeSide,
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
@@ -353,7 +355,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		pos := &positions[i]
 		if pos.HoldVol > 0 {
 			var side domain.Side
-			if pos.PositionType == 1 { // Long
+			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			} else { // Short
 				side = domain.SideCloseShort
@@ -437,7 +439,7 @@ func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string)
 
 // Helper mapping functions.
 
-func mapOrderTypeAndTif(orderType int) (string, string) {
+func mapOrderTypeAndTif(orderType domain.OrderType) (string, string) {
 	switch orderType {
 	case exchange.OrderTypeMarket:
 		return "Market", tifIOC
@@ -452,7 +454,7 @@ func mapOrderTypeAndTif(orderType int) (string, string) {
 	}
 }
 
-func mapSideAndPosition(reqSide int, isHedge bool) (string, int, bool) {
+func mapSideAndPosition(reqSide domain.Side, isHedge bool) (string, int, bool) {
 	bybitSide := sideBuy
 	positionIdx := 0
 	reduceOnly := false
@@ -473,6 +475,8 @@ func mapSideAndPosition(reqSide int, isHedge bool) (string, int, bool) {
 			bybitSide = sideBuy
 			positionIdx = 2
 			reduceOnly = true
+		default:
+			// SideUnknown or default
 		}
 	} else {
 		positionIdx = 0
@@ -481,6 +485,8 @@ func mapSideAndPosition(reqSide int, isHedge bool) (string, int, bool) {
 			bybitSide = sideBuy
 		case exchange.SideOpenShort, exchange.SideCloseLong:
 			bybitSide = sideSell
+		default:
+			// SideUnknown or default
 		}
 	}
 	return bybitSide, positionIdx, reduceOnly
@@ -496,11 +502,11 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 		DealAvgPrice: decmath.ParseFloat(raw.AvgPrice),
 		DealVol:      decmath.ParseFloat(raw.CumExecQty),
 		ExternalOID:  raw.OrderLinkID,
-		PositionMode: 2, // Default One-Way.
+		PositionMode: domain.PositionModeOneWay, // Default One-Way.
 	}
 
 	if raw.PositionIdx > 0 {
-		info.PositionMode = 1 // Hedge mode.
+		info.PositionMode = domain.PositionModeHedge // Hedge mode.
 	}
 
 	// Created/Updated times.

@@ -78,7 +78,7 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 
 func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt TimeoutPositionCheckedEvent) error {
 	if evt.Error != "" {
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "position query failed: "+evt.Error)
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("position query failed: "+evt.Error))
 		return nil
 	}
 
@@ -150,7 +150,7 @@ func (r *StatelessRunner) handleForceCloseCompleted(ctx context.Context, evt For
 	timeoutEvt := TimeoutEvent{
 		BaseReversionEvent:  nextReversionBase(evt.BaseReversionEvent, evt.Symbol, now),
 		Timeout:             evt.Timeout,
-		Reason:              "force_close",
+		Reason:              ReversionReason("force_close"),
 		ForceCloseAttempted: true,
 		ForceCloseSucceeded: true,
 		CloseRetryCount:     evt.CloseRetryCount,
@@ -171,7 +171,7 @@ func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) e
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		CloseVol:           evt.HoldVol,
 		Reason:             "timeout_force_close",
-		Method:             reversionMethodFallbackClose,
+		Method:             string(reversionMethodFallbackClose),
 		HoldDurationMs:     evt.HoldDurationMs,
 		CloseRetryCount:    evt.CloseRetryCount,
 		Direction:          evt.Direction,
@@ -201,7 +201,7 @@ func (r *StatelessRunner) publishReversionCritical(ctx context.Context, prev Bas
 	errBase.Topic = TopicReversionError
 	abortEvt := AbortEvent{
 		BaseReversionEvent: nextReversionBase(errBase, symbol, r.deps.Clock.Now()),
-		Reason:             reason,
+		Reason:             ReversionReason(reason),
 	}
 	_ = r.publishEvent(ctx, TopicReversionAbort, abortEvt)
 }

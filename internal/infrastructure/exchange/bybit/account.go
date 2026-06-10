@@ -372,15 +372,15 @@ func mapPosition(raw bybitPosition) exchange.Position {
 
 	switch raw.PositionIdx {
 	case 1:
-		pos.PositionType = 1 // Long
+		pos.PositionType = exchange.PositionTypeLong // Long
 	case 2:
-		pos.PositionType = 2 // Short
+		pos.PositionType = exchange.PositionTypeShort // Short
 	default:
 		// OneWay mode fallback.
 		if strings.EqualFold(raw.Side, "buy") {
-			pos.PositionType = 1 // Long
+			pos.PositionType = exchange.PositionTypeLong // Long
 		} else if strings.EqualFold(raw.Side, "sell") {
-			pos.PositionType = 2 // Short
+			pos.PositionType = exchange.PositionTypeShort // Short
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	pkgws "crypto-bot/pkg/ws"
 	"log/slog"
@@ -78,7 +79,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
 	assert.Equal(t, 1.0, update.HoldVol)
 	assert.Equal(t, 10, update.Leverage)
-	assert.Equal(t, 1, update.PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
 	// 2. Short position in hedge mode
 	rawShort := []byte(`{
@@ -101,7 +102,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
 	assert.Equal(t, 1.5, update.HoldVol)
-	assert.Equal(t, 2, update.PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 
 	// 3. Short position in net mode (negative quantity)
 	rawNetShort := []byte(`{
@@ -124,7 +125,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
 	assert.Equal(t, 2.5, update.HoldVol)
-	assert.Equal(t, 2, update.PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 
 	// 4. Margin position in net mode matching base currency (long)
 	rawMarginLong := []byte(`{
@@ -148,7 +149,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT", update.Symbol)
 	assert.Equal(t, 0.5, update.HoldVol)
-	assert.Equal(t, 1, update.PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
 	// 5. Margin position in net mode matching quote currency (short)
 	rawMarginShort := []byte(`{
@@ -172,7 +173,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT", update.Symbol)
 	assert.Equal(t, 100.0, update.HoldVol)
-	assert.Equal(t, 2, update.PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 }
 
 func TestWsAdapter_SubscriptionAndErrors(t *testing.T) {

@@ -3,6 +3,7 @@ package exchange_test
 import (
 	"testing"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/stretchr/testify/assert"
@@ -12,14 +13,14 @@ func TestSideStr(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
-		side     int
+		side     domain.Side
 		expected string
 	}{
 		{"long", exchange.SideOpenLong, "LONG"},
 		{"short", exchange.SideOpenShort, "SHORT"},
 		{"close short", exchange.SideCloseShort, "CLOSE_SHORT"},
 		{"close long", exchange.SideCloseLong, "CLOSE_LONG"},
-		{"unknown", 999, "UNKNOWN"},
+		{"unknown", domain.Side(999), "UNKNOWN"},
 	}
 
 	for _, tt := range tests {
@@ -38,12 +39,12 @@ func TestCloseSideFor(t *testing.T) {
 
 func TestIsTerminalOrderState(t *testing.T) {
 	t.Parallel()
-	terminalStates := []int{exchange.OrderStateFilled, exchange.OrderStateCanceled, exchange.OrderStatePartial}
+	terminalStates := []domain.OrderState{exchange.OrderStateFilled, exchange.OrderStateCanceled, exchange.OrderStatePartial}
 	for _, state := range terminalStates {
 		assert.True(t, exchange.IsTerminalOrderState(state))
 	}
 
-	nonTerminalStates := []int{1, 2, 6}
+	nonTerminalStates := []domain.OrderState{domain.OrderState(1), domain.OrderState(2), domain.OrderState(6)}
 	for _, state := range nonTerminalStates {
 		assert.False(t, exchange.IsTerminalOrderState(state))
 	}

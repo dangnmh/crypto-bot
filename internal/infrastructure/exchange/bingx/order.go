@@ -332,7 +332,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition is a helper to close a position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	submitSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		submitSide = exchange.SideCloseShort
@@ -358,7 +358,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 	for i := range positions {
 		pos := &positions[i]
 		closeSide := domain.SideCloseLong
-		if pos.PositionType == 2 { // 2 = Short.
+		if pos.PositionType == exchange.PositionTypeShort { // Short.
 			closeSide = domain.SideCloseShort
 		}
 		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1)
@@ -411,7 +411,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 
 // Helper mapping methods.
 
-func mapOrderTypeAndTif(orderType int) (string, string) {
+func mapOrderTypeAndTif(orderType domain.OrderType) (string, string) {
 	switch orderType {
 	case exchange.OrderTypeMarket:
 		return "MARKET", ""
@@ -426,10 +426,10 @@ func mapOrderTypeAndTif(orderType int) (string, string) {
 	}
 }
 
-func mapSideAndPosSide(side, posMode int) (string, string) {
+func mapSideAndPosSide(side domain.Side, posMode domain.PositionMode) (string, string) {
 	ordSide := sideBuy
 	posSide := posSideLong
-	isHedge := posMode == 1 || posMode == 0
+	isHedge := posMode != domain.PositionModeOneWay
 
 	if isHedge {
 		switch side {
@@ -445,6 +445,8 @@ func mapSideAndPosSide(side, posMode int) (string, string) {
 		case exchange.SideCloseShort:
 			ordSide = sideBuy
 			posSide = posSideShort
+		default:
+			// SideUnknown or default
 		}
 	} else {
 		switch side {
@@ -452,6 +454,8 @@ func mapSideAndPosSide(side, posMode int) (string, string) {
 			ordSide = sideBuy
 		case exchange.SideOpenShort, exchange.SideCloseLong:
 			ordSide = sideSell
+		default:
+			// SideUnknown or default
 		}
 		posSide = posSideBoth
 	}
@@ -459,7 +463,7 @@ func mapSideAndPosSide(side, posMode int) (string, string) {
 }
 
 func (c *Client) toOrderInfo(o *bingxOrder) *exchange.OrderInfo {
-	state := 0 // default active/pending.
+	var state domain.OrderState // default active/pending.
 	switch o.Status {
 	case stateFilled:
 		state = exchange.OrderStateFilled

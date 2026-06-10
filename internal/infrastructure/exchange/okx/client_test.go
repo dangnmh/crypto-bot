@@ -407,27 +407,27 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	// 1. Long position in hedge mode
 	assert.Equal(t, "BTC-USDT-SWAP", positions[0].Symbol)
 	assert.Equal(t, 1.0, positions[0].HoldVol)
-	assert.Equal(t, 1, positions[0].PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType)
 
 	// 2. Short position in hedge mode
 	assert.Equal(t, "BTC-USDT-SWAP", positions[1].Symbol)
 	assert.Equal(t, 1.5, positions[1].HoldVol)
-	assert.Equal(t, 2, positions[1].PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, positions[1].PositionType)
 
 	// 3. Short position in net mode (negative quantity)
 	assert.Equal(t, "BTC-USDT-SWAP", positions[2].Symbol)
 	assert.Equal(t, 2.5, positions[2].HoldVol)
-	assert.Equal(t, 2, positions[2].PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, positions[2].PositionType)
 
 	// 4. Margin position in net mode matching base currency (long)
 	assert.Equal(t, "BTC-USDT", positions[3].Symbol)
 	assert.Equal(t, 0.5, positions[3].HoldVol)
-	assert.Equal(t, 1, positions[3].PositionType)
+	assert.Equal(t, exchange.PositionTypeLong, positions[3].PositionType)
 
 	// 5. Margin position in net mode matching quote currency (short)
 	assert.Equal(t, "BTC-USDT", positions[4].Symbol)
 	assert.Equal(t, 100.0, positions[4].HoldVol)
-	assert.Equal(t, 2, positions[4].PositionType)
+	assert.Equal(t, exchange.PositionTypeShort, positions[4].PositionType)
 }
 
 func TestClient_GetKlines(t *testing.T) {
@@ -616,7 +616,7 @@ func TestClient_ChangeLeverage(t *testing.T) {
 			Symbol:       "BTC-USDT-SWAP",
 			Leverage:     20,
 			OpenType:     exchange.OpenTypeCross,
-			PositionType: 1,
+			PositionType: exchange.PositionTypeLong,
 		}
 		err := client.ChangeLeverage(context.Background(), req)
 		require.NoError(t, err)
@@ -633,7 +633,7 @@ func TestClient_ChangeLeverage(t *testing.T) {
 			Symbol:       "BTC-USDT-SWAP",
 			Leverage:     20,
 			OpenType:     exchange.OpenTypeIsolated,
-			PositionType: 1, // Long -> posSide = "long"
+			PositionType: exchange.PositionTypeLong, // Long -> posSide = "long"
 		}
 		err := client.ChangeLeverage(context.Background(), req)
 		require.NoError(t, err)
@@ -660,7 +660,7 @@ func TestClient_ChangeLeverage(t *testing.T) {
 			Symbol:       "BTC-USDT-SWAP",
 			Leverage:     20,
 			OpenType:     exchange.OpenTypeIsolated,
-			PositionType: 1,
+			PositionType: exchange.PositionTypeLong,
 		}
 		err := client.ChangeLeverage(context.Background(), req)
 		require.Error(t, err)

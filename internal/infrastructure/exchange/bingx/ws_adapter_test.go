@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	pkgws "crypto-bot/pkg/ws"
 
@@ -222,7 +223,7 @@ func TestWsAdapter_PrivateParsersAndPrivateURLFunc(t *testing.T) {
 	assert.Equal(t, 0.002, pos.HoldVol)
 	assert.Equal(t, 60100.0, pos.HoldAvgPrice)
 	assert.Equal(t, 1.0, pos.CloseProfitLoss)
-	assert.Equal(t, 1, pos.PositionType) // LONG
+	assert.Equal(t, exchange.PositionTypeLong, pos.PositionType) // LONG
 
 	// Test channel extractor for private event
 	testClient := bingx.NewClient(nil, "", "key", "secret", config.LoggingConfig{})

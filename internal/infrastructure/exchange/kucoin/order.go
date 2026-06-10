@@ -251,7 +251,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}, nil
 }
 
-func mapSideAndPosition(reqSide int, isHedge bool) (string, string, bool) {
+func mapSideAndPosition(reqSide domain.Side, isHedge bool) (string, string, bool) {
 	var side string
 	var posSide string
 	var reduceOnly bool
@@ -283,6 +283,8 @@ func mapSideAndPosition(reqSide int, isHedge bool) (string, string, bool) {
 			side = sideBuy
 		case exchange.SideOpenShort, exchange.SideCloseLong:
 			side = sideSell
+		default:
+			// SideUnknown or unhandled
 		}
 		if reqSide == exchange.SideCloseLong || reqSide == exchange.SideCloseShort {
 			reduceOnly = true
@@ -291,7 +293,7 @@ func mapSideAndPosition(reqSide int, isHedge bool) (string, string, bool) {
 	return side, posSide, reduceOnly
 }
 
-func mapOrderType(t int) (string, string, bool) {
+func mapOrderType(t domain.OrderType) (string, string, bool) {
 	ordType := paramLimit
 	var timeInForce string
 	var postOnly bool
@@ -305,6 +307,8 @@ func mapOrderType(t int) (string, string, bool) {
 		timeInForce = "IOC"
 	case exchange.OrderTypeFOK:
 		timeInForce = "GTC"
+	default:
+		// OrderTypeLimit or default
 	}
 	return ordType, timeInForce, postOnly
 }
@@ -371,7 +375,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition is a helper to close a position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	submitSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		submitSide = exchange.SideCloseShort
@@ -397,10 +401,10 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 	for i := range positions {
 		pos := &positions[i]
 		closeSide := domain.SideCloseLong
-		if pos.PositionType == 2 { // 2 = Short
+		if pos.PositionType == exchange.PositionTypeShort { // Short
 			closeSide = domain.SideCloseShort
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1)
+		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge)
 	}
 
 	return nil
@@ -458,7 +462,7 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 }
 
 func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
-	state := 0 // default active/pending
+	var state domain.OrderState
 	if !o.IsActive {
 		if o.Status == stateFilled || o.StatusVal == stateFilled {
 			state = exchange.OrderStateFilled

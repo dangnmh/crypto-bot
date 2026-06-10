@@ -233,9 +233,9 @@ func mapPosition(raw gatePosition) exchange.Position {
 	}
 
 	if raw.Size > 0 {
-		pos.PositionType = 1 // Long.
+		pos.PositionType = exchange.PositionTypeLong // Long.
 	} else if raw.Size < 0 {
-		pos.PositionType = 2 // Short.
+		pos.PositionType = exchange.PositionTypeShort // Short.
 	}
 
 	return pos

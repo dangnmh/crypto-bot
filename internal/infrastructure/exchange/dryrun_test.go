@@ -63,7 +63,7 @@ func (s *stubClient) CloseAllPositions(_ context.Context, _ string) error {
 	s.closeCalled = true
 	return nil
 }
-func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _ float64, _ int) error {
+func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _ float64, _ domain.PositionMode) error {
 	s.closePositionCalled = true
 	return nil
 }
@@ -91,7 +91,7 @@ func TestDryRunClient_CreateOrder_ReturnsSimulatedID(t *testing.T) {
 		Symbol: "BTC_USDT",
 		Price:  50000,
 		Vol:    1,
-		Side:   1,
+		Side:   domain.SideOpenLong,
 	})
 
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func TestDryRunClient_ClosePosition_NoRealCall(t *testing.T) {
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
 
-	err := dry.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, 1)
+	err := dry.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, domain.PositionModeHedge)
 	require.NoError(t, err)
 	assert.False(t, stub.closePositionCalled, "real ClosePosition should NOT be called in dry-run mode")
 }
@@ -136,7 +136,7 @@ func TestDryRunClient_OtherWriteOps_NoRealCall(t *testing.T) {
 
 	trackID, err := dry.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{
 		Symbol:      "BTC_USDT",
-		Side:        1,
+		Side:        domain.SideOpenLong,
 		ActivePrice: 50000,
 	})
 	require.NoError(t, err)

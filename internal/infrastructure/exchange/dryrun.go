@@ -90,8 +90,8 @@ func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) 
 	d.log.WarnContext(ctx, "🧪 DRY-RUN CreateOrder",
 		slog.String("orderID", fakeID),
 		slog.String("symbol", req.Symbol),
-		slog.Int("side", req.Side),
-		slog.Int("type", req.Type),
+		slog.Int("side", int(req.Side)),
+		slog.Int("type", int(req.Type)),
 		slog.Float64("price", req.Price),
 		slog.Float64("vol", req.Vol),
 		slog.Int("leverage", req.Leverage),
@@ -111,7 +111,7 @@ func (d *DryRunClient) CreateTrackOrder(ctx context.Context, req SubmitTrackOrde
 	d.log.WarnContext(ctx, "🧪 DRY-RUN CreateTrackOrder",
 		slog.String("orderID", fakeID),
 		slog.String("symbol", req.Symbol),
-		slog.Int("side", req.Side),
+		slog.Int("side", int(req.Side)),
 		slog.Float64("activePrice", req.ActivePrice),
 	)
 
@@ -146,12 +146,12 @@ func (d *DryRunClient) CloseAllPositions(ctx context.Context, symbol string) err
 	return nil
 }
 
-func (d *DryRunClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (d *DryRunClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	d.log.WarnContext(ctx, "🧪 DRY-RUN ClosePosition",
 		slog.String("symbol", symbol),
 		slog.String("side", closeSide.String()),
 		slog.Float64("vol", volume),
-		slog.Int("positionMode", positionMode),
+		slog.Int("positionMode", int(positionMode)),
 	)
 	return nil
 }

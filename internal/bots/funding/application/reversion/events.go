@@ -44,13 +44,20 @@ const (
 	TopicReversionTPSLRequired           = "funding.reversion.tpsl_required"
 )
 
+type IOCOutcome string
+
 const (
-	IOCOutcomeFilled                     = "filled"
-	IOCOutcomePartialFilled              = "partial_filled"
-	IOCOutcomeCanceledNoFill             = "canceled_no_fill"
-	IOCOutcomeUnknown                    = "unknown"
-	reversionReasonIOCCanceledNoPosition = "ioc_canceled_no_position"
-	reversionReasonIOCUnknownNoPosition  = "ioc_outcome_unknown_no_position"
+	IOCOutcomeFilled         IOCOutcome = "filled"
+	IOCOutcomePartialFilled  IOCOutcome = "partial_filled"
+	IOCOutcomeCanceledNoFill IOCOutcome = "canceled_no_fill"
+	IOCOutcomeUnknown        IOCOutcome = "unknown"
+)
+
+type ReversionReason string
+
+const (
+	reversionReasonIOCCanceledNoPosition ReversionReason = "ioc_canceled_no_position"
+	reversionReasonIOCUnknownNoPosition  ReversionReason = "ioc_outcome_unknown_no_position"
 )
 
 const (
@@ -77,10 +84,12 @@ const (
 	keyVolumeUSDT  = "volumeUSDT"
 )
 
+type EventColor string
+
 const (
-	colorYellow = "yellow"
-	colorGreen  = "green"
-	colorRed    = "red"
+	ColorYellow EventColor = "yellow"
+	ColorGreen  EventColor = "green"
+	ColorRed    EventColor = "red"
 )
 
 type ReversionEvent interface {
@@ -91,25 +100,25 @@ type ReversionEvent interface {
 	GetMessage() string
 	GetDataMap() map[string]any
 	ShouldNotify() bool
-	GetColor() string
+	GetColor() EventColor
 }
 
 type BaseReversionEvent struct {
-	Flow                   string    `json:"flow,omitempty"`
-	ReqID                  string    `json:"req_id,omitempty"`
-	Symbol                 string    `json:"symbol"`
-	Exchange               string    `json:"exchange,omitempty"`
-	SendNotify             bool      `json:"send_notify,omitempty"`
-	Color                  string    `json:"color,omitempty"`
-	OrderID                string    `json:"order_id,omitempty"`
-	ExternalID             string    `json:"external_id,omitempty"`
-	Timestamp              time.Time `json:"timestamp"`
-	EventID                string    `json:"event_id,omitempty"`
-	Seq                    int64     `json:"seq,omitempty"`
-	Topic                  string    `json:"topic,omitempty"`
-	PreviousTopic          string    `json:"previous_topic,omitempty"`
-	SettleTime             time.Time `json:"settle_time"`
-	SupportLeverageOnOrder bool      `json:"support_leverage_on_order,omitempty"`
+	Flow                   string     `json:"flow,omitempty"`
+	ReqID                  string     `json:"req_id,omitempty"`
+	Symbol                 string     `json:"symbol"`
+	Exchange               string     `json:"exchange,omitempty"`
+	SendNotify             bool       `json:"send_notify,omitempty"`
+	Color                  EventColor `json:"color,omitempty"`
+	OrderID                string     `json:"order_id,omitempty"`
+	ExternalID             string     `json:"external_id,omitempty"`
+	Timestamp              time.Time  `json:"timestamp"`
+	EventID                string     `json:"event_id,omitempty"`
+	Seq                    int64      `json:"seq,omitempty"`
+	Topic                  string     `json:"topic,omitempty"`
+	PreviousTopic          string     `json:"previous_topic,omitempty"`
+	SettleTime             time.Time  `json:"settle_time"`
+	SupportLeverageOnOrder bool       `json:"support_leverage_on_order,omitempty"`
 }
 
 func (b BaseReversionEvent) GetFlow() string     { return b.Flow }
@@ -117,11 +126,11 @@ func (b BaseReversionEvent) GetReqID() string    { return b.ReqID }
 func (b BaseReversionEvent) GetSymbol() string   { return b.Symbol }
 func (b BaseReversionEvent) GetExchange() string { return b.Exchange }
 func (b BaseReversionEvent) ShouldNotify() bool  { return b.SendNotify }
-func (b BaseReversionEvent) GetColor() string {
+func (b BaseReversionEvent) GetColor() EventColor {
 	if b.Color != "" {
 		return b.Color
 	}
-	return colorYellow
+	return ColorYellow
 }
 
 type CandidateFoundEvent struct {
@@ -309,7 +318,7 @@ type IOCSubmittedEvent struct {
 	ExternalID    string                  `json:"external_id"`
 	Side          shared.Side             `json:"side"`
 	CloseSide     shared.Side             `json:"close_side"`
-	OrderType     int                     `json:"order_type"`
+	OrderType     shared.OrderType        `json:"order_type"`
 	IntendedPrice float64                 `json:"intended_price"`
 	Volume        float64                 `json:"volume"`
 	TPPrice       float64                 `json:"tp_price,omitempty"`
@@ -342,18 +351,43 @@ type IOCOutcomeCheckedEvent struct {
 	BaseReversionEvent
 	IOCEvent     IOCSubmittedEvent `json:"ioc_event"`
 	OrderID      string            `json:"order_id"`
-	OrderState   int               `json:"order_state"`
+	OrderState   shared.OrderState `json:"order_state"`
 	DealVol      float64           `json:"deal_vol"`
 	DealAvgPrice float64           `json:"deal_avg_price"`
 	HoldVol      float64           `json:"hold_vol"`
-	Outcome      string            `json:"outcome"`
-	Reason       string            `json:"reason"`
+	Outcome      IOCOutcome        `json:"outcome"`
+	Reason       ReversionReason   `json:"reason"`
 	CheckedAt    time.Time         `json:"checked_at"`
 }
 
-func (e IOCOutcomeCheckedEvent) GetMessage() string { return "IOC outcome checked for " + e.Symbol }
+// GetMessage returns a descriptive Telegram message.
+func (e IOCOutcomeCheckedEvent) GetMessage() string {
+	switch e.Outcome {
+	case IOCOutcomeCanceledNoFill:
+		return "IOC order canceled (no fill) for " + e.Symbol
+	case IOCOutcomeUnknown:
+		return "IOC order outcome unknown for " + e.Symbol + ": " + string(e.Reason)
+	default:
+		return "IOC outcome checked for " + e.Symbol
+	}
+}
+
+// GetDataMap returns event payload properties.
 func (e IOCOutcomeCheckedEvent) GetDataMap() map[string]any {
-	return map[string]any{keySymbol: e.Symbol, keyOrderID: e.OrderID, keyOutcome: e.Outcome, keyHoldVol: e.HoldVol, keyReason: e.Reason}
+	return map[string]any{keySymbol: e.Symbol, keyOrderID: e.OrderID, keyOutcome: string(e.Outcome), keyHoldVol: e.HoldVol, keyReason: string(e.Reason)}
+}
+
+// ShouldNotify returns true if the order is canceled (no fill) or outcome is unknown.
+func (e IOCOutcomeCheckedEvent) ShouldNotify() bool {
+	return e.SendNotify || e.Outcome == IOCOutcomeCanceledNoFill || e.Outcome == IOCOutcomeUnknown
+}
+
+// GetColor returns the Telegram indicator color based on the outcome.
+func (e IOCOutcomeCheckedEvent) GetColor() EventColor {
+	if e.Outcome == IOCOutcomeUnknown {
+		return ColorRed
+	}
+	return ColorYellow
 }
 
 type OrderFilledEvent struct {
@@ -414,14 +448,14 @@ func (e PositionClosedEvent) GetDataMap() map[string]any {
 		"holdDurationMs": e.HoldDurationMs,
 	}
 }
-func (e PositionClosedEvent) GetColor() string {
+func (e PositionClosedEvent) GetColor() EventColor {
 	if e.NetProfit > 0 {
-		return colorGreen
+		return ColorGreen
 	}
 	if e.NetProfit < 0 {
-		return colorRed
+		return ColorRed
 	}
-	return colorYellow
+	return ColorYellow
 }
 func (e PositionClosedEvent) ShouldNotify() bool { return false }
 
@@ -499,15 +533,15 @@ func (e ForceCloseCompletedEvent) ShouldNotify() bool { return e.SendNotify || e
 
 type TimeoutEvent struct {
 	BaseReversionEvent
-	Timeout             time.Duration `json:"timeout"`
-	Reason              string        `json:"reason"`
-	ForceCloseAttempted bool          `json:"force_close_attempted,omitempty"`
-	ForceCloseSucceeded bool          `json:"force_close_succeeded,omitempty"`
-	CloseRetryCount     int           `json:"close_retry_count,omitempty"`
-	HoldVol             float64       `json:"hold_vol,omitempty"`
-	HoldDurationMs      int64         `json:"hold_duration_ms,omitempty"`
-	Direction           shared.Side   `json:"direction,omitempty"`
-	Error               string        `json:"error,omitempty"`
+	Timeout             time.Duration   `json:"timeout"`
+	Reason              ReversionReason `json:"reason"`
+	ForceCloseAttempted bool            `json:"force_close_attempted,omitempty"`
+	ForceCloseSucceeded bool            `json:"force_close_succeeded,omitempty"`
+	CloseRetryCount     int             `json:"close_retry_count,omitempty"`
+	HoldVol             float64         `json:"hold_vol,omitempty"`
+	HoldDurationMs      int64           `json:"hold_duration_ms,omitempty"`
+	Direction           shared.Side     `json:"direction,omitempty"`
+	Error               string          `json:"error,omitempty"`
 }
 
 func (e TimeoutEvent) GetMessage() string {
@@ -517,18 +551,20 @@ func (e TimeoutEvent) GetMessage() string {
 	return "Timeout guard triggered for " + e.Symbol
 }
 func (e TimeoutEvent) GetDataMap() map[string]any {
-	return map[string]any{keySymbol: e.Symbol, keyTimeout: e.Timeout.String(), keyReason: e.Reason, "forceCloseSucceeded": e.ForceCloseSucceeded}
+	return map[string]any{keySymbol: e.Symbol, keyTimeout: e.Timeout.String(), keyReason: string(e.Reason), "forceCloseSucceeded": e.ForceCloseSucceeded}
 }
 func (e TimeoutEvent) ShouldNotify() bool { return e.SendNotify || e.Error != "" }
 
 type AbortEvent struct {
 	BaseReversionEvent
-	Reason string `json:"reason"`
+	Reason ReversionReason `json:"reason"`
 }
 
-func (e AbortEvent) GetMessage() string { return "Cycle aborted for " + e.Symbol + ": " + e.Reason }
+func (e AbortEvent) GetMessage() string {
+	return "Cycle aborted for " + e.Symbol + ": " + string(e.Reason)
+}
 func (e AbortEvent) GetDataMap() map[string]any {
-	return map[string]any{keySymbol: e.Symbol, keyReason: e.Reason}
+	return map[string]any{keySymbol: e.Symbol, keyReason: string(e.Reason)}
 }
 
 type ErrorEvent struct {
@@ -613,14 +649,14 @@ func (e FinalPnLEvent) GetDataMap() map[string]any {
 	return nil
 }
 
-func (e FinalPnLEvent) GetColor() string {
+func (e FinalPnLEvent) GetColor() EventColor {
 	if e.NetPnL > 0 {
-		return colorGreen
+		return ColorGreen
 	}
 	if e.NetPnL < 0 {
-		return colorRed
+		return ColorRed
 	}
-	return colorYellow
+	return ColorYellow
 }
 
 type ReversionCompletedEvent struct {
@@ -635,12 +671,12 @@ func (e ReversionCompletedEvent) GetDataMap() map[string]any {
 
 type TPSLRequiredEvent struct {
 	BaseReversionEvent
-	OrderID         string  `json:"order_id"`
-	Side            int     `json:"side"`
-	PositionMode    int     `json:"position_mode"`
-	TakeProfitPrice float64 `json:"take_profit_price,omitempty"`
-	StopLossPrice   float64 `json:"stop_loss_price,omitempty"`
-	Volume          float64 `json:"volume,omitempty"`
+	OrderID         string              `json:"order_id"`
+	Side            shared.Side         `json:"side"`
+	PositionMode    shared.PositionMode `json:"position_mode"`
+	TakeProfitPrice float64             `json:"take_profit_price,omitempty"`
+	StopLossPrice   float64             `json:"stop_loss_price,omitempty"`
+	Volume          float64             `json:"volume,omitempty"`
 }
 
 func (e TPSLRequiredEvent) GetMessage() string {

@@ -4,12 +4,13 @@ import (
 	"context"
 	"log/slog"
 
+	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
 type iocOrderPollResult struct {
 	order        *exchange.OrderInfo
-	lastState    int
+	lastState    shared.OrderState
 	dealVol      float64
 	dealAvgPrice float64
 	reason       string
@@ -81,7 +82,7 @@ func (r *iocOrderPollResult) capture(order *exchange.OrderInfo) {
 	r.dealAvgPrice = order.DealAvgPrice
 }
 
-func classifyIOCOutcome(order *exchange.OrderInfo, holdVol, dealVol float64, reason string) (string, string) {
+func classifyIOCOutcome(order *exchange.OrderInfo, holdVol, dealVol float64, reason string) (IOCOutcome, ReversionReason) {
 	switch {
 	case holdVol > 0 || dealVol > 0:
 		if order != nil && order.State == exchange.OrderStatePartial {
@@ -93,7 +94,7 @@ func classifyIOCOutcome(order *exchange.OrderInfo, holdVol, dealVol float64, rea
 	case reason == "":
 		return IOCOutcomeUnknown, reversionReasonIOCUnknownNoPosition
 	default:
-		return IOCOutcomeUnknown, reason
+		return IOCOutcomeUnknown, ReversionReason(reason)
 	}
 }
 

@@ -374,11 +374,11 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition closes one position leg using a market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	req := exchange.SubmitOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
-		Side:         int(closeSide),
+		Side:         closeSide,
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
@@ -398,7 +398,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		pos := positions[i]
 		if pos.HoldVol > 0 {
 			side := domain.SideCloseShort
-			if pos.PositionType == 1 { // Long
+			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			}
 			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1)
@@ -465,19 +465,19 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 		ExternalOID:  o.ClientOid,
 		CreateTime:   cTimeVal,
 		UpdateTime:   uTimeVal,
-		PositionMode: 2, // default OneWay
+		PositionMode: domain.PositionModeOneWay, // default OneWay
 	}
 
 	switch o.PosSide {
 	case posSideLong:
-		info.PositionMode = 1
+		info.PositionMode = domain.PositionModeHedge
 		if o.Side == sideBuy {
 			info.Side = exchange.SideOpenLong
 		} else {
 			info.Side = exchange.SideCloseLong
 		}
 	case posSideShort:
-		info.PositionMode = 1
+		info.PositionMode = domain.PositionModeHedge
 		if o.Side == sideSell {
 			info.Side = exchange.SideOpenShort
 		} else {
@@ -503,7 +503,7 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 	return info
 }
 
-func mapBitgetOrderType(t int) string {
+func mapBitgetOrderType(t domain.OrderType) string {
 	switch t {
 	case exchange.OrderTypeMarket:
 		return "market"
@@ -518,7 +518,7 @@ func mapBitgetOrderType(t int) string {
 	}
 }
 
-func mapBitgetOrderSide(s int, isHedge bool) (string, string) {
+func mapBitgetOrderSide(s domain.Side, isHedge bool) (string, string) {
 	if isHedge {
 		switch s {
 		case exchange.SideOpenLong:

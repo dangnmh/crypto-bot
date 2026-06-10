@@ -42,22 +42,22 @@ const (
 	ExchangeKucoin      = "kucoin"
 )
 
-// Side constants — delegate to domain for backward compat.
+// Side constants — delegate to domain.
 const (
-	SideOpenLong   = int(domain.SideOpenLong)
-	SideCloseShort = int(domain.SideCloseShort)
-	SideOpenShort  = int(domain.SideOpenShort)
-	SideCloseLong  = int(domain.SideCloseLong)
+	SideOpenLong   = domain.SideOpenLong
+	SideCloseShort = domain.SideCloseShort
+	SideOpenShort  = domain.SideOpenShort
+	SideCloseLong  = domain.SideCloseLong
 )
 
 // SideStr returns a human-readable string for the side constant.
-func SideStr(side int) string {
-	return domain.Side(side).String()
+func SideStr(side domain.Side) string {
+	return side.String()
 }
 
 // CloseSideFor returns the close side for a given open side.
-func CloseSideFor(openSide int) int {
-	return int(domain.CloseSideFor(domain.Side(openSide)))
+func CloseSideFor(openSide domain.Side) domain.Side {
+	return domain.CloseSideFor(openSide)
 }
 
 // Order state — delegate to domain.
@@ -68,7 +68,7 @@ const (
 )
 
 // IsTerminalOrderState delegates to domain.
-func IsTerminalOrderState(state int) bool {
+func IsTerminalOrderState(state domain.OrderState) bool {
 	return domain.IsTerminalOrderState(state)
 }
 
@@ -171,31 +171,31 @@ type AssetInfo struct {
 
 // Position holds position information.
 type Position struct {
-	Symbol          string  `json:"symbol"`
-	HoldVol         float64 `json:"holdVol"`
-	PositionType    int     `json:"positionType"`
-	OpenAvgPrice    float64 `json:"openAvgPrice"`
-	HoldAvgPrice    float64 `json:"holdAvgPrice"`
-	CloseAvgPrice   float64 `json:"closeAvgPrice"`
-	CloseProfitLoss float64 `json:"closeProfitLoss"`
-	Fee             float64 `json:"fee"`
-	HoldFee         float64 `json:"holdFee"`
+	Symbol          string       `json:"symbol"`
+	HoldVol         float64      `json:"holdVol"`
+	PositionType    PositionType `json:"positionType"`
+	OpenAvgPrice    float64      `json:"openAvgPrice"`
+	HoldAvgPrice    float64      `json:"holdAvgPrice"`
+	CloseAvgPrice   float64      `json:"closeAvgPrice"`
+	CloseProfitLoss float64      `json:"closeProfitLoss"`
+	Fee             float64      `json:"fee"`
+	HoldFee         float64      `json:"holdFee"`
 }
 
 // OrderInfo holds order information.
 type OrderInfo struct {
-	OrderID      string  `json:"orderId"`
-	Symbol       string  `json:"symbol"`
-	Price        float64 `json:"price"`
-	Vol          float64 `json:"vol"`
-	DealAvgPrice float64 `json:"dealAvgPrice"`
-	DealVol      float64 `json:"dealVol"`
-	State        int     `json:"state"`
-	ExternalOID  string  `json:"externalOid"`
-	Side         int     `json:"side"`
-	PositionMode int     `json:"positionMode"`
-	CreateTime   int64   `json:"createTime,omitempty"`
-	UpdateTime   int64   `json:"updateTime,omitempty"`
+	OrderID      string              `json:"orderId"`
+	Symbol       string              `json:"symbol"`
+	Price        float64             `json:"price"`
+	Vol          float64             `json:"vol"`
+	DealAvgPrice float64             `json:"dealAvgPrice"`
+	DealVol      float64             `json:"dealVol"`
+	State        domain.OrderState   `json:"state"`
+	ExternalOID  string              `json:"externalOid"`
+	Side         domain.Side         `json:"side"`
+	PositionMode domain.PositionMode `json:"positionMode"`
+	CreateTime   int64               `json:"createTime,omitempty"`
+	UpdateTime   int64               `json:"updateTime,omitempty"`
 }
 
 // CreateOrderResponse is the response from the create order API (only orderId + ts).
@@ -206,35 +206,35 @@ type CreateOrderResponse struct {
 
 // SubmitOrderRequest is the request body for creating a new order.
 type SubmitOrderRequest struct {
-	Symbol          string  `json:"symbol"`
-	Price           float64 `json:"price,omitempty"`
-	Vol             float64 `json:"vol"`
-	Leverage        int     `json:"leverage,omitempty"`
-	Side            int     `json:"side"`               // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
-	Type            int     `json:"type"`               // 1=Limit, 2=PostOnly, 3=IOC, 4=FOK, 5=Market
-	OpenType        int     `json:"openType,omitempty"` // 1=Isolated, 2=Cross
-	ExternalOID     string  `json:"externalOid,omitempty"`
-	PositionID      int64   `json:"positionId,omitempty"`
-	PositionMode    int     `json:"positionMode,omitempty"`    // 1=Hedge, 2=OneWay
-	ReduceOnly      bool    `json:"reduceOnly,omitempty"`      // Reduce-only, only applicable in one-way mode
-	FlashClose      bool    `json:"flashClose,omitempty"`      // Flash close
-	StopLossPrice   float64 `json:"stopLossPrice,omitempty"`   // Server-side stop loss trigger price
-	TakeProfitPrice float64 `json:"takeProfitPrice,omitempty"` // Server-side take profit trigger price
+	Symbol          string              `json:"symbol"`
+	Price           float64             `json:"price,omitempty"`
+	Vol             float64             `json:"vol"`
+	Leverage        int                 `json:"leverage,omitempty"`
+	Side            domain.Side         `json:"side"`               // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
+	Type            domain.OrderType    `json:"type"`               // 1=Limit, 2=PostOnly, 3=IOC, 4=FOK, 5=Market
+	OpenType        domain.OpenType     `json:"openType,omitempty"` // 1=Isolated, 2=Cross
+	ExternalOID     string              `json:"externalOid,omitempty"`
+	PositionID      int64               `json:"positionId,omitempty"`
+	PositionMode    domain.PositionMode `json:"positionMode,omitempty"`    // 1=Hedge, 2=OneWay
+	ReduceOnly      bool                `json:"reduceOnly,omitempty"`      // Reduce-only, only applicable in one-way mode
+	FlashClose      bool                `json:"flashClose,omitempty"`      // Flash close
+	StopLossPrice   float64             `json:"stopLossPrice,omitempty"`   // Server-side stop loss trigger price
+	TakeProfitPrice float64             `json:"takeProfitPrice,omitempty"` // Server-side take profit trigger price
 }
 
 // SubmitTrackOrderRequest is the request body for creating a track (trailing stop) order.
 type SubmitTrackOrderRequest struct {
-	Symbol       string  `json:"symbol"`
-	Leverage     int     `json:"leverage"`
-	Side         int     `json:"side"` // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
-	Vol          float64 `json:"vol"`
-	OpenType     int     `json:"openType"` // 1=Isolated, 2=Cross
-	Trend        int     `json:"trend"`    // 1=Latest, 2=Fair, 3=Index
-	ActivePrice  float64 `json:"activePrice,omitempty"`
-	BackType     int     `json:"backType"` // 1=Percentage, 2=Absolute
-	BackValue    float64 `json:"backValue"`
-	PositionMode int     `json:"positionMode,omitempty"`
-	ReduceOnly   bool    `json:"reduceOnly,omitempty"`
+	Symbol       string              `json:"symbol"`
+	Leverage     int                 `json:"leverage"`
+	Side         domain.Side         `json:"side"` // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
+	Vol          float64             `json:"vol"`
+	OpenType     domain.OpenType     `json:"openType"` // 1=Isolated, 2=Cross
+	Trend        int                 `json:"trend"`    // 1=Latest, 2=Fair, 3=Index
+	ActivePrice  float64             `json:"activePrice,omitempty"`
+	BackType     int                 `json:"backType"` // 1=Percentage, 2=Absolute
+	BackValue    float64             `json:"backValue"`
+	PositionMode domain.PositionMode `json:"positionMode,omitempty"`
+	ReduceOnly   bool                `json:"reduceOnly,omitempty"`
 }
 
 // PositionType represents a position side (1=Long, 2=Short, etc.).
@@ -248,41 +248,41 @@ const (
 
 // ChangeLeverageRequest is the request body for changing leverage.
 type ChangeLeverageRequest struct {
-	Symbol       string       `json:"symbol"`
-	Leverage     int          `json:"leverage"`
-	OpenType     int          `json:"openType"`
-	PositionType PositionType `json:"positionType"`
+	Symbol       string          `json:"symbol"`
+	Leverage     int             `json:"leverage"`
+	OpenType     domain.OpenType `json:"openType"`
+	PositionType PositionType    `json:"positionType"`
 }
 
 // WsOrderDeal represents the parsed data from push.personal.order.
 // It is kept for backward compatibility with existing order lifecycle tests.
 type WsOrderDeal struct {
-	Symbol       string  `json:"symbol"`
-	OrderID      any     `json:"orderId"`
-	PositionID   int64   `json:"positionId,omitempty"`
-	Price        float64 `json:"price"`
-	Vol          float64 `json:"vol"`
-	Leverage     int     `json:"leverage,omitempty"`
-	Side         int     `json:"side"`
-	Category     int     `json:"category,omitempty"`
-	OrderType    int     `json:"orderType,omitempty"`
-	DealAvgPrice float64 `json:"dealAvgPrice"`
-	DealVol      float64 `json:"dealVol"`
-	OrderMargin  float64 `json:"orderMargin,omitempty"`
-	UsedMargin   float64 `json:"usedMargin,omitempty"`
-	TakerFee     float64 `json:"takerFee"`
-	MakerFee     float64 `json:"makerFee"`
-	Profit       float64 `json:"profit"`
-	FeeCurrency  string  `json:"feeCurrency,omitempty"`
-	OpenType     int     `json:"openType,omitempty"`
-	State        int     `json:"state"` // exchange lifecycle state; do not rely on it alone for fills
-	ErrorCode    int     `json:"errorCode,omitempty"`
-	ExternalOID  string  `json:"externalOid"`
-	CreateTime   int64   `json:"createTime,omitempty"`
-	UpdateTime   int64   `json:"updateTime,omitempty"`
-	RemainVol    float64 `json:"remainVol,omitempty"`
-	PositionMode int     `json:"positionMode,omitempty"`
-	ReduceOnly   bool    `json:"reduceOnly,omitempty"`
+	Symbol       string              `json:"symbol"`
+	OrderID      any                 `json:"orderId"`
+	PositionID   int64               `json:"positionId,omitempty"`
+	Price        float64             `json:"price"`
+	Vol          float64             `json:"vol"`
+	Leverage     int                 `json:"leverage,omitempty"`
+	Side         domain.Side         `json:"side"`
+	Category     int                 `json:"category,omitempty"`
+	OrderType    domain.OrderType    `json:"orderType,omitempty"`
+	DealAvgPrice float64             `json:"dealAvgPrice"`
+	DealVol      float64             `json:"dealVol"`
+	OrderMargin  float64             `json:"orderMargin,omitempty"`
+	UsedMargin   float64             `json:"usedMargin,omitempty"`
+	TakerFee     float64             `json:"takerFee"`
+	MakerFee     float64             `json:"makerFee"`
+	Profit       float64             `json:"profit"`
+	FeeCurrency  string              `json:"feeCurrency,omitempty"`
+	OpenType     domain.OpenType     `json:"openType,omitempty"`
+	State        domain.OrderState   `json:"state"` // exchange lifecycle state; do not rely on it alone for fills
+	ErrorCode    int                 `json:"errorCode,omitempty"`
+	ExternalOID  string              `json:"externalOid"`
+	CreateTime   int64               `json:"createTime,omitempty"`
+	UpdateTime   int64               `json:"updateTime,omitempty"`
+	RemainVol    float64             `json:"remainVol,omitempty"`
+	PositionMode domain.PositionMode `json:"positionMode,omitempty"`
+	ReduceOnly   bool                `json:"reduceOnly,omitempty"`
 }
 
 // GetOrderID returns the order ID as a string, handling both string and numeric JSON formats.
@@ -382,17 +382,17 @@ func interfaceIDToString(id any) string {
 
 // PersonalPositionUpdate represents push.personal.position data.
 type PersonalPositionUpdate struct {
-	Symbol          string  `json:"symbol"`
-	HoldVol         float64 `json:"holdVol"`
-	PositionType    int     `json:"positionType"`
-	OpenAvgPrice    float64 `json:"openAvgPrice"`
-	HoldAvgPrice    float64 `json:"holdAvgPrice"`
-	CloseVol        float64 `json:"closeVol"`
-	CloseAvgPrice   float64 `json:"closeAvgPrice"`
-	CloseProfitLoss float64 `json:"closeProfitLoss"`
-	Fee             float64 `json:"fee"`
-	HoldFee         float64 `json:"holdFee"`
-	Leverage        int     `json:"leverage,omitempty"`
-	LiquidatePrice  float64 `json:"liquidatePrice,omitempty"`
-	UpdateTime      int64   `json:"updateTime,omitempty"`
+	Symbol          string       `json:"symbol"`
+	HoldVol         float64      `json:"holdVol"`
+	PositionType    PositionType `json:"positionType"`
+	OpenAvgPrice    float64      `json:"openAvgPrice"`
+	HoldAvgPrice    float64      `json:"holdAvgPrice"`
+	CloseVol        float64      `json:"closeVol"`
+	CloseAvgPrice   float64      `json:"closeAvgPrice"`
+	CloseProfitLoss float64      `json:"closeProfitLoss"`
+	Fee             float64      `json:"fee"`
+	HoldFee         float64      `json:"holdFee"`
+	Leverage        int          `json:"leverage,omitempty"`
+	LiquidatePrice  float64      `json:"liquidatePrice,omitempty"`
+	UpdateTime      int64        `json:"updateTime,omitempty"`
 }

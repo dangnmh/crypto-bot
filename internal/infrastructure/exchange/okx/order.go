@@ -253,7 +253,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}, nil
 }
 
-func mapOKXOrderType(t int) string {
+func mapOKXOrderType(t domain.OrderType) string {
 	switch t {
 	case exchange.OrderTypeMarket:
 		return "market"
@@ -268,7 +268,7 @@ func mapOKXOrderType(t int) string {
 	}
 }
 
-func mapOKXOrderSide(s int, isHedge bool) (string, string) {
+func mapOKXOrderSide(s domain.Side, isHedge bool) (string, string) {
 	if isHedge {
 		switch s {
 		case exchange.SideOpenLong:
@@ -291,6 +291,8 @@ func mapOKXOrderSide(s int, isHedge bool) (string, string) {
 		side = sideBuy
 	case exchange.SideOpenShort, exchange.SideCloseLong:
 		side = sideSell
+	default:
+		// SideUnknown or unhandled
 	}
 	return side, posSide
 }
@@ -405,11 +407,11 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition closes one position leg using a market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
 	req := exchange.SubmitOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
-		Side:         int(closeSide),
+		Side:         closeSide,
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
@@ -429,10 +431,10 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		pos := positions[i]
 		if pos.HoldVol > 0 {
 			side := domain.SideCloseShort
-			if pos.PositionType == 1 { // Long
+			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1)
+			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge)
 			if err != nil {
 				return err
 			}
@@ -504,19 +506,19 @@ func mapOkxOrder(o okxOrder) exchange.OrderInfo {
 		ExternalOID:  o.ClOrdID,
 		CreateTime:   cTime,
 		UpdateTime:   uTime,
-		PositionMode: 2, // default OneWay
+		PositionMode: domain.PositionModeOneWay, // default OneWay
 	}
 
 	switch o.PosSide {
 	case posSideLong:
-		info.PositionMode = 1
+		info.PositionMode = domain.PositionModeHedge
 		if o.Side == sideBuy {
 			info.Side = exchange.SideOpenLong
 		} else {
 			info.Side = exchange.SideCloseLong
 		}
 	case posSideShort:
-		info.PositionMode = 1
+		info.PositionMode = domain.PositionModeHedge
 		if o.Side == sideSell {
 			info.Side = exchange.SideOpenShort
 		} else {

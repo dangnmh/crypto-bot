@@ -35,7 +35,7 @@ type OrderExecutor interface {
 	CancelAllOpenOrders(ctx context.Context, symbol string) error
 	GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
-	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode int) error
+	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
 	SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error

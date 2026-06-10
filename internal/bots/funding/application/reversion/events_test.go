@@ -24,6 +24,14 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		Timestamp:  now,
 		SettleTime: now.Add(time.Hour),
 	}
+	baseNoNotify := reversion.BaseReversionEvent{
+		Flow:       reversion.FlowReversion,
+		ReqID:      "req-123",
+		Symbol:     "BTC_USDT",
+		SendNotify: false,
+		Timestamp:  now,
+		SettleTime: now.Add(time.Hour),
+	}
 	candidate := fundingdomain.Candidate{
 		TradeIntent: fundingdomain.TradeIntent{
 			Symbol:      "BTC_USDT",
@@ -138,6 +146,20 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			name:        "ioc outcome checked",
 			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: base, IOCEvent: ioc, OrderID: "ord-1", Outcome: reversion.IOCOutcomeFilled, HoldVol: 1.25},
 			messagePart: "IOC outcome checked",
+			keys:        []string{"symbol", "orderId", "outcome", "holdVol", "reason"},
+			notify:      true,
+		},
+		{
+			name:        "ioc outcome checked canceled no fill",
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseNoNotify, IOCEvent: ioc, OrderID: "ord-1", Outcome: reversion.IOCOutcomeCanceledNoFill, HoldVol: 0},
+			messagePart: "IOC order canceled (no fill)",
+			keys:        []string{"symbol", "orderId", "outcome", "holdVol", "reason"},
+			notify:      true,
+		},
+		{
+			name:        "ioc outcome checked unknown",
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseNoNotify, IOCEvent: ioc, OrderID: "ord-1", Outcome: reversion.IOCOutcomeUnknown, HoldVol: 0, Reason: "mock-err"},
+			messagePart: "IOC order outcome unknown",
 			keys:        []string{"symbol", "orderId", "outcome", "holdVol", "reason"},
 			notify:      true,
 		},
@@ -264,36 +286,36 @@ func TestReversionEventColor(t *testing.T) {
 	t.Parallel()
 
 	base := reversion.BaseReversionEvent{Symbol: "BTC_USDT"}
-	assert.Equal(t, "yellow", base.GetColor())
+	assert.Equal(t, reversion.ColorYellow, base.GetColor())
 
 	// Default event should be yellow
 	cand := reversion.CandidateFoundEvent{BaseReversionEvent: base}
-	assert.Equal(t, "yellow", cand.GetColor())
+	assert.Equal(t, reversion.ColorYellow, cand.GetColor())
 
 	// Custom color on base should be respected
 	customBase := reversion.BaseReversionEvent{Symbol: "BTC_USDT", Color: "blue"}
 	customCand := reversion.CandidateFoundEvent{BaseReversionEvent: customBase}
-	assert.Equal(t, "blue", customCand.GetColor())
+	assert.Equal(t, reversion.EventColor("blue"), customCand.GetColor())
 
 	// PositionClosedEvent colors based on NetProfit
 	closedPos := reversion.PositionClosedEvent{BaseReversionEvent: base, NetProfit: 10.5}
-	assert.Equal(t, "green", closedPos.GetColor())
+	assert.Equal(t, reversion.ColorGreen, closedPos.GetColor())
 
 	closedNeg := reversion.PositionClosedEvent{BaseReversionEvent: base, NetProfit: -5.2}
-	assert.Equal(t, "red", closedNeg.GetColor())
+	assert.Equal(t, reversion.ColorRed, closedNeg.GetColor())
 
 	closedZero := reversion.PositionClosedEvent{BaseReversionEvent: base, NetProfit: 0}
-	assert.Equal(t, "yellow", closedZero.GetColor())
+	assert.Equal(t, reversion.ColorYellow, closedZero.GetColor())
 
 	// FinalPnLEvent colors based on NetPnL
 	pnlPos := reversion.FinalPnLEvent{BaseReversionEvent: base, NetPnL: 10.5}
-	assert.Equal(t, "green", pnlPos.GetColor())
+	assert.Equal(t, reversion.ColorGreen, pnlPos.GetColor())
 
 	pnlNeg := reversion.FinalPnLEvent{BaseReversionEvent: base, NetPnL: -5.2}
-	assert.Equal(t, "red", pnlNeg.GetColor())
+	assert.Equal(t, reversion.ColorRed, pnlNeg.GetColor())
 
 	pnlZero := reversion.FinalPnLEvent{BaseReversionEvent: base, NetPnL: 0}
-	assert.Equal(t, "yellow", pnlZero.GetColor())
+	assert.Equal(t, reversion.ColorYellow, pnlZero.GetColor())
 }
 
 func TestFinalPnLEvent_GetMessage(t *testing.T) {

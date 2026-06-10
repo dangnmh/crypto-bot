@@ -194,7 +194,7 @@ func registerCallbacks(adapter *binance.WsAdapter, wsPool *pkgws.Pool) {
 			slog.Float64("hold_vol", pos.HoldVol),
 			slog.Float64("entry_price", pos.HoldAvgPrice),
 			slog.Float64("unrealized_pnl", pos.CloseProfitLoss),
-			slog.Int("position_type", pos.PositionType),
+			slog.Int("position_type", int(pos.PositionType)),
 		)
 	})
 }
