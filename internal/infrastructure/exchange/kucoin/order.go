@@ -208,7 +208,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	if ordType != constantMarket {
-		rawReq.Price = strconv.FormatFloat(req.Price, 'f', -1, 64)
+		rawReq.Price = decmath.FormatFloat(req.Price)
 	}
 	if req.Leverage > 0 {
 		rawReq.Leverage = req.Leverage
@@ -230,10 +230,10 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	if stopUpPrice > 0 {
-		rawReq.TriggerStopUpPrice = strconv.FormatFloat(stopUpPrice, 'f', -1, 64)
+		rawReq.TriggerStopUpPrice = decmath.FormatFloat(stopUpPrice)
 	}
 	if stopDownPrice > 0 {
-		rawReq.TriggerStopDownPrice = strconv.FormatFloat(stopDownPrice, 'f', -1, 64)
+		rawReq.TriggerStopDownPrice = decmath.FormatFloat(stopDownPrice)
 	}
 	if req.TakeProfitPrice > 0 || req.StopLossPrice > 0 {
 		rawReq.StopPriceType = "TP"
@@ -447,10 +447,10 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	}
 
 	if stopUpPrice > 0 {
-		bodyMap["triggerStopUpPrice"] = strconv.FormatFloat(stopUpPrice, 'f', -1, 64)
+		bodyMap["triggerStopUpPrice"] = decmath.FormatFloat(stopUpPrice)
 	}
 	if stopDownPrice > 0 {
-		bodyMap["triggerStopDownPrice"] = strconv.FormatFloat(stopDownPrice, 'f', -1, 64)
+		bodyMap["triggerStopDownPrice"] = decmath.FormatFloat(stopDownPrice)
 	}
 
 	body, err := c.PostCtx(ctx, "/api/v1/st-orders", bodyMap)

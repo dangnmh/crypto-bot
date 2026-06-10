@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -188,7 +187,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 		tickSize := inst.TickSize
 
-		priceScale := decmath.DecimalPlaces(strconv.FormatFloat(tickSize, 'f', -1, 64))
+		priceScale := decmath.DecimalPlaces(decmath.FormatFloat(tickSize))
 		if priceScale <= 0 {
 			priceScale = 2
 		}

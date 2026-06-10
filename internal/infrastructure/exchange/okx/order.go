@@ -9,6 +9,7 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -203,7 +204,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		TdMode:     tdMode,
 		Side:       side,
 		OrdType:    ordType,
-		Sz:         strconv.FormatFloat(req.Vol, 'f', -1, 64),
+		Sz:         decmath.FormatFloat(req.Vol),
 		ReduceOnly: req.ReduceOnly,
 	}
 
@@ -212,7 +213,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		okxReq.Px = strconv.FormatFloat(req.Price, 'f', -1, 64)
+		okxReq.Px = decmath.FormatFloat(req.Price)
 	}
 
 	if req.ExternalOID != "" {
@@ -222,13 +223,13 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	if req.TakeProfitPrice > 0 || req.StopLossPrice > 0 {
 		algo := okxAttachAlgoOrd{}
 		if req.TakeProfitPrice > 0 {
-			algo.TpTriggerPx = strconv.FormatFloat(req.TakeProfitPrice, 'f', -1, 64)
+			algo.TpTriggerPx = decmath.FormatFloat(req.TakeProfitPrice)
 			algo.TpOrdPx = "-1"
 			algo.TpTriggerPxType = triggerPxTypeLast
 			algo.TpOrdKind = "condition"
 		}
 		if req.StopLossPrice > 0 {
-			algo.SlTriggerPx = strconv.FormatFloat(req.StopLossPrice, 'f', -1, 64)
+			algo.SlTriggerPx = decmath.FormatFloat(req.StopLossPrice)
 			algo.SlOrdPx = "-1"
 			algo.SlTriggerPxType = triggerPxTypeLast
 		}

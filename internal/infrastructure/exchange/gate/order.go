@@ -282,7 +282,7 @@ func mapOrderPriceAndTif(reqType domain.OrderType, price float64) (priceStr, tif
 	if reqType == exchange.OrderTypeMarket {
 		return "0", gateTifIOC
 	}
-	priceStr = strconv.FormatFloat(price, 'f', -1, 64)
+	priceStr = decmath.FormatFloat(price)
 	switch reqType {
 	case exchange.OrderTypePostOnly:
 		tif = "poc"
@@ -350,11 +350,11 @@ func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) gateFuturesOrde
 	}
 
 	if req.TakeProfitPrice > 0 {
-		order.TpslTpTriggerPrice = strconv.FormatFloat(req.TakeProfitPrice, 'f', -1, 64)
+		order.TpslTpTriggerPrice = decmath.FormatFloat(req.TakeProfitPrice)
 		order.TpslTpPriceType = gatePriceTypeLast
 	}
 	if req.StopLossPrice > 0 {
-		order.TpslSlTriggerPrice = strconv.FormatFloat(req.StopLossPrice, 'f', -1, 64)
+		order.TpslSlTriggerPrice = decmath.FormatFloat(req.StopLossPrice)
 		order.TpslSlPriceType = gatePriceTypeLast
 	}
 
