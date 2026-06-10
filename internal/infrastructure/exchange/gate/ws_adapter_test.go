@@ -120,6 +120,13 @@ func TestWsAdapter_ParsePersonalMessages(t *testing.T) {
 		assert.Equal(t, 10, position.Leverage)
 		assert.Equal(t, -1.25e-8, position.CloseProfitLoss)
 	})
+
+	t.Run("ignore subscribe acknowledgment event", func(t *testing.T) {
+		t.Parallel()
+		position, err := a.ParsePosition([]byte(`{"time":1781105928,"time_ms":1781105928741,"conn_id":"48e9704f89c5c44d","trace_id":"f58f4220ca298c954fe0a481603924da","channel":"futures.positions","event":"subscribe","payload":["!all"],"result":{"status":"success"}}`))
+		require.NoError(t, err)
+		assert.Nil(t, position)
+	})
 }
 
 func TestWsAdapter_ParseErrors(t *testing.T) {

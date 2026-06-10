@@ -218,6 +218,13 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 
 // ParsePosition parses push.personal.position.
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
+	var eventMsg struct {
+		Event string `json:"event"`
+	}
+	if err := json.Unmarshal(data, &eventMsg); err == nil && eventMsg.Event != "" && eventMsg.Event != "update" {
+		return nil, nil
+	}
+
 	var msg struct {
 		Result []json.RawMessage `json:"result"`
 	}
