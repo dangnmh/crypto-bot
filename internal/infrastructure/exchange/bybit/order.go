@@ -200,13 +200,13 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		Symbol:      req.Symbol,
 		Side:        bybitSide,
 		OrderType:   bybitOrderType,
-		Qty:         fmt.Sprintf("%g", req.Vol),
+		Qty:         decmath.FormatFloat(req.Vol),
 		TimeInForce: bybitTif,
 		PositionIdx: positionIdx,
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		rawReq.Price = fmt.Sprintf("%g", req.Price)
+		rawReq.Price = decmath.FormatFloat(req.Price)
 	}
 	if reduceOnly || req.ReduceOnly {
 		rawReq.ReduceOnly = true
@@ -215,10 +215,10 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.OrderLinkID = req.ExternalOID
 	}
 	if req.TakeProfitPrice > 0 {
-		rawReq.TakeProfit = fmt.Sprintf("%g", req.TakeProfitPrice)
+		rawReq.TakeProfit = decmath.FormatFloat(req.TakeProfitPrice)
 	}
 	if req.StopLossPrice > 0 {
-		rawReq.StopLoss = fmt.Sprintf("%g", req.StopLossPrice)
+		rawReq.StopLoss = decmath.FormatFloat(req.StopLossPrice)
 	}
 	if req.Leverage > 0 {
 		rawReq.Leverage = fmt.Sprintf("%d", req.Leverage)
@@ -241,11 +241,11 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	}
 
 	if req.TakeProfitPrice > 0 {
-		rawReq.TakeProfit = fmt.Sprintf("%g", req.TakeProfitPrice)
+		rawReq.TakeProfit = decmath.FormatFloat(req.TakeProfitPrice)
 		rawReq.TpTriggerBy = triggerByLastPrice
 	}
 	if req.StopLossPrice > 0 {
-		rawReq.StopLoss = fmt.Sprintf("%g", req.StopLossPrice)
+		rawReq.StopLoss = decmath.FormatFloat(req.StopLossPrice)
 		rawReq.SlTriggerBy = triggerByLastPrice
 	}
 

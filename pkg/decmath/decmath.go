@@ -215,6 +215,13 @@ func FormatDecimal(price Decimal, scale int) string {
 	return price.StringFixed(int32(scale))
 }
 
+// FormatFloat formats a float64 value to a decimal string representation with full precision,
+// avoiding scientific notation/exponent format or unnecessary trailing zeros.
+// E.g., FormatFloat(0.0001) -> "0.0001", FormatFloat(123.456) -> "123.456", FormatFloat(1e-8) -> "0.00000001".
+func FormatFloat(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
 // SignedTradingFee ensures a trading fee is represented as a negative value.
 func SignedTradingFee(value float64) float64 {
 	if value > 0 {

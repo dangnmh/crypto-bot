@@ -219,12 +219,12 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	var presetStopSurplusPrice string
 	if req.TakeProfitPrice > 0 {
-		presetStopSurplusPrice = fmt.Sprintf("%g", req.TakeProfitPrice)
+		presetStopSurplusPrice = decmath.FormatFloat(req.TakeProfitPrice)
 	}
 
 	var presetStopLossPrice string
 	if req.StopLossPrice > 0 {
-		presetStopLossPrice = fmt.Sprintf("%g", req.StopLossPrice)
+		presetStopLossPrice = decmath.FormatFloat(req.StopLossPrice)
 	}
 
 	rawReq := bitgetCreateOrderRequest{
@@ -233,7 +233,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		MarginMode:             marginMode,
 		Side:                   side,
 		OrderType:              ordType,
-		Size:                   fmt.Sprintf("%g", req.Vol),
+		Size:                   decmath.FormatFloat(req.Vol),
 		MarginCoin:             constantUsdt,
 		ClientOid:              req.ExternalOID,
 		ReduceOnly:             reduceOnlyVal,
@@ -246,7 +246,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		rawReq.Price = fmt.Sprintf("%g", req.Price)
+		rawReq.Price = decmath.FormatFloat(req.Price)
 	}
 
 	res, err := c.createRawOrder(ctx, rawReq)

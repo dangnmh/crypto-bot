@@ -232,6 +232,30 @@ func TestFormatPrice(t *testing.T) {
 	}
 }
 
+func TestFormatFloat(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		val  float64
+		want string
+	}{
+		{"integer", 100, "100"},
+		{"decimal price", 100.35, "100.35"},
+		{"small decimal", 0.00012345, "0.00012345"},
+		{"very small decimal", 0.00000001, "0.00000001"},
+		{"negative decimal", -123.456, "-123.456"},
+		{"no scientific format for tiny", 1e-8, "0.00000001"},
+		{"no scientific format for large", 100000000.123, "100000000.123"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := decmath.FormatFloat(tt.val)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestTradingProfitHelpers(t *testing.T) {
 	t.Parallel()
 

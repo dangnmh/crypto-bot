@@ -212,12 +212,12 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		Side:         side,
 		PositionSide: posSide,
 		Type:         ordType,
-		Quantity:     fmt.Sprintf("%g", req.Vol),
+		Quantity:     decmath.FormatFloat(req.Vol),
 		TimeInForce:  tif,
 	}
 
 	if req.Type != exchange.OrderTypeMarket {
-		rawReq.Price = fmt.Sprintf("%g", req.Price)
+		rawReq.Price = decmath.FormatFloat(req.Price)
 	}
 
 	if req.ExternalOID != "" {
