@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"github.com/samber/lo"
 )
 
 // Explicit request/response structs for account endpoints.
@@ -216,21 +218,9 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}
 
-	var row mexcHistoryPosRow
-	found := false
-	for i := range histData {
-		p := &histData[i]
-		if p.PositionID == positionID {
-			timeDiff := time.Now().UnixMilli() - p.UpdateTime
-			if timeDiff >= 15000 {
-				return nil, fmt.Errorf("query closed pnl failed: found stale closed position record for ID %d (age: %s)", positionID, time.Duration(timeDiff)*time.Millisecond)
-			}
-			row = *p
-			found = true
-			break
-		}
-	}
-
+	row, found := lo.Find(histData, func(item mexcHistoryPosRow) bool {
+		return item.PositionID == positionID
+	})
 	if !found {
 		return nil, fmt.Errorf("query closed pnl failed: position record for ID %d not yet closed/finalized in history", positionID)
 	}
