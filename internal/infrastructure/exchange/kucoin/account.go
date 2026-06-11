@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
-
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
@@ -229,26 +227,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 // GetRecentClosedPnL queries historical position records, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// 1. Get closing order by client OID.
-	var closingOrder *kucoinOrder
-	opGetOrder := func() error {
-		order, err := c.getRawOrderByClientOid(ctx, extOrderID)
-		if err != nil {
-			return err
-		}
-		closingOrder = order
-		return nil
-	}
-
-	boGetOrder := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(1*time.Second),
-				backoff.WithMaxInterval(2*time.Second)),
-			5),
-		ctx,
-	)
-
-	if err := backoff.Retry(opGetOrder, boGetOrder); err != nil {
+	closingOrder, err := c.getRawOrderByClientOid(ctx, extOrderID)
+	if err != nil {
 		return nil, fmt.Errorf("kucoin get order by client OID %s failed: %w", extOrderID, err)
 	}
 
@@ -265,31 +245,12 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	// 3. Query positions history to match the closed position record.
-	// Add retry loop to handle asynchronous DB propagation delay on KuCoin.
-	var historyItems []kucoinPositionHistoryItem
-	operation := func() error {
-		items, err := c.getRawPositionsHistory(ctx, symbol, startTime)
-		if err != nil {
-			return err
-		}
-		if len(items) == 0 {
-			return fmt.Errorf("no closed position history records found for symbol %s", symbol)
-		}
-		historyItems = items
-		return nil
-	}
-
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Second),
-				backoff.WithMaxInterval(2*time.Second)),
-			5),
-		ctx,
-	)
-
-	if err := backoff.Retry(operation, bo); err != nil {
+	historyItems, err := c.getRawPositionsHistory(ctx, symbol, startTime)
+	if err != nil {
 		return nil, fmt.Errorf("query closed position history failed: %w", err)
+	}
+	if len(historyItems) == 0 {
+		return nil, fmt.Errorf("query closed position history failed: no closed position history records found for symbol %s", symbol)
 	}
 
 	// Find the matching position record.

@@ -4,8 +4,6 @@ go 1.26.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.2
-	github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures v1.9.0
-	github.com/binance/binance-connector-go/common/v2 v2.2.0
 	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/buger/jsonparser v1.2.0
 	github.com/bybit-exchange/bybit.go.api v1.1.1
@@ -29,7 +27,6 @@ require (
 
 require (
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20260519063510-53a8eff4e716 // indirect
-	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
@@ -68,7 +65,6 @@ require (
 	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.elastic.co/apm/module/apmzerolog/v2 v2.7.9 // indirect
 	go.elastic.co/apm/v2 v2.7.9 // indirect
 	go.elastic.co/fastjson v1.5.1 // indirect
@@ -76,7 +72,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect

@@ -4,13 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
-
-	"github.com/cenkalti/backoff/v4"
 )
 
 // Explicit request/response structs for account endpoints.
@@ -206,54 +202,37 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("no positionId found associated with external order %s", extOrderID)
 	}
 
-	var row mexcHistoryPosRow
-
-	operation := func() error {
-		req := mexcHistoryPositionsRequest{
-			Symbol:   symbol,
-			PageNum:  1,
-			PageSize: 10,
-		}
-		if !startTime.IsZero() {
-			req.StartTime = startTime.UnixMilli()
-		}
-
-		histData, err := c.getRawHistoryPositions(ctx, req)
-		if err != nil {
-			if strings.Contains(err.Error(), "unmarshal") {
-				return backoff.Permanent(err)
-			}
-			return err
-		}
-
-		for i := range histData {
-			p := &histData[i]
-			if p.PositionID == positionID {
-				timeDiff := time.Now().UnixMilli() - p.UpdateTime
-				if timeDiff >= 15000 {
-					return fmt.Errorf("found stale closed position record for ID %d (age: %s)", positionID, time.Duration(timeDiff)*time.Millisecond)
-				}
-				row = *p
-				return nil
-			}
-		}
-
-		return fmt.Errorf("position record for ID %d not yet closed/finalized in history", positionID)
+	req := mexcHistoryPositionsRequest{
+		Symbol:   symbol,
+		PageNum:  1,
+		PageSize: 10,
+	}
+	if !startTime.IsZero() {
+		req.StartTime = startTime.UnixMilli()
 	}
 
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Second),
-				backoff.WithMaxInterval(time.Second*2)),
-			5),
-		ctx,
-	)
-
-	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
-		c.logger.ErrorContext(ctx, "retry closed pnl query", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
-	}); err != nil {
+	histData, err := c.getRawHistoryPositions(ctx, req)
+	if err != nil {
 		return nil, fmt.Errorf("query closed pnl failed: %w", err)
+	}
+
+	var row mexcHistoryPosRow
+	found := false
+	for i := range histData {
+		p := &histData[i]
+		if p.PositionID == positionID {
+			timeDiff := time.Now().UnixMilli() - p.UpdateTime
+			if timeDiff >= 15000 {
+				return nil, fmt.Errorf("query closed pnl failed: found stale closed position record for ID %d (age: %s)", positionID, time.Duration(timeDiff)*time.Millisecond)
+			}
+			row = *p
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("query closed pnl failed: position record for ID %d not yet closed/finalized in history", positionID)
 	}
 
 	netPnl := row.CloseProfitLoss - row.TotalFee + row.HoldFee

@@ -184,10 +184,11 @@ func (r *StatelessRunner) forceClosePosition(
 	symbol string,
 	maxRetries int,
 ) (int, error) {
-	retries, err := r.RetryWithBackoff(ctx, maxRetries, func() error {
-		return r.deps.Client.CloseAllPositions(ctx, symbol)
-	})
-	return retries, err
+	err := r.deps.Client.CloseAllPositions(ctx, symbol)
+	if err != nil {
+		return maxRetries, err
+	}
+	return 0, nil
 }
 
 func (r *StatelessRunner) publishReversionCritical(ctx context.Context, prev BaseReversionEvent, symbol, reason string) {

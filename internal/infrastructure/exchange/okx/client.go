@@ -30,6 +30,7 @@ type Client struct {
 	passphrase string
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
+	clock      exchange.Clock
 }
 
 // NewClient creates a new OKX API client using the provided HTTP client.
@@ -81,6 +82,14 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		passphrase: passphrase,
 		logCfg:     logCfg,
 		logger:     logger,
+		clock:      exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
 	}
 }
 
@@ -129,7 +138,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 	// OKX private endpoints require credentials
 	isPrivate := !strings.Contains(path, "/public/") && !strings.Contains(path, "/market/")
 	if isPrivate && c.apiKey != "" {
-		ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+		ts := c.clock.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 		sig := SignRequest(c.apiSecret, ts, http.MethodGet, urlPath, "")
 		req.Header.Set("OK-ACCESS-KEY", c.apiKey)
 		req.Header.Set("OK-ACCESS-SIGN", sig)
@@ -168,7 +177,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 	req.Header.Set("Content-Type", "application/json")
 
 	if c.apiKey != "" {
-		ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+		ts := c.clock.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 		sig := SignRequest(c.apiSecret, ts, http.MethodPost, path, bodyStr)
 		req.Header.Set("OK-ACCESS-KEY", c.apiKey)
 		req.Header.Set("OK-ACCESS-SIGN", sig)

@@ -3,12 +3,9 @@ package okx
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"strconv"
 	"time"
-
-	"github.com/cenkalti/backoff/v4"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -229,36 +226,13 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		req.Begin = strconv.FormatInt(startTime.UnixMilli(), 10)
 	}
 
-	var positions []okxClosedPosition
-
-	operation := func() error {
-		var err error
-		positions, err = c.getRawClosedPositions(ctx, req)
-		if err != nil {
-			return err
-		}
-
-		if len(positions) == 0 {
-			return fmt.Errorf("no closed position history found for symbol %s", symbol)
-		}
-
-		return nil
+	positions, err := c.getRawClosedPositions(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}
 
-	// Retry up to 5 times (4 retries + 1st try) with 1s-2s exponential delay.
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Second),
-				backoff.WithMaxInterval(time.Second*2)),
-			5),
-		ctx,
-	)
-
-	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
-		c.logger.ErrorContext(ctx, "retry closed pnl", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
-	}); err != nil {
-		return nil, fmt.Errorf("query closed pnl failed: %w", err)
+	if len(positions) == 0 {
+		return nil, fmt.Errorf("query closed pnl failed: no closed position history found for symbol %s", symbol)
 	}
 
 	pos := positions[0]

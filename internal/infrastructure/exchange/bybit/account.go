@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
-
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
@@ -254,7 +252,6 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries the most recent closed PnL ledger record from Bybit.
-// It includes a retry loop using the backoff library to account for Bybit's asynchronous database propagation delay.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// Look up numeric orderID from client order ID (extOrderID / orderLinkId).
 	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
@@ -278,43 +275,20 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		req.StartTime = startTime.UnixMilli()
 	}
 
-	var row bybitClosedPnLRow
-
-	operation := func() error {
-		res, err := c.getRawClosedPnL(ctx, req)
-		if err != nil {
-			return err
-		}
-
-		if len(res.List) == 0 {
-			return fmt.Errorf("no closed pnl records found for symbol %s", symbol)
-		}
-
-		candidate := res.List[0]
-		updatedTime := decmath.ParseInt64(candidate.UpdatedTime)
-		// Check if the record is fresh (updated within the last 15 seconds).
-		if time.Now().UnixMilli()-updatedTime >= 15000 {
-			return fmt.Errorf("stale closed pnl record found for symbol %s", symbol)
-		}
-
-		row = candidate
-		return nil
+	res, err := c.getRawClosedPnL(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}
 
-	// Retry up to 5 times (4 retries + 1st try) with 200ms constant delay, respecting context cancellation.
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Second),
-				backoff.WithMaxInterval(time.Second*2)),
-			5),
-		ctx,
-	)
+	if len(res.List) == 0 {
+		return nil, fmt.Errorf("query closed pnl failed: no closed pnl records found for symbol %s", symbol)
+	}
 
-	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
-		c.logger.ErrorContext(ctx, "retry closed pnl", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
-	}); err != nil {
-		return nil, fmt.Errorf("query closed pnl failed: %w", err)
+	row := res.List[0]
+	updatedTime := decmath.ParseInt64(row.UpdatedTime)
+	// Check if the record is fresh (updated within the last 15 seconds).
+	if time.Now().UnixMilli()-updatedTime >= 15000 {
+		return nil, fmt.Errorf("query closed pnl failed: stale closed pnl record found for symbol %s", symbol)
 	}
 
 	entryPrice := decmath.ParseFloat(row.AvgEntryPrice)

@@ -22,7 +22,7 @@ func TestClient_Post(t *testing.T) {
 	resp := exchange.CreateOrderResponse{OrderID: "post123"}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.NotEmpty(t, r.Header.Get("ApiKey"))
+		assert.NotEmpty(t, r.Header.Get("Apikey"))
 		assert.NotEmpty(t, r.Header.Get("Request-Time"))
 		assert.NotEmpty(t, r.Header.Get("Signature"))
 		_, _ = w.Write(mustJSON(t, mexc.APIResponse[exchange.CreateOrderResponse]{Success: true, Code: 0, Data: resp}))
@@ -127,7 +127,7 @@ func TestClient_GetCtx_PrivateEndpoint(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Private endpoints should have auth headers.
-		assert.NotEmpty(t, r.Header.Get("ApiKey"))
+		assert.NotEmpty(t, r.Header.Get("Apikey"))
 		assert.NotEmpty(t, r.Header.Get("Request-Time"))
 		assert.NotEmpty(t, r.Header.Get("Signature"))
 		_, _ = w.Write(mustJSON(t, mexc.APIResponse[json.RawMessage]{Success: true, Code: 0}))

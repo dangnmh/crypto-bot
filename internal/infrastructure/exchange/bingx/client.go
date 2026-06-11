@@ -30,6 +30,7 @@ type Client struct {
 	apiSecret  string
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
+	clock      exchange.Clock
 }
 
 // NewClient creates a new BingX API client using the provided HTTP client.
@@ -81,6 +82,14 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		apiSecret:  apiSecret,
 		logCfg:     logCfg,
 		logger:     logger,
+		clock:      exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
 	}
 }
 
@@ -119,7 +128,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 
 	isPrivate := !strings.Contains(path, "/server/") && !strings.Contains(path, "/quote/")
 	if isPrivate && c.apiKey != "" {
-		allParams["timestamp"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
+		allParams["timestamp"] = strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 		sig := SignParams(c.apiSecret, allParams)
 		allParams["signature"] = sig
 	}
@@ -186,7 +195,7 @@ func (c *Client) requestCtx(ctx context.Context, method, path string, params map
 	}
 
 	if c.apiKey != "" {
-		allParams["timestamp"] = strconv.FormatInt(time.Now().UnixMilli(), 10)
+		allParams["timestamp"] = strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 		sig := SignParams(c.apiSecret, allParams)
 		allParams["signature"] = sig
 	}

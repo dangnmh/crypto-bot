@@ -230,12 +230,20 @@ func buildProvider(
 	wsPool := newWSPool(ctx, watcherExchangeName, apiCfg, adapter, log, apiCfg.APIKey, apiCfg.APISecret)
 	adapter.SetPool(wsPool)
 
+	ts := timesync.New(client, log, time.Duration(sysCfg.Sync.Time))
+	type clockSetter interface {
+		SetClock(exchange.Clock)
+	}
+	if setter, ok := client.(clockSetter); ok {
+		setter.SetClock(ts)
+	}
+
 	return &ExchangeProvider{
 		Name:     providerName,
 		Client:   client,
 		Adapter:  adapter,
 		WS:       wsPool,
-		TimeSync: timesync.New(client, log, time.Duration(sysCfg.Sync.Time)),
+		TimeSync: ts,
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, watcherExchangeName, log),
 	}
 }

@@ -599,6 +599,12 @@ func TestClient_PlaceTPSL(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, tt.wantMethod, r.Method)
 				assert.Contains(t, r.URL.Path, tt.wantPath)
+
+				q := r.URL.Query()
+				assert.Equal(t, "CONDITIONAL", q.Get("algoType"))
+				assert.NotEmpty(t, q.Get("triggerPrice"))
+				assert.Equal(t, "true", q.Get("closePosition"))
+
 				calledCount++
 
 				w.Header().Set("Content-Type", "application/json")
@@ -744,12 +750,12 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			]`,
 			incomeResponse:  `[]`,
 			expectedEntry:   50000.0,
-			expectedExit:    52400.0,
-			expectedSize:    0.5,
-			expectedGross:   1200.0,
-			expectedFee:     3.5,
+			expectedExit:    52571.428571,
+			expectedSize:    0.7,
+			expectedGross:   1800.0,
+			expectedFee:     4.5,
 			expectedFunding: 0.0,
-			expectedNet:     1200.0 - 3.5,
+			expectedNet:     1800.0 - 4.5,
 		},
 		{
 			name: "Fallback (No closing trades found)",
@@ -822,6 +828,51 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			incomeResponse: `[]`,
 			expectedError:  "zero opening quantity for order",
 		},
+		{
+			name: "Short Position PreExisting",
+			orderResponse: `{
+				"orderId": 123456,
+				"symbol": "BTCUSDT",
+				"status": "FILLED",
+				"clientOrderId": "ext_123",
+				"side": "SELL",
+				"executedQty": "0.5"
+			}`,
+			tradesResponse: `[
+				{
+					"symbol": "BTCUSDT",
+					"id": 1,
+					"orderId": 123456,
+					"price": "50000.0",
+					"qty": "0.5",
+					"commission": "1.5",
+					"commissionAsset": "USDT",
+					"realizedPnl": "0.0",
+					"side": "SELL",
+					"time": 1672531200000
+				},
+				{
+					"symbol": "BTCUSDT",
+					"id": 2,
+					"orderId": 789012,
+					"price": "49000.0",
+					"qty": "1.0",
+					"commission": "1.5",
+					"commissionAsset": "USDT",
+					"realizedPnl": "2000.0",
+					"side": "BUY",
+					"time": 1672531260000
+				}
+			]`,
+			incomeResponse:  `[]`,
+			expectedEntry:   51000.0,
+			expectedExit:    49000.0,
+			expectedSize:    1.0,
+			expectedGross:   2000.0,
+			expectedFee:     3.0,
+			expectedFunding: 0.0,
+			expectedNet:     2000.0 - 3.0,
+		},
 	}
 
 	for _, tc := range cases {
@@ -855,13 +906,13 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, "BTCUSDT", res.Symbol)
-				assert.Equal(t, tc.expectedEntry, res.EntryPrice)
-				assert.Equal(t, tc.expectedExit, res.ExitPrice)
-				assert.Equal(t, tc.expectedSize, res.ClosedSize)
-				assert.Equal(t, tc.expectedGross, res.GrossPnL)
-				assert.Equal(t, tc.expectedFee, res.Fee)
-				assert.Equal(t, tc.expectedFunding, res.FundingFee)
-				assert.Equal(t, tc.expectedNet, res.NetPnl)
+				assert.InDelta(t, tc.expectedEntry, res.EntryPrice, 0.0001)
+				assert.InDelta(t, tc.expectedExit, res.ExitPrice, 0.0001)
+				assert.InDelta(t, tc.expectedSize, res.ClosedSize, 0.0001)
+				assert.InDelta(t, tc.expectedGross, res.GrossPnL, 0.0001)
+				assert.InDelta(t, tc.expectedFee, res.Fee, 0.0001)
+				assert.InDelta(t, tc.expectedFunding, res.FundingFee, 0.0001)
+				assert.InDelta(t, tc.expectedNet, res.NetPnl, 0.0001)
 			}
 		})
 	}

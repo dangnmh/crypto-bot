@@ -29,6 +29,7 @@ type Client struct {
 	passphrase string
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
+	clock      exchange.Clock
 }
 
 // NewClient creates a new KuCoin API client using the provided HTTP client.
@@ -80,6 +81,14 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		passphrase: passphrase,
 		logCfg:     logCfg,
 		logger:     logger,
+		clock:      exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
 	}
 }
 
@@ -131,7 +140,7 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]stri
 		!strings.Contains(path, "/ua/v1/")
 
 	if isPrivate && c.apiKey != "" {
-		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
+		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 		sig := SignRequest(c.apiSecret, ts, http.MethodGet, urlPath, "")
 		req.Header.Set(headerKey, c.apiKey)
 		req.Header.Set(headerSign, sig)
@@ -172,7 +181,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 
 	isPrivate := !strings.Contains(path, "/bullet-public")
 	if isPrivate && c.apiKey != "" {
-		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
+		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 		sig := SignRequest(c.apiSecret, ts, http.MethodPost, path, bodyStr)
 		req.Header.Set(headerKey, c.apiKey)
 		req.Header.Set(headerSign, sig)

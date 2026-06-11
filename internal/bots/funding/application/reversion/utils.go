@@ -19,6 +19,7 @@ import (
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/ThreeDotsLabs/watermill"
+	"github.com/cenkalti/backoff/v4"
 )
 
 const (
@@ -376,36 +377,6 @@ func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEven
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }
 
-func (r *StatelessRunner) RetryWithBackoff(ctx context.Context, attempts int, fn func() error) (int, error) {
-	return r.RetryWithBackoffOpts(ctx, attempts, 100*time.Millisecond, 5*time.Second, fn)
-}
-
-func (r *StatelessRunner) RetryWithBackoffOpts(ctx context.Context, attempts int, baseDelay, maxDelay time.Duration, fn func() error) (int, error) {
-	if attempts <= 0 {
-		attempts = 1
-	}
-	var err error
-	delay := baseDelay
-	for i := 1; i <= attempts; i++ {
-		if err = fn(); err == nil {
-			return i, nil
-		}
-		if i == attempts {
-			break
-		}
-		jitter := delay * 20 / 100
-		delayWithJitter := delay + time.Duration((float64(delay)-float64(jitter))*0.5+float64(jitter)*0.5)
-		if sleepErr := r.deps.Clock.Sleep(ctx, delayWithJitter); sleepErr != nil {
-			return i, err
-		}
-		delay *= 2
-		if delay > maxDelay {
-			delay = maxDelay
-		}
-	}
-	return attempts, err
-}
-
 func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
 	r.log.Debug("Position update received", slog.Any("pos", pos))
 
@@ -447,7 +418,11 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 			_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
 		}()
 	} else if pos.HoldVol == 0 {
-		evt := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
+		evt, err := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
+		if err != nil {
+			r.log.ErrorContext(ctx, "Failed to build closed event", slog.Any("pos", pos), slog.Any("error", err))
+			return
+		}
 		go func() {
 			_ = r.publishEvent(ctx, TopicReversionPositionClosed, evt)
 		}()
@@ -471,7 +446,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 	side shared.Side,
 	prev BaseReversionEvent,
 	contractSize float64,
-) PositionClosedEvent {
+) (*PositionClosedEvent, error) {
 	closePrice := fillPrice
 	if pos.CloseAvgPrice > 0 {
 		closePrice = pos.CloseAvgPrice
@@ -498,33 +473,40 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		if !startTime.IsZero() {
 			startTime = startTime.Add(-1 * time.Second)
 		}
-		closedInfo, err := provider.GetRecentClosedPnL(ctx, pos.Symbol, prev.ExternalID, startTime)
+		// Wait 5 seconds before calling GetRecentClosedPnL to let exchange update trade database
+		_ = r.deps.Clock.Sleep(ctx, 5*time.Second)
+
+		var closedInfo *exchange.ClosedPnLInfo
+		var err error
+
+		bo := backoff.WithContext(
+			backoff.WithMaxRetries(
+				backoff.NewExponentialBackOff(
+					backoff.WithInitialInterval(time.Second),
+					backoff.WithMaxInterval(time.Second*2)),
+				5),
+			ctx,
+		)
+
+		err = backoff.Retry(func() error {
+			closedInfo, err = provider.GetRecentClosedPnL(ctx, pos.Symbol, prev.ExternalID, startTime)
+			return err
+		}, bo)
 		if err != nil {
-			r.log.WarnContext(ctx, "Failed to query Closed PnL history; falling back to WS estimation",
-				slog.String("symbol", pos.Symbol),
-				slog.Any("error", err),
-			)
-		} else {
-			evt.EntryPrice = closedInfo.EntryPrice
-			evt.ClosePrice = closedInfo.ExitPrice
-			evt.CloseVol = closedInfo.ClosedSize
-			evt.GrossProfit = closedInfo.GrossPnL
-			evt.Fee = closedInfo.Fee
-			evt.HoldFee = closedInfo.FundingFee
-			if closedInfo.NetPnl != 0 {
-				evt.NetProfit = closedInfo.NetPnl
-			} else {
-				evt.NetProfit = closedInfo.GrossPnL - evt.Fee + closedInfo.FundingFee
-			}
-			if closedInfo.PnLRate != 0 {
-				evt.PnLPct = closedInfo.PnLRate
-			} else {
-				evt.PnLPct = calculatePnLPct(closedInfo.EntryPrice, closedInfo.ExitPrice, side)
-			}
-			evt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
-			evt.HoldDurationMs = closedInfo.DurationMs
+			return nil, err
 		}
+
+		evt.EntryPrice = closedInfo.EntryPrice
+		evt.ClosePrice = closedInfo.ExitPrice
+		evt.CloseVol = closedInfo.ClosedSize
+		evt.GrossProfit = closedInfo.GrossPnL
+		evt.Fee = closedInfo.Fee
+		evt.HoldFee = closedInfo.FundingFee
+		evt.PnLPct = closedInfo.PnLRate
+		evt.NetProfit = closedInfo.NetPnl
+		evt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
+		evt.HoldDurationMs = closedInfo.DurationMs
 	}
 
-	return evt
+	return &evt, nil
 }

@@ -28,6 +28,7 @@ type Client struct {
 	apiSecret  string
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
+	clock      exchange.Clock
 }
 
 // NewClient creates a new MEXC API client using the provided optimized connection pool.
@@ -66,6 +67,14 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		apiSecret:  apiSecret,
 		logCfg:     logCfg,
 		logger:     logger,
+		clock:      exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
 	}
 }
 
@@ -106,11 +115,11 @@ func (c *Client) GetCtx(ctx context.Context, path string, params map[string]any)
 	req.Header.Set("Content-Type", "application/json")
 
 	if isPrivate {
-		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
+		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 		sig := SignRequest(c.apiKey, c.apiSecret, ts, "GET", params)
-		req.Header.Set("ApiKey", c.apiKey)
-		req.Header.Set("Request-Time", ts)
-		req.Header.Set("Signature", sig)
+		req.Header["ApiKey"] = []string{c.apiKey}
+		req.Header["Request-Time"] = []string{ts}
+		req.Header["Signature"] = []string{sig}
 	}
 
 	return c.doRequest(ctx, req)
@@ -142,7 +151,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 	req.Header.Set("Content-Type", "application/json")
 
 	// Sign the request
-	ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 	sig := SignRequest(c.apiKey, c.apiSecret, ts, "POST", body)
 	req.Header.Set("ApiKey", c.apiKey)
 	req.Header.Set("Request-Time", ts)

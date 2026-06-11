@@ -4,26 +4,25 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures/src/restapi/models"
 )
 
 // Explicit request/response structs for order endpoints.
 
 type binanceCreateOrderRequest struct {
 	Symbol           string
-	Side             models.NewAlgoOrderSideParameter
+	Side             string
 	Type             string
-	Quantity         float32
-	Price            float32
-	TimeInForce      models.NewAlgoOrderTimeInForceParameter
-	PositionSide     models.NewAlgoOrderPositionSideParameter
+	Quantity         float64
+	Price            float64
+	TimeInForce      string
+	PositionSide     string
 	ReduceOnly       string
 	NewClientOrderId string
 }
@@ -31,11 +30,11 @@ type binanceCreateOrderRequest struct {
 type binancePlaceAlgoOrderRequest struct {
 	AlgoType      string
 	Symbol        string
-	Side          models.NewAlgoOrderSideParameter
+	Side          string
 	Type          string
-	TriggerPrice  float32
+	TriggerPrice  float64
 	ClosePosition string
-	PositionSide  models.NewAlgoOrderPositionSideParameter
+	PositionSide  string
 }
 
 type binanceCancelOrderRequest struct {
@@ -62,165 +61,176 @@ type binanceChangeLeverageRequest struct {
 	Leverage int64
 }
 
-// Private raw methods invoking the Binance SDK.
+// Private raw methods invoking the Binance API directly.
 
-func (c *Client) createRawOrder(ctx context.Context, req binanceCreateOrderRequest) (*models.NewOrderResponse, error) {
-	orderReq := c.sdkClient.RestApi.TradeAPI.NewOrder(ctx).
-		Symbol(req.Symbol).
-		Side(req.Side).
-		Type(req.Type).
-		Quantity(req.Quantity)
+func (c *Client) createRawOrder(ctx context.Context, req binanceCreateOrderRequest) (*binanceOrder, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
+	params["side"] = req.Side
+	params["type"] = req.Type
+	params["quantity"] = req.Quantity
 
 	if req.Type != orderTypeMarket {
-		orderReq = orderReq.Price(req.Price).TimeInForce(req.TimeInForce)
+		params["price"] = req.Price
+		params["timeInForce"] = req.TimeInForce
 	}
 
-	if string(req.PositionSide) != "" {
-		orderReq = orderReq.PositionSide(req.PositionSide)
+	if req.PositionSide != "" {
+		params["positionSide"] = req.PositionSide
 	}
 
 	if req.ReduceOnly != "" {
-		orderReq = orderReq.ReduceOnly(req.ReduceOnly)
+		params["reduceOnly"] = req.ReduceOnly
 	}
 
 	if req.NewClientOrderId != "" {
-		orderReq = orderReq.NewClientOrderId(req.NewClientOrderId)
+		params["newClientOrderId"] = req.NewClientOrderId
 	}
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.NewOrderExecute(orderReq)
+	var resp binanceOrder
+	err := c.request(ctx, http.MethodPost, "/fapi/v1/order", params, true, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance place order: %w", err)
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
-func (c *Client) placeRawAlgoOrder(ctx context.Context, req binancePlaceAlgoOrderRequest) (*models.NewAlgoOrderResponse, error) {
-	r := c.sdkClient.RestApi.TradeAPI.NewAlgoOrder(ctx).
-		AlgoType(req.AlgoType).
-		Symbol(req.Symbol).
-		Side(req.Side).
-		Type(req.Type).
-		TriggerPrice(req.TriggerPrice).
-		ClosePosition(req.ClosePosition)
+func (c *Client) placeRawAlgoOrder(ctx context.Context, req binancePlaceAlgoOrderRequest) (*binanceOrder, error) {
+	params := make(map[string]any)
+	params["algoType"] = req.AlgoType
+	params["symbol"] = req.Symbol
+	params["side"] = req.Side
+	params["type"] = req.Type
+	params["triggerPrice"] = req.TriggerPrice
+	params["closePosition"] = req.ClosePosition
 
-	if string(req.PositionSide) != "" {
-		r = r.PositionSide(req.PositionSide)
+	if req.PositionSide != "" {
+		params["positionSide"] = req.PositionSide
 	}
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.NewAlgoOrderExecute(r)
+	var resp binanceOrder
+	err := c.request(ctx, http.MethodPost, "/fapi/v1/algoOrder", params, true, &resp)
 	if err != nil {
 		return nil, err
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, req binanceCancelOrderRequest) (*models.CancelOrderResponse, error) {
-	r := c.sdkClient.RestApi.TradeAPI.CancelOrder(ctx).
-		Symbol(req.Symbol).
-		OrderId(req.OrderID)
+func (c *Client) cancelRawOrder(ctx context.Context, req binanceCancelOrderRequest) (*binanceOrder, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
+	params["orderId"] = req.OrderID
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.CancelOrderExecute(r)
+	var resp binanceOrder
+	err := c.request(ctx, http.MethodDelete, "/fapi/v1/order", params, true, &resp)
 	if err != nil {
 		return nil, err
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
-func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req binanceCancelAllOpenOrdersRequest) (*models.CancelAllOpenOrdersResponse, error) {
-	r := c.sdkClient.RestApi.TradeAPI.CancelAllOpenOrders(ctx).Symbol(req.Symbol)
-	resp, err := c.sdkClient.RestApi.TradeAPI.CancelAllOpenOrdersExecute(r)
+func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req binanceCancelAllOpenOrdersRequest) (any, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
+
+	var resp any
+	err := c.request(ctx, http.MethodDelete, "/fapi/v1/allOpenOrders", params, true, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance cancel all open orders: %w", err)
 	}
-	return &resp.Data, nil
+	return resp, nil
 }
 
-func (c *Client) getRawOrder(ctx context.Context, req binanceQueryOrderRequest) (*models.QueryOrderResponse, error) {
-	orderReq := c.sdkClient.RestApi.TradeAPI.QueryOrder(ctx).Symbol(req.Symbol)
+func (c *Client) getRawOrder(ctx context.Context, req binanceQueryOrderRequest) (*binanceOrder, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
 	if req.OrderID > 0 {
-		orderReq = orderReq.OrderId(req.OrderID)
+		params["orderId"] = req.OrderID
 	} else if req.OrigClientOrderId != "" {
-		orderReq = orderReq.OrigClientOrderId(req.OrigClientOrderId)
+		params["origClientOrderId"] = req.OrigClientOrderId
 	}
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.QueryOrderExecute(orderReq)
+	var resp binanceOrder
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/order", params, true, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance query order: %w", err)
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req binanceListOpenOrdersRequest) (*models.CurrentAllOpenOrdersResponse, error) {
-	r := c.sdkClient.RestApi.TradeAPI.CurrentAllOpenOrders(ctx)
+func (c *Client) getRawOpenOrders(ctx context.Context, req binanceListOpenOrdersRequest) ([]binanceOrder, error) {
+	params := make(map[string]any)
 	if req.Symbol != "" {
-		r = r.Symbol(req.Symbol)
+		params["symbol"] = req.Symbol
 	}
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.CurrentAllOpenOrdersExecute(r)
+	var resp []binanceOrder
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/openOrders", params, true, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance current open orders: %w", err)
 	}
-	return &resp.Data, nil
+	return resp, nil
 }
 
-func (c *Client) changeRawLeverage(ctx context.Context, req binanceChangeLeverageRequest) (*models.ChangeInitialLeverageResponse, error) {
-	sdkReq := c.sdkClient.RestApi.TradeAPI.ChangeInitialLeverage(ctx).
-		Symbol(req.Symbol).
-		Leverage(req.Leverage)
+func (c *Client) changeRawLeverage(ctx context.Context, req binanceChangeLeverageRequest) (*changeLeverageResponse, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
+	params["leverage"] = req.Leverage
 
-	resp, err := c.sdkClient.RestApi.TradeAPI.ChangeInitialLeverageExecute(sdkReq)
+	var resp changeLeverageResponse
+	err := c.request(ctx, http.MethodPost, "/fapi/v1/leverage", params, true, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance change leverage: %w", err)
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	sdkSide := models.NewAlgoOrderSideParameter(sideBuy)
+	sdkSide := sideBuy
 	if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseLong {
-		sdkSide = models.NewAlgoOrderSideParameter(sideSell)
+		sdkSide = sideSell
 	}
 
 	var sdkType string
-	var sdkTif models.NewAlgoOrderTimeInForceParameter
+	var sdkTif string
 
 	switch req.Type {
 	case exchange.OrderTypeMarket:
 		sdkType = orderTypeMarket
 	case exchange.OrderTypePostOnly:
 		sdkType = orderTypeLimit
-		sdkTif = models.NewAlgoOrderTimeInForceParameter("GTX")
+		sdkTif = "GTX"
 	case exchange.OrderTypeIOC:
 		sdkType = orderTypeLimit
-		sdkTif = models.NewAlgoOrderTimeInForceParameter("IOC")
+		sdkTif = "IOC"
 	case exchange.OrderTypeFOK:
 		sdkType = orderTypeLimit
-		sdkTif = models.NewAlgoOrderTimeInForceParameter("FOK")
+		sdkTif = "FOK"
 	default:
 		sdkType = orderTypeLimit
-		sdkTif = models.NewAlgoOrderTimeInForceParameter("GTC")
+		sdkTif = "GTC"
 	}
 
 	rawReq := binanceCreateOrderRequest{
 		Symbol:   req.Symbol,
 		Side:     sdkSide,
 		Type:     sdkType,
-		Quantity: float32(req.Vol),
+		Quantity: req.Vol,
 	}
 
 	if sdkType != orderTypeMarket {
-		rawReq.Price = float32(req.Price)
+		rawReq.Price = req.Price
 		rawReq.TimeInForce = sdkTif
 	}
 
 	// Position side for hedge mode.
 	if req.PositionMode == 1 {
-		posSide := models.NewAlgoOrderPositionSideParameter(posSideLong)
+		posSide := posSideLong
 		if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseShort {
-			posSide = models.NewAlgoOrderPositionSideParameter(posSideShort)
+			posSide = posSideShort
 		}
 		rawReq.PositionSide = posSide
 	}
@@ -238,31 +248,31 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return exchange.CreateOrderResult{}, err
 	}
 
-	orderID := strconv.FormatInt(*resp.OrderId, 10)
+	orderID := strconv.FormatInt(resp.OrderId, 10)
 	return exchange.CreateOrderResult{OrderID: orderID, TPSLSubmitted: false}, nil
 }
 
 // PlaceTPSL places Take Profit and Stop Loss conditional orders on Binance.
 func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error {
-	var tpSide models.NewAlgoOrderSideParameter
-	var slSide models.NewAlgoOrderSideParameter
-	var tpPosSide models.NewAlgoOrderPositionSideParameter
-	var slPosSide models.NewAlgoOrderPositionSideParameter
+	var tpSide string
+	var slSide string
+	var tpPosSide string
+	var slPosSide string
 
 	switch req.Side {
 	case exchange.SideOpenLong:
-		tpSide = models.NewAlgoOrderSideParameter(sideSell)
-		slSide = models.NewAlgoOrderSideParameter(sideSell)
+		tpSide = sideSell
+		slSide = sideSell
 		if req.PositionMode == 1 {
-			tpPosSide = models.NewAlgoOrderPositionSideParameter(posSideLong)
-			slPosSide = models.NewAlgoOrderPositionSideParameter(posSideLong)
+			tpPosSide = posSideLong
+			slPosSide = posSideLong
 		}
 	case exchange.SideOpenShort:
-		tpSide = models.NewAlgoOrderSideParameter(sideBuy)
-		slSide = models.NewAlgoOrderSideParameter(sideBuy)
+		tpSide = sideBuy
+		slSide = sideBuy
 		if req.PositionMode == 1 {
-			tpPosSide = models.NewAlgoOrderPositionSideParameter(posSideShort)
-			slPosSide = models.NewAlgoOrderPositionSideParameter(posSideShort)
+			tpPosSide = posSideShort
+			slPosSide = posSideShort
 		}
 	default:
 		return fmt.Errorf("invalid side for TP/SL placement: %d", req.Side)
@@ -299,13 +309,13 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	return nil
 }
 
-func (c *Client) placeAlgoOrder(ctx context.Context, symbol string, side models.NewAlgoOrderSideParameter, algoType string, price float64, positionMode domain.PositionMode, posSide models.NewAlgoOrderPositionSideParameter) error {
+func (c *Client) placeAlgoOrder(ctx context.Context, symbol, side, algoType string, price float64, positionMode domain.PositionMode, posSide string) error {
 	rawReq := binancePlaceAlgoOrderRequest{
 		AlgoType:      "CONDITIONAL",
 		Symbol:        symbol,
 		Side:          side,
 		Type:          algoType,
-		TriggerPrice:  float32(price),
+		TriggerPrice:  price,
 		ClosePosition: binanceTrueStr,
 	}
 
@@ -371,7 +381,6 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 	id, err := strconv.ParseInt(orderID, 10, 64)
 	if err != nil {
-		// Non-numeric ID: treat it as client order ID (origClientOrderId).
 		rawReq.OrigClientOrderId = orderID
 	} else {
 		rawReq.OrderID = id
@@ -382,7 +391,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		return nil, err
 	}
 
-	info := mapOrder(*resp)
+	info := mapBinanceOrder(resp)
 	return &info, nil
 }
 
@@ -395,14 +404,9 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		return nil, err
 	}
 
-	var list []models.AllOrdersResponseInner
-	if resp.Items != nil {
-		list = resp.Items
-	}
-
-	orders := make([]exchange.OrderInfo, 0, len(list))
-	for i := range list {
-		orders = append(orders, mapAllOrder(list[i]))
+	orders := make([]exchange.OrderInfo, 0, len(resp))
+	for i := range resp {
+		orders = append(orders, mapBinanceOrder(&resp[i]))
 	}
 
 	return orders, nil
@@ -433,7 +437,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		pos := positions[i]
 		if pos.HoldVol > 0 {
 			side := domain.SideCloseShort
-			if pos.PositionType == exchange.PositionTypeLong { // Long
+			if pos.PositionType == exchange.PositionTypeLong {
 				side = domain.SideCloseLong
 			}
 			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge)
@@ -456,16 +460,16 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Binance.
 func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	var mode models.ChangeMarginTypeMarginTypeParameter = "ISOLATED"
+	var mode = "ISOLATED"
 	if marginMode == "CROSS" {
 		mode = "CROSSED"
 	}
 
-	req := c.sdkClient.RestApi.TradeAPI.ChangeMarginType(ctx).
-		Symbol(symbol).
-		MarginType(mode)
+	params := make(map[string]any)
+	params["symbol"] = symbol
+	params["marginType"] = mode
 
-	_, err := c.sdkClient.RestApi.TradeAPI.ChangeMarginTypeExecute(req)
+	err := c.request(ctx, http.MethodPost, "/fapi/v1/marginType", params, true, nil)
 	if err != nil {
 		errMsg := strings.ToLower(err.Error())
 		if strings.Contains(errMsg, "-4046") || strings.Contains(errMsg, "no need to change") {
@@ -476,89 +480,43 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 	return nil
 }
 
-// mapOrder maps a Binance QueryOrderResponse model to exchange.OrderInfo struct.
-func mapOrder(raw models.QueryOrderResponse) exchange.OrderInfo {
-	return mapBinanceOrder(&raw)
-}
-
-// mapAllOrder maps models.AllOrdersResponseInner to exchange.OrderInfo.
-func mapAllOrder(raw models.AllOrdersResponseInner) exchange.OrderInfo {
-	return mapBinanceOrder(&raw)
-}
-
-type binanceOrderModel interface {
-	GetOrderIdOk() (*int64, bool)
-	GetPriceOk() (*string, bool)
-	GetOrigQtyOk() (*string, bool)
-	GetAvgPriceOk() (*string, bool)
-	GetExecutedQtyOk() (*string, bool)
-	GetClientOrderIdOk() (*string, bool)
-	GetPositionSide() string
-	GetSide() string
-	GetSymbol() string
-	GetStatus() string
-	GetTimeOk() (*int64, bool)
-	GetUpdateTimeOk() (*int64, bool)
-}
-
-func mapBinanceOrder(raw binanceOrderModel) exchange.OrderInfo {
+func mapBinanceOrder(raw *binanceOrder) exchange.OrderInfo {
 	id := ""
-	if orderID, ok := raw.GetOrderIdOk(); ok {
-		id = strconv.FormatInt(*orderID, 10)
+	if raw.OrderId > 0 {
+		id = strconv.FormatInt(raw.OrderId, 10)
 	}
+	price := decmath.ParseFloat(raw.Price)
+	vol := decmath.ParseFloat(raw.OrigQty)
+	dealAvg := decmath.ParseFloat(raw.AvgPrice)
+	dealVol := decmath.ParseFloat(raw.ExecutedQty)
 
-	price := 0.0
-	if rawPrice, ok := raw.GetPriceOk(); ok {
-		price = decmath.ParseFloat(*rawPrice)
-	}
-
-	vol := 0.0
-	if rawVol, ok := raw.GetOrigQtyOk(); ok {
-		vol = decmath.ParseFloat(*rawVol)
-	}
-
-	dealAvg := 0.0
-	if rawAvgPrice, ok := raw.GetAvgPriceOk(); ok {
-		dealAvg = decmath.ParseFloat(*rawAvgPrice)
-	}
-
-	dealVol := 0.0
-	if rawExecutedQty, ok := raw.GetExecutedQtyOk(); ok {
-		dealVol = decmath.ParseFloat(*rawExecutedQty)
-	}
-
-	clientOID := ""
-	if rawClientOID, ok := raw.GetClientOrderIdOk(); ok {
-		clientOID = *rawClientOID
-	}
-
-	side, posMode := mapBinanceSideAndMode(raw.GetPositionSide(), raw.GetSide())
+	side, posMode := mapBinanceSideAndMode(raw.PositionSide, raw.Side)
 
 	info := exchange.OrderInfo{
 		OrderID:      id,
-		Symbol:       raw.GetSymbol(),
+		Symbol:       raw.Symbol,
 		Price:        price,
 		Vol:          vol,
 		DealAvgPrice: dealAvg,
 		DealVol:      dealVol,
-		ExternalOID:  clientOID,
+		ExternalOID:  raw.ClientOrderId,
 		Side:         side,
 		PositionMode: posMode,
-		State:        mapBinanceStatus(raw.GetStatus()),
+		State:        mapBinanceStatus(raw.Status),
 	}
 
-	if createTime, ok := raw.GetTimeOk(); ok {
-		info.CreateTime = *createTime
+	if raw.Time != nil {
+		info.CreateTime = *raw.Time
 	}
-	if updateTime, ok := raw.GetUpdateTimeOk(); ok {
-		info.UpdateTime = *updateTime
+	if raw.UpdateTime != nil {
+		info.UpdateTime = *raw.UpdateTime
 	}
 
 	return info
 }
 
 func mapBinanceSideAndMode(positionSide, side string) (domain.Side, domain.PositionMode) {
-	posMode := domain.PositionModeOneWay // default OneWay
+	posMode := domain.PositionModeOneWay
 	var orderSide domain.Side
 
 	switch positionSide {

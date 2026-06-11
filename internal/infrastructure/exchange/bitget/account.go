@@ -3,12 +3,9 @@ package bitget
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"strconv"
 	"time"
-
-	"github.com/cenkalti/backoff/v4"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -239,55 +236,37 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 	orderTime := orderInfo.UpdateTime
 
-	var matchedPos *bitgetHistoryPosition
-
-	operation := func() error {
-		req := bitgetHistoryPositionsRequest{
-			ProductType: productTypeUsdtFutures,
-			Symbol:      symbol,
-			Limit:       "100",
-		}
-		if !startTime.IsZero() {
-			req.StartTime = strconv.FormatInt(startTime.UnixMilli(), 10)
-		}
-
-		res, err := c.getRawHistoryPositions(ctx, req)
-		if err != nil {
-			return err
-		}
-
-		if res == nil || len(res.List) == 0 {
-			return fmt.Errorf("no history position records found for symbol %s", symbol)
-		}
-
-		// Find the position matching the closing order's UpdateTime.
-		for i := range res.List {
-			p := &res.List[i]
-			pCloseTime := decmath.ParseInt64(p.UTime)
-			// Check if the record close time matches the order update time within a 10s tolerance window
-			if math.Abs(float64(pCloseTime-orderTime)) <= 10000 {
-				matchedPos = p
-				return nil
-			}
-		}
-
-		return fmt.Errorf("no matching history position record found for order update time %d", orderTime)
+	req := bitgetHistoryPositionsRequest{
+		ProductType: productTypeUsdtFutures,
+		Symbol:      symbol,
+		Limit:       "100",
+	}
+	if !startTime.IsZero() {
+		req.StartTime = strconv.FormatInt(startTime.UnixMilli(), 10)
 	}
 
-	// Retry up to 5 times (4 retries + 1st try) with 1s-2s exponential delay.
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(time.Second),
-				backoff.WithMaxInterval(time.Second*2)),
-			5),
-		ctx,
-	)
-
-	if err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
-		c.logger.ErrorContext(ctx, "retry closed pnl", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
-	}); err != nil {
+	res, err := c.getRawHistoryPositions(ctx, req)
+	if err != nil {
 		return nil, fmt.Errorf("query closed pnl failed: %w", err)
+	}
+
+	if res == nil || len(res.List) == 0 {
+		return nil, fmt.Errorf("query closed pnl failed: no history position records found for symbol %s", symbol)
+	}
+
+	var matchedPos *bitgetHistoryPosition
+	for i := range res.List {
+		p := &res.List[i]
+		pCloseTime := decmath.ParseInt64(p.UTime)
+		// Check if the record close time matches the order update time within a 10s tolerance window
+		if math.Abs(float64(pCloseTime-orderTime)) <= 10000 {
+			matchedPos = p
+			break
+		}
+	}
+
+	if matchedPos == nil {
+		return nil, fmt.Errorf("query closed pnl failed: no matching history position record found for order update time %d", orderTime)
 	}
 
 	entryPrice := decmath.ParseFloat(matchedPos.OpenAvgPrice)

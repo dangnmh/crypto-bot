@@ -82,3 +82,15 @@ type Client interface {
 	WarmUp(ctx context.Context, interval time.Duration)
 	SupportLeverageOnOrder() bool
 }
+
+// Clock represents a source of time, returning the current time.
+type Clock interface {
+	Now() time.Time
+}
+
+// RealClock is a Clock implementation that uses time.Now().
+type RealClock struct{}
+
+func (RealClock) Now() time.Time {
+	return time.Now()
+}

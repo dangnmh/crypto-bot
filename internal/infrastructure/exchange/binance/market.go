@@ -2,16 +2,16 @@ package binance
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
 	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures/src/restapi/models"
-	"github.com/samber/lo"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -43,91 +43,118 @@ type binanceDepthRequest struct {
 	Limit  int
 }
 
-// Private raw methods invoking the Binance SDK.
+// Private raw methods invoking the Binance API directly.
 
-func (c *Client) getRawServerTime(ctx context.Context, _ binanceServerTimeRequest) (*models.CheckServerTimeResponse, error) {
-	reqTime := c.sdkClient.RestApi.MarketDataAPI.CheckServerTime(ctx)
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.CheckServerTimeExecute(reqTime)
+func (c *Client) getRawServerTime(ctx context.Context, _ binanceServerTimeRequest) (*checkServerTimeResponse, error) {
+	var resp checkServerTimeResponse
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/time", nil, false, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance check server time: %w", err)
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
-func (c *Client) getRawContractDetails(ctx context.Context, _ binanceContractDetailsRequest) (*models.ExchangeInformationResponse, error) {
-	req := c.sdkClient.RestApi.MarketDataAPI.ExchangeInformation(ctx)
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.ExchangeInformationExecute(req)
+func (c *Client) getRawContractDetails(ctx context.Context, _ binanceContractDetailsRequest) (*exchangeInformationResponse, error) {
+	var resp exchangeInformationResponse
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/exchangeInfo", nil, false, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance exchange information: %w", err)
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
-func (c *Client) getRawVolumes24h(ctx context.Context, req binanceVolumes24hRequest) (*models.Ticker24hrPriceChangeStatisticsResponse, error) {
-	tickerReq := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatistics(ctx)
-	if req.Symbol != "" {
-		tickerReq = tickerReq.Symbol(req.Symbol)
+func getRawList[T any](c *Client, ctx context.Context, path, symbol, label string) ([]T, error) {
+	params := make(map[string]any)
+	if symbol != "" {
+		params["symbol"] = symbol
 	}
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.Ticker24hrPriceChangeStatisticsExecute(tickerReq)
-	if err != nil {
-		return nil, fmt.Errorf("binance ticker 24h stats: %w", err)
-	}
-	return &resp.Data, nil
-}
 
-func (c *Client) getRawBookTickers(ctx context.Context, req binanceBookTickersRequest) (*models.SymbolOrderBookTickerResponse, error) {
-	bookReq := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTicker(ctx)
-	if req.Symbol != "" {
-		bookReq = bookReq.Symbol(req.Symbol)
+	urlPath := path
+	if len(params) > 0 {
+		urlPath += "?" + c.encodeParams(params, false)
 	}
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.SymbolOrderBookTickerExecute(bookReq)
+
+	fullURL := c.baseURL + urlPath
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, http.NoBody)
 	if err != nil {
 		return nil, err
 	}
-	return &resp.Data, nil
-}
 
-func (c *Client) getRawMarkPrices(ctx context.Context, req binanceMarkPricesRequest) (*models.MarkPriceResponse, error) {
-	mpReq := c.sdkClient.RestApi.MarketDataAPI.MarkPrice(ctx)
-	if req.Symbol != "" {
-		mpReq = mpReq.Symbol(req.Symbol)
-	}
-	mpResp, err := c.sdkClient.RestApi.MarketDataAPI.MarkPriceExecute(mpReq)
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("binance mark price premium index: %w", err)
+		return nil, fmt.Errorf("binance %s HTTP request: %w", label, err)
 	}
-	return &mpResp.Data, nil
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("binance %s error: status=%d body=%s", label, resp.StatusCode, string(body))
+	}
+
+	var list []T
+	if len(body) > 0 && body[0] == '[' {
+		if err := json.Unmarshal(body, &list); err != nil {
+			return nil, err
+		}
+	} else {
+		var single T
+		if err := json.Unmarshal(body, &single); err != nil {
+			return nil, err
+		}
+		list = []T{single}
+	}
+
+	return list, nil
 }
 
-func (c *Client) getRawKlines(ctx context.Context, req binanceKlinesRequest) (*models.KlineCandlestickDataResponse, error) {
-	r := c.sdkClient.RestApi.MarketDataAPI.KlineCandlestickData(ctx).
-		Symbol(req.Symbol).
-		Interval(models.ContinuousContractKlineCandlestickDataIntervalParameter(req.Interval))
+func (c *Client) getRawVolumes24h(ctx context.Context, req binanceVolumes24hRequest) ([]ticker24hStats, error) {
+	return getRawList[ticker24hStats](c, ctx, "/fapi/v1/ticker/24hr", req.Symbol, "ticker 24h stats")
+}
 
+func (c *Client) getRawBookTickers(ctx context.Context, req binanceBookTickersRequest) ([]bookTicker, error) {
+	return getRawList[bookTicker](c, ctx, "/fapi/v1/ticker/bookTicker", req.Symbol, "book tickers")
+}
+
+func (c *Client) getRawMarkPrices(ctx context.Context, req binanceMarkPricesRequest) ([]markPriceInfo, error) {
+	return getRawList[markPriceInfo](c, ctx, "/fapi/v1/premiumIndex", req.Symbol, "premium index")
+}
+
+func (c *Client) getRawKlines(ctx context.Context, req binanceKlinesRequest) ([][]any, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
+	params["interval"] = req.Interval
 	if req.StartTime > 0 {
-		r = r.StartTime(req.StartTime)
+		params["startTime"] = req.StartTime
 	}
 	if req.EndTime > 0 {
-		r = r.EndTime(req.EndTime)
+		params["endTime"] = req.EndTime
 	}
 
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.KlineCandlestickDataExecute(r)
+	var resp [][]any
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/klines", params, false, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance klines: %w", err)
 	}
-	return &resp.Data, nil
+	return resp, nil
 }
 
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req binanceDepthRequest) (*models.OrderBookResponse, error) {
-	r := c.sdkClient.RestApi.MarketDataAPI.OrderBook(ctx).Symbol(req.Symbol)
+func (c *Client) getRawDepthSnapshot(ctx context.Context, req binanceDepthRequest) (*depthResponse, error) {
+	params := make(map[string]any)
+	params["symbol"] = req.Symbol
 	if req.Limit > 0 {
-		r = r.Limit(int64(req.Limit))
+		params["limit"] = req.Limit
 	}
-	resp, err := c.sdkClient.RestApi.MarketDataAPI.OrderBookExecute(r)
+
+	var resp depthResponse
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/depth", params, false, &resp)
 	if err != nil {
 		return nil, fmt.Errorf("binance orderbook snapshot: %w", err)
 	}
-	return &resp.Data, nil
+	return &resp, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -138,7 +165,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return resp.GetServerTime(), nil
+	return resp.ServerTime, nil
 }
 
 // GetContractDetails returns all USD-M futures contract specifications.
@@ -148,14 +175,14 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		return nil, err
 	}
 
-	rawSymbols := resp.GetSymbols()
+	rawSymbols := resp.Symbols
 	details := make([]exchange.ContractDetail, 0, len(rawSymbols))
 
 	for i := range rawSymbols {
 		raw := &rawSymbols[i]
 
 		// Filter active perpetual contracts.
-		if raw.GetStatus() != "TRADING" || raw.GetContractType() != "PERPETUAL" {
+		if raw.Status != "TRADING" || raw.ContractType != "PERPETUAL" {
 			continue
 		}
 
@@ -163,31 +190,31 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		minVol := 0.0
 		stepSize := 0.0
 
-		for _, f := range raw.GetFilters() {
-			switch f.GetFilterType() {
+		for _, f := range raw.Filters {
+			switch f.FilterType {
 			case "PRICE_FILTER":
-				priceUnit = decmath.ParseFloat(f.GetTickSize())
+				priceUnit = decmath.ParseFloat(f.TickSize)
 			case "LOT_SIZE":
-				minVol = decmath.ParseFloat(f.GetMinQty())
-				stepSize = decmath.ParseFloat(f.GetStepSize())
+				minVol = decmath.ParseFloat(f.MinQty)
+				stepSize = decmath.ParseFloat(f.StepSize)
 			}
 		}
 
 		details = append(details, exchange.ContractDetail{
-			Symbol:        raw.GetSymbol(),
-			DisplayName:   raw.GetSymbol(),
-			DisplayNameEn: raw.GetSymbol(),
-			BaseCoin:      raw.GetBaseAsset(),
-			QuoteCoin:     raw.GetQuoteAsset(),
-			SettleCoin:    raw.GetMarginAsset(),
+			Symbol:        raw.Symbol,
+			DisplayName:   raw.Symbol,
+			DisplayNameEn: raw.Symbol,
+			BaseCoin:      raw.BaseAsset,
+			QuoteCoin:     raw.QuoteAsset,
+			SettleCoin:    raw.MarginAsset,
 			ContractSize:  1.0, // standard linear perpetual.
 			MinLeverage:   1,
 			MaxLeverage:   125, // common max limit.
 			PriceUnit:     priceUnit,
 			MinVol:        int(minVol),
 			VolUnit:       int(stepSize),
-			PriceScale:    int(raw.GetPricePrecision()),
-			VolScale:      int(raw.GetQuantityPrecision()),
+			PriceScale:    int(raw.PricePrecision),
+			VolScale:      int(raw.QuantityPrecision),
 			State:         1, // active.
 		})
 	}
@@ -204,7 +231,12 @@ func (c *Client) getBinanceVolumes24h(ctx context.Context, symbol string) (vols,
 	vols = make(map[string]float64)
 	amounts = make(map[string]float64)
 	lasts = make(map[string]float64)
-	parseBinance24hStats(*resp, vols, amounts, lasts)
+	for i := range resp {
+		t := &resp[i]
+		vols[t.Symbol] = decmath.ParseFloat(t.Volume)
+		amounts[t.Symbol] = decmath.ParseFloat(t.QuoteVolume)
+		lasts[t.Symbol] = decmath.ParseFloat(t.LastPrice)
+	}
 
 	return vols, amounts, lasts, nil
 }
@@ -217,17 +249,21 @@ func (c *Client) getBinanceBookTickers(ctx context.Context, symbol string) (bids
 
 	bids = make(map[string]float64)
 	asks = make(map[string]float64)
-	parseBinanceBookTickers(*resp, bids, asks)
+	for i := range resp {
+		b := &resp[i]
+		bids[b.Symbol] = decmath.ParseFloat(b.BidPrice)
+		asks[b.Symbol] = decmath.ParseFloat(b.AskPrice)
+	}
 
 	return bids, asks, nil
 }
 
-func (c *Client) getBinanceMarkPrices(ctx context.Context, symbol string) (models.MarkPriceResponse, error) {
+func (c *Client) getBinanceMarkPrices(ctx context.Context, symbol string) ([]markPriceInfo, error) {
 	resp, err := c.getRawMarkPrices(ctx, binanceMarkPricesRequest{Symbol: symbol})
 	if err != nil {
-		return models.MarkPriceResponse{}, err
+		return nil, err
 	}
-	return *resp, nil
+	return resp, nil
 }
 
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
@@ -235,7 +271,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	mpData, err := c.getBinanceMarkPrices(ctx, "")
+	mpList, err := c.getBinanceMarkPrices(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -246,27 +282,13 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	rates := make([]exchange.FundingRateResult, 0)
-
-	if mpData.MarkPriceResponse2 != nil {
-		for _, item := range mpData.MarkPriceResponse2.Items {
-			sym := item.GetSymbol()
-			if !symbolMap[sym] {
-				continue
-			}
+	for i := range mpList {
+		item := &mpList[i]
+		if symbolMap[item.Symbol] {
 			rates = append(rates, exchange.FundingRateResult{
-				Symbol:     sym,
-				Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
-				SettleTime: item.GetNextFundingTime(),
-			})
-		}
-	} else if mpData.MarkPriceResponse1 != nil {
-		item := mpData.MarkPriceResponse1
-		sym := item.GetSymbol()
-		if symbolMap[sym] {
-			rates = append(rates, exchange.FundingRateResult{
-				Symbol:     sym,
-				Rate:       decmath.ParseFloat(item.GetLastFundingRate()),
-				SettleTime: item.GetNextFundingTime(),
+				Symbol:     item.Symbol,
+				Rate:       decmath.ParseFloat(item.LastFundingRate),
+				SettleTime: item.NextFundingTime,
 			})
 		}
 	}
@@ -286,78 +308,26 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, err
 	}
 
-	mpData, err := c.getBinanceMarkPrices(ctx, symbol)
+	mpList, err := c.getBinanceMarkPrices(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now().UnixMilli()
-	return buildBinanceTickers(mpData, volMap, amountMap, lastMap, bestBidMap, bestAskMap, now), nil
-}
-
-func parseBinance24hStats(data models.Ticker24hrPriceChangeStatisticsResponse, vols, amounts, lasts map[string]float64) {
-	if data.Ticker24hrPriceChangeStatisticsResponse2 != nil {
-		items := data.Ticker24hrPriceChangeStatisticsResponse2.Items
-		for i := range items {
-			t := items[i]
-			sym := t.GetSymbol()
-			vols[sym] = decmath.ParseFloat(t.GetVolume())
-			amounts[sym] = decmath.ParseFloat(t.GetQuoteVolume())
-			lasts[sym] = decmath.ParseFloat(t.GetLastPrice())
-		}
-	} else if data.Ticker24hrPriceChangeStatisticsResponse1 != nil {
-		t := data.Ticker24hrPriceChangeStatisticsResponse1
-		sym := t.GetSymbol()
-		vols[sym] = decmath.ParseFloat(t.GetVolume())
-		amounts[sym] = decmath.ParseFloat(t.GetQuoteVolume())
-		lasts[sym] = decmath.ParseFloat(t.GetLastPrice())
-	}
-}
-
-func parseBinanceBookTickers(data models.SymbolOrderBookTickerResponse, bids, asks map[string]float64) {
-	if data.SymbolOrderBookTickerResponse2 != nil {
-		for _, b := range data.SymbolOrderBookTickerResponse2.Items {
-			sym := b.GetSymbol()
-			bids[sym] = decmath.ParseFloat(b.GetBidPrice())
-			asks[sym] = decmath.ParseFloat(b.GetAskPrice())
-		}
-	} else if data.SymbolOrderBookTickerResponse1 != nil {
-		b := data.SymbolOrderBookTickerResponse1
-		sym := b.GetSymbol()
-		bids[sym] = decmath.ParseFloat(b.GetBidPrice())
-		asks[sym] = decmath.ParseFloat(b.GetAskPrice())
-	}
-}
-
-func buildBinanceTickers(data models.MarkPriceResponse, vols, amounts, lasts, bids, asks map[string]float64, now int64) []exchange.Ticker {
-	var tickers []exchange.Ticker
-	if data.MarkPriceResponse2 != nil {
-		for _, item := range data.MarkPriceResponse2.Items {
-			sym := item.GetSymbol()
-			tickers = append(tickers, exchange.Ticker{
-				Symbol:    sym,
-				LastPrice: lasts[sym],
-				Bid1:      bids[sym],
-				Ask1:      asks[sym],
-				Volume24:  vols[sym],
-				Amount24:  amounts[sym],
-				Timestamp: now,
-			})
-		}
-	} else if data.MarkPriceResponse1 != nil {
-		item := data.MarkPriceResponse1
-		sym := item.GetSymbol()
+	tickers := make([]exchange.Ticker, 0, len(mpList))
+	for i := range mpList {
+		sym := mpList[i].Symbol
 		tickers = append(tickers, exchange.Ticker{
 			Symbol:    sym,
-			LastPrice: lasts[sym],
-			Bid1:      bids[sym],
-			Ask1:      asks[sym],
-			Volume24:  vols[sym],
-			Amount24:  amounts[sym],
+			LastPrice: lastMap[sym],
+			Bid1:      bestBidMap[sym],
+			Ask1:      bestAskMap[sym],
+			Volume24:  volMap[sym],
+			Amount24:  amountMap[sym],
 			Timestamp: now,
 		})
 	}
-	return tickers
+	return tickers, nil
 }
 
 // GetKlines returns candlestick data.
@@ -394,21 +364,20 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 		return nil, err
 	}
 
-	items := resp.Items
-	klines := make([]exchange.Kline, 0, len(items))
+	klines := make([]exchange.Kline, 0, len(resp))
 
-	for _, item := range items {
-		if len(item.Items) < 8 {
+	for _, item := range resp {
+		if len(item) < 8 {
 			continue
 		}
 
-		openTime := getInt64(item.Items[0])
-		openPrice := getString(item.Items[1])
-		highPrice := getString(item.Items[2])
-		lowPrice := getString(item.Items[3])
-		closePrice := getString(item.Items[4])
-		volume := getString(item.Items[5])
-		quoteVolume := getString(item.Items[7])
+		openTime := getAnyInt64(item[0])
+		openPrice := getAnyString(item[1])
+		highPrice := getAnyString(item[2])
+		lowPrice := getAnyString(item[3])
+		closePrice := getAnyString(item[4])
+		volume := getAnyString(item[5])
+		quoteVolume := getAnyString(item[7])
 
 		klines = append(klines, exchange.Kline{
 			Timestamp: openTime,
@@ -424,25 +393,27 @@ func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, 
 	return klines, nil
 }
 
-func getInt64(inner models.KlineCandlestickDataResponseItemInner) int64 {
-	if inner.Int64 != nil {
-		return lo.FromPtr(inner.Int64)
+func getAnyInt64(val any) int64 {
+	switch v := val.(type) {
+	case float64:
+		return int64(v)
+	case string:
+		res, _ := strconv.ParseInt(v, 10, 64)
+		return res
+	default:
+		return 0
 	}
-	if inner.String != nil {
-		val, _ := strconv.ParseInt(lo.FromPtr(inner.String), 10, 64)
-		return val
-	}
-	return 0
 }
 
-func getString(inner models.KlineCandlestickDataResponseItemInner) string {
-	if inner.String != nil {
-		return lo.FromPtr(inner.String)
+func getAnyString(val any) string {
+	switch v := val.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		return ""
 	}
-	if inner.Int64 != nil {
-		return strconv.FormatInt(lo.FromPtr(inner.Int64), 10)
-	}
-	return ""
 }
 
 // GetDepthSnapshot returns full orderbook snapshot.
@@ -459,31 +430,30 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 		return nil, err
 	}
 
-	ob := resp
 	book := &domain.OrderBook{
 		Symbol:  symbol,
-		Version: ob.GetLastUpdateId(),
-		Asks:    make([]exchange.OrderBookEntry, 0, len(ob.GetAsks())),
-		Bids:    make([]exchange.OrderBookEntry, 0, len(ob.GetBids())),
+		Version: resp.LastUpdateId,
+		Asks:    make([]exchange.OrderBookEntry, 0, len(resp.Asks)),
+		Bids:    make([]exchange.OrderBookEntry, 0, len(resp.Bids)),
 	}
 
-	for _, ask := range ob.GetAsks() {
-		if len(ask.Items) < 2 {
+	for _, ask := range resp.Asks {
+		if len(ask) < 2 {
 			continue
 		}
-		p := decmath.ParseFloat(ask.Items[0])
-		v := decmath.ParseFloat(ask.Items[1])
+		p := decmath.ParseFloat(ask[0])
+		v := decmath.ParseFloat(ask[1])
 		if p > 0 {
 			book.Asks = append(book.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
 		}
 	}
 
-	for _, bid := range ob.GetBids() {
-		if len(bid.Items) < 2 {
+	for _, bid := range resp.Bids {
+		if len(bid) < 2 {
 			continue
 		}
-		p := decmath.ParseFloat(bid.Items[0])
-		v := decmath.ParseFloat(bid.Items[1])
+		p := decmath.ParseFloat(bid[0])
+		v := decmath.ParseFloat(bid[1])
 		if p > 0 {
 			book.Bids = append(book.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
 		}

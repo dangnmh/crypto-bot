@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -30,6 +31,7 @@ type Client struct {
 	apiSecret  string
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
+	clock      exchange.Clock
 }
 
 // NewClient creates a new Gate.io Perpetual Futures REST API client.
@@ -70,6 +72,14 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		apiSecret:  apiSecret,
 		logCfg:     logCfg,
 		logger:     logger,
+		clock:      exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
 	}
 }
 
@@ -83,7 +93,7 @@ func (c *Client) addAuthHeaders(req *http.Request, method string, reqURL *url.UR
 	}
 	hashedPayload := hex.EncodeToString(h.Sum(nil))
 
-	t := strconv.FormatInt(time.Now().Unix(), 10)
+	t := strconv.FormatInt(c.clock.Now().Unix(), 10)
 	rawQuery, _ := url.QueryUnescape(reqURL.RawQuery)
 	msg := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", method, reqURL.Path, rawQuery, hashedPayload, t)
 	mac := hmac.New(sha512.New, []byte(c.apiSecret))

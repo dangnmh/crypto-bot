@@ -4,15 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math"
 	"strconv"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"github.com/cenkalti/backoff/v4"
 )
 
 // Explicit request/response structs for account endpoints.
@@ -220,7 +217,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("zero deal volume for opening order %s", extOrderID)
 	}
 
-	incomeEntries, err := c.fetchUserIncomeWithRetry(ctx, symbol, startTime)
+	incomeEntries, err := c.fetchUserIncome(ctx, symbol, startTime)
 	if err != nil {
 		return nil, err
 	}
@@ -259,50 +256,30 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}, nil
 }
 
-func (c *Client) fetchUserIncomeWithRetry(ctx context.Context, symbol string, startTime time.Time) ([]bingxIncomeRow, error) {
-	var incomeEntries []bingxIncomeRow
-	operation := func() error {
-		var err error
-		req := bingxUserIncomeRequest{
-			Symbol:    symbol,
-			StartTime: startTime.UnixMilli(),
-			Limit:     100,
-		}
-		incomeEntries, err = c.getRawUserIncome(ctx, req)
-		if err != nil {
-			return err
-		}
-
-		// Ensure we have at least one REALIZED_PNL entry
-		hasRealizedPnl := false
-		for _, row := range incomeEntries {
-			if row.IncomeType == incomeTypeRealizedPnL {
-				hasRealizedPnl = true
-				break
-			}
-		}
-
-		if !hasRealizedPnl {
-			return fmt.Errorf("closing realized PnL trade not found yet (propagation delay)")
-		}
-		return nil
+func (c *Client) fetchUserIncome(ctx context.Context, symbol string, startTime time.Time) ([]bingxIncomeRow, error) {
+	req := bingxUserIncomeRequest{
+		Symbol:    symbol,
+		StartTime: startTime.UnixMilli(),
+		Limit:     100,
 	}
-
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(backoff.NewExponentialBackOff(
-			backoff.WithInitialInterval(time.Second),
-			backoff.WithMaxInterval(time.Second*2)),
-			5),
-		ctx,
-	)
-
-	err := backoff.RetryNotify(operation, bo, func(err error, d time.Duration) {
-		c.logger.InfoContext(ctx, "retry closed PnL query", slog.String("symbol", symbol), slog.String("error", err.Error()), slog.Duration("delay", d))
-	})
-
-	if err != nil && len(incomeEntries) == 0 {
+	incomeEntries, err := c.getRawUserIncome(ctx, req)
+	if err != nil {
 		return nil, err
 	}
+
+	// Ensure we have at least one REALIZED_PNL entry
+	hasRealizedPnl := false
+	for _, row := range incomeEntries {
+		if row.IncomeType == incomeTypeRealizedPnL {
+			hasRealizedPnl = true
+			break
+		}
+	}
+
+	if !hasRealizedPnl {
+		return nil, fmt.Errorf("closing realized PnL trade not found yet (propagation delay)")
+	}
+
 	return incomeEntries, nil
 }
 

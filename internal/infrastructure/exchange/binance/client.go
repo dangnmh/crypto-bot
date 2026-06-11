@@ -3,43 +3,51 @@ package binance
 import (
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
-
-	"github.com/binance/binance-connector-go/clients/derivativestradingusdsfutures"
-	binancecommon "github.com/binance/binance-connector-go/common/v2/common"
 )
 
 // Client is the Binance USD-M Futures REST API client.
 type Client struct {
-	sdkClient *derivativestradingusdsfutures.BinanceDerivativesTradingUsdsFuturesClient
-	baseURL   string
-	apiKey    string
-	apiSecret string
-	logCfg    config.LoggingConfig
-	logger    *slog.Logger
+	httpClient *http.Client
+	baseURL    string
+	apiKey     string
+	apiSecret  string
+	logCfg     config.LoggingConfig
+	logger     *slog.Logger
+	clock      exchange.Clock
 }
 
 // NewClient creates a new Binance Futures REST Client.
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange", "exchange", "binance")
 
-	restOpts := []binancecommon.ConfigurationRestAPIOption{}
-
-	var rt http.RoundTripper
-	if httpClient != nil && httpClient.Transport != nil {
-		rt = httpClient.Transport
+	var clientCopy http.Client
+	if httpClient != nil {
+		clientCopy = *httpClient
+	}
+	if clientCopy.Transport == nil {
+		clientCopy.Transport = http.DefaultTransport
 	}
 
-	if logCfg.HTTP && rt != nil {
+	if logCfg.HTTP {
+		rt := clientCopy.Transport
 		rt = &decompressionRoundTripper{underlying: rt}
 		rt = transportlog.NewTransportLog(rt,
 			transportlog.LogOptionLogger(logger),
@@ -58,66 +66,158 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 			}),
 			transportlog.LogOptionRedactSensitive(true),
 			transportlog.LogOptionRedactSensitiveKeys([]string{
-				"X-Mbx-Apikey",
+				"X-MBX-APIKEY",
 			}),
 			transportlog.LogOptionQueryParams(true),
 		)
+		clientCopy.Transport = rt
 	}
 
-	if rt != nil {
-		restOpts = append(restOpts, binancecommon.WithHTTPSAgent(rt))
+	if baseURL == "" {
+		baseURL = "https://fapi.binance.com"
 	}
-	if baseURL != "" {
-		restOpts = append(restOpts, binancecommon.WithBasePath(baseURL))
-	}
-	if apiKey != "" {
-		restOpts = append(restOpts, binancecommon.WithApiKey(apiKey))
-	}
-	if apiSecret != "" {
-		restOpts = append(restOpts, binancecommon.WithApiSecret(apiSecret))
-	}
-
-	restCfg := binancecommon.NewConfigurationRestAPI(restOpts...)
-
-	// Configure default timeout
-	restCfg.Timeout = 10 * time.Second
-
-	// Setup client using the SDK
-	sdkClient := derivativestradingusdsfutures.NewBinanceDerivativesTradingUsdsFuturesClient(
-		derivativestradingusdsfutures.WithRestAPI(restCfg),
-	)
 
 	return &Client{
-		sdkClient: sdkClient,
-		baseURL:   baseURL,
-		apiKey:    apiKey,
-		apiSecret: apiSecret,
-		logCfg:    logCfg,
-		logger:    logger,
+		httpClient: &clientCopy,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		apiSecret:  apiSecret,
+		logCfg:     logCfg,
+		logger:     logger,
+		clock:      exchange.RealClock{},
 	}
 }
 
-// WarmUp maintains the connection pool.
+// SetClock configures a custom clock implementation.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
+	}
+}
+
+// request sends a raw HTTP request to the Binance API, automatically signing it if required.
+func (c *Client) request(ctx context.Context, method, path string, params map[string]any, signed bool, result any) error {
+	urlPath := path
+	if len(params) > 0 || signed {
+		urlPath += "?" + c.encodeParams(params, signed)
+	}
+
+	fullURL := c.baseURL + urlPath
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("create HTTP request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("X-MBX-APIKEY", c.apiKey)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("HTTP %s %s: %w", method, path, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == 418 {
+			return &exchange.RateLimitError{
+				Message: string(body),
+				Path:    path,
+			}
+		}
+		c.logger.WarnContext(ctx, "🟡 Binance Non-200 response",
+			"status", resp.StatusCode,
+			"path", path,
+			"body", string(body),
+		)
+		return fmt.Errorf("binance API error: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	if result != nil {
+		if err := json.Unmarshal(body, result); err != nil {
+			return fmt.Errorf("unmarshal response: %w (body=%s)", err, string(body))
+		}
+	}
+
+	return nil
+}
+
+// encodeParams formats and signs request parameters alphabetically.
+func (c *Client) encodeParams(params map[string]any, signed bool) string {
+	values := url.Values{}
+	for k, v := range params {
+		if v != nil {
+			values.Set(k, fmt.Sprintf("%v", v))
+		}
+	}
+
+	if signed {
+		if !values.Has("timestamp") {
+			values.Set("timestamp", strconv.FormatInt(c.clock.Now().UnixMilli(), 10))
+		}
+		queryString := values.Encode()
+
+		mac := hmac.New(sha256.New, []byte(c.apiSecret))
+		mac.Write([]byte(queryString))
+		signature := hex.EncodeToString(mac.Sum(nil))
+
+		queryString += "&signature=" + signature
+		return queryString
+	}
+
+	return values.Encode()
+}
+
+// WarmUp maintains the connection pool via periodic pings.
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 	ticker.RunImmediate(ctx, interval, func() bool {
-		req := c.sdkClient.RestApi.MarketDataAPI.TestConnectivity(ctx)
-		_, err := c.sdkClient.RestApi.MarketDataAPI.TestConnectivityExecute(req)
+		err := c.request(ctx, http.MethodGet, "/fapi/v1/ping", nil, false, nil)
 		if err != nil {
-			c.logger.Debug("Binance warmup connectivity check failed", slog.Any("error", err))
+			c.logger.DebugContext(ctx, "Binance warmup connectivity check failed", slog.Any("error", err))
 		}
 		return true
 	})
 }
 
-// Latency measures round-trip time of fetching server time (ms).
+// Latency measures round-trip time of a ping request (ms).
 func (c *Client) Latency(ctx context.Context) (int64, error) {
 	start := time.Now()
-	req := c.sdkClient.RestApi.MarketDataAPI.TestConnectivity(ctx)
-	_, err := c.sdkClient.RestApi.MarketDataAPI.TestConnectivityExecute(req)
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/ping", nil, false, nil)
 	if err != nil {
 		return 0, err
 	}
 	return time.Since(start).Milliseconds(), nil
+}
+
+// CreateListenKey starts a new Binance user data stream and returns its listenKey.
+func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
+	var resp listenKeyResponse
+	err := c.request(ctx, http.MethodPost, "/fapi/v1/listenKey", nil, false, &resp)
+	if err != nil {
+		return "", fmt.Errorf("binance start user data stream: %w", err)
+	}
+	return resp.ListenKey, nil
+}
+
+// KeepAliveListenKey pings the active Binance user data stream to keep it open.
+func (c *Client) KeepAliveListenKey(ctx context.Context) error {
+	err := c.request(ctx, http.MethodPut, "/fapi/v1/listenKey", nil, false, nil)
+	if err != nil {
+		return fmt.Errorf("binance keepalive user data stream: %w", err)
+	}
+	return nil
+}
+
+// SupportLeverageOnOrder returns false since Binance doesn't support setting leverage directly on orders.
+func (c *Client) SupportLeverageOnOrder() bool {
+	return false
 }
 
 type decompressionRoundTripper struct {
@@ -165,29 +265,4 @@ func (g *gzipReadCloser) Close() error {
 		return err1
 	}
 	return err2
-}
-
-// CreateListenKey starts a new Binance user data stream and returns its listenKey.
-func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
-	req := c.sdkClient.RestApi.UserDataStreamsAPI.StartUserDataStream(ctx)
-	resp, err := c.sdkClient.RestApi.UserDataStreamsAPI.StartUserDataStreamExecute(req)
-	if err != nil {
-		return "", fmt.Errorf("binance start user data stream: %w", err)
-	}
-	return resp.Data.GetListenKey(), nil
-}
-
-// KeepAliveListenKey pings the active Binance user data stream to keep it open.
-func (c *Client) KeepAliveListenKey(ctx context.Context) error {
-	req := c.sdkClient.RestApi.UserDataStreamsAPI.KeepaliveUserDataStream(ctx)
-	_, err := c.sdkClient.RestApi.UserDataStreamsAPI.KeepaliveUserDataStreamExecute(req)
-	if err != nil {
-		return fmt.Errorf("binance keepalive user data stream: %w", err)
-	}
-	return nil
-}
-
-// SupportLeverageOnOrder returns false since Binance doesn't support setting leverage directly on orders.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return false
 }

@@ -175,3 +175,13 @@ func (d *DryRunClient) SupportLeverageOnOrder() bool {
 func (d *DryRunClient) WarmUp(ctx context.Context, interval time.Duration) {
 	d.inner.WarmUp(ctx, interval)
 }
+
+// SetClock forwards the custom clock to the inner client if it supports ClockSetter.
+func (d *DryRunClient) SetClock(clk Clock) {
+	type clockSetter interface {
+		SetClock(Clock)
+	}
+	if setter, ok := d.inner.(clockSetter); ok {
+		setter.SetClock(clk)
+	}
+}

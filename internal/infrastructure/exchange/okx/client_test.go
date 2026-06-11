@@ -905,54 +905,6 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	assert.InDelta(t, 2.0, res.PnLRate, 0.0001)
 }
 
-func TestClient_GetRecentClosedPnL_Retry(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/account/positions-history", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		calls++
-		if calls == 1 {
-			// First call returns empty data
-			_, _ = w.Write([]byte(`{"code": "0", "msg": "", "data": []}`))
-			return
-		}
-
-		// Second call returns successful data
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"instId": "BTC-USDT-SWAP",
-					"openAvgPx": "50000.0",
-					"closeAvgPx": "51000.0",
-					"closeTotalPos": "0.1",
-					"pnl": "100.0",
-					"fee": "-0.5",
-					"fundingFee": "-0.1",
-					"realizedPnl": "99.4",
-					"cTime": "1597026383000",
-					"uTime": "1597026385000",
-					"posSide": "long",
-					"pos": "1"
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "", time.Time{})
-	require.NoError(t, err)
-	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
-	assert.Equal(t, 2, calls)
-	assert.InDelta(t, 2.0, res.PnLRate, 0.0001)
-}
-
 func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
 	t.Parallel()
 

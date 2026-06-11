@@ -64,7 +64,7 @@ func (j *ScannerJob) Run(ctx context.Context) error {
 	j.log.InfoContext(ctx, "🚀 Starting background scanner job loop")
 	defer j.log.InfoContext(context.WithoutCancel(ctx), "🛑 Background scanner job loop stopped")
 
-	ticker.RunImmediate(ctx, time.Minute, func() bool {
+	ticker.RunImmediate(ctx, 20*time.Minute, func() bool {
 		j.tick(ctx)
 		return true
 	})
