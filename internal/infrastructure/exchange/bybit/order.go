@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -93,45 +94,39 @@ type bybitOrder struct {
 	PositionIdx int    `json:"positionIdx"`
 }
 
-// Private raw methods invoking the Bybit SDK.
+// Private raw methods invoking the Bybit API.
 
 func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).PlaceOrder(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/order/create", req, true)
 	if err != nil {
 		return nil, fmt.Errorf("bybit create order: %w", err)
 	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit create order error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitCreateOrderResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode create order result: %w", err)
+	res, err := parseResponse[bybitCreateOrderResult](body, "bybit create order")
+	if err != nil {
+		return nil, err
 	}
 	return &res, nil
 }
 
 func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionTradingStop(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/trading-stop", req, true)
 	if err != nil {
 		return fmt.Errorf("bybit set trading stop: %w", err)
 	}
-	if resp.RetCode != 0 {
-		return fmt.Errorf("bybit set trading stop error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
+	_, err = parseResponse[any](body, "bybit set trading stop")
+	return err
 }
 
 func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest) error {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).CancelOrder(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/order/cancel", req, true)
 	if err != nil {
 		return fmt.Errorf("bybit cancel order: %w", err)
 	}
+	var resp bybitResponse[any]
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("bybit cancel order json unmarshal: %w", err)
+	}
 	if resp.RetCode != 0 {
-		// If order is already cancelled/filled, return nil to match Gate.io behavior.
 		if resp.RetCode == 110001 || strings.Contains(strings.ToLower(resp.RetMsg), "already cancelled") || strings.Contains(strings.ToLower(resp.RetMsg), "filled") {
 			return nil
 		}
@@ -141,21 +136,20 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest
 }
 
 func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllOpenOrdersRequest) error {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).CancelAllOrders(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/order/cancel-all", req, true)
 	if err != nil {
 		return fmt.Errorf("bybit cancel all orders: %w", err)
 	}
-	if resp.RetCode != 0 {
-		return fmt.Errorf("bybit cancel all orders error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
+	_, err = parseResponse[any](body, "bybit cancel all orders")
+	return err
 }
 
 func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*bybitOrder, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
-	list, err := decodeUtaResponse[bybitOrder](resp, err, "bybit get order")
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/order/realtime", req, true)
+	if err != nil {
+		return nil, err
+	}
+	list, err := decodeListResponse[bybitOrder](body, "bybit get order")
 	if err != nil {
 		return nil, err
 	}
@@ -170,18 +164,22 @@ func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*by
 }
 
 func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRequest) ([]bybitOrder, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetOpenOrders(ctx)
-	return decodeUtaResponse[bybitOrder](resp, err, "bybit list open orders")
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/order/realtime", req, true)
+	if err != nil {
+		return nil, err
+	}
+	return decodeListResponse[bybitOrder](body, "bybit list open orders")
 }
 
 func (c *Client) changeRawLeverage(ctx context.Context, req bybitChangeLeverageRequest) error {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SetPositionLeverage(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/set-leverage", req, true)
 	if err != nil {
 		return fmt.Errorf("bybit change leverage: %w", err)
 	}
-	// Bybit returns RetCode 110043 if leverage is already set to the target value. We ignore this safely.
+	var resp bybitResponse[any]
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("bybit change leverage json unmarshal: %w", err)
+	}
 	if resp.RetCode != 0 && resp.RetCode != 110043 {
 		return fmt.Errorf("bybit change leverage error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
 	}
@@ -398,9 +396,13 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		"buyLeverage":  leverageStr,
 		"sellLeverage": leverageStr,
 	}
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).SwitchPositionMargin(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/switch-isolated", params, true)
 	if err != nil {
 		return fmt.Errorf("bybit switch margin mode: %w", err)
+	}
+	var resp bybitResponse[any]
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("bybit switch margin mode json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {
 		if resp.RetCode == 110026 || strings.Contains(strings.ToLower(resp.RetMsg), "already") {
@@ -424,9 +426,13 @@ func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string)
 	utaParams := map[string]any{
 		paramSetMarginMode: utaMarginMode,
 	}
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(utaParams).SetMarginMode(ctx)
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/account/set-margin-mode", utaParams, true)
 	if err != nil {
 		return fmt.Errorf("bybit set account margin mode: %w", err)
+	}
+	var resp bybitResponse[any]
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("bybit set account margin mode json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {
 		if resp.RetCode == 110026 || strings.Contains(strings.ToLower(resp.RetMsg), "already") {

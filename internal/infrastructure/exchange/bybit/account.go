@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -105,68 +106,46 @@ type bybitTransactionLogChange struct {
 	CashFlow string `json:"cashFlow"`
 }
 
-type bybitTransactionLogResult struct {
-	List []bybitTransactionLogChange `json:"list"`
-}
-
-// Private raw methods invoking the Bybit SDK.
+// Private raw methods invoking the Bybit API.
 
 func (c *Client) getRawAssets(ctx context.Context, req bybitWalletBalanceRequest) (*bybitWalletBalanceResult, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetAccountWallet(ctx)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/account/wallet-balance", req, true)
 	if err != nil {
 		return nil, fmt.Errorf("bybit list assets: %w", err)
 	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit list assets error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var res bybitWalletBalanceResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode wallet balance: %w", err)
+	res, err := parseResponse[bybitWalletBalanceResult](body, "bybit list assets")
+	if err != nil {
+		return nil, err
 	}
 	return &res, nil
 }
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req bybitPositionsRequest) ([]bybitPosition, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetPositionList(ctx)
-	return decodeUtaResponse[bybitPosition](resp, err, "bybit get position")
-}
-
-func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetClosePnl(ctx)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/position/list", req, true)
 	if err != nil {
 		return nil, err
 	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit get closed pnl error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
+	return decodeListResponse[bybitPosition](body, "bybit get position")
+}
 
-	var res bybitClosedPnLResult
-	if err := decodeResult(resp.Result, &res); err != nil {
-		return nil, fmt.Errorf("bybit decode closed pnl: %w", err)
+func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/position/closed-pnl", req, true)
+	if err != nil {
+		return nil, err
+	}
+	res, err := parseResponse[bybitClosedPnLResult](body, "bybit get closed pnl")
+	if err != nil {
+		return nil, err
 	}
 	return &res, nil
 }
 
 func (c *Client) getRawTransactionLog(ctx context.Context, req bybitTransactionLogRequest) ([]bybitTransactionLogChange, error) {
-	params := structToMap(req)
-	resp, err := c.sdkClient.NewUtaBybitServiceWithParams(params).GetTransactionLog(ctx)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/account/transaction-log", req, true)
 	if err != nil {
-		return nil, fmt.Errorf("bybit query transaction log: %w", err)
+		return nil, err
 	}
-	if resp.RetCode != 0 {
-		return nil, fmt.Errorf("bybit transaction log error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	var result bybitTransactionLogResult
-	if err := decodeResult(resp.Result, &result); err != nil {
-		return nil, fmt.Errorf("bybit decode transaction log: %w", err)
-	}
-
-	return result.List, nil
+	return decodeListResponse[bybitTransactionLogChange](body, "bybit query transaction log")
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.

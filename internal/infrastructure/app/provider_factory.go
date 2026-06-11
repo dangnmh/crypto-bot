@@ -237,6 +237,9 @@ func buildProvider(
 	if setter, ok := client.(clockSetter); ok {
 		setter.SetClock(ts)
 	}
+	if setter, ok := adapter.(clockSetter); ok {
+		setter.SetClock(ts)
+	}
 
 	return &ExchangeProvider{
 		Name:     providerName,

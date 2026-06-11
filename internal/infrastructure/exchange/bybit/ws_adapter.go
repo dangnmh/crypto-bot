@@ -22,11 +22,21 @@ type WsAdapter struct {
 	pool      *pkgws.Pool
 	apiKey    string
 	apiSecret string
+	clock     exchange.Clock
 }
 
 // NewWsAdapter creates a new Bybit WsAdapter.
 func NewWsAdapter() *WsAdapter {
-	return &WsAdapter{}
+	return &WsAdapter{
+		clock: exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (a *WsAdapter) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		a.clock = clk
+	}
 }
 
 // SetPool injects the websocket pool.
@@ -132,7 +142,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	}
 
 	return func(client *pkgws.Client) {
-		expires := time.Now().UnixMilli() + 10000 // expires in 10 seconds
+		expires := a.clock.Now().UnixMilli() + 10000 // expires in 10 seconds
 		reqStr := fmt.Sprintf("GET/realtime%d", expires)
 
 		h := hmac.New(sha256.New, []byte(apiSecret))

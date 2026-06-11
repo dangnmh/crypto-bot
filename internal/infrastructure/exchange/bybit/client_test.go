@@ -1091,3 +1091,50 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		})
 	}
 }
+
+type mockClock struct {
+	t time.Time
+}
+
+func (m mockClock) Now() time.Time {
+	return m.t
+}
+
+func TestClient_TimeSync(t *testing.T) {
+	t.Parallel()
+
+	fixedTime := time.UnixMilli(1781214840000)
+	clk := mockClock{t: fixedTime}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "1781214840000", r.Header.Get("X-Bapi-Timestamp"))
+		assert.Equal(t, "api_key", r.Header.Get("X-Bapi-Api-Key"))
+		assert.Equal(t, "5000", r.Header.Get("X-Bapi-Recv-Window"))
+		assert.Equal(t, "2", r.Header.Get("X-Bapi-Sign-Type"))
+		assert.NotEmpty(t, r.Header.Get("X-Bapi-Sign"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"retCode": 0,
+			"retMsg": "OK",
+			"result": {
+				"orderId": "bybit-ord-987654",
+				"orderLinkId": "link-123"
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client.SetClock(clk)
+
+	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:       "BTCUSDT",
+		Vol:          1.0,
+		Side:         exchange.SideOpenLong,
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: 2,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "bybit-ord-987654", res.OrderID)
+}

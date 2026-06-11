@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"time"
@@ -11,8 +12,6 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	bybitsdk "github.com/bybit-exchange/bybit.go.api"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -109,25 +108,22 @@ type bybitOrderbookResult struct {
 // Private raw methods invoking the Bybit SDK.
 
 func (c *Client) getRawServerTime(ctx context.Context, _ bybitServerTimeRequest) (int64, error) {
-	resp, err := c.sdkClient.NewUtaBybitServiceNoParams().GetServerTime(ctx)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/time", nil, false)
 	if err != nil {
 		return 0, fmt.Errorf("bybit get server time: %w", err)
+	}
+	var resp struct {
+		RetCode int    `json:"retCode"`
+		RetMsg  string `json:"retMsg"`
+		Time    int64  `json:"time"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0, fmt.Errorf("bybit get server time json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {
 		return 0, fmt.Errorf("bybit get server time error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
 	}
 	return resp.Time, nil
-}
-
-func (c *Client) callUtaWithParams(ctx context.Context, params map[string]any, fn func(context.Context, map[string]any) (*bybitsdk.ServerResponse, error), errPrefix string, dest any) error {
-	resp, err := fn(ctx, params)
-	if err != nil {
-		return fmt.Errorf("%s: %w", errPrefix, err)
-	}
-	if resp.RetCode != 0 {
-		return fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
-	}
-	return decodeResult(resp.Result, dest)
 }
 
 func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentInfoRequest) (*bybitInstrumentsInfoResult, error) {
@@ -137,10 +133,11 @@ func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentIn
 	if req.Limit > 0 {
 		params[limitKey] = req.Limit
 	}
-	var res bybitInstrumentsInfoResult
-	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
-		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetInstrumentInfo(ctx)
-	}, "bybit list contracts", &res)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/instruments-info", params, false)
+	if err != nil {
+		return nil, fmt.Errorf("bybit list contracts: %w", err)
+	}
+	res, err := parseResponse[bybitInstrumentsInfoResult](body, "bybit list contracts")
 	if err != nil {
 		return nil, err
 	}
@@ -154,10 +151,11 @@ func (c *Client) getRawMarketTickers(ctx context.Context, req bybitMarketTickers
 	if req.Symbol != "" {
 		params[symbolKey] = req.Symbol
 	}
-	var res bybitTickerList
-	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
-		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetMarketTickers(ctx)
-	}, "bybit list tickers", &res)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/tickers", params, false)
+	if err != nil {
+		return nil, fmt.Errorf("bybit list tickers: %w", err)
+	}
+	res, err := parseResponse[bybitTickerList](body, "bybit list tickers")
 	if err != nil {
 		return nil, err
 	}
@@ -190,10 +188,11 @@ func (c *Client) getRawKlines(ctx context.Context, req bybitKlinesRequest) (*byb
 	if req.End > 0 {
 		params["end"] = req.End
 	}
-	var res bybitKlineResult
-	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
-		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetMarketKline(ctx)
-	}, "bybit get klines", &res)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/kline", params, false)
+	if err != nil {
+		return nil, fmt.Errorf("bybit get klines: %w", err)
+	}
+	res, err := parseResponse[bybitKlineResult](body, "bybit get klines")
 	if err != nil {
 		return nil, err
 	}
@@ -208,10 +207,11 @@ func (c *Client) getRawDepthSnapshot(ctx context.Context, req bybitOrderbookRequ
 	if req.Limit > 0 {
 		params[limitKey] = req.Limit
 	}
-	var res bybitOrderbookResult
-	err := c.callUtaWithParams(ctx, params, func(ctx context.Context, p map[string]any) (*bybitsdk.ServerResponse, error) {
-		return c.sdkClient.NewUtaBybitServiceWithParams(p).GetOrderBookInfo(ctx)
-	}, "bybit order book", &res)
+	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/orderbook", params, false)
+	if err != nil {
+		return nil, fmt.Errorf("bybit order book: %w", err)
+	}
+	res, err := parseResponse[bybitOrderbookResult](body, "bybit order book")
 	if err != nil {
 		return nil, err
 	}
@@ -416,14 +416,6 @@ func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int)
 // GetDepthCommits returns incremental commits. Unused in application logic.
 func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
 	return nil, nil
-}
-
-func decodeResult(result, dest any) error {
-	bytes, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(bytes, dest)
 }
 
 func mapInterval(interval string) string {
