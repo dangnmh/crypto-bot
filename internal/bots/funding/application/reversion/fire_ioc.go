@@ -15,11 +15,6 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-const (
-	iocOutcomePollTimeout  = 2 * time.Second
-	iocOutcomePollInterval = 200 * time.Millisecond
-)
-
 func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
 	r.log.Info("handleFireIOC SettleTime", slog.Time("settle", confirmedEvt.SettleTime))
 	settleTime := confirmedEvt.SettleTime

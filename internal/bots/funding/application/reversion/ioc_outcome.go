@@ -2,10 +2,15 @@ package reversion
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"time"
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 type iocOrderPollResult struct {
@@ -25,6 +30,7 @@ func (r *StatelessRunner) handleIOCSubmitted(ctx context.Context, evt IOCSubmitt
 }
 
 func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmittedEvent) IOCOutcomeCheckedEvent {
+	time.Sleep(time.Second * 2)
 	poll := r.pollIOCOrder(ctx, evt.Symbol, evt.OrderID)
 
 	holdVol, err := r.getHoldVolume(ctx, evt.Symbol)
@@ -48,28 +54,40 @@ func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmitte
 	}
 }
 
+var errNotTerminal = errors.New("order state not terminal")
+
 func (r *StatelessRunner) pollIOCOrder(ctx context.Context, symbol, orderID string) iocOrderPollResult {
-	deadline := r.deps.Clock.Now().Add(iocOutcomePollTimeout)
 	var result iocOrderPollResult
 
-	for {
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(time.Second),
+				backoff.WithMaxInterval(time.Second*2)),
+			5),
+		ctx,
+	)
+
+	err := backoff.Retry(func() error {
 		got, err := r.deps.Client.GetOrder(ctx, symbol, orderID)
 		if err != nil {
 			result.reason = err.Error()
-		} else if got != nil {
-			result.capture(got)
-			if exchange.IsTerminalOrderState(got.State) {
-				break
-			}
+			return err
+		}
+		if got == nil {
+			result.reason = "order not found"
+			return fmt.Errorf("order not found")
 		}
 
-		if !r.deps.Clock.Now().Before(deadline) {
-			break
+		result.capture(got)
+		if !exchange.IsTerminalOrderState(got.State) {
+			return errNotTerminal
 		}
-		if err := r.deps.Clock.Sleep(ctx, iocOutcomePollInterval); err != nil {
-			result.reason = err.Error()
-			break
-		}
+		return nil
+	}, bo)
+
+	if err != nil && !errors.Is(err, errNotTerminal) {
+		result.reason = err.Error()
 	}
 
 	return result
