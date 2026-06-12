@@ -245,11 +245,7 @@ func newGateServer(t *testing.T) *httptest.Server {
 				"in_dual_mode": dualModeStr == "true",
 			})
 		case strings.Contains(r.URL.Path, "/leverage"):
-			if strings.Contains(r.URL.Path, "/dual_comp/") {
-				writeJSON(t, w, []map[string]any{gatePosition(2)})
-			} else {
-				writeJSON(t, w, []map[string]any{gatePosition(2)})
-			}
+			writeJSON(t, w, []map[string]any{gatePosition(2)})
 		case r.URL.Path == "/futures/usdt/position_close":
 			contract := r.URL.Query().Get("contract")
 			if contract == "XRP_USDT" || contract == "DOGE_USDT" {
