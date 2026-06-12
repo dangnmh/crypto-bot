@@ -492,12 +492,16 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 	}
 
 	switch o.State {
+	case "init", stateLive:
+		info.State = exchange.OrderStateNew
+	case statePartFill:
+		info.State = exchange.OrderStatePartiallyFilled
 	case stateFilled:
 		info.State = exchange.OrderStateFilled
 	case stateCanceled:
 		info.State = exchange.OrderStateCanceled
 	default:
-		info.State = exchange.OrderStatePartial
+		info.State = exchange.OrderStateNew
 	}
 
 	return info

@@ -192,13 +192,17 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	price, _ := strconv.ParseFloat(o.LimitPx, 64)
 	origSz, _ := strconv.ParseFloat(o.OrigSz, 64)
 
-	state := exchange.OrderStatePartial
+	state := exchange.OrderStateNew
 	switch res.Order.Status {
 	case stateFilled:
 		state = exchange.OrderStateFilled
 	case stateCanceled:
 		state = exchange.OrderStateCanceled
 	default:
+		szVal, _ := strconv.ParseFloat(o.Sz, 64)
+		if szVal > 0 && szVal < origSz {
+			state = exchange.OrderStatePartiallyFilled
+		}
 	}
 
 	return &exchange.OrderInfo{
@@ -232,12 +236,17 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 			continue
 		}
 
+		orderState := exchange.OrderStateNew
+		if o.Size > 0 && o.Size < o.OrigSz {
+			orderState = exchange.OrderStatePartiallyFilled
+		}
+
 		orders = append(orders, exchange.OrderInfo{
 			OrderID:    strconv.FormatInt(o.Oid, 10),
 			Symbol:     o.Coin,
 			Price:      o.LimitPx,
 			Vol:        o.OrigSz,
-			State:      exchange.OrderStatePartial,
+			State:      orderState,
 			CreateTime: o.Timestamp,
 			UpdateTime: o.Timestamp,
 		})

@@ -109,7 +109,7 @@ func TestClient_OrderEndpoints(t *testing.T) {
 	openOrders, err := client.GetOpenOrders(ctx, "BTC_USDT")
 	require.NoError(t, err)
 	require.Len(t, openOrders, 1)
-	assert.Equal(t, exchange.OrderStatePartial, openOrders[0].State)
+	assert.Equal(t, exchange.OrderStatePartiallyFilled, openOrders[0].State)
 
 	require.NoError(t, client.ClosePosition(ctx, "BTC_USDT", domain.SideCloseLong, 2, 1))
 	require.NoError(t, client.CloseAllPositions(ctx, "BTC_USDT"))

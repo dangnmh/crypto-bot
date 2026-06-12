@@ -545,14 +545,14 @@ func mapBinanceSideAndMode(positionSide, side string) (domain.Side, domain.Posit
 func mapBinanceStatus(status string) domain.OrderState {
 	switch status {
 	case statusNew:
-		return exchange.OrderStatePartial
+		return exchange.OrderStateNew
 	case statusPart:
-		return exchange.OrderStatePartial
+		return exchange.OrderStatePartiallyFilled
 	case statusFilled:
 		return exchange.OrderStateFilled
 	case statusCancel, statusExpired:
 		return exchange.OrderStateCanceled
 	default:
-		return exchange.OrderStatePartial
+		return exchange.OrderStateNew
 	}
 }

@@ -390,7 +390,9 @@ func mapOrderInfo(raw gateFuturesOrder) exchange.OrderInfo {
 		}
 	case gateOrderStatusOpen:
 		if raw.Left < raw.Size {
-			info.State = exchange.OrderStatePartial
+			info.State = exchange.OrderStatePartiallyFilled
+		} else {
+			info.State = exchange.OrderStateNew
 		}
 	}
 

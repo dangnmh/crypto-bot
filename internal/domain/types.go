@@ -197,9 +197,12 @@ type OrderBook struct {
 type OrderState int
 
 const (
-	OrderStateFilled   OrderState = 3
-	OrderStateCanceled OrderState = 4
-	OrderStatePartial  OrderState = 5
+	OrderStateNew             OrderState = 0
+	OrderStatePartiallyFilled OrderState = 1
+	OrderStateFilled          OrderState = 3
+	OrderStateCanceled        OrderState = 4
+	OrderStatePartial         OrderState = 5
+	OrderStateUntriggered     OrderState = 6
 )
 
 // IsTerminalOrderState returns true if the order state is a terminal state.

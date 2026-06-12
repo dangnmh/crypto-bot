@@ -22,6 +22,7 @@ type WsAdapter struct {
 	passphrase    string
 	authMu        sync.Mutex
 	authenticated chan struct{}
+	clock         exchange.Clock
 }
 
 // NewWsAdapter creates a new OKX WsAdapter.
@@ -29,6 +30,14 @@ func NewWsAdapter(passphrase string) *WsAdapter {
 	return &WsAdapter{
 		passphrase:    passphrase,
 		authenticated: make(chan struct{}),
+		clock:         exchange.RealClock{},
+	}
+}
+
+// SetClock configures a custom clock implementation.
+func (a *WsAdapter) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		a.clock = clk
 	}
 }
 
@@ -157,7 +166,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		a.authenticated = make(chan struct{})
 		a.authMu.Unlock()
 
-		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		ts := strconv.FormatInt(a.clock.Now().Unix(), 10)
 		sig := SignRequest(apiSecret, ts, "GET", "/users/self/verify", "")
 
 		msg := map[string]any{
@@ -265,7 +274,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		BestAsk:   ask,
 		FairPrice: last,
 		Volume24:  vol,
-		UpdatedAt: time.Now(),
+		UpdatedAt: a.clock.Now(),
 	}
 
 	return instID, pd, nil

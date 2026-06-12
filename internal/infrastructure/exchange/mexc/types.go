@@ -119,6 +119,22 @@ type mexcPosition struct {
 	AutoAddIM      bool    `json:"autoAddIm"`
 }
 
+func mapMexcStatus(state int, dealVol float64) domain.OrderState {
+	switch state {
+	case 1, 2:
+		if dealVol > 0 {
+			return exchange.OrderStatePartiallyFilled
+		}
+		return exchange.OrderStateNew
+	case 3:
+		return exchange.OrderStateFilled
+	case 4, 5:
+		return exchange.OrderStateCanceled
+	default:
+		return exchange.OrderStateNew
+	}
+}
+
 func (o *mexcOrder) toOrderInfo() *exchange.OrderInfo {
 	if o == nil {
 		return nil
@@ -130,7 +146,7 @@ func (o *mexcOrder) toOrderInfo() *exchange.OrderInfo {
 		Vol:          o.Vol,
 		DealAvgPrice: o.DealAvgPrice,
 		DealVol:      o.DealVol,
-		State:        domain.OrderState(o.State),
+		State:        mapMexcStatus(o.State, o.DealVol),
 		ExternalOID:  o.ExternalOID,
 		Side:         domain.Side(o.Side),
 		PositionMode: domain.PositionMode(o.PositionMode),

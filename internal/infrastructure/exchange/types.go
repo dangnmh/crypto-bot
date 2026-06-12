@@ -62,9 +62,12 @@ func CloseSideFor(openSide domain.Side) domain.Side {
 
 // Order state — delegate to domain.
 const (
-	OrderStateFilled   = domain.OrderStateFilled
-	OrderStateCanceled = domain.OrderStateCanceled
-	OrderStatePartial  = domain.OrderStatePartial
+	OrderStateNew             = domain.OrderStateNew
+	OrderStatePartiallyFilled = domain.OrderStatePartiallyFilled
+	OrderStateFilled          = domain.OrderStateFilled
+	OrderStateCanceled        = domain.OrderStateCanceled
+	OrderStatePartial         = domain.OrderStatePartial
+	OrderStateUntriggered     = domain.OrderStateUntriggered
 )
 
 // IsTerminalOrderState delegates to domain.

@@ -498,6 +498,42 @@ func mapSideAndPosition(reqSide domain.Side, isHedge bool) (string, int, bool) {
 	return bybitSide, positionIdx, reduceOnly
 }
 
+// mapBybitSide maps raw Bybit side and position index to domain Side.
+func mapBybitSide(side string, positionIdx int) domain.Side {
+	switch side {
+	case sideBuy:
+		if positionIdx == 2 {
+			return exchange.SideCloseShort
+		}
+		return exchange.SideOpenLong
+	case sideSell:
+		if positionIdx == 1 {
+			return exchange.SideCloseLong
+		}
+		return exchange.SideOpenShort
+	default:
+		return domain.SideUnknown
+	}
+}
+
+// mapBybitStatus maps raw Bybit order status to domain OrderState.
+func mapBybitStatus(status string) domain.OrderState {
+	switch strings.ToLower(status) {
+	case "new":
+		return exchange.OrderStateNew
+	case "partiallyfilled":
+		return exchange.OrderStatePartiallyFilled
+	case "filled":
+		return exchange.OrderStateFilled
+	case "cancelled", "rejected":
+		return exchange.OrderStateCanceled
+	case "untriggered":
+		return exchange.OrderStateUntriggered
+	default:
+		return exchange.OrderStateNew
+	}
+}
+
 // mapOrderInfo maps a bybitOrder to exchange.OrderInfo.
 func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 	info := exchange.OrderInfo{
@@ -527,31 +563,8 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 		}
 	}
 
-	// Map Side.
-	switch raw.Side {
-	case sideBuy:
-		if raw.PositionIdx == 2 {
-			info.Side = exchange.SideCloseShort
-		} else {
-			info.Side = exchange.SideOpenLong
-		}
-	case sideSell:
-		if raw.PositionIdx == 1 {
-			info.Side = exchange.SideCloseLong
-		} else {
-			info.Side = exchange.SideOpenShort
-		}
-	}
-
-	// Map State.
-	switch strings.ToLower(raw.OrderStatus) {
-	case "filled":
-		info.State = exchange.OrderStateFilled
-	case "cancelled", "rejected":
-		info.State = exchange.OrderStateCanceled
-	case "partiallyfilled":
-		info.State = exchange.OrderStatePartial
-	}
+	info.Side = mapBybitSide(raw.Side, raw.PositionIdx)
+	info.State = mapBybitStatus(raw.OrderStatus)
 
 	return info
 }

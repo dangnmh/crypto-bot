@@ -465,12 +465,16 @@ func mapSideAndPosSide(side domain.Side, posMode domain.PositionMode) (string, s
 func (c *Client) toOrderInfo(o *bingxOrder) *exchange.OrderInfo {
 	var state domain.OrderState // default active/pending.
 	switch o.Status {
+	case stateLive:
+		state = exchange.OrderStateNew
+	case statePartFill:
+		state = exchange.OrderStatePartiallyFilled
 	case stateFilled:
 		state = exchange.OrderStateFilled
 	case stateCanceled:
 		state = exchange.OrderStateCanceled
-	case statePartFill:
-		state = exchange.OrderStatePartial
+	default:
+		state = exchange.OrderStateNew
 	}
 
 	sideVal := exchange.SideOpenLong

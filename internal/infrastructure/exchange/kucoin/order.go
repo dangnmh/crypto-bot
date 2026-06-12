@@ -463,7 +463,13 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 
 func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 	var state domain.OrderState
-	if !o.IsActive {
+	if o.IsActive {
+		if o.DealSize > 0 {
+			state = exchange.OrderStatePartiallyFilled
+		} else {
+			state = exchange.OrderStateNew
+		}
+	} else {
 		if o.Status == stateFilled || o.StatusVal == stateFilled {
 			state = exchange.OrderStateFilled
 		} else {

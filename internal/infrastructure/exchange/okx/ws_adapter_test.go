@@ -282,3 +282,36 @@ func TestWsAdapter_LoginSync(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+type mockClock struct {
+	t time.Time
+}
+
+func (m mockClock) Now() time.Time {
+	return m.t
+}
+
+func TestWsAdapter_SetClock(t *testing.T) {
+	t.Parallel()
+
+	adapter := okx.NewWsAdapter("passphrase")
+	fixedTime := time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC)
+	clk := mockClock{t: fixedTime}
+	adapter.SetClock(clk)
+
+	// Verify that the clock is used in ParseTicker
+	raw := []byte(`{
+		"arg": {"channel": "tickers", "instId": "BTC-USDT-SWAP"},
+		"data": [
+			{
+				"last": "50000.5",
+				"bidPx": "50000.0",
+				"askPx": "50001.0",
+				"volCcy24h": "50000000"
+			}
+		]
+	}`)
+	_, pd, err := adapter.ParseTicker(raw)
+	require.NoError(t, err)
+	assert.Equal(t, fixedTime, pd.UpdatedAt)
+}
