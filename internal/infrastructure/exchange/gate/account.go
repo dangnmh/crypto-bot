@@ -36,14 +36,14 @@ func (c *Client) getRawAssets(ctx context.Context, req gateAssetsRequest) (*gate
 	return &result, nil
 }
 
-func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) (*gatePosition, error) {
-	var result gatePosition
-	path := fmt.Sprintf("/futures/%s/positions/%s", req.Settle, req.Symbol)
+func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
+	var result []gatePosition
+	path := fmt.Sprintf("/futures/%s/dual_comp/positions/%s", req.Settle, req.Symbol)
 	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
 	if err != nil {
 		return nil, err
 	}
-	return &result, nil
+	return result, nil
 }
 
 func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
@@ -114,7 +114,7 @@ func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exch
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
 	if symbol != "" {
-		pos, err := c.getRawPosition(ctx, gatePositionsRequest{
+		rawPositions, err := c.getRawPosition(ctx, gatePositionsRequest{
 			Settle: gateSettleUsdt,
 			Symbol: symbol,
 		})
@@ -125,10 +125,15 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			return nil, fmt.Errorf("gate.io get position for %s: %w", symbol, err)
 		}
 
-		if pos.Size == 0 {
-			return nil, nil
+		positions := make([]exchange.Position, 0, len(rawPositions))
+		for i := range rawPositions {
+			pos := &rawPositions[i]
+			sizeVal, _ := pos.Size.Int64()
+			if sizeVal != 0 {
+				positions = append(positions, mapPosition(*pos))
+			}
 		}
-		return []exchange.Position{mapPosition(*pos)}, nil
+		return positions, nil
 	}
 
 	rawPositions, err := c.getRawPositions(ctx, gatePositionsRequest{Settle: gateSettleUsdt})
@@ -139,7 +144,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	positions := make([]exchange.Position, 0, len(rawPositions))
 	for i := range rawPositions {
 		pos := &rawPositions[i]
-		if pos.Size != 0 {
+		sizeVal, _ := pos.Size.Int64()
+		if sizeVal != 0 {
 			positions = append(positions, mapPosition(*pos))
 		}
 	}
@@ -225,16 +231,17 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 
 // mapPosition maps a gatePosition to exchange.Position.
 func mapPosition(raw gatePosition) exchange.Position {
+	sizeVal, _ := raw.Size.Int64()
 	pos := exchange.Position{
 		Symbol:       raw.Contract,
-		HoldVol:      float64(decmath.AbsInt64(raw.Size)),
+		HoldVol:      float64(decmath.AbsInt64(sizeVal)),
 		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
 		OpenAvgPrice: decmath.ParseFloat(raw.EntryPrice),
 	}
 
-	if raw.Size > 0 {
+	if sizeVal > 0 {
 		pos.PositionType = exchange.PositionTypeLong // Long.
-	} else if raw.Size < 0 {
+	} else if sizeVal < 0 {
 		pos.PositionType = exchange.PositionTypeShort // Short.
 	}
 

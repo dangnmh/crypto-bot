@@ -271,7 +271,7 @@ type gateFuturesAccount struct {
 
 type gatePosition struct {
 	Contract   string      `json:"contract"`
-	Size       int64       `json:"size"`
+	Size       json.Number `json:"size"`
 	EntryPrice string      `json:"entry_price"`
 	Leverage   json.Number `json:"leverage"`
 	Mode       string      `json:"mode"`

@@ -2,6 +2,7 @@ package kucoin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -21,13 +22,13 @@ type kucoinAccountOverview struct {
 }
 
 type kucoinPosition struct {
-	Symbol           string `json:"symbol"`
-	CurrentQty       string `json:"currentQty"`
-	AvgEntryPrice    string `json:"avgEntryPrice"`
-	RealisedPNL      string `json:"realisedPNL"`
-	UnrealisedPNL    string `json:"unrealisedPNL"`
-	Leverage         string `json:"leverage"`
-	LiquidationPrice string `json:"liquidationPrice"`
+	Symbol           string      `json:"symbol"`
+	CurrentQty       json.Number `json:"currentQty"`
+	AvgEntryPrice    string      `json:"avgEntryPrice"`
+	RealisedPNL      string      `json:"realisedPNL"`
+	UnrealisedPNL    string      `json:"unrealisedPNL"`
+	Leverage         string      `json:"leverage"`
+	LiquidationPrice string      `json:"liquidationPrice"`
 }
 
 type kucoinAssetsRequest struct{}
@@ -199,7 +200,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		amt := decmath.ParseFloat(p.CurrentQty)
+		amt := decmath.ParseFloat(p.CurrentQty.String())
 		if amt == 0 {
 			continue
 		}

@@ -223,8 +223,8 @@ func newGateServer(t *testing.T) *httptest.Server {
 				"currency": "USDT", "total": "1000", "unrealised_pnl": "10",
 				"position_margin": "100", "available": "900",
 			})
-		case r.URL.Path == "/futures/usdt/positions/BTC_USDT":
-			writeJSON(t, w, gatePosition(2))
+		case r.URL.Path == "/futures/usdt/dual_comp/positions/BTC_USDT":
+			writeJSON(t, w, []map[string]any{gatePosition(2)})
 		case r.URL.Path == "/futures/usdt/positions":
 			writeJSON(t, w, []map[string]any{gatePosition(2), gatePosition(0)})
 		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodGet:
@@ -248,7 +248,7 @@ func newGateServer(t *testing.T) *httptest.Server {
 			if strings.Contains(r.URL.Path, "/dual_comp/") {
 				writeJSON(t, w, []map[string]any{gatePosition(2)})
 			} else {
-				writeJSON(t, w, gatePosition(2))
+				writeJSON(t, w, []map[string]any{gatePosition(2)})
 			}
 		case r.URL.Path == "/futures/usdt/position_close":
 			contract := r.URL.Query().Get("contract")
