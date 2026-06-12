@@ -129,13 +129,16 @@ func (c *Client) Connect(ctx context.Context) {
 		case <-ctx.Done():
 			c.logger.DebugContext(ctx, "📡 WebSocket stopped")
 			return
+		case <-c.done:
+			c.logger.DebugContext(ctx, "📡 WebSocket closed")
+			return
 		default:
 		}
 
 		err := c.dial()
 		if err != nil {
 			c.logger.ErrorContext(ctx, "🔴 WebSocket connection failed", slog.Any("error", err))
-			if !waitContext(ctx, 2*time.Second) {
+			if !waitContextOrDone(ctx, c.done, 2*time.Second) {
 				return
 			}
 			continue
@@ -166,7 +169,7 @@ func (c *Client) Connect(ctx context.Context) {
 		c.mu.Unlock()
 
 		c.logger.WarnContext(ctx, "🟡 WebSocket disconnected, reconnecting in 2s...")
-		if !waitContext(ctx, 2*time.Second) {
+		if !waitContextOrDone(ctx, c.done, 2*time.Second) {
 			return
 		}
 	}
@@ -362,12 +365,14 @@ func (c *Client) Close() {
 	}
 }
 
-func waitContext(ctx context.Context, d time.Duration) bool {
+func waitContextOrDone(ctx context.Context, done chan struct{}, d time.Duration) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 
 	select {
 	case <-ctx.Done():
+		return false
+	case <-done:
 		return false
 	case <-timer.C:
 		return true
