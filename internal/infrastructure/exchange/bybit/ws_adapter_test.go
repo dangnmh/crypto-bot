@@ -1,10 +1,13 @@
 package bybit_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -137,4 +140,57 @@ func TestWsAdapter_ParsePositionSelectsRecentlyClosedRow(t *testing.T) {
 	assert.Equal(t, 0.0, pos.HoldVol)
 	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
 	assert.Equal(t, 0.00567, pos.CloseProfitLoss)
+}
+
+func TestWsAdapter_LoginSync(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success Login Closes Authenticated Channel", func(t *testing.T) {
+		t.Parallel()
+		adapter := bybit.NewWsAdapter()
+		extractor := adapter.GetChannelExtractor()
+
+		// GetAuthHook with key returns non-nil hook
+		hook := adapter.GetAuthHook("key", "secret")
+		assert.NotNil(t, hook)
+
+		// Before running hook or receiving login event, SubscribePersonal with short timeout context should timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		err := adapter.SubscribePersonal(ctx)
+		cancel()
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+
+		// Simulate receiving a successful login event response from Bybit
+		loginResp := []byte(`{"op":"auth","retCode":0,"retMsg":"OK"}`)
+		channel := extractor(loginResp)
+		assert.Equal(t, "", channel) // Extractor maps it to empty string or handles internally
+
+		// Now SubscribePersonal should unblock instantly even with an active context
+		ctx2, cancel2 := context.WithCancel(context.Background())
+		// Prepare a mock private client to avoid panic during SendPrivate
+		pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
+		adapter.SetPool(pool)
+
+		err = adapter.SubscribePersonal(ctx2)
+		cancel2()
+		// Since the private client is nil in the pool, it will return nil (success/noop) instead of blocking
+		assert.NoError(t, err)
+	})
+
+	t.Run("Empty APIKey Closes Authenticated Channel Immediately", func(t *testing.T) {
+		t.Parallel()
+		adapter := bybit.NewWsAdapter()
+
+		hook := adapter.GetAuthHook("", "")
+		assert.Nil(t, hook)
+
+		// Since apiKey is empty, a.authenticated should be closed immediately
+		ctx, cancel := context.WithCancel(context.Background())
+		pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
+		adapter.SetPool(pool)
+
+		err := adapter.SubscribePersonal(ctx)
+		cancel()
+		assert.NoError(t, err)
+	})
 }

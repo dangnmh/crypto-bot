@@ -11,6 +11,7 @@ const (
 
 	wsOpSubscribe   = "subscribe"
 	wsOpUnsubscribe = "unsubscribe"
+	wsOpAuth        = "auth"
 	wsArgsKey       = "args"
 	wsTopicOrder    = "order"
 	wsTopicPosition = "position"

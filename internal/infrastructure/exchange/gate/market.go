@@ -138,6 +138,15 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			settleCoin = parts[1]
 		}
 
+		minVol := int(raw.OrderSizeMin)
+		if minVol <= 0 {
+			minVol = 1
+		}
+		maxVol := int(raw.OrderSizeMax)
+		if maxVol <= 0 {
+			maxVol = 1000000
+		}
+
 		details = append(details, exchange.ContractDetail{
 			Symbol:        raw.Name,
 			DisplayName:   raw.Name,
@@ -151,7 +160,10 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			PriceUnit:     decmath.ParseFloat(raw.OrderPriceRound),
 			MakerFeeRate:  decmath.ParseFloat(raw.MakerFeeRate),
 			TakerFeeRate:  decmath.ParseFloat(raw.TakerFeeRate),
-			PriceScale:    8, // standard precision scale fallback
+			PriceScale:    decmath.DecimalPlaces(raw.OrderPriceRound),
+			VolScale:      0,
+			MinVol:        minVol,
+			MaxVol:        maxVol,
 			State:         1, // active
 		})
 	}

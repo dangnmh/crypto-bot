@@ -158,6 +158,8 @@ func TestWsAdapter_UnsubscribeDepth_Step(t *testing.T) {
 func TestWsAdapter_SubscribePersonal(t *testing.T) {
 	t.Parallel()
 	a := mexc.NewWsAdapter()
+	a.GetAuthHook("", "") // closes the authenticated channel immediately since key is empty
+
 	pool, cleanup := newTestWSPool(t)
 	defer cleanup()
 	a.SetPool(pool)

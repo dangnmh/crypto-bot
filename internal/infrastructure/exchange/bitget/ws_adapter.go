@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -20,12 +21,16 @@ const msgPong = "pong"
 
 // WsAdapter implements ws.ExchangeAdapter for Bitget Futures V2.
 type WsAdapter struct {
-	pool *pkgws.Pool
+	pool          *pkgws.Pool
+	authenticated chan struct{}
+	authMu        sync.Mutex
 }
 
 // NewWsAdapter creates a new Bitget WsAdapter.
 func NewWsAdapter() *WsAdapter {
-	return &WsAdapter{}
+	return &WsAdapter{
+		authenticated: make(chan struct{}),
+	}
 }
 
 // SetPool injects the websocket pool.
@@ -107,6 +112,16 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to Bitget private channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
+	a.authMu.Lock()
+	authCh := a.authenticated
+	a.authMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-authCh:
+	}
+
 	msg := map[string]any{
 		"op": opSubscribe,
 		fieldArgs: []map[string]string{
@@ -126,9 +141,20 @@ func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 // GetAuthHook returns connection hook for Bitget private auth.
 func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	if apiKey == "" {
+		a.authMu.Lock()
+		select {
+		case <-a.authenticated:
+		default:
+			close(a.authenticated)
+		}
+		a.authMu.Unlock()
 		return nil
 	}
 	return func(c *pkgws.Client) {
+		a.authMu.Lock()
+		a.authenticated = make(chan struct{})
+		a.authMu.Unlock()
+
 		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
 		sig := SignRequest(apiSecret, ts, "GET", "/user/verify", "")
 
@@ -151,11 +177,25 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	}
 }
 
-// GetChannelExtractor maps Bitget events to channels.
+// GetChannelExtractor routes WebSocket push channels.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
 		if string(data) == msgPong {
 			return msgPong
+		}
+
+		if event, err := jsonparser.GetString(data, "event"); err == nil && event == opLogin {
+			code, _ := jsonparser.GetString(data, "code")
+			if code == "0" || code == "" {
+				a.authMu.Lock()
+				select {
+				case <-a.authenticated:
+				default:
+					close(a.authenticated)
+				}
+				a.authMu.Unlock()
+			}
+			return opLogin
 		}
 
 		channel, err := jsonparser.GetString(data, "arg", "channel")

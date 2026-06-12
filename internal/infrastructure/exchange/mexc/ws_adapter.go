@@ -8,21 +8,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
+
+	"github.com/buger/jsonparser"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for MEXC Futures.
 type WsAdapter struct {
-	pool *pkgws.Pool
+	pool          *pkgws.Pool
+	authenticated chan struct{}
+	authMu        sync.Mutex
 }
 
 // NewWsAdapter creates a new MEXC WsAdapter.
 func NewWsAdapter() *WsAdapter {
-	return &WsAdapter{}
+	return &WsAdapter{
+		authenticated: make(chan struct{}),
+	}
 }
 
 // SetPool injects the websocket pool.
@@ -72,6 +79,16 @@ func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
 
 // SubscribePersonal subscribes to all private futures channels used by funding flows.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
+	a.authMu.Lock()
+	authCh := a.authenticated
+	a.authMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-authCh:
+	}
+
 	msg := map[string]any{
 		paramMethod: "personal.filter",
 		paramParam: map[string]any{
@@ -132,9 +149,20 @@ func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 // GetAuthHook returns the OnConnected hook for MEXC authentication.
 func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	if apiKey == "" {
+		a.authMu.Lock()
+		select {
+		case <-a.authenticated:
+		default:
+			close(a.authenticated)
+		}
+		a.authMu.Unlock()
 		return nil
 	}
 	return func(c *pkgws.Client) {
+		a.authMu.Lock()
+		a.authenticated = make(chan struct{})
+		a.authMu.Unlock()
+
 		reqTime := fmt.Sprintf("%d", time.Now().UnixMilli())
 		message := apiKey + reqTime
 		mac := hmac.New(sha256.New, []byte(apiSecret))
@@ -142,7 +170,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		signature := hex.EncodeToString(mac.Sum(nil))
 
 		msg := map[string]any{
-			paramMethod: "login",
+			paramMethod: opLogin,
 			paramParam: map[string]any{
 				"apiKey":    apiKey,
 				"reqTime":   reqTime,
@@ -154,34 +182,53 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	}
 }
 
+func mapMexcChannel(channel string) string {
+	switch channel {
+	case "push.ticker":
+		return channelTicker
+	case "push.depth.full", "push.depth.step":
+		return channelDepth
+	case "push.kline":
+		return channelKline
+	case "push.personal.order":
+		return "personal.order"
+	case "push.personal.order.deal":
+		return "personal.order.deal"
+	case "push.personal.track.order":
+		return "personal.track.order"
+	case "push.personal.position":
+		return "personal.position"
+	default:
+		if after, ok := strings.CutPrefix(channel, "push."); ok {
+			return after
+		}
+		return channel
+	}
+}
+
 // GetChannelExtractor returns the function that maps raw MEXC messages to generic internal channels.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
+		channel, err := jsonparser.GetString(data, "channel")
+		if err == nil && channel == "rs.login" {
+			mexcData, _ := jsonparser.GetString(data, "data")
+			if mexcData == "success" {
+				a.authMu.Lock()
+				select {
+				case <-a.authenticated:
+				default:
+					close(a.authenticated)
+				}
+				a.authMu.Unlock()
+			}
+			return opLogin
+		}
+
 		var baseMsg struct {
 			Channel string `json:"channel"`
 		}
 		if err := json.Unmarshal(data, &baseMsg); err == nil {
-			switch baseMsg.Channel {
-			case "push.ticker":
-				return channelTicker
-			case "push.depth.full", "push.depth.step":
-				return channelDepth
-			case "push.kline":
-				return channelKline
-			case "push.personal.order":
-				return "personal.order"
-			case "push.personal.order.deal":
-				return "personal.order.deal"
-			case "push.personal.track.order":
-				return "personal.track.order"
-			case "push.personal.position":
-				return "personal.position"
-			default:
-				if after, ok := strings.CutPrefix(baseMsg.Channel, "push."); ok {
-					return after
-				}
-				return baseMsg.Channel
-			}
+			return mapMexcChannel(baseMsg.Channel)
 		}
 		return ""
 	}

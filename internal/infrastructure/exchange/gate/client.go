@@ -227,6 +227,8 @@ type gateContract struct {
 	TakerFeeRate     string  `json:"taker_fee_rate"`
 	FundingRate      string  `json:"funding_rate"`
 	FundingNextApply float64 `json:"funding_next_apply"`
+	OrderSizeMin     float64 `json:"order_size_min"`
+	OrderSizeMax     float64 `json:"order_size_max"`
 }
 
 type gateFuturesTicker struct {

@@ -13,4 +13,6 @@ const (
 	channelTicker = "ticker"
 	channelDepth  = "depth"
 	channelKline  = "kline"
+
+	opLogin = "login"
 )

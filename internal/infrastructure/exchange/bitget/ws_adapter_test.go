@@ -252,3 +252,56 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType) // Long
 }
+
+func TestWsAdapter_LoginSync(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success Login Closes Authenticated Channel", func(t *testing.T) {
+		t.Parallel()
+		adapter := bitget.NewWsAdapter()
+		extractor := adapter.GetChannelExtractor()
+
+		// GetAuthHook with key returns non-nil hook
+		hook := adapter.GetAuthHook("key", "secret")
+		assert.NotNil(t, hook)
+
+		// Before running hook or receiving login event, SubscribePersonal with short timeout context should timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		err := adapter.SubscribePersonal(ctx)
+		cancel()
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+
+		// Simulate receiving a successful login event response from Bitget
+		loginResp := []byte(`{"event":"login","code":"0"}`)
+		channel := extractor(loginResp)
+		assert.Equal(t, "login", channel)
+
+		// Now SubscribePersonal should unblock instantly even with an active context
+		ctx2, cancel2 := context.WithCancel(context.Background())
+		// Prepare a mock private client to avoid panic during SendPrivate
+		pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
+		adapter.SetPool(pool)
+
+		err = adapter.SubscribePersonal(ctx2)
+		cancel2()
+		// Since the private client is nil in the pool, it will return nil (success/noop) instead of blocking
+		assert.NoError(t, err)
+	})
+
+	t.Run("Empty APIKey Closes Authenticated Channel Immediately", func(t *testing.T) {
+		t.Parallel()
+		adapter := bitget.NewWsAdapter()
+
+		hook := adapter.GetAuthHook("", "")
+		assert.Nil(t, hook)
+
+		// Since apiKey is empty, a.authenticated should be closed immediately
+		ctx, cancel := context.WithCancel(context.Background())
+		pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
+		adapter.SetPool(pool)
+
+		err := adapter.SubscribePersonal(ctx)
+		cancel()
+		assert.NoError(t, err)
+	})
+}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -19,16 +20,19 @@ import (
 
 // WsAdapter implements ws.ExchangeAdapter for Bybit Futures.
 type WsAdapter struct {
-	pool      *pkgws.Pool
-	apiKey    string
-	apiSecret string
-	clock     exchange.Clock
+	pool          *pkgws.Pool
+	apiKey        string
+	apiSecret     string
+	clock         exchange.Clock
+	authenticated chan struct{}
+	authMu        sync.Mutex
 }
 
 // NewWsAdapter creates a new Bybit WsAdapter.
 func NewWsAdapter() *WsAdapter {
 	return &WsAdapter{
-		clock: exchange.RealClock{},
+		clock:         exchange.RealClock{},
+		authenticated: make(chan struct{}),
 	}
 }
 
@@ -107,11 +111,14 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) e
 
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	// Wait a brief moment to ensure the connection has finished authenticating via the OnConnected hook
+	a.authMu.Lock()
+	authCh := a.authenticated
+	a.authMu.Unlock()
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(500 * time.Millisecond):
+	case <-authCh:
 	}
 
 	msg := map[string]any{
@@ -138,10 +145,21 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	a.apiSecret = apiSecret
 
 	if apiKey == "" || apiSecret == "" {
+		a.authMu.Lock()
+		select {
+		case <-a.authenticated:
+		default:
+			close(a.authenticated)
+		}
+		a.authMu.Unlock()
 		return nil
 	}
 
 	return func(client *pkgws.Client) {
+		a.authMu.Lock()
+		a.authenticated = make(chan struct{})
+		a.authMu.Unlock()
+
 		expires := a.clock.Now().UnixMilli() + 10000 // expires in 10 seconds
 		reqStr := fmt.Sprintf("GET/realtime%d", expires)
 
@@ -150,7 +168,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		signature := hex.EncodeToString(h.Sum(nil))
 
 		authMsg := map[string]any{
-			"op": "auth",
+			"op": wsOpAuth,
 			wsArgsKey: []any{
 				apiKey,
 				expires,
@@ -166,6 +184,22 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 // GetChannelExtractor routes WebSocket push channels.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
+		var authResp struct {
+			Op      string `json:"op"`
+			RetCode int    `json:"retCode"`
+		}
+		if err := json.Unmarshal(data, &authResp); err == nil && authResp.Op == wsOpAuth {
+			if authResp.RetCode == 0 {
+				a.authMu.Lock()
+				select {
+				case <-a.authenticated:
+				default:
+					close(a.authenticated)
+				}
+				a.authMu.Unlock()
+			}
+		}
+
 		var msg struct {
 			Topic string `json:"topic"`
 		}
