@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -171,7 +172,8 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 			if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 				return err
 			}
-			return runner.clone(evt.Exchange, evt.ReqID, evt.Symbol).handleCleanup(ctx, msg)
+			traceCtx := observability.WithCorrelationIDValue(ctx, evt.ReqID)
+			return runner.clone(evt.Exchange, evt.ReqID, evt.Symbol).handleCleanup(traceCtx, msg)
 		})
 	}
 }
@@ -190,7 +192,8 @@ func registerEventSubscription[T any](
 			return err
 		}
 		exch, reqID, symbol := route(&evt)
-		return action(ctx, runner.clone(exch, reqID, symbol), evt)
+		traceCtx := observability.WithCorrelationIDValue(ctx, reqID)
+		return action(traceCtx, runner.clone(exch, reqID, symbol), evt)
 	})
 }
 

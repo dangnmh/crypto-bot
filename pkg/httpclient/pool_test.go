@@ -1,13 +1,11 @@
 package httpclient_test
 
 import (
-	"net/http"
 	"testing"
-
-	httpclient "crypto-bot/pkg/httpclient"
 	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
+	httpclient "crypto-bot/pkg/httpclient"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,11 +30,8 @@ func TestNewPool(t *testing.T) {
 	require.NotNil(t, client, "expected non-nil client")
 	assert.Equal(t, cfg.Timeout, client.Timeout)
 
-	retryRT, ok := client.Transport.(*retryablehttp.RoundTripper)
-	require.True(t, ok, "expected *retryablehttp.RoundTripper")
-
-	transport, ok := retryRT.Client.HTTPClient.Transport.(*http.Transport)
-	require.True(t, ok, "expected *http.Transport")
+	transport, ok := httpclient.UnwrapClientTransport(client)
+	require.True(t, ok, "expected to extract http.Transport")
 
 	assert.Equal(t, cfg.MaxIdleConns, transport.MaxIdleConns)
 	assert.Equal(t, cfg.MaxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
@@ -58,7 +53,10 @@ func TestNewPool_CustomConfig(t *testing.T) {
 
 	client := httpclient.NewPool(cfg)
 	assert.Equal(t, 5*time.Second, client.Timeout)
-	transport, _ := client.Transport.(*http.Transport)
+
+	transport, ok := httpclient.UnwrapClientTransport(client)
+	require.True(t, ok, "expected to extract http.Transport")
+
 	assert.Equal(t, 50, transport.MaxIdleConns)
 	assert.True(t, transport.DisableCompression)
 }

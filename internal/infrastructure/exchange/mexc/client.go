@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptrace"
 	"strconv"
 	"strings"
 	"time"
@@ -162,18 +161,6 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 
 // doRequest executes the HTTP request and returns the response body.
 func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
-	trace := &httptrace.ClientTrace{
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			if !connInfo.Reused {
-				c.logger.DebugContext(ctx, "HTTP new connection",
-					"was_idle", connInfo.WasIdle,
-					"idle_time", connInfo.IdleTime,
-				)
-			}
-		},
-	}
-	req = req.WithContext(httptrace.WithClientTrace(ctx, trace))
-
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", req.Method, req.URL.Path, err)

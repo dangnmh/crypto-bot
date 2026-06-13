@@ -4,7 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/http/httptrace"
 	"time"
+
+	"crypto-bot/pkg/tracectx"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/hashicorp/go-retryablehttp"
 )
@@ -51,6 +56,45 @@ func checkRetry(ctx context.Context, resp *http.Response, err error) (bool, erro
 	return false, nil
 }
 
+// traceRoundTripper injects request tracing headers extracted from context and logs connection trace details.
+type traceRoundTripper struct {
+	next   http.RoundTripper
+	logger *slog.Logger
+}
+
+func (t *traceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+	reqID := tracectx.CorrelationID(ctx)
+	if reqID == "" {
+		reqID = tracectx.ReversionID(ctx)
+	}
+
+	if reqID != "" {
+		req = req.Clone(ctx)
+		req.Header.Set("X-Request-ID", reqID)
+		req.Header.Set("req_id", reqID)
+		ctx = req.Context()
+	}
+
+	if t.logger != nil {
+		trace := &httptrace.ClientTrace{
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				if !connInfo.Reused {
+					t.logger.DebugContext(ctx, "HTTP new connection",
+						"method", req.Method,
+						"url", req.URL.String(),
+						"was_idle", connInfo.WasIdle,
+						"idle_time", connInfo.IdleTime,
+					)
+				}
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(ctx, trace))
+	}
+
+	return t.next.RoundTrip(req)
+}
+
 // NewPool creates an optimized *http.Client with a pre-configured RoundTripper.
 func NewPool(cfg PoolConfig) *http.Client {
 	transport := &http.Transport{
@@ -61,9 +105,12 @@ func NewPool(cfg PoolConfig) *http.Client {
 		DisableCompression:  cfg.DisableCompression,
 	}
 
+	traceTransport := &traceRoundTripper{next: transport, logger: cfg.Logger}
+	otelTransport := otelhttp.NewTransport(traceTransport)
+
 	if !cfg.EnableRetry {
 		return &http.Client{
-			Transport: transport,
+			Transport: otelTransport,
 			Timeout:   cfg.Timeout,
 		}
 	}
@@ -73,7 +120,7 @@ func NewPool(cfg PoolConfig) *http.Client {
 	retryClient.Backoff = retryablehttp.RateLimitLinearJitterBackoff
 	retryClient.CheckRetry = checkRetry
 	retryClient.ErrorHandler = retryablehttp.PassthroughErrorHandler
-	retryClient.HTTPClient.Transport = transport
+	retryClient.HTTPClient.Transport = otelTransport
 	retryClient.Logger = nil // Skip log from httpretry since client already has log transport
 
 	return &http.Client{

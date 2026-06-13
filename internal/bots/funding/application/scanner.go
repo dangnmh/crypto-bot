@@ -13,7 +13,6 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/ticker"
 
@@ -82,7 +81,7 @@ func (j *ScannerJob) tick(ctx context.Context) {
 		for i := range opportunities {
 			opp := &opportunities[i]
 			if j.shouldTrigger(opp.Candidate.Config.Exchange, opp.Candidate.Symbol, opp.SettleTime) {
-				j.trigger(ctx, opp.Candidate, opp.SettleTime)
+				j.trigger(opp.Candidate, opp.SettleTime)
 			}
 		}
 	}
@@ -107,19 +106,14 @@ func (j *ScannerJob) shouldTrigger(exchange, symbol string, settle time.Time) bo
 	return true
 }
 
-func (j *ScannerJob) trigger(ctx context.Context, candidate domain.Candidate, settle time.Time) {
-	reqID := observability.ReversionID(ctx)
-	if reqID == "" {
-		reqID = watermill.NewUUID()
-	}
-	runCtx := observability.WithReversionIDValue(ctx, reqID)
+func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
+	externalID := orders.ExternalOrderID(candidate.Symbol, settle, candidate.Config.Exchange)
+	candidate.ExternalID = externalID
 
-	candidate.ExternalID = orders.ExternalOrderID(candidate.Symbol, settle, candidate.Config.Exchange)
-
-	j.log.InfoContext(runCtx, "Opportunity found! Triggering reversion event flow",
+	j.log.Info("Opportunity found! Triggering reversion event flow",
 		slog.String("symbol", candidate.Symbol),
 		slog.String("exchange", candidate.Config.Exchange),
-		slog.String("externalID", candidate.ExternalID),
+		slog.String("externalID", externalID),
 		slog.Float64("fundingRate", candidate.FundingRate),
 	)
 
@@ -131,7 +125,7 @@ func (j *ScannerJob) trigger(ctx context.Context, candidate domain.Candidate, se
 	startEvt := reversion.CandidateFoundEvent{
 		BaseReversionEvent: reversion.BaseReversionEvent{
 			Flow:       reversion.FlowReversion,
-			ReqID:      reqID,
+			ReqID:      externalID,
 			Symbol:     candidate.Symbol,
 			Exchange:   candidate.Config.Exchange,
 			SendNotify: false,
@@ -139,7 +133,7 @@ func (j *ScannerJob) trigger(ctx context.Context, candidate domain.Candidate, se
 			EventID:    watermill.NewUUID(),
 			Seq:        1,
 			Topic:      reversion.TopicReversionCandidate,
-			ExternalID: candidate.ExternalID,
+			ExternalID: externalID,
 			SettleTime: settle,
 			Side:       candidate.Side,
 		},
@@ -147,9 +141,9 @@ func (j *ScannerJob) trigger(ctx context.Context, candidate domain.Candidate, se
 	}
 
 	if err := j.engine.Bus.Publish(reversion.TopicReversionCandidate, startEvt); err != nil {
-		j.log.ErrorContext(runCtx, "Failed to publish reversion candidate event", slog.Any("error", err))
+		j.log.Error("Failed to publish reversion candidate event", slog.Any("error", err))
 	} else {
-		j.log.InfoContext(runCtx, "Reversion candidate event successfully published", slog.Time("settle", settle))
+		j.log.Error("Reversion candidate event successfully published", slog.Time("settle", settle))
 	}
 }
 
