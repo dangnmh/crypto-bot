@@ -114,30 +114,6 @@ func ExecutionRefPrice(side Side, lastPrice, bestBid, bestAsk float64) float64 {
 	return refPrice
 }
 
-// CalculateTrapVolume calculates trap contracts from the dedicated trap sizing controls.
-func CalculateTrapVolume(
-	hasTrapSizing bool,
-	candidateVolume float64,
-	reversionNotional float64,
-	sizeRatio float64,
-	maxNotional float64,
-	trapPrice float64,
-	contractSize float64,
-	minVol float64,
-	volScale int,
-) float64 {
-	if !hasTrapSizing {
-		return candidateVolume
-	}
-
-	notional := TrapTargetNotionalUSDT(reversionNotional, sizeRatio, maxNotional)
-	if notional <= 0 {
-		return 0
-	}
-
-	return CalculateVolumeForNotional(notional, trapPrice, contractSize, minVol, volScale)
-}
-
 // CalculateVolumeForNotional converts a USDT notional budget into exchange contract volume.
 func CalculateVolumeForNotional(notional, refPrice, contractSize, minVol float64, volScale int) float64 {
 	if contractSize <= 0 || refPrice <= 0 || notional <= 0 {
@@ -158,21 +134,6 @@ func ReversionNotionalUSDT(margin float64, leverage int) float64 {
 	return decmath.Mul(margin, float64(leverage))
 }
 
-// TrapTargetNotionalUSDT returns the configured trap notional budget after applying size ratio and cap.
-func TrapTargetNotionalUSDT(reversionNotional, sizeRatio, maxNotional float64) float64 {
-	ratio := sizeRatio
-	if ratio <= 0 {
-		ratio = 1
-	}
-
-	notional := decmath.Mul(reversionNotional, ratio)
-	if maxNotional > 0 && notional > maxNotional {
-		notional = maxNotional
-	}
-
-	return notional
-}
-
 // NotionalForVolume estimates USDT notional for an exchange contract volume at the reference price.
 func NotionalForVolume(volume, refPrice, contractSize float64) float64 {
 	if contractSize <= 0 || volume <= 0 || refPrice <= 0 {
@@ -188,41 +149,6 @@ func GetPeakPrice(side Side, bestBid, bestAsk float64) float64 {
 		return bestAsk
 	}
 	return bestBid
-}
-
-// CalculateTrapPrice calculates the post-only Trap price, snapped to precision.
-func CalculateTrapPrice(side Side, peakPrice, depthPct, priceUnit float64, priceScale int) float64 {
-	var rawPrice float64
-	var snapToTick func(float64, float64) float64
-
-	switch side {
-	case SideOpenShort:
-		rawPrice = decmath.Mul(peakPrice, decmath.Sub(1, depthPct))
-		snapToTick = decmath.SnapToTickFloor
-	case SideOpenLong:
-		rawPrice = decmath.Mul(peakPrice, decmath.Add(1, depthPct))
-		snapToTick = decmath.SnapToTickCeil
-	default:
-		return 0
-	}
-
-	if priceUnit > 0 {
-		rawPrice = snapToTick(rawPrice, priceUnit)
-	}
-
-	trapPrice := decmath.RoundToScale(rawPrice, priceScale)
-
-	if trapPrice <= 0 {
-		return 0
-	}
-	if side == SideOpenShort && trapPrice >= peakPrice {
-		return 0
-	}
-	if side == SideOpenLong && trapPrice <= peakPrice {
-		return 0
-	}
-
-	return trapPrice
 }
 
 // FindWallPrice scans OB levels and returns the price of the first liquidity wall.
@@ -258,22 +184,6 @@ func FindWallPrice(entryPrice float64, levels []OrderBookEntry, side Side, minWa
 	return 0
 }
 
-// CalculateOBTrapPrice computes the actual trap limit price, stepping 1 tick in front of the wall.
-func CalculateOBTrapPrice(trapSide Side, wallPrice, priceUnit float64) float64 {
-	if trapSide == SideOpenLong {
-		return decmath.Add(wallPrice, priceUnit)
-	}
-	return decmath.Sub(wallPrice, priceUnit)
-}
-
-// TrapWallDistancePct returns the wall distance from the current candidate context in percent.
-func TrapWallDistancePct(wallPrice, refPrice float64) float64 {
-	if wallPrice <= 0 || refPrice <= 0 {
-		return 0
-	}
-	return decmath.Mul(decmath.Div(math.Abs(decmath.Sub(wallPrice, refPrice)), refPrice), 100.0)
-}
-
 // CalculateStaticExitPrice calculates static reversion/exit price.
 func CalculateStaticExitPrice(side Side, entryPrice, pct float64, favorable bool, priceUnit float64, priceScale int) float64 {
 	longUp := side == SideOpenLong && favorable
@@ -301,38 +211,4 @@ func CalculateStaticTakeProfitPrice(side Side, entryPrice, tpPct, priceUnit floa
 		return 0
 	}
 	return CalculateStaticExitPrice(side, entryPrice, tpPct, true, priceUnit, priceScale)
-}
-
-// CalculateTrapTPPrice computes a server-side Take Profit price for a trap order.
-func CalculateTrapTPPrice(side Side, trapPrice, tpPct, priceUnit float64, priceScale int) float64 {
-	if tpPct <= 0 || trapPrice <= 0 || priceUnit <= 0 {
-		return 0
-	}
-
-	var tp float64
-	if side == SideOpenLong {
-		tp = decmath.Mul(trapPrice, decmath.Add(1, tpPct))
-		tp = decmath.SnapToTickFloor(tp, priceUnit)
-	} else {
-		tp = decmath.Mul(trapPrice, decmath.Sub(1, tpPct))
-		tp = decmath.SnapToTickCeil(tp, priceUnit)
-	}
-	return decmath.RoundToScale(tp, priceScale)
-}
-
-// CalculateTrapSLPrice computes a server-side Stop Loss price for a trap order.
-func CalculateTrapSLPrice(side Side, trapPrice, slPct, priceUnit float64, priceScale int) float64 {
-	if slPct <= 0 || trapPrice <= 0 || priceUnit <= 0 {
-		return 0
-	}
-
-	var sl float64
-	if side == SideOpenLong {
-		sl = decmath.Mul(trapPrice, decmath.Sub(1, slPct))
-		sl = decmath.SnapToTickCeil(sl, priceUnit)
-	} else {
-		sl = decmath.Mul(trapPrice, decmath.Add(1, slPct))
-		sl = decmath.SnapToTickFloor(sl, priceUnit)
-	}
-	return decmath.RoundToScale(sl, priceScale)
 }

@@ -16,7 +16,6 @@ import (
 
 const (
 	fundingReversionDefaultsFile = "reversion.jsonc"
-	fundingTrapDefaultsFile      = "trap.jsonc"
 )
 
 // SystemConfig represents the system configuration for the Funding Reversion bot.
@@ -79,7 +78,6 @@ func (c *SystemConfig) loadStrategyDefaults(systemPath string) error {
 		name string
 	}{
 		{key: "fundingReversion", name: fundingReversionDefaultsFile},
-		{key: "fundingTrap", name: fundingTrapDefaultsFile},
 	}
 
 	for _, strategyFile := range strategyFiles {

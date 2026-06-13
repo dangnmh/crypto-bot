@@ -8,8 +8,6 @@ import (
 	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/reversion"
 	"crypto-bot/internal/bots/funding/application/strategy"
-	"crypto-bot/internal/bots/funding/application/trailing"
-	"crypto-bot/internal/bots/funding/application/trap"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/testutil/mocks"
@@ -35,12 +33,10 @@ func TestNewFundingBot(t *testing.T) {
 	m := mocks.NewMockNotifier(ctrl)
 
 	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
-	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
-	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
-		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		[]strategy.BackgroundStrategy{revStrat},
 		slog.Default(),
 	)
 	require.NotNil(t, bot)
@@ -59,12 +55,10 @@ func TestFundingBot_Stop(t *testing.T) {
 	m := mocks.NewMockNotifier(ctrl)
 
 	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
-	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
-	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
-		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		[]strategy.BackgroundStrategy{revStrat},
 		slog.Default(),
 	)
 	err := bot.Stop(context.Background())
@@ -86,12 +80,10 @@ func TestFundingBot_Run_CancelledContext(t *testing.T) {
 	m := mocks.NewMockNotifier(ctrl)
 
 	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
-	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
-	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
-		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		[]strategy.BackgroundStrategy{revStrat},
 		slog.Default(),
 	)
 
@@ -128,12 +120,10 @@ func TestNewFundingBot_WithBlacklist(t *testing.T) {
 	m := mocks.NewMockNotifier(ctrl)
 
 	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
-	trapStrat := trap.NewStrategy(engine, cfg, slog.Default())
-	trailStrat := trailing.NewStrategy(engine, cfg, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
-		[]strategy.BackgroundStrategy{revStrat, trapStrat, trailStrat},
+		[]strategy.BackgroundStrategy{revStrat},
 		slog.Default(),
 	)
 	require.NotNil(t, bot)

@@ -47,7 +47,6 @@ type TradeConfig struct {
 	MarginUSDT          float64
 	Leverage            int
 	FundingReversion    FundingReversionConfig
-	FundingTrap         FundingTrapConfig
 	MinFundingRate      float64
 
 	// Parsed exchange-specific values.
@@ -63,32 +62,6 @@ type FundingReversionConfig struct {
 	MaxLatency        types.Duration `json:"maxLatency"`
 	BufferTime        types.Duration `json:"bufferTime"`
 	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
-}
-
-// TrailingConfig holds configuration for the Trailing Stop mechanism.
-type TrailingConfig struct {
-	Enabled       bool    `json:"enabled"`
-	ActivationPct float64 `json:"activationPct"`
-	CallbackPct   float64 `json:"callbackPct"`
-}
-
-// FundingTrapConfig holds all straddle trap configuration in one place.
-type FundingTrapConfig struct {
-	Enabled           bool           `json:"enabled"`
-	SizeRatio         float64        `json:"sizeRatio"`
-	MaxNotionalUSDT   float64        `json:"maxNotionalUSDT"`
-	DepthPct          float64        `json:"depthPct"`
-	TakeProfitPct     float64        `json:"takeProfitPct"`
-	StopLossPct       float64        `json:"stopLossPct"`
-	TrapAfterSettle   types.Duration `json:"trapAfterSettle"`
-	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
-
-	Trailing TrailingConfig `json:"trailing"`
-}
-
-// IsHedgeTrapEnabled returns true if hedge trap is enabled.
-func (tc *TradeConfig) IsHedgeTrapEnabled() bool {
-	return tc.FundingTrap.Enabled
 }
 
 // TradeIntent captures the directional decision from funding rate analysis.

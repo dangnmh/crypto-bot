@@ -9,8 +9,6 @@ import (
 	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/reversion"
 	"crypto-bot/internal/bots/funding/application/strategy"
-	"crypto-bot/internal/bots/funding/application/trailing"
-	"crypto-bot/internal/bots/funding/application/trap"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
@@ -39,8 +37,6 @@ func Module(paths ConfigPaths) fx.Option {
 			provideHTTPClient,
 			provideEngine,
 			provideReversionStrategy,
-			provideTrapStrategy,
-			provideTrailingStrategy,
 			provideBot,
 			infraapp.NewBotRunner,
 		),
@@ -127,27 +123,17 @@ func provideReversionStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config
 	return reversion.NewStrategy(engine, cfg, n, log)
 }
 
-func provideTrapStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config, log *slog.Logger) *trap.Strategy {
-	return trap.NewStrategy(engine, cfg, log)
-}
-
-func provideTrailingStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config, log *slog.Logger) *trailing.Strategy {
-	return trailing.NewStrategy(engine, cfg, log)
-}
-
 func provideBot(
 	cfg *fundingconfig.Config,
 	sysCfg *fundingconfig.SystemConfig,
 	engine *infraapp.Engine,
 	n notifier.Notifier,
 	reversionStrategy *reversion.Strategy,
-	trapStrategy *trap.Strategy,
-	trailingStrategy *trailing.Strategy,
 	log *slog.Logger,
 ) infraapp.Bot {
 	return application.NewFundingBot(
 		cfg, sysCfg, engine, n,
-		[]strategy.BackgroundStrategy{reversionStrategy, trapStrategy, trailingStrategy},
+		[]strategy.BackgroundStrategy{reversionStrategy},
 		log.With("bot", "funding"),
 	)
 }

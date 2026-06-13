@@ -216,48 +216,6 @@ func TestCalculateVolume(t *testing.T) {
 	}
 }
 
-func TestCalculateTrapVolume_UsesDedicatedSizing(t *testing.T) {
-	t.Parallel()
-
-	c := &domain.Candidate{
-		Config: domain.TradeConfig{
-			MarginUSDT: 100,
-			Leverage:   10,
-			FundingTrap: domain.FundingTrapConfig{
-				SizeRatio:       0.5,
-				MaxNotionalUSDT: 400,
-			},
-		},
-		ContractSpec: domain.ContractSpec{
-			ContractSize: 1,
-			MinVol:       1,
-			VolScale:     0,
-		},
-		TradePlan: domain.TradePlan{Volume: 10},
-	}
-
-	got := c.CalculateTrapVolume(100)
-
-	if !almostEqual(got, 4, 1e-9) {
-		t.Fatalf("trap volume = %.4f, want 4", got)
-	}
-	if notional := c.NotionalForVolume(got, 100); !almostEqual(notional, 400, 1e-9) {
-		t.Fatalf("trap notional = %.4f, want 400", notional)
-	}
-}
-
-func TestCalculateTrapVolume_LegacyFallback(t *testing.T) {
-	t.Parallel()
-
-	c := &domain.Candidate{TradePlan: domain.TradePlan{Volume: 7}}
-
-	got := c.CalculateTrapVolume(100)
-
-	if got != 7 {
-		t.Fatalf("trap volume = %.4f, want legacy candidate volume 7", got)
-	}
-}
-
 func TestVolumeAndNotionalInvalidInputs(t *testing.T) {
 	t.Parallel()
 
@@ -327,83 +285,6 @@ func TestFloorToScale(t *testing.T) {
 		if got := decmath.FloorToScale(tt.v, tt.n); !almostEqual(got, tt.want, 1e-10) {
 			t.Errorf("decmath.FloorToScale(%v, %d) = %v, want %v", tt.v, tt.n, got, tt.want)
 		}
-	}
-}
-
-func TestCalculateTrapPrice(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name         string
-		side         shared.Side
-		peakPrice    float64
-		trapDepthPct float64
-		priceScale   int
-		priceUnit    float64
-		wantPrice    float64
-	}{
-		{
-			name:         "Sniper SHORT -> Trap LONG (Buy Dump) - Real Bug Scenario",
-			side:         shared.SideOpenShort,
-			peakPrice:    0.1465,
-			trapDepthPct: 0.05, // 5%
-			priceScale:   4,
-			priceUnit:    0.0001,
-			wantPrice:    0.1391, // 0.1465 * 0.95 = 0.139175 -> Floor -> 0.1391
-		},
-		{
-			name:         "Sniper LONG -> Trap SHORT (Sell Pump)",
-			side:         shared.SideOpenLong,
-			peakPrice:    65000,
-			trapDepthPct: 0.02, // 2%
-			priceScale:   1,
-			priceUnit:    0.1,
-			wantPrice:    66300.0, // 65000 * 1.02 = 66300 -> Ceil -> 66300.0
-		},
-		{
-			name:         "Sniper SHORT -> Trap LONG (Buy Dump) with Fractional Snapping",
-			side:         shared.SideOpenShort,
-			peakPrice:    0.00001465,
-			trapDepthPct: 0.05,
-			priceScale:   8,
-			priceUnit:    0.00000001, // 8 decimals
-			wantPrice:    0.00001391,
-		},
-		{
-			name:         "Sniper LONG -> Trap SHORT (Sell Pump) with Fractional Snapping",
-			side:         shared.SideOpenLong,
-			peakPrice:    0.00001465,
-			trapDepthPct: 0.05,
-			priceScale:   8,
-			priceUnit:    0.00000001,
-			wantPrice:    0.00001539,
-		},
-		{
-			name:      "Invalid Side",
-			side:      999, // Invalid
-			wantPrice: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			c := &domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				MarketData: domain.MarketData{
-					BestBid: tt.peakPrice,
-					BestAsk: tt.peakPrice,
-				},
-				ContractSpec: domain.ContractSpec{
-					PriceUnit:  tt.priceUnit,
-					PriceScale: tt.priceScale,
-				},
-				Config: domain.TradeConfig{FundingTrap: domain.FundingTrapConfig{DepthPct: tt.trapDepthPct}},
-			}
-			got := c.CalculateTrapPrice()
-			if !almostEqual(got, tt.wantPrice, 1e-10) {
-				t.Errorf("got %.8f, want %.8f", got, tt.wantPrice)
-			}
-		})
 	}
 }
 

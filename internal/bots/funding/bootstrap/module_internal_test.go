@@ -37,8 +37,6 @@ func TestProviderFactoriesReturnStrategies(t *testing.T) {
 	mockNotifier := mocks.NewMockNotifier(ctrl)
 
 	assert.Equal(t, "reversion", provideReversionStrategy(engine, global, mockNotifier, bootstrapTestLogger()).Flow())
-	assert.Equal(t, "trap", provideTrapStrategy(engine, global, bootstrapTestLogger()).Flow())
-	assert.Equal(t, "trailing", provideTrailingStrategy(engine, global, bootstrapTestLogger()).Flow())
 }
 
 func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
@@ -67,8 +65,6 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	t.Cleanup(func() { _ = engine.Bus.Close() })
 
 	revStrat := provideReversionStrategy(engine, &fundingconfig.Config{}, n, bootstrapTestLogger())
-	trapStrat := provideTrapStrategy(engine, &fundingconfig.Config{}, bootstrapTestLogger())
-	trailStrat := provideTrailingStrategy(engine, &fundingconfig.Config{}, bootstrapTestLogger())
 
 	bot := provideBot(
 		&fundingconfig.Config{},
@@ -76,8 +72,6 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 		engine,
 		n,
 		revStrat,
-		trapStrat,
-		trailStrat,
 		bootstrapTestLogger(),
 	)
 	require.NotNil(t, bot)

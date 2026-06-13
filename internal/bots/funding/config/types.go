@@ -34,10 +34,8 @@ type SymbolConfig struct {
 	OpenType            OpenType     `json:"openType"`
 	PositionMode        PositionMode `json:"positionMode"`
 	MinFundingRate      float64      `json:"minFundingRate"`
-
 	// Reuses domain types directly — single source of truth.
 	FundingReversion domain.FundingReversionConfig `json:"fundingReversion"`
-	FundingTrap      domain.FundingTrapConfig      `json:"fundingTrap"`
 
 	ParsedOpenType     int `json:"-"`
 	ParsedPositionMode int `json:"-"`
@@ -74,7 +72,6 @@ type TradingDefaults struct {
 
 	// Raw parsed defaults
 	FundingReversion RawFundingReversionConfig `json:"fundingReversion"`
-	FundingTrap      domain.FundingTrapConfig  `json:"fundingTrap"`
 }
 
 type BlacklistConfig struct {

@@ -183,22 +183,6 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
 		defaultFloat(&sc.FundingReversion.TakeProfitPct, exchDefault.TakeProfitPct)
 		defaultFloat(&sc.FundingReversion.StopLossPct, exchDefault.StopLossPct)
 		defaultDuration(&sc.FundingReversion.BufferTime, exchDefault.BufferTime)
-		defaultDuration(&sc.FundingReversion.PostSettleTimeout, exchDefault.PostSettleTimeout)
-	}
-
-	if !sc.FundingTrap.Enabled && d.FundingTrap.Enabled {
-		sc.FundingTrap = d.FundingTrap
-	} else if sc.FundingTrap.Enabled {
-		defaultFloat(&sc.FundingTrap.SizeRatio, d.FundingTrap.SizeRatio)
-		defaultFloat(&sc.FundingTrap.MaxNotionalUSDT, d.FundingTrap.MaxNotionalUSDT)
-		defaultFloat(&sc.FundingTrap.DepthPct, d.FundingTrap.DepthPct)
-		defaultFloat(&sc.FundingTrap.TakeProfitPct, d.FundingTrap.TakeProfitPct)
-		defaultFloat(&sc.FundingTrap.StopLossPct, d.FundingTrap.StopLossPct)
-		defaultDuration(&sc.FundingTrap.TrapAfterSettle, d.FundingTrap.TrapAfterSettle)
-		defaultDuration(&sc.FundingTrap.PostSettleTimeout, d.FundingTrap.PostSettleTimeout)
-		if !sc.FundingTrap.Trailing.Enabled && d.FundingTrap.Trailing.Enabled {
-			sc.FundingTrap.Trailing = d.FundingTrap.Trailing
-		}
 	}
 }
 
@@ -217,31 +201,6 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 			sc.FundingReversion.StopLossPct = 5
 		}
 		sc.FundingReversion.TakeProfitPct = normalizePercentRatio(sc.FundingReversion.TakeProfitPct)
-		sc.FundingReversion.StopLossPct = normalizePercentRatio(sc.FundingReversion.StopLossPct)
-	}
-
-	if sc.FundingTrap.Enabled {
-		if sc.FundingTrap.SizeRatio <= 0 {
-			sc.FundingTrap.SizeRatio = 0.5
-		}
-		defaultDuration(&sc.FundingTrap.TrapAfterSettle, types.Duration(50*time.Millisecond))
-		defaultDuration(&sc.FundingTrap.PostSettleTimeout, types.Duration(60*time.Second))
-
-		if sc.FundingTrap.DepthPct <= 0 {
-			sc.FundingTrap.DepthPct = 5
-		}
-		if sc.FundingTrap.TakeProfitPct <= 0 {
-			sc.FundingTrap.TakeProfitPct = 2
-		}
-		if sc.FundingTrap.StopLossPct <= 0 {
-			sc.FundingTrap.StopLossPct = 2
-		}
-		sc.FundingTrap.DepthPct = normalizePercentRatio(sc.FundingTrap.DepthPct)
-		sc.FundingTrap.TakeProfitPct = normalizePercentRatio(sc.FundingTrap.TakeProfitPct)
-		sc.FundingTrap.StopLossPct = normalizePercentRatio(sc.FundingTrap.StopLossPct)
-
-		sc.FundingTrap.Trailing.ActivationPct = normalizePercentRatio(sc.FundingTrap.Trailing.ActivationPct)
-		sc.FundingTrap.Trailing.CallbackPct = normalizePercentRatio(sc.FundingTrap.Trailing.CallbackPct)
 	}
 }
 
@@ -263,11 +222,6 @@ func (c *Config) defaultSymbolModes(sc *SymbolConfig) {
 	default:
 		sc.ParsedPositionMode = 1
 	}
-}
-
-// IsHedgeTrapEnabled returns true if hedge trap is enabled for this symbol config.
-func (sc *SymbolConfig) IsHedgeTrapEnabled() bool {
-	return sc.FundingTrap.Enabled
 }
 
 func defaultFloat(target *float64, fallback float64) {

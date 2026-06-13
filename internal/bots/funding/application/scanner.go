@@ -304,7 +304,6 @@ func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 		MarginUSDT:          sc.MarginUSDT,
 		Leverage:            sc.Leverage,
 		FundingReversion:    sc.FundingReversion,
-		FundingTrap:         sc.FundingTrap,
 		ParsedOpenType:      sc.ParsedOpenType,
 		ParsedPositionMode:  sc.ParsedPositionMode,
 		MinFundingRate:      sc.MinFundingRate,

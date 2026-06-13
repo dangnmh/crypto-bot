@@ -2,7 +2,6 @@ package orders
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-// OrderResult holds the result of an order attempt (IOC or Trap).
+// OrderResult holds the result of an order attempt.
 type OrderResult struct {
 	Candidate       domain.Candidate
 	Order           *exchange.OrderInfo
@@ -122,78 +121,5 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 	}
 
 	log.InfoContext(ctx, "📨 IOC submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", res.OrderID))
-	return result
-}
-
-func FireLimitTrap(ctx context.Context, client exchange.Client, candidate *domain.Candidate, ts shared.Clock, logger *slog.Logger) OrderResult {
-	log := logger
-	extOID := ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
-
-	trapPrice := candidate.CalculateTrapPrice()
-	if trapPrice <= 0 {
-		log.WarnContext(ctx, "🟡 Trap price invalid, skipping", slog.String("symbol", candidate.Symbol))
-		return OrderResult{Candidate: *candidate, Error: fmt.Errorf("trap price <= 0")}
-	}
-
-	trapSide := shared.SideOpenLong
-	trapCloseSide := shared.SideCloseLong
-	if candidate.Side == shared.SideOpenLong {
-		trapSide = shared.SideOpenShort
-		trapCloseSide = shared.SideCloseShort
-	}
-	trapCandidate := *candidate
-	trapCandidate.Side = trapSide
-	trapCandidate.CloseSide = trapCloseSide
-	trapCandidate.Volume = trapCandidate.CalculateTrapVolume(trapPrice)
-	if trapCandidate.Volume <= 0 {
-		log.WarnContext(ctx, "🟡 Trap volume invalid, skipping", slog.String("symbol", candidate.Symbol))
-		return OrderResult{Candidate: trapCandidate, Error: fmt.Errorf("trap volume <= 0")}
-	}
-	tpPrice := trapCandidate.CalculateTrapTPPrice(trapPrice)
-	slPrice := trapCandidate.CalculateTrapSLPrice(trapPrice)
-
-	req := exchange.SubmitOrderRequest{
-		Symbol:          candidate.Symbol,
-		Price:           trapPrice,
-		Vol:             trapCandidate.Volume,
-		Side:            trapSide,
-		Type:            exchange.OrderTypeLimit,
-		OpenType:        shared.OpenType(candidate.Config.ParsedOpenType),
-		PositionMode:    shared.PositionMode(candidate.Config.ParsedPositionMode),
-		Leverage:        candidate.Config.Leverage,
-		ExternalOID:     extOID,
-		TakeProfitPrice: tpPrice,
-		StopLossPrice:   slPrice,
-	}
-
-	log.InfoContext(ctx, "🩤 FIRE TRAP",
-		slog.String("symbol", candidate.Symbol),
-		slog.Float64("peakPrice", candidate.GetPeakPrice()),
-		slog.Float64("trapPrice", trapPrice),
-		slog.Float64("vol", trapCandidate.Volume),
-		slog.String("trapSide", trapSide.String()),
-		slog.Float64("takeProfitPrice", tpPrice),
-		slog.Float64("stopLossPrice", slPrice),
-		slog.String("extOid", extOID),
-	)
-
-	res, err := client.CreateOrder(ctx, req)
-	result := OrderResult{
-		Candidate:       trapCandidate,
-		OrderID:         res.OrderID,
-		TPSLSubmitted:   res.TPSLSubmitted,
-		ExternalID:      extOID,
-		Price:           trapPrice,
-		TakeProfitPrice: tpPrice,
-		StopLossPrice:   slPrice,
-		Volume:          trapCandidate.Volume,
-		Error:           err,
-	}
-	if err != nil {
-		log.ErrorContext(ctx, "🔴 TRAP order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
-		return result
-	}
-
-	log.InfoContext(ctx, "📨 TRAP submitted", slog.String("symbol", candidate.Symbol), slog.String("orderID", res.OrderID))
 	return result
 }

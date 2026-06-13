@@ -171,19 +171,11 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 			}
 		}
 	}`
-	trapContent := `{
-		"enabled": true,
-		"depthPct": 2.5,
-		"takeProfitPct": 1.5,
-		"stopLossPct": 1.5,
-		"trailing": {"enabled": true, "callbackPct": 0.5}
-	}`
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "system.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "trap.jsonc"), []byte(trapContent), 0o600))
 
 	cfg, err := config.LoadSystemConfig(path)
 	require.NoError(t, err)
@@ -194,9 +186,6 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	assert.Equal(t, 5, defaults.Leverage)
 	assert.True(t, defaults.FundingReversion.Enabled)
 	assert.Equal(t, 3.0, defaults.FundingReversion.Exchanges["mexc"].TakeProfitPct)
-	assert.True(t, defaults.FundingTrap.Enabled)
-	assert.Equal(t, 2.5, defaults.FundingTrap.DepthPct)
-	assert.True(t, defaults.FundingTrap.Trailing.Enabled)
 }
 
 func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {

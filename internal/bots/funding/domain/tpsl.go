@@ -44,37 +44,6 @@ func (c *Candidate) FindWallPrice(levels []shared.OrderBookEntry, side shared.Si
 	)
 }
 
-// FindTrapWallPrice identifies the correct wall price for placing a Trap order
-// based on the original IOC entry side.
-func (c *Candidate) FindTrapWallPrice(ob *shared.OrderBook) float64 {
-	if c.Side == shared.SideOpenLong {
-		// IOC was LONG. Trap will be SHORT. Look for ASK wall.
-		return c.FindWallPrice(ob.Asks, c.Side)
-	}
-	// IOC was SHORT. Trap will be LONG. Look for BID wall.
-	return c.FindWallPrice(ob.Bids, c.Side)
-}
-
-// CalculateOBTrapPrice computes the actual trap limit price, stepping 1 tick in front of the wall.
-func (c *Candidate) CalculateOBTrapPrice(wallPrice float64) float64 {
-	trapSide := c.Side.Opposite()
-	return tradecalc.CalculateOBTrapPrice(
-		tradecalc.Side(trapSide),
-		wallPrice,
-		c.PriceUnit,
-	)
-}
-
-// TrapWallDistancePct returns the wall distance from the current candidate
-// price context in percent units.
-func (c *Candidate) TrapWallDistancePct(wallPrice float64) float64 {
-	ref := c.LastPrice
-	if ref <= 0 {
-		ref = c.entryRefPrice()
-	}
-	return tradecalc.TrapWallDistancePct(wallPrice, ref)
-}
-
 // CalculateStopLossPrice computes a server-side SL price relative to entryPrice.
 // LONG: SL below entry (ceil to avoid triggering too early).
 // SHORT: SL above entry (floor to avoid triggering too early).
@@ -84,34 +53,6 @@ func (c *Candidate) CalculateStopLossPrice(entryPrice float64) float64 {
 		tradecalc.Side(c.Side),
 		entryPrice,
 		c.Config.FundingReversion.StopLossPct,
-		c.PriceUnit,
-		c.PriceScale,
-	)
-}
-
-// CalculateTrapTPPrice computes a server-side Take Profit price for a trap order.
-// trapPrice is the limit entry price of the trap.
-// LONG trap: TP above trapPrice (floor). SHORT trap: TP below trapPrice (ceil).
-// Returns 0 if Trap TakeProfitPct is not configured.
-func (c *Candidate) CalculateTrapTPPrice(trapPrice float64) float64 {
-	return tradecalc.CalculateTrapTPPrice(
-		tradecalc.Side(c.Side),
-		trapPrice,
-		c.Config.FundingTrap.TakeProfitPct,
-		c.PriceUnit,
-		c.PriceScale,
-	)
-}
-
-// CalculateTrapSLPrice computes a server-side Stop Loss price for a trap order.
-// trapPrice is the limit entry price of the trap.
-// LONG trap: SL below trapPrice (ceil). SHORT trap: SL above trapPrice (floor).
-// Returns 0 if Trap StopLossPct is not configured.
-func (c *Candidate) CalculateTrapSLPrice(trapPrice float64) float64 {
-	return tradecalc.CalculateTrapSLPrice(
-		tradecalc.Side(c.Side),
-		trapPrice,
-		c.Config.FundingTrap.StopLossPct,
 		c.PriceUnit,
 		c.PriceScale,
 	)

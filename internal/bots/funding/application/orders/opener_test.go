@@ -98,45 +98,6 @@ func TestFireIOCValidationAndSubmitError(t *testing.T) {
 	assert.False(t, got.IsSuccess())
 }
 
-func TestFireLimitTrap(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	client := mocks.NewMockClient(ctrl)
-	clock := mocks.NewMockClock(ctrl)
-	candidate := testCandidate(shared.SideOpenLong)
-
-	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-			assert.Equal(t, exchange.OrderTypeLimit, req.Type)
-			assert.Equal(t, shared.SideOpenShort, req.Side)
-			expectedOID := orders.ExternalOrderID(candidate.Symbol, candidate.SettleTime, candidate.Config.Exchange)
-			assert.Equal(t, expectedOID, req.ExternalOID)
-			assert.NotZero(t, req.TakeProfitPrice)
-			assert.NotZero(t, req.StopLossPrice)
-			return exchange.CreateOrderResult{OrderID: "trap-1", TPSLSubmitted: false}, nil
-		},
-	)
-
-	got := orders.FireLimitTrap(context.Background(), client, &candidate, clock, testLogger())
-	require.NoError(t, got.Error)
-	assert.Equal(t, "trap-1", got.OrderID)
-	assert.Equal(t, shared.SideOpenShort, got.Candidate.Side)
-}
-
-func TestFireLimitTrapInvalidPrice(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	client := mocks.NewMockClient(ctrl)
-	clock := mocks.NewMockClock(ctrl)
-	candidate := testCandidate(shared.SideOpenLong)
-	candidate.Config.FundingTrap.DepthPct = 0
-
-	got := orders.FireLimitTrap(context.Background(), client, &candidate, clock, testLogger())
-	require.Error(t, got.Error)
-}
-
 func testCandidate(side shared.Side) fundingdomain.Candidate {
 	closeSide := shared.CloseSideFor(side)
 	ref := "bestAsk"
@@ -157,14 +118,6 @@ func testCandidate(side shared.Side) fundingdomain.Candidate {
 				TakeProfitPct:     0.02,
 				StopLossPct:       0.01,
 				PostSettleTimeout: types.Duration(time.Second),
-			},
-			FundingTrap: fundingdomain.FundingTrapConfig{
-				Enabled:         true,
-				SizeRatio:       0.5,
-				MaxNotionalUSDT: 50,
-				DepthPct:        0.01,
-				TakeProfitPct:   0.02,
-				StopLossPct:     0.01,
 			},
 		},
 		TradeIntent: fundingdomain.TradeIntent{

@@ -129,25 +129,3 @@ func TestScanFundingRates_FiltersMinVol24USD(t *testing.T) {
 		t.Errorf("expected ETH_USDT, got %s", candidates[0].Symbol)
 	}
 }
-
-func TestTradeConfig_IsHedgeTrapEnabled(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		config domain.TradeConfig
-		want   bool
-	}{
-		{"enabled", domain.TradeConfig{FundingTrap: domain.FundingTrapConfig{Enabled: true}}, true},
-		{"disabled", domain.TradeConfig{FundingTrap: domain.FundingTrapConfig{Enabled: false}}, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := tt.config.IsHedgeTrapEnabled(); got != tt.want {
-				t.Errorf("got %v, want %v", got, tt.want)
-			}
-		})
-	}
-}

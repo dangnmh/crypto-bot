@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"crypto-bot/internal/bots/funding/config"
-	"crypto-bot/internal/bots/funding/domain"
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/types"
 
@@ -158,16 +157,6 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 				},
 			},
 		},
-		FundingTrap: domain.FundingTrapConfig{
-			Enabled:           true,
-			SizeRatio:         0.25,
-			MaxNotionalUSDT:   250,
-			DepthPct:          2.5,
-			TakeProfitPct:     1.5,
-			StopLossPct:       1.5,
-			TrapAfterSettle:   types.Duration(50 * time.Millisecond),
-			PostSettleTimeout: types.Duration(60 * time.Second),
-		},
 	})
 
 	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100}]`)
@@ -183,10 +172,6 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.InDelta(t, 0.03, sc.FundingReversion.StopLossPct, 1e-9, "3% -> 0.03")
 	assert.Equal(t, types.Duration(200*time.Millisecond), sc.FundingReversion.MaxLatency)
 	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.BufferTime)
-	assert.InDelta(t, 0.25, sc.FundingTrap.SizeRatio, 1e-9)
-	assert.InDelta(t, 250, sc.FundingTrap.MaxNotionalUSDT, 1e-9)
-	assert.Equal(t, types.Duration(50*time.Millisecond), sc.FundingTrap.TrapAfterSettle)
-	assert.Equal(t, types.Duration(60*time.Second), sc.FundingTrap.PostSettleTimeout)
 }
 
 func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
@@ -241,18 +226,12 @@ func TestLoad_AcceptsDecimalPercentRatiosAtConfigBoundary(t *testing.T) {
 	cfg := loadWith(t, sysWithMexc(),
 		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
 		   "minFundingRate": 0.003,
-		   "fundingReversion": {"enabled": true, "takeProfitPct": 0.03, "stopLossPct": 0.02},
-		   "fundingTrap": {"enabled": true, "depthPct": 0.025, "takeProfitPct": 0.015, "stopLossPct": 0.015,
-		     "trailing": {"enabled": true, "activationPct": 0, "callbackPct": 0.005}}}]`)
+		   "fundingReversion": {"enabled": true, "takeProfitPct": 0.03, "stopLossPct": 0.02}}]`)
 	sc := cfg.Symbols[0]
 
 	assert.InDelta(t, 0.003, sc.MinFundingRate, 1e-9, "decimal funding threshold preserved")
 	assert.InDelta(t, 0.03, sc.FundingReversion.TakeProfitPct, 1e-9, "decimal TP ratio preserved")
 	assert.InDelta(t, 0.02, sc.FundingReversion.StopLossPct, 1e-9, "decimal SL ratio preserved")
-	assert.InDelta(t, 0.025, sc.FundingTrap.DepthPct, 1e-9, "decimal trap depth preserved")
-	assert.InDelta(t, 0.015, sc.FundingTrap.TakeProfitPct, 1e-9, "decimal trap TP preserved")
-	assert.InDelta(t, 0.015, sc.FundingTrap.StopLossPct, 1e-9, "decimal trap SL preserved")
-	assert.InDelta(t, 0.005, sc.FundingTrap.Trailing.CallbackPct, 1e-9, "decimal trap trailing callback preserved")
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -283,60 +262,6 @@ func TestLoad_ParsesSymbolModes(t *testing.T) {
 			assert.Equal(t, tt.wantPosition, sc.ParsedPositionMode)
 		})
 	}
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Trap — defaults, normalization, IsHedgeTrapEnabled
-// ──────────────────────────────────────────────────────────────────────.
-
-func TestLoad_TrapDefaults_WhenEnabled(t *testing.T) {
-	t.Parallel()
-
-	cfg := loadWith(t, sysWithMexc(),
-		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
-		   "fundingTrap": {"enabled": true}}]`)
-	sc := cfg.Symbols[0]
-
-	assert.True(t, sc.IsHedgeTrapEnabled())
-	assert.InDelta(t, 0.5, sc.FundingTrap.SizeRatio, 1e-9, "default trap size ratio")
-	assert.InDelta(t, 0.05, sc.FundingTrap.DepthPct, 1e-9, "default 5% -> 0.05")
-	assert.InDelta(t, 0.02, sc.FundingTrap.TakeProfitPct, 1e-9, "default 2% -> 0.02")
-	assert.InDelta(t, 0.02, sc.FundingTrap.StopLossPct, 1e-9, "default 2% -> 0.02")
-}
-
-func TestIsHedgeTrapEnabled(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		enabled bool
-		want    bool
-	}{
-		{"enabled", true, true},
-		{"disabled", false, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			sc := &config.SymbolConfig{FundingTrap: domain.FundingTrapConfig{Enabled: tt.enabled}}
-			assert.Equal(t, tt.want, sc.IsHedgeTrapEnabled())
-		})
-	}
-}
-
-func TestLoad_NormalizesTrailingPct(t *testing.T) {
-	t.Parallel()
-
-	cfg := loadWith(t, sysWithMexc(),
-		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5,
-		   "fundingReversion": {"enabled": true},
-		   "fundingTrap": {"enabled": true, "depthPct": 3, "takeProfitPct": 2, "stopLossPct": 2,
-		            "trailing": {"enabled": true, "activationPct": 0, "callbackPct": 0.5}}}]`)
-	sc := cfg.Symbols[0]
-
-	assert.InDelta(t, 0.0, sc.FundingTrap.Trailing.ActivationPct, 1e-9, "0% -> 0.0")
-	assert.InDelta(t, 0.005, sc.FundingTrap.Trailing.CallbackPct, 1e-9, "0.5% -> 0.005")
 }
 
 // ──────────────────────────────────────────────────────────────────────

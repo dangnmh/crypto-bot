@@ -79,24 +79,6 @@ func (c *Candidate) ExecutionRefPrice() float64 {
 	)
 }
 
-// CalculateTrapVolume calculates trap contracts from the dedicated trap sizing
-// controls. If no trap sizing is configured, it preserves the candidate volume
-// for tests and legacy direct domain callers; loaded configs default sizeRatio.
-func (c *Candidate) CalculateTrapVolume(trapPrice float64) float64 {
-	hasTrapSizing := c.Config.FundingTrap.SizeRatio > 0 || c.Config.FundingTrap.MaxNotionalUSDT > 0
-	return tradecalc.CalculateTrapVolume(
-		hasTrapSizing,
-		c.Volume,
-		c.ReversionNotionalUSDT(),
-		c.Config.FundingTrap.SizeRatio,
-		c.Config.FundingTrap.MaxNotionalUSDT,
-		trapPrice,
-		c.ContractSize,
-		float64(c.MinVol),
-		c.VolScale,
-	)
-}
-
 // CalculateVolumeForNotional converts a USDT notional budget into exchange
 // contract volume using the provided reference price.
 func (c *Candidate) CalculateVolumeForNotional(notional, refPrice float64) float64 {
@@ -114,16 +96,6 @@ func (c *Candidate) ReversionNotionalUSDT() float64 {
 	return tradecalc.ReversionNotionalUSDT(c.Config.MarginUSDT, c.Config.Leverage)
 }
 
-// TrapTargetNotionalUSDT returns the configured trap notional budget after
-// applying the trap size ratio and optional absolute cap.
-func (c *Candidate) TrapTargetNotionalUSDT() float64 {
-	return tradecalc.TrapTargetNotionalUSDT(
-		c.ReversionNotionalUSDT(),
-		c.Config.FundingTrap.SizeRatio,
-		c.Config.FundingTrap.MaxNotionalUSDT,
-	)
-}
-
 // NotionalForVolume estimates USDT notional for an exchange contract volume at
 // the provided reference price.
 func (c *Candidate) NotionalForVolume(volume, refPrice float64) float64 {
@@ -133,16 +105,4 @@ func (c *Candidate) NotionalForVolume(volume, refPrice float64) float64 {
 // GetPeakPrice returns the reference extreme price right before firing IOC logic.
 func (c *Candidate) GetPeakPrice() float64 {
 	return tradecalc.GetPeakPrice(tradecalc.Side(c.Side), c.BestBid, c.BestAsk)
-}
-
-// CalculateTrapPrice calculates the post-only Trap price, snapped to precision.
-// IMPORTANT: side MUST represent the original IOC Sniper entry direction (LONG or SHORT).
-func (c *Candidate) CalculateTrapPrice() float64 {
-	return tradecalc.CalculateTrapPrice(
-		tradecalc.Side(c.Side),
-		c.GetPeakPrice(),
-		c.Config.FundingTrap.DepthPct,
-		c.PriceUnit,
-		c.PriceScale,
-	)
 }
