@@ -236,6 +236,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	duration := max(row.UpdateTime-row.CreateTime, 0)
 
 	return &exchange.ClosedPnLInfo{
+		Exchange:   "mexc",
 		Symbol:     row.Symbol,
 		EntryPrice: row.OpenAvgPrice,
 		ExitPrice:  row.CloseAvgPrice,

@@ -56,13 +56,16 @@ func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) 
 	return result, nil
 }
 
-func (c *Client) getRawPositionClose(ctx context.Context, settle, contract string) ([]gatePositionClose, error) {
+func (c *Client) getRawPositionClose(ctx context.Context, settle, contract string, startTime time.Time) ([]gatePositionClose, error) {
 	var result []gatePositionClose
 	query := url.Values{}
 	if contract != "" {
 		query.Set("contract", contract)
 	}
 	query.Set("limit", "10")
+	if !startTime.IsZero() {
+		query.Set("from", strconv.FormatInt(startTime.UnixMilli(), 10))
+	}
 	path := fmt.Sprintf("/futures/%s/position_close", settle)
 	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
@@ -158,27 +161,14 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	var matchedClose *gatePositionClose
 
 	// Retry up to 5 times (with 1s delay) to allow the exchange to process the position closure.
-	for attempt := 1; attempt <= 5; attempt++ {
-		var err error
-		closeHistory, err = c.getRawPositionClose(ctx, gateSettleUsdt, symbol)
-		if err == nil {
-			matchedClose = findMatchingCloseRecord(closeHistory, symbol, startTime)
-		}
-
-		if matchedClose != nil {
-			break
-		}
-
-		// Sleep 1s before retrying, respecting context cancellation
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(time.Second):
-		}
+	closeHistory, err := c.getRawPositionClose(ctx, gateSettleUsdt, symbol, startTime)
+	if err != nil {
+		return nil, fmt.Errorf("gate.io get raw position close for %s: %w", symbol, err)
 	}
 
+	matchedClose = findMatchingCloseRecord(closeHistory, symbol)
 	if matchedClose == nil {
-		return nil, fmt.Errorf("no matching position close record found in history for symbol %s (start time: %s)", symbol, startTime.Format(time.RFC3339))
+		return nil, fmt.Errorf("gate.io no matching position close record found in history for symbol %s", symbol)
 	}
 
 	pnlVal, _ := strconv.ParseFloat(matchedClose.Pnl, 64)
@@ -214,6 +204,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
+		Exchange:   "gate",
 		Symbol:     matchedClose.Contract,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,
@@ -249,13 +240,11 @@ func mapPosition(raw gatePosition) exchange.Position {
 }
 
 // findMatchingCloseRecord searches a slice of gatePositionClose for the newest matching close history item.
-func findMatchingCloseRecord(closeHistory []gatePositionClose, symbol string, startTime time.Time) *gatePositionClose {
+func findMatchingCloseRecord(closeHistory []gatePositionClose, symbol string) *gatePositionClose {
 	for i := range closeHistory {
 		item := &closeHistory[i]
 		if item.Contract == symbol {
-			if startTime.IsZero() || int64(item.Time) >= startTime.Unix() {
-				return item
-			}
+			return item
 		}
 	}
 	return nil

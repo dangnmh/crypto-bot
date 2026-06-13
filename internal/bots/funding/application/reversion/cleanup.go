@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
+
+// completedCleanups tracks completed request IDs to avoid duplicate fallback cleanups.
+var completedCleanups sync.Map
 
 func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Message) error {
 	var baseEvt struct {
@@ -41,6 +45,10 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 		Reason:             "cleanup_finished",
 	}
 	_ = r.publishEvent(ctx, TopicReversionCompleted, compEvt)
+
+	if reqID := baseEvt.ReqID; reqID != "" {
+		completedCleanups.Store(reqID, true)
+	}
 
 	return nil
 }

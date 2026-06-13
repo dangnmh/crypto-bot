@@ -202,6 +202,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				}
 			},
 			expectedInfo: &exchange.ClosedPnLInfo{
+				Exchange:   "mexc",
 				Symbol:     "ID_USDT",
 				EntryPrice: 0.0384,
 				ExitPrice:  0.03832,

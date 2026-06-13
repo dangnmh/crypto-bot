@@ -57,6 +57,7 @@ type AccountProvider interface {
 
 // ClosedPnLInfo represents the standardized historical ledger of a closed trade.
 type ClosedPnLInfo struct {
+	Exchange   string
 	Symbol     string
 	EntryPrice float64
 	ExitPrice  float64

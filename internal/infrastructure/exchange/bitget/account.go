@@ -293,6 +293,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
+		Exchange:   "bitget",
 		Symbol:     matchedPos.Symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

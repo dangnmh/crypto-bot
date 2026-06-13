@@ -218,6 +218,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
+		Exchange:   "hyperliquid",
 		Symbol:     latestFill.Coin,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

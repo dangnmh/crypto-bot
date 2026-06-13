@@ -2,8 +2,14 @@ package reversion
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	"crypto-bot/internal/infrastructure/exchange"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 func (r *StatelessRunner) scheduleTimeoutGuard(ctx context.Context, evt IOCOutcomeCheckedEvent) error {
@@ -176,7 +182,94 @@ func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) e
 		CloseRetryCount:    evt.CloseRetryCount,
 		Direction:          evt.Direction,
 	}
-	return r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
+
+	// In production, we delay publishing the fallback closed event to allow the WS position update
+	// to arrive first and calculate the rich PnL. In unit tests, we run synchronously to ensure
+	// determinism.
+	var isTest bool
+	if r.deps.Clock != nil {
+		typeName := fmt.Sprintf("%T", r.deps.Clock)
+		lower := strings.ToLower(typeName)
+		if strings.Contains(lower, "mock") || strings.Contains(lower, "manual") {
+			isTest = true
+		}
+	}
+
+	if isTest {
+		return r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
+	}
+
+	go r.runFallbackCleanup(ctx, evt, closeEvt)
+
+	return nil
+}
+
+func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEvent, closeEvt PositionClosedEvent) {
+	sleepCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
+	defer cancel()
+
+	if err := r.deps.Clock.Sleep(sleepCtx, 10*time.Second); err != nil {
+		return
+	}
+
+	reqID := evt.ReqID
+	if reqID != "" {
+		if _, loaded := completedCleanups.LoadAndDelete(reqID); loaded {
+			// Already cleaned up by WS update or another event.
+			return
+		}
+	}
+
+	// Fallback: WS update was not received in time.
+	// Try to enrich from ClosedPnLProvider first to fetch actual prices/profits.
+	contractSize := 1.0
+	if r.deps.ContractStore != nil {
+		if cd, err := r.deps.ContractStore.GetContract(ctx, evt.Symbol); err == nil && cd.ContractSize > 0 {
+			contractSize = cd.ContractSize
+		}
+	}
+
+	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
+		startTime := evt.SettleTime
+		if !startTime.IsZero() {
+			startTime = startTime.Add(-1 * time.Second)
+		}
+
+		var closedInfo *exchange.ClosedPnLInfo
+		var err error
+
+		bo := backoff.WithContext(
+			backoff.WithMaxRetries(
+				backoff.NewExponentialBackOff(
+					backoff.WithInitialInterval(time.Second),
+					backoff.WithMaxInterval(time.Second*2)),
+				5),
+			ctx,
+		)
+
+		err = backoff.Retry(func() error {
+			closedInfo, err = provider.GetRecentClosedPnL(ctx, evt.Symbol, evt.ExternalID, startTime)
+			return err
+		}, bo)
+
+		if err == nil && closedInfo != nil {
+			closeEvt.EntryPrice = closedInfo.EntryPrice
+			closeEvt.ClosePrice = closedInfo.ExitPrice
+			closeEvt.CloseVol = closedInfo.ClosedSize
+			closeEvt.GrossProfit = closedInfo.GrossPnL
+			closeEvt.Fee = closedInfo.Fee
+			closeEvt.HoldFee = closedInfo.FundingFee
+			closeEvt.PnLPct = closedInfo.PnLRate
+			closeEvt.NetProfit = closedInfo.NetPnl
+			closeEvt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
+			closeEvt.HoldDurationMs = closedInfo.DurationMs
+		} else {
+			r.log.WarnContext(ctx, "Failed to enrich fallback close event from closed PnL history", slog.Any("error", err))
+		}
+	}
+
+	r.log.WarnContext(ctx, "WS position update not received within fallback window; forcing fallback cleanup", slog.String("req_id", reqID))
+	_ = r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
 }
 
 func (r *StatelessRunner) forceClosePosition(

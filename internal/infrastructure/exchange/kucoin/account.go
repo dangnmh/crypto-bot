@@ -24,11 +24,11 @@ type kucoinAccountOverview struct {
 type kucoinPosition struct {
 	Symbol           string      `json:"symbol"`
 	CurrentQty       json.Number `json:"currentQty"`
-	AvgEntryPrice    string      `json:"avgEntryPrice"`
-	RealisedPNL      string      `json:"realisedPNL"`
-	UnrealisedPNL    string      `json:"unrealisedPNL"`
-	Leverage         string      `json:"leverage"`
-	LiquidationPrice string      `json:"liquidationPrice"`
+	AvgEntryPrice    json.Number `json:"avgEntryPrice"`
+	RealisedPNL      json.Number `json:"realisedPNL"`
+	UnrealisedPNL    json.Number `json:"unrealisedPNL"`
+	Leverage         json.Number `json:"leverage"`
+	LiquidationPrice json.Number `json:"liquidationPrice"`
 }
 
 type kucoinAssetsRequest struct{}
@@ -211,7 +211,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		}
 
 		absAmt := math.Abs(amt)
-		avgPx := decmath.ParseFloat(p.AvgEntryPrice)
+		avgPx := decmath.ParseFloat(p.AvgEntryPrice.String())
 
 		openPositions = append(openPositions, exchange.Position{
 			Symbol:       p.Symbol,
@@ -280,6 +280,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	duration := max(matchedItem.CloseTime-matchedItem.OpenTime, 0)
 
 	return &exchange.ClosedPnLInfo{
+		Exchange:   "kucoin",
 		Symbol:     matchedItem.Symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

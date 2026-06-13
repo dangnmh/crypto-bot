@@ -185,6 +185,7 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 		client := &mockClosedPnLClient{
 			Client: mockCli,
 			closedInfo: &exchange.ClosedPnLInfo{
+				Exchange:   "mock",
 				Symbol:     "BTC_USDT",
 				EntryPrice: 100,
 				ExitPrice:  105,

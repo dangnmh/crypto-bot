@@ -90,6 +90,7 @@ const (
 	ColorYellow EventColor = "yellow"
 	ColorGreen  EventColor = "green"
 	ColorRed    EventColor = "red"
+	ColorBlue   EventColor = "blue"
 )
 
 type ReversionEvent interface {
@@ -384,8 +385,17 @@ func (e IOCOutcomeCheckedEvent) ShouldNotify() bool {
 
 // GetColor returns the Telegram indicator color based on the outcome.
 func (e IOCOutcomeCheckedEvent) GetColor() EventColor {
+	if e.Outcome == IOCOutcomeCanceledNoFill {
+		return ColorBlue
+	}
 	if e.Outcome == IOCOutcomeUnknown {
+		if e.Reason == reversionReasonIOCUnknownNoPosition {
+			return ColorBlue
+		}
 		return ColorRed
+	}
+	if e.Color != "" {
+		return e.Color
 	}
 	return ColorYellow
 }
@@ -565,6 +575,15 @@ func (e AbortEvent) GetMessage() string {
 }
 func (e AbortEvent) GetDataMap() map[string]any {
 	return map[string]any{keySymbol: e.Symbol, keyReason: string(e.Reason)}
+}
+func (e AbortEvent) GetColor() EventColor {
+	if e.Reason == reversionReasonIOCCanceledNoPosition || e.Reason == reversionReasonIOCUnknownNoPosition {
+		return ColorBlue
+	}
+	if e.Color != "" {
+		return e.Color
+	}
+	return ColorYellow
 }
 
 type ErrorEvent struct {

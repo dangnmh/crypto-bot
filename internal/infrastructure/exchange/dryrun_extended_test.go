@@ -146,7 +146,7 @@ type stubClosedPnLClient struct {
 }
 
 func (s *stubClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	return &exchange.ClosedPnLInfo{Symbol: symbol, EntryPrice: 123}, nil
+	return &exchange.ClosedPnLInfo{Exchange: "stub", Symbol: symbol, EntryPrice: 123}, nil
 }
 
 func TestDryRunClient_GetRecentClosedPnL_Supported(t *testing.T) {

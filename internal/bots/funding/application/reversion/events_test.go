@@ -316,6 +316,26 @@ func TestReversionEventColor(t *testing.T) {
 
 	pnlZero := reversion.FinalPnLEvent{BaseReversionEvent: base, NetPnL: 0}
 	assert.Equal(t, reversion.ColorYellow, pnlZero.GetColor())
+
+	// IOCOutcomeCheckedEvent colors
+	iocOutcomeCanceled := reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: base, Outcome: reversion.IOCOutcomeCanceledNoFill}
+	assert.Equal(t, reversion.ColorBlue, iocOutcomeCanceled.GetColor())
+
+	iocOutcomeUnknownNoPos := reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: base, Outcome: reversion.IOCOutcomeUnknown, Reason: reversion.ReversionReason("ioc_outcome_unknown_no_position")}
+	assert.Equal(t, reversion.ColorBlue, iocOutcomeUnknownNoPos.GetColor())
+
+	iocOutcomeUnknownOther := reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: base, Outcome: reversion.IOCOutcomeUnknown, Reason: reversion.ReversionReason("other_reason")}
+	assert.Equal(t, reversion.ColorRed, iocOutcomeUnknownOther.GetColor())
+
+	// AbortEvent colors
+	abortCanceled := reversion.AbortEvent{BaseReversionEvent: base, Reason: reversion.ReversionReason("ioc_canceled_no_position")}
+	assert.Equal(t, reversion.ColorBlue, abortCanceled.GetColor())
+
+	abortUnknownNoPos := reversion.AbortEvent{BaseReversionEvent: base, Reason: reversion.ReversionReason("ioc_outcome_unknown_no_position")}
+	assert.Equal(t, reversion.ColorBlue, abortUnknownNoPos.GetColor())
+
+	abortOther := reversion.AbortEvent{BaseReversionEvent: base, Reason: reversion.ReversionReason("other_reason")}
+	assert.Equal(t, reversion.ColorYellow, abortOther.GetColor())
 }
 
 func TestFinalPnLEvent_GetMessage(t *testing.T) {
