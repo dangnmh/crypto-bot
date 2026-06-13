@@ -342,7 +342,17 @@ func (c *Client) mapSubmitOrder(req exchange.SubmitOrderRequest) gateFuturesOrde
 		Tif:      tifVal,
 		Size:     sizeVal,
 		AutoSize: autoSizeVal,
-		Close:    closeVal,
+	}
+
+	if autoSizeVal != "" {
+		order.ReduceOnly = new(true)
+	} else {
+		if closeVal {
+			order.Close = new(true)
+		}
+		if req.ReduceOnly {
+			order.ReduceOnly = new(true)
+		}
 	}
 
 	if req.ExternalOID != "" {

@@ -296,8 +296,8 @@ type gateFuturesOrder struct {
 	Contract   string  `json:"contract"`
 	Size       int64   `json:"size"`
 	Price      string  `json:"price,omitempty"`
-	Close      bool    `json:"close,omitempty"`
-	ReduceOnly bool    `json:"reduce_only,omitempty"`
+	Close      *bool   `json:"close,omitempty"`
+	ReduceOnly *bool   `json:"reduce_only,omitempty"`
 	Tif        string  `json:"tif,omitempty"`
 	Text       string  `json:"text,omitempty"`
 	AutoSize   string  `json:"auto_size,omitempty"`
