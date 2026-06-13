@@ -24,6 +24,7 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -95,6 +96,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockClient := mocks.NewMockClient(ctrl)
+	mockClient.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
 	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
@@ -244,17 +246,19 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	// 4. Watcher/notifier expectations
+	watcherDone := make(chan struct{})
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
 		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
 			// Trigger a fill update asynchronously
 			go func() {
-				time.Sleep(10 * time.Millisecond)
+				defer close(watcherDone)
+				time.Sleep(100 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
 					Symbol:       "BTC_USDT",
 					HoldVol:      1.5,
 					OpenAvgPrice: 60005.0,
 				})
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
 					Symbol:       "BTC_USDT",
 					HoldVol:      0.0,
@@ -292,28 +296,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	err = executeReversionHelper(t, bus, "req_success_1", candidate, now.Add(10*time.Second))
 	assert.NoError(t, err)
 
-	// Wait for the completion event for "BTC_USDT" to ensure all mocks are met
-	for {
-		select {
-		case msg, ok := <-ch:
-			require.True(t, ok)
-			var compEvt reversion.ReversionCompletedEvent
-			err := json.Unmarshal(msg.Payload, &compEvt)
-			if err == nil && compEvt.Symbol == "BTC_USDT" {
-				msg.Ack()
-				// Wait for CreateOrder to actually be called to avoid asynchronous race conditions in parallel tests
-				select {
-				case <-createOrderCalled:
-				case <-time.After(5 * time.Second):
-					t.Fatal("Timeout waiting for CreateOrder to be called")
-				}
-				return
-			}
-			msg.Ack()
-		case <-time.After(15 * time.Second):
-			t.Fatal("Timeout waiting for TopicReversionCompleted")
-		}
-	}
+	waitCompleted(t, ch, createOrderCalled, watcherDone, 15*time.Second)
 }
 
 func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
@@ -323,6 +306,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockClient := mocks.NewMockClient(ctrl)
+	mockClient.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
 	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
@@ -465,14 +449,18 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	}, nil).AnyTimes()
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
+	watcherDone := make(chan struct{})
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
 		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
 			go func() {
+				defer close(watcherDone)
+				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
 					Symbol:       "BTC_USDT",
 					HoldVol:      1.5,
 					OpenAvgPrice: 60005.0,
 				})
+				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
 					Symbol:       "BTC_USDT",
 					HoldVol:      0.0,
@@ -520,30 +508,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	// Wait for CandidateFoundEvent to be captured
 	wg.Wait()
 
-	// Wait for completion event
-	for {
-		select {
-		case msg, ok := <-compChan:
-			require.True(t, ok)
-			var compEvt reversion.ReversionCompletedEvent
-			err := json.Unmarshal(msg.Payload, &compEvt)
-			if err == nil && compEvt.Symbol == "BTC_USDT" {
-				msg.Ack()
-				goto Verified
-			}
-			msg.Ack()
-		case <-time.After(5 * time.Second):
-			t.Fatal("Timeout waiting for TopicReversionCompleted")
-		}
-	}
-
-Verified:
-	// Wait for CreateOrder to actually be called to avoid asynchronous race conditions in parallel tests
-	select {
-	case <-createOrderCalled:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for CreateOrder to be called")
-	}
+	waitCompleted(t, compChan, createOrderCalled, watcherDone, 5*time.Second)
 
 	// Verify that the generated ExternalID is <= 32 chars, not empty, and matches the new format
 	assert.NotEmpty(t, candidateEvt.ExternalID)
@@ -562,6 +527,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockClient := mocks.NewMockClient(ctrl)
+	mockClient.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
 	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
@@ -709,14 +675,18 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
 	// 4. Watcher/notifier expectations
+	watcherDone := make(chan struct{})
 	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
 		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
 			go func() {
+				defer close(watcherDone)
+				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
 					Symbol:       "BTC_USDT",
 					HoldVol:      1.5,
 					OpenAvgPrice: 60005.0,
 				})
+				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
 					Symbol:       "BTC_USDT",
 					HoldVol:      0.0,
@@ -749,18 +719,17 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	// Build candidate found event with SupportLeverageOnOrder = true
 	startEvt := reversion.CandidateFoundEvent{
 		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:                   reversion.FlowReversion,
-			ReqID:                  "req_skip_leverage",
-			Symbol:                 candidate.Symbol,
-			Exchange:               candidate.Config.Exchange,
-			SendNotify:             false,
-			Timestamp:              time.Now(),
-			EventID:                watermill.NewUUID(),
-			Seq:                    1,
-			Topic:                  reversion.TopicReversionCandidate,
-			ExternalID:             orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
-			SettleTime:             now.Add(10 * time.Second),
-			SupportLeverageOnOrder: true, // We explicitly set this to true to verify skipping ChangeLeverage!
+			Flow:       reversion.FlowReversion,
+			ReqID:      "req_skip_leverage",
+			Symbol:     candidate.Symbol,
+			Exchange:   candidate.Config.Exchange,
+			SendNotify: false,
+			Timestamp:  time.Now(),
+			EventID:    watermill.NewUUID(),
+			Seq:        1,
+			Topic:      reversion.TopicReversionCandidate,
+			ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
+			SettleTime: now.Add(10 * time.Second),
 		},
 		Candidate: candidate,
 	}
@@ -768,25 +737,33 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	err = bus.Publish(reversion.TopicReversionCandidate, startEvt)
 	require.NoError(t, err)
 
-	// Wait for completion event
+	waitCompleted(t, compChan, createOrderCalled, watcherDone, 5*time.Second)
+}
+
+func waitCompleted(t *testing.T, ch <-chan *message.Message, createOrderCalled, watcherDone <-chan struct{}, timeout time.Duration) {
+	t.Helper()
 	for {
 		select {
-		case msg, ok := <-compChan:
+		case msg, ok := <-ch:
 			require.True(t, ok)
 			var compEvt reversion.ReversionCompletedEvent
 			err := json.Unmarshal(msg.Payload, &compEvt)
 			if err == nil && compEvt.Symbol == "BTC_USDT" {
 				msg.Ack()
-				// Wait for CreateOrder to actually be called to avoid asynchronous race conditions in parallel tests
 				select {
 				case <-createOrderCalled:
 				case <-time.After(5 * time.Second):
 					t.Fatal("Timeout waiting for CreateOrder to be called")
 				}
+				select {
+				case <-watcherDone:
+				case <-time.After(5 * time.Second):
+					t.Fatal("Timeout waiting for watcher to finish")
+				}
 				return
 			}
 			msg.Ack()
-		case <-time.After(5 * time.Second):
+		case <-time.After(timeout):
 			t.Fatal("Timeout waiting for TopicReversionCompleted")
 		}
 	}

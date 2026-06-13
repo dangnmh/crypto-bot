@@ -376,7 +376,6 @@ func TestPublishEventNotificationIncludesExchange(t *testing.T) {
 			Exchange:   "bybit",
 			SendNotify: true,
 		},
-		Volume: 1,
 	}))
 
 	select {
@@ -508,20 +507,13 @@ func TestWatcherFillBeforeOutcomeDoesNotDuplicateOrderFilled(t *testing.T) {
 
 	reqID := "trace-req-no-duplicate-fill"
 	require.NoError(t, runner.publishEvent(context.Background(), TopicReversionOrderFilled, OrderFilledEvent{
-		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
-		OrderID:            "ord-fill",
+		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-fill"},
 		FillVol:            1,
 	}))
 	require.NoError(t, runner.handleIOCOutcomeChecked(context.Background(), IOCOutcomeCheckedEvent{
-		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
-		IOCEvent: IOCSubmittedEvent{
-			BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
-			Candidate:          reversionTestCandidate(),
-			OrderID:            "ord-fill",
-		},
-		OrderID: "ord-fill",
-		Outcome: IOCOutcomeFilled,
-		HoldVol: 1,
+		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-fill"},
+		Outcome:            IOCOutcomeFilled,
+		HoldVol:            1,
 	}))
 
 	assert.Equal(t, 1, countTopic(bus, TopicReversionOrderFilled))
@@ -578,9 +570,8 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 			}
 
 			submitted := IOCSubmittedEvent{
-				BaseReversionEvent: BaseReversionEvent{ReqID: tt.reqID, Symbol: "BTC_USDT"},
+				BaseReversionEvent: BaseReversionEvent{ReqID: tt.reqID, Symbol: "BTC_USDT", OrderID: "ord-none"},
 				Candidate:          reversionTestCandidate(),
-				OrderID:            "ord-none",
 			}
 			outcome := runner.resolveIOCOutcome(context.Background(), submitted)
 			assert.Equal(t, tt.wantReason, outcome.Reason)
@@ -614,15 +605,9 @@ func TestIOCPartialFillSchedulesTimeoutGuard(t *testing.T) {
 
 	reqID := "trace-req-partial-fill"
 	require.NoError(t, runner.handleIOCOutcomeChecked(context.Background(), IOCOutcomeCheckedEvent{
-		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
-		IOCEvent: IOCSubmittedEvent{
-			BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
-			Candidate:          reversionTestCandidate(),
-			OrderID:            "ord-partial",
-		},
-		OrderID: "ord-partial",
-		Outcome: IOCOutcomePartialFilled,
-		HoldVol: 0.5,
+		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-partial"},
+		Outcome:            IOCOutcomePartialFilled,
+		HoldVol:            0.5,
 	}))
 
 	assert.Equal(t, 1, countTopic(bus, TopicReversionTimeoutGuardScheduled))
@@ -654,14 +639,11 @@ func TestTimeoutForceClosePathCompletes(t *testing.T) {
 
 	reqID := "trace-req-force-close"
 	ioc := IOCSubmittedEvent{
-		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
+		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-timeout", Side: shared.SideOpenLong},
 		Candidate:          reversionTestCandidate(),
-		OrderID:            "ord-timeout",
-		Side:               shared.SideOpenLong,
 	}
 	require.NoError(t, runner.handleTimeoutPositionChecked(context.Background(), TimeoutPositionCheckedEvent{
-		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT"},
-		IOCEvent:           ioc,
+		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: ioc.OrderID, Side: ioc.Side},
 		Timeout:            10 * time.Second,
 		StartedAt:          clock.Now().Add(-10 * time.Second),
 		HoldVol:            1.25,
@@ -906,13 +888,9 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 
 	cand := reversionTestCandidate()
 	require.NoError(t, runner.waitTimeoutDeadline(context.Background(), TimeoutGuardScheduledEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-		IOCEvent: IOCSubmittedEvent{
-			BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: now.Add(-time.Second)},
-			Candidate:          cand,
-		},
-		Timeout:   10 * time.Millisecond,
-		StartedAt: now,
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT", SettleTime: now.Add(-time.Second)},
+		Timeout:            10 * time.Millisecond,
+		StartedAt:          now,
 	}))
 
 	require.NoError(t, runner.timeoutGuard(context.Background(), IOCSubmittedEvent{

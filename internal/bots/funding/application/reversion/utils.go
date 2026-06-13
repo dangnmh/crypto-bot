@@ -271,18 +271,18 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		seq = prev.Seq + 1
 	}
 	return BaseReversionEvent{
-		Flow:                   FlowReversion,
-		ReqID:                  prev.ReqID,
-		Symbol:                 symbol,
-		Exchange:               prev.Exchange,
-		Color:                  prev.Color,
-		OrderID:                prev.OrderID,
-		ExternalID:             prev.ExternalID,
-		Timestamp:              timestamp,
-		Seq:                    seq,
-		PreviousTopic:          prev.Topic,
-		SettleTime:             prev.SettleTime,
-		SupportLeverageOnOrder: prev.SupportLeverageOnOrder,
+		Flow:          FlowReversion,
+		ReqID:         prev.ReqID,
+		Symbol:        symbol,
+		Exchange:      prev.Exchange,
+		Color:         prev.Color,
+		OrderID:       prev.OrderID,
+		ExternalID:    prev.ExternalID,
+		Timestamp:     timestamp,
+		Seq:           seq,
+		PreviousTopic: prev.Topic,
+		SettleTime:    prev.SettleTime,
+		Side:          prev.Side,
 	}
 }
 
@@ -407,7 +407,6 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 	if pos.HoldVol > 0 {
 		evt := OrderFilledEvent{
 			BaseReversionEvent: nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
-			OrderID:            "", // Stateless matches purely by symbol
 			Side:               side,
 			CloseSide:          closeSide,
 			FillPrice:          fillPrice,
@@ -464,7 +463,6 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		VolumeUSDT:         pos.CloseVol * closePrice * contractSize,
 		Fee:                pos.Fee,
 		HoldFee:            pos.HoldFee,
-		Direction:          side,
 		Method:             "watcher",
 	}
 

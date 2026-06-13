@@ -47,9 +47,6 @@ func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFound
 		BaseReversionEvent: nextReversionBase(startEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
 		MaxWaitMs:          maxWait.Milliseconds(),
-		BestBid:            c.BestBid,
-		BestAsk:            c.BestAsk,
-		LastPrice:          c.LastPrice,
 	}
 
 	return r.publishEvent(ctx, TopicReversionArmMarketReady, evt)
@@ -75,8 +72,6 @@ func (r *StatelessRunner) handleArmMarketReady(ctx context.Context, evt ArmMarke
 		Candidate:          c,
 		IOCPrice:           ioc,
 		RefPrice:           refPrice,
-		Slippage:           c.Slippage,
-		RequestedVolume:    c.Volume,
 	}
 
 	return r.publishEvent(ctx, TopicReversionArmPlanCalculated, next)
@@ -101,8 +96,6 @@ func (r *StatelessRunner) handleArmPlanCalculated(ctx context.Context, evt ArmPl
 		Candidate:          c,
 		IOCPrice:           evt.IOCPrice,
 		RefPrice:           evt.RefPrice,
-		Slippage:           evt.Slippage,
-		RequestedVolume:    evt.RequestedVolume,
 		AdjustedVolume:     c.Volume,
 		Passed:             passed,
 		RejectReason:       rejectReason,
@@ -129,9 +122,6 @@ func (r *StatelessRunner) handleSafetyChecked(ctx context.Context, safetyEvt Saf
 	evt := ArmedEvent{
 		BaseReversionEvent: nextReversionBase(safetyEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
-		Volume:             c.Volume,
-		IOCPrice:           safetyEvt.IOCPrice,
-		Slippage:           c.Slippage,
 	}
 
 	return r.publishEvent(ctx, TopicReversionArmed, evt)

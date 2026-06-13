@@ -201,6 +201,7 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 			sc.FundingReversion.StopLossPct = 5
 		}
 		sc.FundingReversion.TakeProfitPct = normalizePercentRatio(sc.FundingReversion.TakeProfitPct)
+		sc.FundingReversion.StopLossPct = normalizePercentRatio(sc.FundingReversion.StopLossPct)
 	}
 }
 

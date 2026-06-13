@@ -118,13 +118,8 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 		Candidate:          c,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		FireOffsetMs:       evt.FireOffsetMs,
-		BestBid:            c.BestBid,
-		BestAsk:            c.BestAsk,
-		LastPrice:          c.LastPrice,
 		IOCPrice:           ioc,
 		RefPrice:           refPrice,
-		Slippage:           c.Slippage,
-		RequestedVolume:    requestedVolume,
 		AdjustedVolume:     c.Volume,
 		Passed:             passed,
 		RejectReason:       rejectReason,
@@ -139,8 +134,6 @@ func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePla
 		submitted := IOCSubmittedEvent{
 			BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 			Candidate:          c,
-			Side:               c.Side,
-			CloseSide:          c.CloseSide,
 			FireTimestamp:      r.deps.Clock.Now(),
 			Error:              evt.RejectReason,
 		}
@@ -178,7 +171,7 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 
 	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
 	leverage := evt.Candidate.Config.Leverage
-	if leverage > 0 && !evt.SupportLeverageOnOrder {
+	if leverage > 0 && !r.deps.Client.SupportLeverageOnOrder() {
 		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
 		posType := exchange.PositionTypeLong
 		if !evt.Candidate.Side.IsLong() {
@@ -224,13 +217,7 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 		next := IOCSubmittedEvent{
 			BaseReversionEvent: base,
 			Candidate:          c,
-			OrderID:            res.OrderID,
-			ExternalID:         res.ExternalID,
-			Side:               c.Side,
-			CloseSide:          c.CloseSide,
-			OrderType:          exchange.OrderTypeIOC,
 			IntendedPrice:      res.Price,
-			Volume:             res.Volume,
 			TPPrice:            res.TakeProfitPrice,
 			SLPrice:            res.StopLossPrice,
 			TPSLSubmitted:      res.TPSLSubmitted,
@@ -241,8 +228,6 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 		if !res.TPSLSubmitted && (res.TakeProfitPrice > 0 || res.StopLossPrice > 0) {
 			tpslEvt := TPSLRequiredEvent{
 				BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
-				OrderID:            res.OrderID,
-				Side:               c.Side,
 				PositionMode:       shared.PositionMode(c.Config.ParsedPositionMode),
 				TakeProfitPrice:    res.TakeProfitPrice,
 				StopLossPrice:      res.StopLossPrice,
@@ -264,12 +249,7 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 	next := IOCSubmittedEvent{
 		BaseReversionEvent: base,
 		Candidate:          c,
-		OrderID:            res.OrderID,
-		ExternalID:         res.ExternalID,
-		Side:               c.Side,
-		CloseSide:          c.CloseSide,
 		IntendedPrice:      res.Price,
-		Volume:             res.Volume,
 		FireTimestamp:      evt.FireTimestamp,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		Error:              errText,

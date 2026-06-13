@@ -13,7 +13,13 @@ import (
 )
 
 func (r *StatelessRunner) scheduleTimeoutGuard(ctx context.Context, evt IOCOutcomeCheckedEvent) error {
-	return r.scheduleTimeoutGuardAfter(ctx, evt.BaseReversionEvent, evt.IOCEvent)
+	guardEvt := TimeoutGuardScheduledEvent{
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		Timeout:            evt.Timeout,
+		StartedAt:          r.deps.Clock.Now(),
+	}
+
+	return r.publishEvent(ctx, TopicReversionTimeoutGuardScheduled, guardEvt)
 }
 
 func (r *StatelessRunner) scheduleTimeoutGuardAfter(ctx context.Context, prev BaseReversionEvent, evt IOCSubmittedEvent) error {
@@ -24,7 +30,6 @@ func (r *StatelessRunner) scheduleTimeoutGuardAfter(ctx context.Context, prev Ba
 
 	guardEvt := TimeoutGuardScheduledEvent{
 		BaseReversionEvent: nextReversionBase(prev, evt.Symbol, r.deps.Clock.Now()),
-		IOCEvent:           evt,
 		Timeout:            timeout,
 		StartedAt:          r.deps.Clock.Now(),
 	}
@@ -49,7 +54,7 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 		timeout = 60 * time.Second
 	}
 
-	settleTime := evt.IOCEvent.SettleTime
+	settleTime := evt.SettleTime
 	r.log.InfoContext(ctx, "Reversion timeout guard started",
 		slog.String("symbol", evt.Symbol),
 		slog.Duration("timeout", timeout),
@@ -73,7 +78,6 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 
 	next := TimeoutPositionCheckedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
-		IOCEvent:           evt.IOCEvent,
 		Timeout:            timeout,
 		StartedAt:          evt.StartedAt,
 		HoldVol:            holdVol,
@@ -100,7 +104,6 @@ func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt 
 
 	initEvt := ForceCloseInitiatedEvent{
 		BaseReversionEvent: nextNotifyReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
-		IOCEvent:           evt.IOCEvent,
 		Timeout:            evt.Timeout,
 		StartedAt:          evt.StartedAt,
 		HoldVol:            evt.HoldVol,
@@ -112,12 +115,11 @@ func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt 
 func (r *StatelessRunner) forceCloseTimedOutPosition(
 	ctx context.Context,
 	prev BaseReversionEvent,
-	firedEvt IOCSubmittedEvent,
 	holdVol float64,
 	timeout time.Duration,
 	startedAt time.Time,
 ) {
-	symbol := firedEvt.Symbol
+	symbol := prev.Symbol
 
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -130,7 +132,6 @@ func (r *StatelessRunner) forceCloseTimedOutPosition(
 
 	completedEvt := ForceCloseCompletedEvent{
 		BaseReversionEvent: nextReversionBase(prev, symbol, r.deps.Clock.Now()),
-		IOCEvent:           firedEvt,
 		Timeout:            timeout,
 		StartedAt:          startedAt,
 		HoldVol:            holdVol,
@@ -142,7 +143,7 @@ func (r *StatelessRunner) forceCloseTimedOutPosition(
 }
 
 func (r *StatelessRunner) handleForceCloseInitiated(ctx context.Context, evt ForceCloseInitiatedEvent) error {
-	r.forceCloseTimedOutPosition(ctx, evt.BaseReversionEvent, evt.IOCEvent, evt.HoldVol, evt.Timeout, evt.StartedAt)
+	r.forceCloseTimedOutPosition(ctx, evt.BaseReversionEvent, evt.HoldVol, evt.Timeout, evt.StartedAt)
 	return nil
 }
 
@@ -162,7 +163,6 @@ func (r *StatelessRunner) handleForceCloseCompleted(ctx context.Context, evt For
 		CloseRetryCount:     evt.CloseRetryCount,
 		HoldVol:             evt.HoldVol,
 		HoldDurationMs:      now.Sub(evt.StartedAt).Milliseconds(),
-		Direction:           evt.IOCEvent.Side,
 	}
 	return r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
 }
@@ -180,7 +180,6 @@ func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) e
 		Method:             string(reversionMethodFallbackClose),
 		HoldDurationMs:     evt.HoldDurationMs,
 		CloseRetryCount:    evt.CloseRetryCount,
-		Direction:          evt.Direction,
 	}
 
 	// In production, we delay publishing the fallback closed event to allow the WS position update
