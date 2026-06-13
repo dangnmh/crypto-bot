@@ -13,7 +13,7 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-// Explicit request/response structs for account endpoints.
+const exchangeName = "gate"
 
 type gateAssetsRequest struct {
 	Settle string `json:"settle"`
@@ -157,11 +157,22 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries position close history directly using a retry loop and maps the closed position metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("gate get order by external ID %s failed: %w", extOrderID, err)
+	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
+
 	var closeHistory []gatePositionClose
 	var matchedClose *gatePositionClose
 
 	// Retry up to 5 times (with 1s delay) to allow the exchange to process the position closure.
-	closeHistory, err := c.getRawPositionClose(ctx, gateSettleUsdt, symbol, startTime)
+	closeHistory, err = c.getRawPositionClose(ctx, gateSettleUsdt, symbol, startTime)
 	if err != nil {
 		return nil, fmt.Errorf("gate.io get raw position close for %s: %w", symbol, err)
 	}
@@ -204,7 +215,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "gate",
+		Exchange:   exchangeName,
 		Symbol:     matchedClose.Contract,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

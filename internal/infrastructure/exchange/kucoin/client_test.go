@@ -692,6 +692,19 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch r.URL.Path {
+		case "/api/v1/orders/external_close_oid":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"msg": "success",
+				"data": {
+					"id": "close_order_id_123",
+					"clientOid": "external_close_oid",
+					"symbol": "XBTUSDTM",
+					"status": "done",
+					"statusVal": "done",
+					"isActive": false
+				}
+			}`))
 		case "/api/v1/orders/byClientOid":
 			assert.Equal(t, "external_close_oid", r.URL.Query().Get("clientOid"))
 			_, _ = w.Write([]byte(`{

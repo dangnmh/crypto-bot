@@ -14,6 +14,8 @@ import (
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
+const exchangeName = "hyperliquid"
+
 type hyperliquidUserStateRequest struct {
 	UserAddress string
 }
@@ -133,8 +135,18 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries the recent trade fills from Hyperliquid for a symbol, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid get order by external ID %s failed: %w", extOrderID, err)
+	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
+
 	if c.userAddress == "" {
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}
@@ -156,7 +168,43 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("hyperliquid get user fills: %w", err)
 	}
 
-	// Filter by symbol and startTime.
+	symFills := filterHyperliquidFills(fills, symbol, startTime)
+	if len(symFills) == 0 {
+		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
+	}
+
+	latestFill := findLatestHyperliquidFill(symFills)
+	agg := aggregateHyperliquidFills(symFills, closingOrderId)
+
+	if agg.totalQty == 0 {
+		return nil, fmt.Errorf("zero quantity for closing order %d", closingOrderId)
+	}
+
+	exitPrice := agg.weightedPriceSum / agg.totalQty
+	var entryPrice float64
+
+	// If closing side was Sell ("S"), the position was Long.
+	isLong := strings.EqualFold(latestFill.Side, "S")
+	if isLong {
+		entryPrice = exitPrice - (agg.totalRealizedPnl / agg.totalQty)
+	} else {
+		entryPrice = exitPrice + (agg.totalRealizedPnl / agg.totalQty)
+	}
+
+	return &exchange.ClosedPnLInfo{
+		Exchange:   exchangeName,
+		Symbol:     latestFill.Coin,
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: agg.totalQty,
+		GrossPnL:   agg.totalRealizedPnl,
+		Fee:        agg.totalCommission,
+		FundingFee: 0,
+		DurationMs: 0,
+	}, nil
+}
+
+func filterHyperliquidFills(fills []hl.Fill, symbol string, startTime time.Time) []hl.Fill {
 	var symFills []hl.Fill
 	for i := range fills {
 		f := &fills[i]
@@ -167,27 +215,34 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 			symFills = append(symFills, *f)
 		}
 	}
+	return symFills
+}
 
-	if len(symFills) == 0 {
-		return nil, fmt.Errorf("no user fills found for symbol %s", symbol)
+func findLatestHyperliquidFill(fills []hl.Fill) *hl.Fill {
+	if len(fills) == 0 {
+		return nil
 	}
-
-	// Find the latest fill by time.
-	latestFill := &symFills[0]
-	for i := range symFills {
-		f := &symFills[i]
+	latestFill := &fills[0]
+	for i := range fills {
+		f := &fills[i]
 		if f.Time > latestFill.Time {
 			latestFill = f
 		}
 	}
+	return latestFill
+}
 
-	var totalQty float64
-	var totalRealizedPnl float64
-	var totalCommission float64
-	var weightedPriceSum float64
+type hlAggResult struct {
+	totalQty         float64
+	totalRealizedPnl float64
+	totalCommission  float64
+	weightedPriceSum float64
+}
 
-	for i := range symFills {
-		item := &symFills[i]
+func aggregateHyperliquidFills(fills []hl.Fill, closingOrderId int64) hlAggResult {
+	var res hlAggResult
+	for i := range fills {
+		item := &fills[i]
 		if item.Oid != closingOrderId {
 			continue
 		}
@@ -196,36 +251,10 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		realizedPnl, _ := strconv.ParseFloat(item.ClosedPnl, 64)
 		commission, _ := strconv.ParseFloat(item.Fee, 64)
 
-		totalQty += qty
-		totalRealizedPnl += realizedPnl
-		totalCommission += commission
-		weightedPriceSum += price * qty
+		res.totalQty += qty
+		res.totalRealizedPnl += realizedPnl
+		res.totalCommission += commission
+		res.weightedPriceSum += price * qty
 	}
-
-	if totalQty == 0 {
-		return nil, fmt.Errorf("zero quantity for closing order %d", closingOrderId)
-	}
-
-	exitPrice := weightedPriceSum / totalQty
-	var entryPrice float64
-
-	// If closing side was Sell ("S"), the position was Long.
-	isLong := strings.EqualFold(latestFill.Side, "S")
-	if isLong {
-		entryPrice = exitPrice - (totalRealizedPnl / totalQty)
-	} else {
-		entryPrice = exitPrice + (totalRealizedPnl / totalQty)
-	}
-
-	return &exchange.ClosedPnLInfo{
-		Exchange:   "hyperliquid",
-		Symbol:     latestFill.Coin,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: totalQty,
-		GrossPnL:   totalRealizedPnl,
-		Fee:        totalCommission,
-		FundingFee: 0,
-		DurationMs: 0,
-	}, nil
+	return res
 }

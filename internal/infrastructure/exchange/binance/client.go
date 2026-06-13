@@ -132,12 +132,17 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 				Path:    path,
 			}
 		}
+		// Skip warning logs and return nil if margin type change is not needed
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, "-4046") || strings.Contains(strings.ToLower(bodyStr), "no need to change") {
+			return nil
+		}
 		c.logger.WarnContext(ctx, "🟡 Binance Non-200 response",
 			"status", resp.StatusCode,
 			"path", path,
-			"body", string(body),
+			"body", bodyStr,
 		)
-		return fmt.Errorf("binance API error: status=%d body=%s", resp.StatusCode, string(body))
+		return fmt.Errorf("binance API error: status=%d body=%s", resp.StatusCode, bodyStr)
 	}
 
 	if result != nil {

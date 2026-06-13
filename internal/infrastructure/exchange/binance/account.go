@@ -15,6 +15,8 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+const exchangeName = "binance"
+
 // Explicit request/response structs for account endpoints.
 
 type binanceWalletBalanceRequest struct{}
@@ -222,6 +224,12 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	if err != nil {
 		return nil, fmt.Errorf("binance get order by external ID %s failed: %w", extOrderID, err)
 	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
 	openingOrderId, parseErr := strconv.ParseInt(orderInfo.OrderID, 10, 64)
 	if parseErr != nil {
 		return nil, fmt.Errorf("binance parse numeric order ID %s failed: %w", orderInfo.OrderID, parseErr)
@@ -262,7 +270,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "binance",
+		Exchange:   exchangeName,
 		Symbol:     symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

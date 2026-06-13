@@ -12,6 +12,8 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+const exchangeName = "kucoin"
+
 type kucoinAccountOverview struct {
 	Currency         string `json:"currency"`
 	AccountEquity    string `json:"accountEquity"`
@@ -227,6 +229,17 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries historical position records, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("kucoin get order by external ID %s failed: %w", extOrderID, err)
+	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
+
 	// 1. Get closing order by client OID.
 	closingOrder, err := c.getRawOrderByClientOid(ctx, extOrderID)
 	if err != nil {

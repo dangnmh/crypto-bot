@@ -1005,7 +1005,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"retCode": 50002,
 				"retMsg": "Mock error"
 			}`,
-			wantErr: "bybit get order by external ID error: retCode=50002",
+			wantErr: "bybit get order error: retCode=50002",
 		},
 		{
 			name: "API Error in Closed PnL",

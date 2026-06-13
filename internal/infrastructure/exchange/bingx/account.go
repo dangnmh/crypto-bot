@@ -12,6 +12,8 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+const exchangeName = "bingx"
+
 // Explicit request/response structs for account endpoints.
 
 type bingxUserIncomeRequest struct {
@@ -212,6 +214,12 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	if err != nil {
 		return nil, fmt.Errorf("bingx get order by external ID %s failed: %w", extOrderID, err)
 	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
 
 	if orderInfo.DealVol == 0 {
 		return nil, fmt.Errorf("zero deal volume for opening order %s", extOrderID)
@@ -244,7 +252,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "bingx",
+		Exchange:   exchangeName,
 		Symbol:     symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

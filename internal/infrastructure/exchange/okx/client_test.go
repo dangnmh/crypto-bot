@@ -862,36 +862,51 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/account/positions-history", r.URL.Path)
-		assert.Equal(t, "SWAP", r.URL.Query().Get("instType"))
-		assert.Equal(t, "BTC-USDT-SWAP", r.URL.Query().Get("instId"))
-
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"instId": "BTC-USDT-SWAP",
-					"openAvgPx": "50000.0",
-					"closeAvgPx": "51000.0",
-					"closeTotalPos": "0.1",
-					"pnl": "100.0",
-					"fee": "-0.5",
-					"fundingFee": "-0.1",
-					"realizedPnl": "99.4",
-					"cTime": "1597026383000",
-					"uTime": "1597026385000",
-					"posSide": "long",
-					"pos": "1"
-				}
-			]
-		}`))
+
+		switch r.URL.Path {
+		case "/api/v5/trade/orders-pending":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"ordId": "ext-123",
+						"clOrdId": "ext-123",
+						"state": "filled"
+					}
+				]
+			}`))
+		case "/api/v5/account/positions-history":
+			assert.Equal(t, "SWAP", r.URL.Query().Get("instType"))
+			assert.Equal(t, "BTC-USDT-SWAP", r.URL.Query().Get("instId"))
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"openAvgPx": "50000.0",
+						"closeAvgPx": "51000.0",
+						"closeTotalPos": "0.1",
+						"pnl": "100.0",
+						"fee": "-0.5",
+						"fundingFee": "-0.1",
+						"realizedPnl": "99.4",
+						"cTime": "1597026383000",
+						"uTime": "1597026385000",
+						"posSide": "long",
+						"pos": "1"
+					}
+				]
+			}`))
+		}
 	}))
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "", time.Time{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ext-123", time.Time{})
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)
@@ -910,34 +925,49 @@ func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/account/positions-history", r.URL.Path)
-
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"instId": "BTC-USDT-SWAP",
-					"openAvgPx": "50000.0",
-					"closeAvgPx": "51000.0",
-					"closeTotalPos": "0.1",
-					"pnl": "-100.0",
-					"fee": "-0.5",
-					"fundingFee": "-0.1",
-					"realizedPnl": "-100.6",
-					"cTime": "1597026383000",
-					"uTime": "1597026385000",
-					"posSide": "short",
-					"pos": "-1"
-				}
-			]
-		}`))
+
+		switch r.URL.Path {
+		case "/api/v5/trade/orders-pending":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"ordId": "ext-123",
+						"clOrdId": "ext-123",
+						"state": "filled"
+					}
+				]
+			}`))
+		case "/api/v5/account/positions-history":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"openAvgPx": "50000.0",
+						"closeAvgPx": "51000.0",
+						"closeTotalPos": "0.1",
+						"pnl": "-100.0",
+						"fee": "-0.5",
+						"fundingFee": "-0.1",
+						"realizedPnl": "-100.6",
+						"cTime": "1597026383000",
+						"uTime": "1597026385000",
+						"posSide": "short",
+						"pos": "-1"
+					}
+				]
+			}`))
+		}
 	}))
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "", time.Time{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ext-123", time.Time{})
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)

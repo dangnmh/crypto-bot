@@ -12,6 +12,8 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+const exchangeName = "bybit"
+
 // Explicit request/response structs for account endpoints.
 
 type bybitWalletBalanceRequest struct {
@@ -232,6 +234,17 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries the most recent closed PnL ledger record from Bybit.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("bybit get order by external ID %s failed: %w", extOrderID, err)
+	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
+
 	// Look up numeric orderID from client order ID (extOrderID / orderLinkId).
 	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
 		Category:    categoryLinear,
@@ -295,7 +308,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	duration := max(closeTime-entryCreatedTime, 0)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "bybit",
+		Exchange:   exchangeName,
 		Symbol:     row.Symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

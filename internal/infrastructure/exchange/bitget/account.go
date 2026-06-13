@@ -11,6 +11,8 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
+const exchangeName = "bitget"
+
 type bitgetAccountAsset struct {
 	MarginCoin    string `json:"marginCoin"`
 	Locked        string `json:"locked"`
@@ -234,6 +236,12 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	if err != nil {
 		return nil, fmt.Errorf("bitget get order by external ID %s failed: %w", extOrderID, err)
 	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
 	orderTime := orderInfo.UpdateTime
 
 	req := bitgetHistoryPositionsRequest{
@@ -293,7 +301,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "bitget",
+		Exchange:   exchangeName,
 		Symbol:     matchedPos.Symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

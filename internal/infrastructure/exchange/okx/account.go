@@ -10,7 +10,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
-// Explicit request/response structs for account endpoints.
+const exchangeName = "okx"
 
 type okxBalanceDetail struct {
 	Ccy       string `json:"ccy"`
@@ -217,6 +217,17 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries the historical closed position metrics from OKX.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	if err != nil {
+		return nil, fmt.Errorf("okx get order by external ID %s failed: %w", extOrderID, err)
+	}
+	if orderInfo.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
+
 	req := okxClosedPositionsRequest{
 		InstType: instTypeSwap,
 		Limit:    "10",
@@ -267,7 +278,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "okx",
+		Exchange:   exchangeName,
 		Symbol:     pos.InstID,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,

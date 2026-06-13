@@ -250,6 +250,20 @@ func TestClient_CreateOrder(t *testing.T) {
 			wantType:    "MARKET",
 			wantPosSide: "SHORT",
 		},
+		{
+			name: "Close One-Way with Reduce Only",
+			req: exchange.SubmitOrderRequest{
+				Symbol:       "BTCUSDT",
+				Vol:          0.5,
+				Side:         exchange.SideCloseShort,
+				Type:         exchange.OrderTypeMarket,
+				PositionMode: 2, // One-Way
+				ReduceOnly:   true,
+			},
+			wantSide:   "BUY",
+			wantType:   "MARKET",
+			wantReduce: "true",
+		},
 	}
 
 	for _, tt := range tests {
@@ -258,6 +272,25 @@ func TestClient_CreateOrder(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "POST", r.Method)
 				assert.Contains(t, r.URL.Path, "/fapi/v1/order")
+
+				q := r.URL.Query()
+				assert.Equal(t, tt.wantSide, q.Get("side"))
+				assert.Equal(t, tt.wantType, q.Get("type"))
+				if tt.wantTif != "" {
+					assert.Equal(t, tt.wantTif, q.Get("timeInForce"))
+				} else {
+					assert.Empty(t, q.Get("timeInForce"))
+				}
+				if tt.wantPosSide != "" {
+					assert.Equal(t, tt.wantPosSide, q.Get("positionSide"))
+				} else {
+					assert.Empty(t, q.Get("positionSide"))
+				}
+				if tt.wantReduce != "" {
+					assert.Equal(t, tt.wantReduce, q.Get("reduceOnly"))
+				} else {
+					assert.Empty(t, q.Get("reduceOnly"))
+				}
 
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{

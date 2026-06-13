@@ -11,7 +11,7 @@ import (
 	"github.com/samber/lo"
 )
 
-// Explicit request/response structs for account endpoints.
+const exchangeName = "mexc"
 
 type mexcAssetInfo struct {
 	Currency         string  `json:"currency"`
@@ -199,6 +199,13 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	if err != nil {
 		return nil, fmt.Errorf("mexc get order by external ID %s details failed: %w", extOrderID, err)
 	}
+	mappedOrder := orderInfo.toOrderInfo()
+	if mappedOrder != nil && mappedOrder.State == exchange.OrderStateCanceled {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+		}, nil
+	}
 	positionID := orderInfo.PositionID
 	if positionID == 0 {
 		return nil, fmt.Errorf("no positionId found associated with external order %s", extOrderID)
@@ -236,7 +243,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	duration := max(row.UpdateTime-row.CreateTime, 0)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "mexc",
+		Exchange:   exchangeName,
 		Symbol:     row.Symbol,
 		EntryPrice: row.OpenAvgPrice,
 		ExitPrice:  row.CloseAvgPrice,

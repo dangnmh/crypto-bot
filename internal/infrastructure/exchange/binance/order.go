@@ -233,9 +233,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 			posSide = posSideShort
 		}
 		rawReq.PositionSide = posSide
-	}
-
-	if req.ReduceOnly {
+	} else if req.ReduceOnly {
 		rawReq.ReduceOnly = binanceTrueStr
 	}
 
