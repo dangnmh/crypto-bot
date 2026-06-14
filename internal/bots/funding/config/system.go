@@ -18,11 +18,17 @@ const (
 	fundingReversionDefaultsFile = "reversion.jsonc"
 )
 
+type ScannersConfig struct {
+	Configured bool            `json:"configured"`
+	Schedule   map[string]bool `json:"schedule"`
+}
+
 // SystemConfig represents the system configuration for the Funding Reversion bot.
 type SystemConfig struct {
 	sysconfig.SystemConfig
 	Sync            SyncConfig      `json:"sync"`
 	Safety          SafetyConfig    `json:"safety"`
+	Scanners        ScannersConfig  `json:"scanners"`
 	TradingDefaults json.RawMessage `json:"tradingDefaults"`
 }
 

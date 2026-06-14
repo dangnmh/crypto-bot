@@ -1,0 +1,63 @@
+{
+  // Funding Reversion (Dao chieu sau Funding)
+  "enabled": true,
+  "maxLatency": "400ms", // Abort if RTT > 400ms
+  "exchanges": {
+    "mexc": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "postSettleTimeout": "10s" // Force close if reversion lifecycle does not terminally close
+    },
+    "bybit": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-200ms",
+      "postSettleTimeout": "10s"
+    },
+    "binance": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-250ms",
+      "postSettleTimeout": "10s"
+    },
+    "kucoin": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-350ms",
+      "postSettleTimeout": "10s"
+    },
+    "okx": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "0ms",
+      "postSettleTimeout": "10s"
+    },
+    "gate": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-50ms",
+      "postSettleTimeout": "10s"
+    },
+    "hyperliquid": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "10s"
+    },
+    "bitget": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "10s"
+    },
+    "bingx": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "10s"
+    },
+  }
+  // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
+  // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.
+}

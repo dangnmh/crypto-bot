@@ -1,0 +1,33 @@
+{
+  // ══════════════════════════════════════════════════════════════
+  // Pair Blacklist Configuration
+  // ══════════════════════════════════════════════════════════════
+  // Các cặp symbol được liệt kê ở đây sẽ bị loại bỏ hoàn toàn khỏi bot.
+  // Định dạng chuẩn: "SYMBOL_BASE_QUOTE" hoặc "SYMBOL_BASEUSDT" (tùy sàn).
+
+  // 1. common: Áp dụng cho TẤT CẢ các sàn
+  "common": [
+    // Top 10 coins with stable funding rates
+    "BTC_USDT", "BTCUSDT", "BTC-USDT", "BTC-USDT-SWAP", "BTC",
+    "ETH_USDT", "ETHUSDT", "ETH-USDT", "ETH-USDT-SWAP", "ETH",
+    "SOL_USDT", "SOLUSDT", "SOL-USDT", "SOL-USDT-SWAP", "SOL",
+    "BNB_USDT", "BNBUSDT", "BNB-USDT", "BNB-USDT-SWAP", "BNB",
+    "XRP_USDT", "XRPUSDT", "XRP-USDT", "XRP-USDT-SWAP", "XRP",
+    "ADA_USDT", "ADAUSDT", "ADA-USDT", "ADA-USDT-SWAP", "ADA",
+    "DOT_USDT", "DOTUSDT", "DOT-USDT", "DOT-USDT-SWAP", "DOT",
+    "DOGE_USDT", "DOGEUSDT", "DOGE-USDT", "DOGE-USDT-SWAP", "DOGE",
+    "LTC_USDT", "LTCUSDT", "LTC-USDT", "LTC-USDT-SWAP", "LTC",
+    "TRX_USDT", "TRXUSDT", "TRX-USDT", "TRX-USDT-SWAP", "TRX"
+  ],
+
+  // 2. Blacklist riêng biệt theo từng sàn giao dịch
+  "mexc": [],
+  "gate": [],
+  "bybit": [],
+  "binance": [],
+  "okx": [],
+  "hyperliquid": [],
+  "bitget": [],
+  "kucoin": [],
+  "bingx": []
+}

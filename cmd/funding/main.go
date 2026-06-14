@@ -10,8 +10,8 @@ import (
 )
 
 func main() {
-	sysCfgPath := flag.String("sys", "./configs/funding/system.jsonc", "path to system config")
-	botCfgPath := flag.String("bot", "./configs/funding/funding.jsonc", "path to bot config")
+	sysCfgPath := flag.String("sys", "./configs/funding/local/system.jsonc", "path to system config")
+	botCfgPath := flag.String("bot", "./configs/funding/local/funding.jsonc", "path to bot config")
 	flag.Parse()
 
 	fx.New(

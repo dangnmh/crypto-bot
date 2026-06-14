@@ -272,3 +272,21 @@ func normalizeFundingRateThreshold(v float64) float64 {
 	}
 	return v / 100
 }
+
+func (c *Config) NewSymbolConfig(exchangeName, symbol string) (SymbolConfig, error) {
+	defaults, err := c.parseTradingDefaults()
+	if err != nil {
+		return SymbolConfig{}, err
+	}
+
+	sc := SymbolConfig{
+		Symbol:   symbol,
+		Exchange: exchangeName,
+	}
+
+	c.applyDefaults(&sc, &defaults)
+	c.normalizeSymbolMetrics(&sc)
+	c.defaultSymbolModes(&sc)
+
+	return sc, nil
+}

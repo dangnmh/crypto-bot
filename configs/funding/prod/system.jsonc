@@ -92,7 +92,7 @@
       "websocket": {
         "wsURL": "wss://open-api-ws.bingx.com/market"
       }
-    },
+    }
   },
   // ══════════════════════════════════════════════════════════════
   // Sync — Tần suất đồng bộ dữ liệu
@@ -125,13 +125,19 @@
   "notifier": {
     "enable": true
   },
+  "scanners": {
+    "configured": false,
+    "schedule": {
+      "mexc": true
+    }
+  },
   // ══════════════════════════════════════════════════════════════
   // Trading Defaults — Giá trị mặc định cho TẤT CẢ symbol
   // Mỗi field có thể override per-symbol trong funding.jsonc
   // ══════════════════════════════════════════════════════════════
   "tradingDefaults": {
     // ── 1. Entry Filter ──────────────────────────────────────────
-    "minFundingRate": 0.1, // FR tối thiểu (%). < 0.3%
+    "minFundingRate": 0.3, // FR tối thiểu (%)
     "maxPriceDiffPercent": 0.8, // Slippage tĩnh fallback (%)
     // ── 2. Position ──────────────────────────────────────────────
     "leverage": 5,
@@ -139,6 +145,5 @@
     "positionMode": "HEDGE" // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
     // Strategy defaults live in sibling files:
     // - reversion.jsonc -> tradingDefaults.fundingReversion
-    // - trap.jsonc      -> tradingDefaults.fundingTrap
   }
 }

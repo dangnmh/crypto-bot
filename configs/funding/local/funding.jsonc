@@ -3,39 +3,39 @@
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
   {
-    "symbol": "MOVE_USDT",
+    "symbol": "SIREN_USDT",
     "marginUSDT": 3,
     "exchange": "mexc",
-    // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
+    // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
-    "symbol": "HUSDT",
+    "symbol": "SIRENUSDT",
     "marginUSDT": 3,
     "exchange": "bybit",
-    // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
+    // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
-    "symbol": "MOVEUSDT",
+    "symbol": "SIRENUSDT",
     "marginUSDT": 3,
     "exchange": "binance",
-    // "simulateSettle": "2026-06-05T22:45:00.000+07:00"
+    // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
-    "symbol": "SAHARAUSDTM",
+    "symbol": "SIRENUSDTM",
     "marginUSDT": 3,
     "exchange": "kucoin",
-    // "simulateSettle": "2026-06-09T15:50:00.000+07:00"
+    // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
-    "symbol": "H-USDT-SWAP",
+    "symbol": "HOME-USDT-SWAP",
     "marginUSDT": 3,
     "exchange": "okx",
-    // "simulateSettle": "2026-06-09T12:05:00.000+07:00"
+    // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
-    "symbol": "MOVE_USDT",
+    "symbol": "SIREN_USDT",
     "marginUSDT": 3,
     "exchange": "gate",
-    // "simulateSettle": "2026-06-09T22:55:00.000+07:00"
+    // "simulateSettle": "2026-06-14T15:10:00.000+07:00"
   },
 ]

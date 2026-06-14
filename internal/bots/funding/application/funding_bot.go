@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
 
@@ -60,7 +61,7 @@ func NewFundingBot(
 			}
 		}
 
-		if len(symbols) > 0 {
+		if len(symbols) > 0 || name == exchange.ExchangeMexc {
 			storesMap[name] = app.NewCentralStore(
 				app.WithLogger(log.With("exchange", name)),
 				app.WithTicker(prov.Client, time.Duration(sysCfg.Sync.Ticker)),
@@ -176,16 +177,50 @@ func (s *FundingBot) Run(ctx context.Context) error {
 	s.log.InfoContext(ctx, "🚀 Funding bot manager started", slog.Int("symbols", len(s.cfg.Symbols)))
 	defer s.log.InfoContext(context.WithoutCancel(ctx), "🛑 Funding bot manager stopped")
 
-	configuredScanner := NewConfiguredScanner(
-		s.cfg,
-		s.engine,
-		s.stores,
-		s.log,
-		s.disabledReason,
-	)
+	var scanners []Scanner
+
+	if s.sysCfg.Scanners.Configured {
+		configuredScanner := NewConfiguredScanner(
+			s.cfg,
+			s.engine,
+			s.stores,
+			s.log,
+			s.disabledReason,
+		)
+		scanners = append(scanners, configuredScanner)
+		s.log.InfoContext(ctx, "Registered ConfiguredScanner")
+	}
+
+	for exch, enabled := range s.sysCfg.Scanners.Schedule {
+		if !enabled {
+			continue
+		}
+
+		if exch != exchange.ExchangeMexc {
+			s.log.WarnContext(ctx, "ScheduleScanner only supports mexc at the moment. Skipping.", slog.String("exchange", exch))
+			continue
+		}
+
+		if mexcProvider, ok := s.engine.Providers[exch]; ok {
+			scheduleScanner := NewScheduleScanner(
+				s.cfg,
+				mexcProvider.Client,
+				s.log,
+				s.disabledReason,
+			)
+			scanners = append(scanners, scheduleScanner)
+			s.log.InfoContext(ctx, "Registered ScheduleScanner for MEXC exchange")
+		} else {
+			s.log.WarnContext(ctx, "MEXC provider not found. ScheduleScanner is disabled.")
+		}
+	}
+
+	if len(scanners) == 0 {
+		s.log.WarnContext(ctx, "⚠️ No scanners are enabled. Background scanner job will run idle.")
+	}
 
 	scannerJob := NewScannerJob(
-		[]Scanner{configuredScanner},
+		scanners,
 		s.engine,
 		s.log,
 	)

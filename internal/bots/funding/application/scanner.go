@@ -2,21 +2,31 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/orders"
 	"crypto-bot/internal/bots/funding/application/reversion"
+	"crypto-bot/internal/bots/funding/application/service"
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
-	"crypto-bot/pkg/ticker"
 
 	"github.com/ThreeDotsLabs/watermill"
+	"github.com/robfig/cron/v3"
+)
+
+const (
+	refPriceBestAsk = "bestAsk"
+	refPriceBestBid = "bestBid"
 )
 
 // ScanOpportunity bundles a scanned candidate with its trigger target settlement time.
@@ -63,35 +73,55 @@ func (j *ScannerJob) Run(ctx context.Context) error {
 	j.log.InfoContext(ctx, "🚀 Starting background scanner job loop")
 	defer j.log.InfoContext(context.WithoutCancel(ctx), "🛑 Background scanner job loop stopped")
 
-	ticker.RunImmediate(ctx, 20*time.Minute, func() bool {
+	// Execute an initial tick immediately on startup
+	j.tick(ctx)
+
+	c := cron.New(cron.WithLocation(time.Local))
+	_, err := c.AddFunc("45 * * * *", func() {
 		j.tick(ctx)
-		return true
 	})
+	if err != nil {
+		return fmt.Errorf("failed to schedule scanner cron job: %w", err)
+	}
+
+	c.Start()
+	defer c.Stop()
+
+	<-ctx.Done()
 	return nil
 }
 
 func (j *ScannerJob) tick(ctx context.Context) {
-	for _, sc := range j.scanners {
-		opportunities, err := sc.Scan(ctx)
-		if err != nil {
-			j.log.ErrorContext(ctx, "Scanner failed to scan", slog.Any("error", err))
-			continue
-		}
+	var wg sync.WaitGroup
 
-		for i := range opportunities {
-			opp := &opportunities[i]
-			if j.shouldTrigger(opp.Candidate.Config.Exchange, opp.Candidate.Symbol, opp.SettleTime) {
-				j.trigger(opp.Candidate, opp.SettleTime)
+	for _, sc := range j.scanners {
+		wg.Add(1)
+		go func(s Scanner) {
+			defer wg.Done()
+
+			opportunities, err := s.Scan(ctx)
+			if err != nil {
+				j.log.ErrorContext(ctx, "Scanner failed to scan", slog.Any("error", err))
+				return
 			}
-		}
+
+			for i := range opportunities {
+				opp := &opportunities[i]
+				if j.shouldTrigger(opp.Candidate.Config.Exchange, opp.Candidate.Symbol, opp.SettleTime) {
+					j.trigger(opp.Candidate, opp.SettleTime)
+				}
+			}
+		}(sc)
 	}
+
+	wg.Wait()
 }
 
-func (j *ScannerJob) shouldTrigger(exchange, symbol string, settle time.Time) bool {
+func (j *ScannerJob) shouldTrigger(exch, symbol string, settle time.Time) bool {
 	j.statesMu.Lock()
 	defer j.statesMu.Unlock()
 
-	key := exchange + ":" + symbol
+	key := exch + ":" + symbol
 	state, exists := j.states[key]
 	if !exists {
 		state = &symbolState{}
@@ -246,9 +276,9 @@ func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.Tic
 		FundingRate: fundingRate,
 	}
 	if fundingRate > 0 {
-		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenLong, shared.SideCloseLong, "bestAsk"
+		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenLong, shared.SideCloseLong, refPriceBestAsk
 	} else {
-		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenShort, shared.SideCloseShort, "bestBid"
+		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenShort, shared.SideCloseShort, refPriceBestBid
 	}
 
 	return domain.Candidate{
@@ -299,5 +329,180 @@ func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 		ParsedOpenType:      sc.ParsedOpenType,
 		ParsedPositionMode:  sc.ParsedPositionMode,
 		MinFundingRate:      sc.MinFundingRate,
+	}
+}
+
+// ScheduleScanner scans for high-funding opportunities dynamically.
+type ScheduleScanner struct {
+	cfg            *config.Config
+	client         exchange.Client
+	log            *slog.Logger
+	disabledReason func(string) (string, bool)
+}
+
+// NewScheduleScanner creates a new ScheduleScanner.
+func NewScheduleScanner(
+	cfg *config.Config,
+	client exchange.Client,
+	log *slog.Logger,
+	disabledReason func(string) (string, bool),
+) *ScheduleScanner {
+	return &ScheduleScanner{
+		cfg:            cfg,
+		client:         client,
+		log:            log.With("component", "schedule_scanner"),
+		disabledReason: disabledReason,
+	}
+}
+
+// Scan queries MEXC tickers, filters by volume, fetches funding rates, and builds candidate opportunities.
+func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
+	var opportunities []ScanOpportunity
+
+	// 1. Fetch blacklisted symbols to exclude them early
+	var blacklist []string
+	if s.cfg.Blacklist != nil {
+		blacklist = append(blacklist, s.cfg.Blacklist.Common...)
+		blacklist = append(blacklist, s.cfg.Blacklist.Mexc...)
+	}
+
+	minVol := s.cfg.System.Safety.MinVol24USD
+	if minVol <= 0 {
+		minVol = 1000000
+	}
+
+	// 2. Fetch potential funding symbols using FundingService
+	fs := service.NewFundingService(s.client)
+	results, err := fs.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blacklist)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get potential funding symbols: %w", err)
+	}
+
+	if len(results) == 0 {
+		return nil, nil
+	}
+
+	// 3. Fetch tickers for enriched Candidate details
+	tickers, err := s.client.GetTickers(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tickers: %w", err)
+	}
+	tickerMap := make(map[string]exchange.Ticker)
+	for _, t := range tickers {
+		tickerMap[t.Symbol] = t
+	}
+
+	// 4. Fetch contract details for enrichment
+	contractDetails, err := s.client.GetContractDetails(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get contract details: %w", err)
+	}
+	contracts := make(map[string]*exchange.ContractDetail)
+	for i := range contractDetails {
+		contracts[contractDetails[i].Symbol] = &contractDetails[i]
+	}
+
+	// 5. Build dynamic SymbolConfigs and build candidate opportunities
+	for _, r := range results {
+		opp, ok, err := s.processResult(ctx, r, tickerMap, contracts)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			opportunities = append(opportunities, opp)
+		}
+	}
+
+	return opportunities, nil
+}
+
+func (s *ScheduleScanner) processResult(
+	ctx context.Context,
+	r service.PotentialFundingResult,
+	tickerMap map[string]exchange.Ticker,
+	contracts map[string]*exchange.ContractDetail,
+) (ScanOpportunity, bool, error) {
+	// Skip if disabled in-memory
+	if reason, disabled := s.disabledReason(r.Symbol); disabled {
+		s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("exchange", exchange.ExchangeMexc), slog.String("symbol", r.Symbol), slog.String("reason", reason))
+		return ScanOpportunity{}, false, nil
+	}
+
+	symCfg, err := s.cfg.NewSymbolConfig(exchange.ExchangeMexc, r.Symbol)
+	if err != nil {
+		s.log.WarnContext(ctx, "Failed to resolve symbol config", slog.String("symbol", r.Symbol), slog.Any("error", err))
+		return ScanOpportunity{}, false, nil
+	}
+
+	// Minimum funding rate check: read from configuration
+	absRate := math.Abs(r.Rate)
+	if absRate < symCfg.MinFundingRate {
+		return ScanOpportunity{}, false, nil
+	}
+
+	// Resolve MarginUSDT dynamically
+	marginUSDT := 3.0
+	for i := range s.cfg.Symbols {
+		sym := &s.cfg.Symbols[i]
+		if strings.EqualFold(sym.Exchange, exchange.ExchangeMexc) {
+			marginUSDT = sym.MarginUSDT
+			break
+		}
+	}
+	symCfg.MarginUSDT = marginUSDT
+
+	td, ok := tickerMap[r.Symbol]
+	if !ok {
+		s.log.DebugContext(ctx, "No ticker data available for symbol", slog.String("exchange", exchange.ExchangeMexc), slog.String("symbol", r.Symbol))
+		return ScanOpportunity{}, false, nil
+	}
+
+	cd, ok := contracts[r.Symbol]
+	if !ok {
+		s.log.WarnContext(ctx, "No contract data available for symbol", slog.String("exchange", exchange.ExchangeMexc), slog.String("symbol", r.Symbol))
+		return ScanOpportunity{}, false, nil
+	}
+
+	candidate := s.buildCandidate(symCfg, td, r.Rate)
+	settleTime := time.UnixMilli(r.SettleTime)
+	candidate.SettleTime = settleTime
+	candidate.ContractSpec = domain.ContractSpec{
+		PriceUnit:    cd.PriceUnit,
+		VolUnit:      cd.VolUnit,
+		MinVol:       cd.MinVol,
+		PriceScale:   cd.PriceScale,
+		VolScale:     cd.VolScale,
+		ContractSize: cd.ContractSize,
+		TakerFeeRate: cd.TakerFeeRate,
+		MakerFeeRate: cd.MakerFeeRate,
+	}
+
+	return ScanOpportunity{
+		Candidate:  candidate,
+		SettleTime: settleTime,
+	}, true, nil
+}
+
+func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Ticker, fundingRate float64) domain.Candidate {
+	intent := domain.TradeIntent{
+		Symbol:      td.Symbol,
+		FundingRate: fundingRate,
+	}
+	if fundingRate > 0 {
+		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenLong, shared.SideCloseLong, refPriceBestAsk
+	} else {
+		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenShort, shared.SideCloseShort, refPriceBestBid
+	}
+
+	return domain.Candidate{
+		Config:      ToTradeConfig(sc),
+		TradeIntent: intent,
+		MarketData: domain.MarketData{
+			LastPrice: td.LastPrice,
+			BestBid:   td.Bid1,
+			BestAsk:   td.Ask1,
+			Volume24:  td.Volume24,
+			Amount24:  td.Amount24,
+		},
 	}
 }
