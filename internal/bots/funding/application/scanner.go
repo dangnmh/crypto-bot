@@ -49,6 +49,7 @@ type symbolState struct {
 type ScannerJob struct {
 	scanners []Scanner
 	engine   *app.Engine
+	cfg      *config.Config
 	log      *slog.Logger
 	statesMu sync.Mutex
 	states   map[string]*symbolState
@@ -58,11 +59,13 @@ type ScannerJob struct {
 func NewScannerJob(
 	scanners []Scanner,
 	engine *app.Engine,
+	cfg *config.Config,
 	log *slog.Logger,
 ) *ScannerJob {
 	return &ScannerJob{
 		scanners: scanners,
 		engine:   engine,
+		cfg:      cfg,
 		log:      log.With("component", "scanner_job"),
 		states:   make(map[string]*symbolState),
 	}
@@ -107,7 +110,7 @@ func (j *ScannerJob) tick(ctx context.Context) {
 
 			for i := range opportunities {
 				opp := &opportunities[i]
-				if j.shouldTrigger(opp.Candidate.Config.Exchange, opp.Candidate.Symbol, opp.SettleTime) {
+				if j.shouldTrigger(opp.Candidate, opp.SettleTime) {
 					j.trigger(opp.Candidate, opp.SettleTime)
 				}
 			}
@@ -117,11 +120,45 @@ func (j *ScannerJob) tick(ctx context.Context) {
 	wg.Wait()
 }
 
-func (j *ScannerJob) shouldTrigger(exch, symbol string, settle time.Time) bool {
+func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	j.statesMu.Lock()
 	defer j.statesMu.Unlock()
 
-	key := exch + ":" + symbol
+	// Minimum funding rate check
+	if math.Abs(c.FundingRate) < c.Config.MinFundingRate {
+		j.log.Debug("Skipping trigger: funding rate below minimum",
+			slog.String("symbol", c.Symbol),
+			slog.Float64("rate", c.FundingRate),
+			slog.Float64("min", c.Config.MinFundingRate),
+		)
+		return false
+	}
+
+	// 24h volume check (safety limit)
+	if j.cfg != nil && j.cfg.System != nil {
+		minVol := j.cfg.System.Safety.MinVol24USD
+		if minVol > 0 && c.Amount24 < minVol {
+			j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
+				slog.String("symbol", c.Symbol),
+				slog.Float64("vol24h", c.Amount24),
+				slog.Float64("minVol", minVol),
+			)
+			return false
+		}
+	}
+
+	// Blacklist check
+	if j.cfg != nil && j.cfg.Blacklist != nil {
+		if j.cfg.Blacklist.IsBlacklisted(c.Config.Exchange, c.Symbol) {
+			j.log.Debug("Skipping trigger: symbol is blacklisted",
+				slog.String("symbol", c.Symbol),
+				slog.String("exchange", c.Config.Exchange),
+			)
+			return false
+		}
+	}
+
+	key := c.Config.Exchange + ":" + c.Symbol
 	state, exists := j.states[key]
 	if !exists {
 		state = &symbolState{}

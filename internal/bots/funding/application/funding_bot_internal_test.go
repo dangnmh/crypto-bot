@@ -261,6 +261,7 @@ func TestScannerJob_Run(t *testing.T) {
 	job := NewScannerJob(
 		[]Scanner{mScanner},
 		engine,
+		nil,
 		sniperTestLogger(),
 	)
 

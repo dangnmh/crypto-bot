@@ -196,22 +196,17 @@ func (s *FundingBot) Run(ctx context.Context) error {
 			continue
 		}
 
-		if exch != exchange.ExchangeMexc {
-			s.log.WarnContext(ctx, "ScheduleScanner only supports mexc at the moment. Skipping.", slog.String("exchange", exch))
-			continue
-		}
-
-		if mexcProvider, ok := s.engine.Providers[exch]; ok {
+		if exchangeProvider, ok := s.engine.Providers[exch]; ok {
 			scheduleScanner := NewScheduleScanner(
 				s.cfg,
-				mexcProvider.Client,
+				exchangeProvider.Client,
 				s.log,
 				s.disabledReason,
 			)
 			scanners = append(scanners, scheduleScanner)
-			s.log.InfoContext(ctx, "Registered ScheduleScanner for MEXC exchange")
+			s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
 		} else {
-			s.log.WarnContext(ctx, "MEXC provider not found. ScheduleScanner is disabled.")
+			s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.", slog.String("exchange", exch))
 		}
 	}
 
@@ -222,6 +217,7 @@ func (s *FundingBot) Run(ctx context.Context) error {
 	scannerJob := NewScannerJob(
 		scanners,
 		s.engine,
+		s.cfg,
 		s.log,
 	)
 

@@ -204,6 +204,7 @@ func TestScannerJob_ScanError(t *testing.T) {
 	job := NewScannerJob(
 		[]Scanner{mScanner},
 		nil,
+		nil,
 		sniperTestLogger(),
 	)
 
@@ -263,6 +264,7 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 	job := NewScannerJob(
 		[]Scanner{mScanner},
 		engine,
+		nil,
 		sniperTestLogger(),
 	)
 
@@ -302,6 +304,7 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 	job2 := NewScannerJob(
 		[]Scanner{mScanner2},
 		engine,
+		nil,
 		sniperTestLogger(),
 	)
 
@@ -500,4 +503,54 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			assert.Equal(t, tt.expectedVolume, opp.Candidate.Amount24)
 		})
 	}
+}
+
+func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		System: &config.SystemConfig{
+			Safety: config.SafetyConfig{
+				MinVol24USD: 1000000,
+			},
+		},
+		Blacklist: &config.BlacklistConfig{
+			Mexc: []string{"XRP_USDT"},
+		},
+	}
+
+	job := NewScannerJob(nil, nil, cfg, sniperTestLogger())
+
+	// Candidate meets all thresholds
+	candOk := domain.Candidate{
+		Config: domain.TradeConfig{
+			Exchange:       "mexc",
+			Symbol:         "BTC_USDT",
+			MinFundingRate: 0.001,
+		},
+		TradeIntent: domain.TradeIntent{
+			Symbol:      "BTC_USDT",
+			FundingRate: 0.005,
+		},
+		MarketData: domain.MarketData{
+			Amount24: 2000000,
+		},
+	}
+	assert.True(t, job.shouldTrigger(candOk, time.Now()))
+
+	// Candidate fails funding rate check
+	candLowFR := candOk
+	candLowFR.FundingRate = 0.0005
+	assert.False(t, job.shouldTrigger(candLowFR, time.Now()))
+
+	// Candidate fails volume check
+	candLowVol := candOk
+	candLowVol.Amount24 = 500000
+	assert.False(t, job.shouldTrigger(candLowVol, time.Now()))
+
+	// Candidate is blacklisted
+	candBlacklisted := candOk
+	candBlacklisted.Symbol = "XRP_USDT"
+	candBlacklisted.Config.Symbol = "XRP_USDT"
+	assert.False(t, job.shouldTrigger(candBlacklisted, time.Now()))
 }
