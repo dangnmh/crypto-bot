@@ -172,7 +172,7 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 			if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 				return err
 			}
-			traceCtx := observability.WithCorrelationIDValue(ctx, evt.ReqID)
+			traceCtx := observability.WithRequestIDValue(ctx, evt.ReqID)
 			return runner.clone(evt.Exchange, evt.ReqID, evt.Symbol).handleCleanup(traceCtx, msg)
 		})
 	}
@@ -192,7 +192,7 @@ func registerEventSubscription[T any](
 			return err
 		}
 		exch, reqID, symbol := route(&evt)
-		traceCtx := observability.WithCorrelationIDValue(ctx, reqID)
+		traceCtx := observability.WithRequestIDValue(ctx, reqID)
 		return action(traceCtx, runner.clone(exch, reqID, symbol), evt)
 	})
 }

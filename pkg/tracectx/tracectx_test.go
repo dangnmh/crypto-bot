@@ -10,27 +10,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCorrelationID(t *testing.T) {
+func TestRequestID(t *testing.T) {
 	t.Parallel()
 
-	ctx := tracectx.WithCorrelationID(context.Background())
-	id := tracectx.CorrelationID(ctx)
+	ctx := tracectx.WithRequestID(context.Background())
+	id := tracectx.RequestID(ctx)
 
 	require.NotEmpty(t, id)
 	assert.Len(t, id, 8)
-	assert.Empty(t, tracectx.CorrelationID(context.Background()))
-	assert.Equal(t, "fixed", tracectx.CorrelationID(tracectx.WithCorrelationIDValue(ctx, "fixed")))
+	assert.Empty(t, tracectx.RequestID(context.Background()))
+	assert.Equal(t, "fixed", tracectx.RequestID(tracectx.WithRequestIDValue(ctx, "fixed")))
 }
 
 func TestContextIDs(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	ctx = tracectx.WithCorrelationIDValue(ctx, "req-123")
-	ctx = tracectx.WithReversionID(ctx, "rev-123")
+	ctx = tracectx.WithRequestIDValue(ctx, "req-123")
 
-	assert.Equal(t, "req-123", tracectx.CorrelationID(ctx))
-	assert.Equal(t, "rev-123", tracectx.ReversionID(ctx))
-	assert.Empty(t, tracectx.ReversionID(context.Background()))
+	assert.Equal(t, "req-123", tracectx.RequestID(ctx))
 	assert.NotEmpty(t, tracectx.NewID())
 }

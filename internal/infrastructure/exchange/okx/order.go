@@ -85,22 +85,29 @@ type okxOrdersRequest struct {
 	InstID   string `json:"instId,omitempty"`
 }
 
-type okxOrder struct {
+type okxOrderDetailRequest struct {
 	InstID  string `json:"instId"`
-	OrdID   string `json:"ordId"`
-	ClOrdID string `json:"clOrdId"`
-	Px      string `json:"px"`
-	Sz      string `json:"sz"`
-	Side    string `json:"side"`
-	PosSide string `json:"posSide"`
-	State   string `json:"state"`
-	OrdType string `json:"ordType"`
-	AccRe   string `json:"accRe"`
-	AvgPx   string `json:"avgPx"`
-	UTime   string `json:"uTime"`
-	CTime   string `json:"cTime"`
-	FillSz  string `json:"fillSz"`
-	TradeId string `json:"tradeId"`
+	OrdID   string `json:"ordId,omitempty"`
+	ClOrdID string `json:"clOrdId,omitempty"`
+}
+
+type okxOrder struct {
+	InstID    string `json:"instId"`
+	OrdID     string `json:"ordId"`
+	ClOrdID   string `json:"clOrdId"`
+	Px        string `json:"px"`
+	Sz        string `json:"sz"`
+	Side      string `json:"side"`
+	PosSide   string `json:"posSide"`
+	State     string `json:"state"`
+	OrdType   string `json:"ordType"`
+	AccRe     string `json:"accRe"`
+	AvgPx     string `json:"avgPx"`
+	UTime     string `json:"uTime"`
+	CTime     string `json:"cTime"`
+	FillSz    string `json:"fillSz"`
+	AccFillSz string `json:"accFillSz"`
+	TradeId   string `json:"tradeId"`
 }
 
 type okxSetLeverageRequest struct {
@@ -136,34 +143,6 @@ func (c *Client) cancelRawOrder(ctx context.Context, req okxCancelOrderRequest) 
 	return &res, nil
 }
 
-func (c *Client) getRawPendingOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
-	params := map[string]string{
-		paramInstType: req.InstType,
-	}
-	if req.InstID != "" {
-		params[paramInstId] = req.InstID
-	}
-	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, params)
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[okxOrder](pendingBody, "pending_orders")
-}
-
-func (c *Client) getRawHistoryOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
-	params := map[string]string{
-		paramInstType: req.InstType,
-	}
-	if req.InstID != "" {
-		params[paramInstId] = req.InstID
-	}
-	historyBody, err := c.GetCtx(ctx, "/api/v5/trade/orders-history", params)
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[okxOrder](historyBody, "orders_history")
-}
-
 func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
 	params := map[string]string{
 		paramInstType: req.InstType,
@@ -176,6 +155,30 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]
 		return nil, err
 	}
 	return ParseResponse[okxOrder](body, "open_orders")
+}
+
+func (c *Client) getRawOrderDetail(ctx context.Context, req okxOrderDetailRequest) (*okxOrder, error) {
+	params := map[string]string{
+		"instId": req.InstID,
+	}
+	if req.OrdID != "" {
+		params["ordId"] = req.OrdID
+	}
+	if req.ClOrdID != "" {
+		params["clOrdId"] = req.ClOrdID
+	}
+	body, err := c.GetCtx(ctx, "/api/v5/trade/order", params)
+	if err != nil {
+		return nil, err
+	}
+	resList, err := ParseResponse[okxOrder](body, "order_detail")
+	if err != nil {
+		return nil, err
+	}
+	if len(resList) == 0 {
+		return nil, nil
+	}
+	return &resList[0], nil
 }
 
 func (c *Client) setRawLeverage(ctx context.Context, req okxSetLeverageRequest) error {
@@ -306,12 +309,7 @@ func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackO
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	if symbol == "" {
-		// If symbol is not known, find it first
-		info, err := c.GetOrder(ctx, "", orderID)
-		if err != nil {
-			return fmt.Errorf("cancel order failed to locate order: %w", err)
-		}
-		symbol = info.Symbol
+		return fmt.Errorf("cancel order failed: symbol is required")
 	}
 
 	res, err := c.cancelRawOrder(ctx, okxCancelOrderRequest{
@@ -335,15 +333,9 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 	return nil
 }
 
-// CancelOrders cancels multiple orders.
+// CancelOrders is a stub.
 func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
-	for i := range orderIDs {
-		err := c.CancelOrder(ctx, "", orderIDs[i])
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return fmt.Errorf("batch cancel not supported on OKX without symbols")
 }
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
@@ -363,33 +355,42 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder queries a single order by ID.
+// GetOrder queries a single order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	// Query pending orders
-	pendingList, err := c.getRawPendingOrders(ctx, okxOrdersRequest{InstType: instTypeSwap})
-	if err == nil {
-		for i := range pendingList {
-			o := pendingList[i]
-			if o.OrdID == orderID {
-				info := mapOkxOrder(o)
-				return &info, nil
-			}
-		}
+	if symbol == "" {
+		return nil, fmt.Errorf("query order failed: symbol is required")
 	}
-
-	// Query history orders
-	historyList, err := c.getRawHistoryOrders(ctx, okxOrdersRequest{InstType: instTypeSwap})
-	if err == nil {
-		for i := range historyList {
-			o := historyList[i]
-			if o.OrdID == orderID {
-				info := mapOkxOrder(o)
-				return &info, nil
-			}
-		}
+	res, err := c.getRawOrderDetail(ctx, okxOrderDetailRequest{
+		InstID: symbol,
+		OrdID:  orderID,
+	})
+	if err != nil {
+		return nil, err
 	}
+	if res == nil {
+		return nil, fmt.Errorf("order not found: %s", orderID)
+	}
+	info := mapOkxOrder(*res)
+	return &info, nil
+}
 
-	return nil, fmt.Errorf("order not found: %s", orderID)
+// GetOrderByExternalID queries a single order by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	if symbol == "" {
+		return nil, fmt.Errorf("query order by external ID failed: symbol is required")
+	}
+	res, err := c.getRawOrderDetail(ctx, okxOrderDetailRequest{
+		InstID:  symbol,
+		ClOrdID: externalOrderID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, fmt.Errorf("order not found by external ID: %s", externalOrderID)
+	}
+	info := mapOkxOrder(*res)
+	return &info, nil
 }
 
 // GetOpenOrders returns all open orders.
@@ -493,7 +494,11 @@ func mapOkxOrder(o okxOrder) exchange.OrderInfo {
 	px, _ := strconv.ParseFloat(o.Px, 64)
 	sz, _ := strconv.ParseFloat(o.Sz, 64)
 	avgPx, _ := strconv.ParseFloat(o.AvgPx, 64)
-	fillSz, _ := strconv.ParseFloat(o.FillSz, 64)
+	fillSzStr := o.AccFillSz
+	if fillSzStr == "" {
+		fillSzStr = o.FillSz
+	}
+	fillSz, _ := strconv.ParseFloat(fillSzStr, 64)
 	uTime, _ := strconv.ParseInt(o.UTime, 10, 64)
 	cTime, _ := strconv.ParseInt(o.CTime, 10, 64)
 
@@ -541,7 +546,7 @@ func mapOkxOrder(o okxOrder) exchange.OrderInfo {
 		info.State = exchange.OrderStatePartiallyFilled
 	case stateFilled:
 		info.State = exchange.OrderStateFilled
-	case stateCanceled:
+	case stateCanceled, stateMmpCanceled:
 		info.State = exchange.OrderStateCanceled
 	default:
 		info.State = exchange.OrderStateNew

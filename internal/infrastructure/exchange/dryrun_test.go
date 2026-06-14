@@ -56,6 +56,9 @@ func (s *stubClient) CancelAllOpenOrders(_ context.Context, _ string) error { re
 func (s *stubClient) GetOrder(_ context.Context, _, _ string) (*exchange.OrderInfo, error) {
 	return nil, nil
 }
+func (s *stubClient) GetOrderByExternalID(_ context.Context, _, _ string) (*exchange.OrderInfo, error) {
+	return nil, nil
+}
 func (s *stubClient) GetOpenOrders(_ context.Context, _ string) ([]exchange.OrderInfo, error) {
 	return nil, nil
 }

@@ -1138,3 +1138,90 @@ func TestClient_TimeSync(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bybit-ord-987654", res.OrderID)
 }
+
+func TestClient_SwitchPositionMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		mode       domain.PositionMode
+		symbol     string
+		retCode    int
+		retMsg     string
+		wantMode   float64
+		wantErrMsg string
+	}{
+		{
+			name:     "Switch to Hedge Success",
+			mode:     domain.PositionModeHedge,
+			symbol:   "BTCUSDT",
+			retCode:  0,
+			retMsg:   "OK",
+			wantMode: 3,
+		},
+		{
+			name:     "Switch to OneWay Success",
+			mode:     domain.PositionModeOneWay,
+			symbol:   "BTCUSDT",
+			retCode:  0,
+			retMsg:   "OK",
+			wantMode: 0,
+		},
+		{
+			name:     "Switch to Hedge Already Set (Ignored Error)",
+			mode:     domain.PositionModeHedge,
+			symbol:   "BTCUSDT",
+			retCode:  110025,
+			retMsg:   "Position mode is not modified",
+			wantMode: 3,
+		},
+		{
+			name:       "Switch to Hedge Other Error",
+			mode:       domain.PositionModeHedge,
+			symbol:     "BTCUSDT",
+			retCode:    10001,
+			retMsg:     "Some random error",
+			wantMode:   3,
+			wantErrMsg: "bybit switch position mode error: retCode=10001, retMsg=Some random error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "POST", r.Method)
+				assert.Contains(t, r.URL.Path, "/v5/position/switch-mode")
+
+				var body map[string]any
+				err := json.NewDecoder(r.Body).Decode(&body)
+				require.NoError(t, err)
+
+				assert.Equal(t, "linear", body["category"])
+				assert.Equal(t, tt.symbol, body["symbol"])
+				assert.Equal(t, tt.wantMode, body["mode"])
+
+				w.Header().Set("Content-Type", "application/json")
+				resp := map[string]any{
+					"retCode": tt.retCode,
+					"retMsg":  tt.retMsg,
+					"result":  map[string]any{},
+				}
+				respBytes, _ := json.Marshal(resp)
+				_, _ = w.Write(respBytes)
+			}))
+			defer server.Close()
+
+			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+			err := client.SwitchPositionMode(context.Background(), tt.symbol, tt.mode)
+
+			if tt.wantErrMsg != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

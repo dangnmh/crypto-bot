@@ -2,10 +2,12 @@ package gate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -60,11 +62,30 @@ func (c *Client) getRawOrder(ctx context.Context, settle, orderID string) (*gate
 }
 
 func (c *Client) getRawOpenOrders(ctx context.Context, settle, symbol string) ([]gateFuturesOrder, error) {
+	return c.getRawOrdersByStatus(ctx, settle, symbol, "open")
+}
+
+func (c *Client) getRawOrdersByStatus(ctx context.Context, settle, symbol, status string) ([]gateFuturesOrder, error) {
 	var result []gateFuturesOrder
 	query := url.Values{}
 	query.Set("contract", symbol)
-	query.Set("status", "open")
+	query.Set("status", status)
 	path := fmt.Sprintf("/futures/%s/orders", settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Client) getRawOrdersTimerange(ctx context.Context, settle, symbol string, fromTime time.Time) ([]gateFuturesOrderTimerange, error) {
+	var result []gateFuturesOrderTimerange
+	query := url.Values{}
+	query.Set("contract", symbol)
+	if !fromTime.IsZero() {
+		query.Set("from", strconv.FormatInt(fromTime.UnixMilli(), 10))
+	}
+	path := fmt.Sprintf("/futures/%s/orders_timerange", settle)
 	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
@@ -139,25 +160,71 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder retrieves detailed information about a specific order.
+// GetOrder retrieves detailed information about a specific order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	resp, err := c.getRawOrder(ctx, gateSettleUsdt, orderID)
 	if err != nil {
-		// Fallback to checking open orders if not found by ID directly
-		openOrders, openErr := c.getRawOpenOrders(ctx, gateSettleUsdt, symbol)
+		// Fallback to checking orders within recent time range if not found by ID directly
+		orders, openErr := c.getRawOrdersTimerange(ctx, gateSettleUsdt, symbol, time.Time{})
 		if openErr == nil {
-			for i := range openOrders {
-				if openOrders[i].Text == orderID || strconv.FormatInt(openOrders[i].Id, 10) == orderID {
-					mapped := mapOrderInfo(openOrders[i])
+			for i := range orders {
+				if strconv.FormatInt(orders[i].Id, 10) == orderID {
+					mapped := mapOrderTimerangeInfo(orders[i])
 					return &mapped, nil
 				}
 			}
 		}
-		return nil, fmt.Errorf("gate.io get order: %w", err)
+		return nil, fmt.Errorf("gate.io get order by ID %s: %w", orderID, err)
 	}
 
 	mapped := mapOrderInfo(*resp)
 	return &mapped, nil
+}
+
+// GetOrderByExternalID retrieves detailed information about a specific order by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	return c.GetOrderByExternalIDWithTime(ctx, symbol, externalOrderID, time.Time{})
+}
+
+// GetOrderByExternalIDWithTime retrieves detailed information about a specific order by client order ID with a start time.
+func (c *Client) GetOrderByExternalIDWithTime(ctx context.Context, symbol, externalOrderID string, startTime time.Time) (*exchange.OrderInfo, error) {
+	targetText := externalOrderID
+	if !strings.HasPrefix(targetText, "t-") {
+		targetText = "t-" + targetText
+	}
+
+	resp, err := c.getRawOrder(ctx, gateSettleUsdt, targetText)
+	if err == nil && resp != nil {
+		mapped := mapOrderInfo(*resp)
+		return &mapped, nil
+	}
+
+	// Fallback 1: Query finished orders list first
+	finishedOrders, fallback1Err := c.getRawOrdersByStatus(ctx, gateSettleUsdt, symbol, "finished")
+	if fallback1Err == nil {
+		for i := range finishedOrders {
+			if finishedOrders[i].Text == externalOrderID || finishedOrders[i].Text == targetText {
+				mapped := mapOrderInfo(finishedOrders[i])
+				return &mapped, nil
+			}
+		}
+	}
+
+	// Fallback 2: checking orders within recent time range (historical/timerange)
+	orders, fallbackErr := c.getRawOrdersTimerange(ctx, gateSettleUsdt, symbol, startTime)
+	if fallbackErr == nil {
+		for i := range orders {
+			if orders[i].Text == externalOrderID || orders[i].Text == targetText {
+				mapped := mapOrderTimerangeInfo(orders[i])
+				return &mapped, nil
+			}
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("gate.io get order by external ID %s: %w", externalOrderID, err)
+	}
+	return nil, fmt.Errorf("gate.io get order by external ID %s not found", externalOrderID)
 }
 
 // GetOpenOrders retrieves all currently open/active orders.
@@ -395,11 +462,114 @@ func mapOrderInfo(raw gateFuturesOrder) exchange.OrderInfo {
 		switch raw.FinishAs {
 		case gateFinishAsFilled:
 			info.State = exchange.OrderStateFilled
-		case "cancelled", gateTifIOC:
+		case gateFinishAsCancelled, gateTifIOC:
 			info.State = exchange.OrderStateCanceled
 		}
 	case gateOrderStatusOpen:
 		if raw.Left < raw.Size {
+			info.State = exchange.OrderStatePartiallyFilled
+		} else {
+			info.State = exchange.OrderStateNew
+		}
+	}
+
+	if after, ok := strings.CutPrefix(raw.Text, "t-"); ok {
+		info.ExternalOID = after
+	} else {
+		info.ExternalOID = raw.Text
+	}
+
+	return info
+}
+
+type gateFuturesOrderTimerange struct {
+	Id                   int64       `json:"id"`
+	User                 int         `json:"user"`
+	CreateTime           float64     `json:"create_time"`
+	UpdateTime           string      `json:"update_time"`
+	FinishTime           string      `json:"finish_time"`
+	FinishAs             string      `json:"finish_as"`
+	Status               string      `json:"status"`
+	Contract             string      `json:"contract"`
+	Size                 json.Number `json:"size"`
+	Iceberg              json.Number `json:"iceberg"`
+	Price                string      `json:"price"`
+	IsClose              bool        `json:"is_close"`
+	IsReduceOnly         bool        `json:"is_reduce_only"`
+	IsLiq                bool        `json:"is_liq"`
+	Tif                  string      `json:"tif"`
+	Left                 json.Number `json:"left"`
+	FillPrice            string      `json:"fill_price"`
+	Text                 string      `json:"text"`
+	Tkfr                 string      `json:"tkfr"`
+	Mkfr                 string      `json:"mkfr"`
+	Refu                 int         `json:"refu"`
+	StpId                int         `json:"stp_id"`
+	StpAct               string      `json:"stp_act"`
+	AmendText            string      `json:"amend_text"`
+	MarketOrderSlipRatio string      `json:"market_order_slip_ratio"`
+	PosMarginMode        string      `json:"pos_margin_mode"`
+	TpslTpTriggerPrice   string      `json:"tpsl_tp_trigger_price"`
+	TpslSlTriggerPrice   string      `json:"tpsl_sl_trigger_price"`
+}
+
+func parseTimerangeTimes(finishTime, updateTime string) (finishTimeMs, updateTimeMs int64) {
+	if finishTime != "" {
+		if f, err := strconv.ParseFloat(finishTime, 64); err == nil {
+			finishTimeMs = int64(f * 1000)
+		}
+	}
+
+	if updateTime != "" {
+		if u, err := strconv.ParseFloat(updateTime, 64); err == nil {
+			updateTimeMs = int64(u * 1000)
+		}
+	} else if finishTimeMs > 0 {
+		updateTimeMs = finishTimeMs
+	}
+	return finishTimeMs, updateTimeMs
+}
+
+func mapOrderTimerangeInfo(raw gateFuturesOrderTimerange) exchange.OrderInfo {
+	var sizeVal int64
+	if s, err := raw.Size.Int64(); err == nil {
+		sizeVal = s
+	}
+	var leftVal int64
+	if l, err := raw.Left.Int64(); err == nil {
+		leftVal = l
+	}
+	_, updateTimeMs := parseTimerangeTimes(raw.FinishTime, raw.UpdateTime)
+
+	info := exchange.OrderInfo{
+		OrderID:      strconv.FormatInt(raw.Id, 10),
+		Symbol:       raw.Contract,
+		Price:        decmath.ParseFloat(raw.Price),
+		Vol:          float64(decmath.AbsInt64(sizeVal)),
+		DealAvgPrice: decmath.ParseFloat(raw.FillPrice),
+		DealVol:      float64(decmath.AbsInt64(sizeVal) - decmath.AbsInt64(leftVal)),
+		CreateTime:   int64(raw.CreateTime * 1000),
+		UpdateTime:   updateTimeMs,
+	}
+
+	if sizeVal > 0 {
+		info.Side = exchange.SideOpenLong
+	} else if sizeVal < 0 {
+		info.Side = exchange.SideOpenShort
+	}
+
+	switch raw.Status {
+	case gateOrderStatusFinished:
+		switch raw.FinishAs {
+		case gateFinishAsFilled:
+			info.State = exchange.OrderStateFilled
+		case gateFinishAsCancelled, gateTifIOC:
+			info.State = exchange.OrderStateCanceled
+		default:
+			info.State = exchange.OrderStateCanceled
+		}
+	case gateOrderStatusOpen:
+		if decmath.AbsInt64(leftVal) < decmath.AbsInt64(sizeVal) {
 			info.State = exchange.OrderStatePartiallyFilled
 		} else {
 			info.State = exchange.OrderStateNew

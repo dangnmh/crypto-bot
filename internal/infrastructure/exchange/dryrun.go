@@ -137,6 +137,10 @@ func (d *DryRunClient) GetOrder(ctx context.Context, symbol, orderID string) (*O
 	return d.inner.GetOrder(ctx, symbol, orderID)
 }
 
+func (d *DryRunClient) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error) {
+	return d.inner.GetOrderByExternalID(ctx, symbol, externalOrderID)
+}
+
 func (d *DryRunClient) GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error) {
 	return d.inner.GetOpenOrders(ctx, symbol)
 }

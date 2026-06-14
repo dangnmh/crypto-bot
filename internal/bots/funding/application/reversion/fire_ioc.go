@@ -56,6 +56,15 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 		return fmt.Errorf("switch margin mode failed: %w", err)
 	}
 
+	if switcher, ok := r.deps.Client.(exchange.PositionModeSwitcher); ok {
+		targetMode := shared.PositionMode(evt.Candidate.Config.ParsedPositionMode)
+		if err := switcher.SwitchPositionMode(ctx, evt.Symbol, targetMode); err != nil {
+			r.log.ErrorContext(ctx, "Failed to switch position mode", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("switch position mode failed: "+err.Error()))
+			return fmt.Errorf("switch position mode failed: %w", err)
+		}
+	}
+
 	latencyMs := r.deps.Clock.LatencyMs()
 	oneWayMs := latencyMs / 2
 	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)

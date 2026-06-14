@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -114,6 +115,27 @@ func TestClient_OrderEndpoints(t *testing.T) {
 	require.Len(t, openOrders, 1)
 	assert.Equal(t, exchange.OrderStatePartiallyFilled, openOrders[0].State)
 
+	// Test GetOrderByExternalID direct query success
+	orderDirect, err := client.GetOrderByExternalID(ctx, "BTC_USDT", "direct")
+	require.NoError(t, err)
+	require.NotNil(t, orderDirect)
+	assert.Equal(t, "42", orderDirect.OrderID)
+	assert.Equal(t, exchange.OrderStateFilled, orderDirect.State)
+
+	// Test GetOrderByExternalID with fallback to finished orders list
+	orderFinished, err := client.GetOrderByExternalID(ctx, "BTC_USDT", "finished")
+	require.NoError(t, err)
+	require.NotNil(t, orderFinished)
+	assert.Equal(t, "42", orderFinished.OrderID)
+	assert.Equal(t, exchange.OrderStateFilled, orderFinished.State)
+
+	// Test GetOrderByExternalID with fallback to orders_timerange
+	orderByExt, err := client.GetOrderByExternalID(ctx, "BTC_USDT", "ext")
+	require.NoError(t, err)
+	require.NotNil(t, orderByExt)
+	assert.Equal(t, "42", orderByExt.OrderID)
+	assert.Equal(t, exchange.OrderStateFilled, orderByExt.State)
+
 	require.NoError(t, client.ClosePosition(ctx, "BTC_USDT", domain.SideCloseLong, 2, 1))
 	require.NoError(t, client.CloseAllPositions(ctx, "BTC_USDT"))
 	require.NoError(t, client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{Symbol: "BTC_USDT", Leverage: 20}))
@@ -189,6 +211,7 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 //nolint:cyclop,gocognit // Single test server switch keeps endpoint fixtures local and readable.
 func newGateServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	positionsCount := make(map[string]int)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -223,18 +246,73 @@ func newGateServer(t *testing.T) *httptest.Server {
 				"currency": "USDT", "total": "1000", "unrealised_pnl": "10",
 				"position_margin": "100", "available": "900",
 			})
-		case r.URL.Path == "/futures/usdt/dual_comp/positions/BTC_USDT":
-			writeJSON(t, w, []map[string]any{gatePosition(2)})
+		case strings.HasPrefix(r.URL.Path, "/futures/usdt/dual_comp/positions/"):
+			parts := strings.Split(r.URL.Path, "/")
+			sym := parts[len(parts)-1]
+			positionsCount[sym]++
+			if sym == "BTC_USDT" && positionsCount[sym] == 1 {
+				writeJSON(t, w, []map[string]any{
+					gatePosition(2, "dual_long"),
+					gatePosition(0, "dual_short"),
+				})
+			} else {
+				writeJSON(t, w, []map[string]any{
+					gatePosition(0, "dual_long"),
+					gatePosition(0, "dual_short"),
+				})
+			}
 		case r.URL.Path == "/futures/usdt/positions":
 			writeJSON(t, w, []map[string]any{gatePosition(2), gatePosition(0)})
 		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodGet:
-			writeJSON(t, w, []map[string]any{gateOrder(43, "open", "", 5, 2, "raw")})
+			statusVal := r.URL.Query().Get("status")
+			contractVal := r.URL.Query().Get("contract")
+			size := int64(5)
+			if contractVal == "ETH_USDT" {
+				size = -5
+			}
+			if statusVal == "finished" {
+				writeJSON(t, w, []map[string]any{
+					gateOrder(42, "finished", "filled", size, 0, "t-finished"),
+				})
+			} else {
+				writeJSON(t, w, []map[string]any{gateOrder(43, "open", "", size, 2, "raw")})
+			}
+		case r.URL.Path == "/futures/usdt/orders_timerange" && r.Method == http.MethodGet:
+			contractVal := r.URL.Query().Get("contract")
+			size := int64(5)
+			if contractVal == "ETH_USDT" {
+				size = -5
+			}
+			writeJSON(t, w, []map[string]any{
+				gateOrderTimerangeString(43, "open", "", "5", "2", "raw"),
+				gateOrderTimerange(42, "finished", "filled", size, 0, "t-ext"),
+			})
 		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodPost:
 			writeJSON(t, w, map[string]int64{"id": 99})
 		case r.URL.Path == "/futures/usdt/orders" && r.Method == http.MethodDelete:
 			writeJSON(t, w, []map[string]any{})
-		case strings.Contains(r.URL.Path, "/orders/"):
-			writeJSON(t, w, gateOrder(42, "finished", "filled", 5, 0, "t-ext"))
+		case strings.HasPrefix(r.URL.Path, "/futures/usdt/orders/"):
+			parts := strings.Split(r.URL.Path, "/")
+			lastPart := parts[len(parts)-1]
+			if lastPart != "t-direct" && lastPart != "t-ext_short" {
+				if _, err := strconv.ParseInt(lastPart, 10, 64); err != nil {
+					w.WriteHeader(http.StatusNotFound)
+					writeJSON(t, w, map[string]string{
+						"label":   "ORDER_NOT_FOUND",
+						"message": "order not found",
+					})
+					return
+				}
+			}
+			textVal := lastPart
+			size := int64(5)
+			if strings.Contains(textVal, "short") {
+				size = -5
+			}
+			if _, err := strconv.ParseInt(lastPart, 10, 64); err == nil {
+				textVal = "t-ext"
+			}
+			writeJSON(t, w, gateOrder(42, "finished", "filled", size, 0, textVal))
 		case r.URL.Path == "/futures/usdt/dual_mode" && r.Method == http.MethodPost:
 			dualModeStr := r.URL.Query().Get("dual_mode")
 			if dualModeStr == "" {
@@ -246,30 +324,115 @@ func newGateServer(t *testing.T) *httptest.Server {
 			})
 		case strings.Contains(r.URL.Path, "/leverage"):
 			writeJSON(t, w, []map[string]any{gatePosition(2)})
-		case r.URL.Path == "/futures/usdt/position_close":
+		case r.URL.Path == "/futures/usdt/my_trades":
+			contract := r.URL.Query().Get("contract")
+			orderIDStr := r.URL.Query().Get("order")
+			if contract == "XRP_USDT" || contract == "DOGE_USDT" {
+				writeJSON(t, w, []any{})
+				return
+			}
+			if orderIDStr == "42" {
+				if contract == "ETH_USDT" {
+					writeJSON(t, w, []map[string]any{
+						{
+							"id":          1001,
+							"create_time": 1700000000.0,
+							"contract":    "ETH_USDT",
+							"order_id":    "42",
+							"size":        "-2.0",
+							"close_size":  "0",
+							"price":       "101.0",
+							"fee":         "0.0",
+						},
+					})
+				} else {
+					writeJSON(t, w, []map[string]any{
+						{
+							"id":          1001,
+							"create_time": 1700000000.0,
+							"contract":    contract,
+							"order_id":    "42",
+							"size":        "2.0",
+							"close_size":  "0",
+							"price":       "100.0",
+							"fee":         "0.0",
+						},
+					})
+				}
+				return
+			}
+
+			switch contract {
+			case "ETH_USDT":
+				writeJSON(t, w, []map[string]any{
+					{
+						"id":          1002,
+						"create_time": 1700000005.0,
+						"contract":    "ETH_USDT",
+						"order_id":    "43",
+						"size":        "2.0",
+						"close_size":  "2",
+						"price":       "100.0",
+						"fee":         "-0.04",
+					},
+				})
+			case "LTC_USDT":
+				writeJSON(t, w, []map[string]any{
+					{
+						"id":          1001,
+						"create_time": 1700000000.0,
+						"contract":    "LTC_USDT",
+						"order_id":    "42",
+						"size":        "2.0",
+						"close_size":  "0",
+						"price":       "100.0",
+						"fee":         "0.0",
+					},
+					{
+						"id":          1002,
+						"create_time": 1700000005.0,
+						"contract":    "LTC_USDT",
+						"order_id":    "43",
+						"size":        "-2.0",
+						"close_size":  "-2",
+						"price":       "101.0",
+						"fee":         "-0.04",
+					},
+				})
+			default:
+				writeJSON(t, w, []map[string]any{
+					{
+						"id":          1002,
+						"create_time": 1700000005.0,
+						"contract":    "BTC_USDT",
+						"order_id":    "43",
+						"size":        "-2.0",
+						"close_size":  "-2",
+						"price":       "101.0",
+						"fee":         "-0.04",
+					},
+				})
+			}
+		case r.URL.Path == "/futures/usdt/account_book":
 			contract := r.URL.Query().Get("contract")
 			if contract == "XRP_USDT" || contract == "DOGE_USDT" {
 				writeJSON(t, w, []any{})
 				return
 			}
-			side := "long"
-			if contract == "ETH_USDT" {
-				side = "short"
-			}
 			writeJSON(t, w, []map[string]any{
 				{
-					"time":            1700000005.0,
-					"first_open_time": 1700000000,
-					"long_price":      "100.0",
-					"short_price":     "101.0",
-					"pnl":             "0.95",
-					"pnl_pnl":         "1.0",
-					"pnl_fund":        "-0.01",
-					"pnl_fee":         "-0.04",
-					"side":            side,
-					"contract":        contract,
-					"text":            "t-ext",
-					"accum_size":      "2.0",
+					"time":    1700000005.0,
+					"change":  "1.0",
+					"balance": "1001.0",
+					"type":    "pnl",
+					"text":    "t-ext",
+				},
+				{
+					"time":    1700000005.0,
+					"change":  "-0.01",
+					"balance": "1000.99",
+					"type":    "fund",
+					"text":    "t-ext",
 				},
 			})
 		default:
@@ -288,11 +451,40 @@ func gateOrder(id int64, status, finishAs string, size, left int64, text string)
 	}
 }
 
+func gateOrderTimerange(id int64, status, finishAs string, size, left int64, text string) map[string]any {
+	return map[string]any{
+		"id": id, "user": 1, "contract": "BTC_USDT", "price": "100", "size": size, "left": left,
+		"fill_price": "100.5", "status": status, "finish_as": finishAs, "text": text,
+		"create_time": 1700000000.0, "finish_time": "1700000001.0", "update_time": "1700000001.0",
+		"is_close": false, "is_reduce_only": false, "is_liq": false, "tif": "gtc",
+	}
+}
+
+func gateOrderTimerangeString(id int64, status, finishAs, size, left, text string) map[string]any {
+	return map[string]any{
+		"id": id, "user": 1, "contract": "BTC_USDT", "price": "100", "size": size, "left": left,
+		"fill_price": "100.5", "status": status, "finish_as": finishAs, "text": text,
+		"create_time": 1700000000.0, "finish_time": "1700000001.0", "update_time": "1700000001.0",
+		"is_close": false, "is_reduce_only": false, "is_liq": false, "tif": "gtc",
+	}
+}
+
 //nolint:misspell // Gate.io uses the British spelling in the API field name.
-func gatePosition(size int64) map[string]any {
+func gatePosition(size int64, modeOpt ...string) map[string]any {
+	mode := "dual_long"
+	if len(modeOpt) > 0 {
+		mode = modeOpt[0]
+	}
 	return map[string]any{
 		"contract": "BTC_USDT", "size": size, "entry_price": "100", "liq_price": "50",
 		"realised_pnl": "1.5", "leverage": "20",
+		"mode":           mode,
+		"pnl_pnl":        "1.0",
+		"pnl_fee":        "-0.04",
+		"pnl_fund":       "-0.01",
+		"last_close_pnl": "0.95",
+		"update_time":    1700000005,
+		"open_time":      1700000000,
 	}
 }
 
@@ -308,13 +500,9 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
 	ctx := context.Background()
 
-	t.Run("long side position close matched", func(t *testing.T) {
-		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "BTC_USDT", "ext", time.Unix(1700000000, 0))
-		require.NoError(t, err)
-		require.NotNil(t, res)
-
-		assert.Equal(t, "BTC_USDT", res.Symbol)
+	assertPnLInfo := func(t *testing.T, res *exchange.ClosedPnLInfo, symbol string) {
+		t.Helper()
+		assert.Equal(t, symbol, res.Symbol)
 		assert.Equal(t, 100.0, res.EntryPrice)
 		assert.Equal(t, 101.0, res.ExitPrice)
 		assert.Equal(t, 2.0, res.ClosedSize)
@@ -324,11 +512,19 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		assert.Equal(t, int64(5000), res.DurationMs)
 		assert.Equal(t, 0.95, res.NetPnl)
 		assert.Equal(t, 1.0, res.PnLRate)
+	}
+
+	t.Run("long side position close matched", func(t *testing.T) {
+		t.Parallel()
+		res, err := client.GetRecentClosedPnL(ctx, "BTC_USDT", "ext", time.Unix(1700000000, 0))
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assertPnLInfo(t, res, "BTC_USDT")
 	})
 
 	t.Run("short side position close matched", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "ETH_USDT", "ext", time.Unix(1700000000, 0))
+		res, err := client.GetRecentClosedPnL(ctx, "ETH_USDT", "ext_short", time.Unix(1700000000, 0))
 		require.NoError(t, err)
 		require.NotNil(t, res)
 
@@ -345,12 +541,20 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		assert.Equal(t, expectedPnLRate, res.PnLRate)
 	})
 
+	t.Run("ignore opening trade if returned in trades query", func(t *testing.T) {
+		t.Parallel()
+		res, err := client.GetRecentClosedPnL(ctx, "LTC_USDT", "ext", time.Unix(1700000000, 0))
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assertPnLInfo(t, res, "LTC_USDT")
+	})
+
 	t.Run("position close history unmatched error", func(t *testing.T) {
 		t.Parallel()
 		res, err := client.GetRecentClosedPnL(ctx, "XRP_USDT", "ext", time.Unix(1700000000, 0))
 		require.Error(t, err)
 		assert.Nil(t, res)
-		assert.Contains(t, err.Error(), "no matching position close record found in history")
+		assert.Contains(t, err.Error(), "no closing trades found for symbol")
 	})
 
 	t.Run("no close records found error", func(t *testing.T) {
@@ -358,7 +562,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		res, err := client.GetRecentClosedPnL(ctx, "DOGE_USDT", "ext", time.Unix(1700000000, 0))
 		require.Error(t, err)
 		assert.Nil(t, res)
-		assert.Contains(t, err.Error(), "no matching position close record found in history")
+		assert.Contains(t, err.Error(), "no closing trades found for symbol")
 	})
 }
 

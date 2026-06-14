@@ -92,23 +92,23 @@ func TestHealthChecker_OneUnhealthy(t *testing.T) {
 	assert.False(t, overall)
 }
 
-func TestCorrelationID_RoundTrip(t *testing.T) {
+func TestRequestID_RoundTrip(t *testing.T) {
 	t.Parallel()
-	ctx := observability.WithCorrelationID(context.Background())
-	cid := observability.CorrelationID(ctx)
+	ctx := observability.WithRequestID(context.Background())
+	rid := observability.RequestID(ctx)
 
-	assert.NotEmpty(t, cid)
-	assert.Len(t, cid, 8)
+	assert.NotEmpty(t, rid)
+	assert.Len(t, rid, 8)
 }
 
-func TestCorrelationID_WithValue(t *testing.T) {
+func TestRequestID_WithValue(t *testing.T) {
 	t.Parallel()
-	ctx := observability.WithCorrelationIDValue(context.Background(), "test-123")
-	assert.Equal(t, "test-123", observability.CorrelationID(ctx))
+	ctx := observability.WithRequestIDValue(context.Background(), "test-123")
+	assert.Equal(t, "test-123", observability.RequestID(ctx))
 }
 
-func TestCorrelationID_Missing(t *testing.T) {
+func TestRequestID_Missing(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	assert.Empty(t, observability.CorrelationID(ctx))
+	assert.Empty(t, observability.RequestID(ctx))
 }

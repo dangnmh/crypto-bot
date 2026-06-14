@@ -32,8 +32,9 @@ type bingxCancelOrderRequest struct {
 }
 
 type bingxGetOrderRequest struct {
-	Symbol  string `json:"symbol"`
-	OrderID string `json:"orderId"`
+	Symbol        string `json:"symbol"`
+	OrderID       string `json:"orderId,omitempty"`
+	ClientOrderID string `json:"clientOrderId,omitempty"`
 }
 
 type bingxListOpenOrdersRequest struct {
@@ -157,8 +158,13 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bingxCancelOrderRequest
 
 func (c *Client) getRawOrder(ctx context.Context, req bingxGetOrderRequest) (*bingxOrder, error) {
 	params := map[string]string{
-		paramSymbol:  req.Symbol,
-		paramOrderId: req.OrderID,
+		paramSymbol: req.Symbol,
+	}
+	if req.OrderID != "" {
+		params[paramOrderId] = req.OrderID
+	}
+	if req.ClientOrderID != "" {
+		params["clientOrderId"] = req.ClientOrderID
 	}
 
 	body, err := c.GetCtx(ctx, pathGetOrder, params)
@@ -301,11 +307,24 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder fetches details of a specific order.
+// GetOrder fetches details of a specific order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	raw, err := c.getRawOrder(ctx, bingxGetOrderRequest{
 		Symbol:  symbol,
 		OrderID: orderID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return c.toOrderInfo(raw), nil
+}
+
+// GetOrderByExternalID fetches details of a specific order by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, bingxGetOrderRequest{
+		Symbol:        symbol,
+		ClientOrderID: externalOrderID,
 	})
 	if err != nil {
 		return nil, err

@@ -13,20 +13,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func assertHeaderCasePreserved(t *testing.T, header http.Header, key, expected string) {
+	t.Helper()
+	canonicalKey := http.CanonicalHeaderKey(key)
+	found := false
+	for k, vals := range header {
+		if k == canonicalKey {
+			found = true
+			if assert.Len(t, vals, 1) {
+				assert.Equal(t, expected, vals[0])
+			}
+			break
+		}
+	}
+	assert.True(t, found, "header key %q (canonical: %q) not found", key, canonicalKey)
+}
+
+func newTraceTestServer(t *testing.T, expectedID string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, expectedID, r.Header.Get("X-Request-ID"))
+		assert.Equal(t, expectedID, r.Header.Get("req_id"))
+		assert.Equal(t, expectedID, r.Header.Get("request_id"))
+		assert.Equal(t, expectedID, r.Header.Get("requestid"))
+
+		assertHeaderCasePreserved(t, r.Header, "X-Request-ID", expectedID)
+		assertHeaderCasePreserved(t, r.Header, "req_id", expectedID)
+		assertHeaderCasePreserved(t, r.Header, "request_id", expectedID)
+		assertHeaderCasePreserved(t, r.Header, "requestid", expectedID)
+
+		w.WriteHeader(http.StatusOK)
+	}))
+}
+
 func TestTraceRoundTripper_InjectsHeaders(t *testing.T) {
 	t.Parallel()
 
 	expectedID := "test-trace-id-123"
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, expectedID, r.Header.Get("X-Request-ID"))
-		assert.Equal(t, expectedID, r.Header.Get("req_id"))
-		w.WriteHeader(http.StatusOK)
-	}))
+	server := newTraceTestServer(t, expectedID)
 	defer server.Close()
 
-	// 1. Test with Correlation ID in context
-	ctx := tracectx.WithCorrelationIDValue(context.Background(), expectedID)
+	// Test with Request ID in context
+	ctx := tracectx.WithRequestIDValue(context.Background(), expectedID)
 
 	client := httpclient.NewPool(httpclient.DefaultPoolConfig())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, http.NoBody)
@@ -36,14 +64,25 @@ func TestTraceRoundTripper_InjectsHeaders(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
 
-	// 2. Test with Reversion ID in context
-	ctx2 := tracectx.WithReversionID(context.Background(), expectedID)
-	req2, err := http.NewRequestWithContext(ctx2, http.MethodGet, server.URL, http.NoBody)
+func TestWrapWithRequestID_InjectsHeaders(t *testing.T) {
+	t.Parallel()
+
+	expectedID := "test-wrap-id-456"
+	server := newTraceTestServer(t, expectedID)
+	defer server.Close()
+
+	ctx := tracectx.WithRequestIDValue(context.Background(), expectedID)
+
+	transport := httpclient.WrapWithRequestID(http.DefaultTransport)
+	client := &http.Client{Transport: transport}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, http.NoBody)
 	require.NoError(t, err)
 
-	resp2, err := client.Do(req2)
+	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer func() { _ = resp2.Body.Close() }()
-	assert.Equal(t, http.StatusOK, resp2.StatusCode)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

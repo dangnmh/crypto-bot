@@ -322,17 +322,15 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder queries a single order by ID.
-func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
+func (c *Client) findBitgetOrder(ctx context.Context, predicate func(bitgetOrder) bool) (*exchange.OrderInfo, error) {
 	// Query pending orders.
 	pendingList, err := c.getRawPendingOrders(ctx, bitgetPendingOrdersRequest{
 		ProductType: productTypeUsdtFutures,
 	})
 	if err == nil {
 		for i := range pendingList {
-			o := pendingList[i]
-			if o.OrderID == orderID || o.ClientOid == orderID {
-				info := mapBitgetOrder(o)
+			if predicate(pendingList[i]) {
+				info := mapBitgetOrder(pendingList[i])
 				return &info, nil
 			}
 		}
@@ -344,15 +342,42 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	})
 	if err == nil {
 		for i := range historyList {
-			o := historyList[i]
-			if o.OrderID == orderID || o.ClientOid == orderID {
-				info := mapBitgetOrder(o)
+			if predicate(historyList[i]) {
+				info := mapBitgetOrder(historyList[i])
 				return &info, nil
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("order not found: %s", orderID)
+	return nil, nil
+}
+
+// GetOrder queries a single order by exchange order ID.
+func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
+	info, err := c.findBitgetOrder(ctx, func(o bitgetOrder) bool {
+		return o.OrderID == orderID
+	})
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, fmt.Errorf("order not found: %s", orderID)
+	}
+	return info, nil
+}
+
+// GetOrderByExternalID queries a single order by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	info, err := c.findBitgetOrder(ctx, func(o bitgetOrder) bool {
+		return o.ClientOid == externalOrderID
+	})
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, fmt.Errorf("order not found by external ID: %s", externalOrderID)
+	}
+	return info, nil
 }
 
 // GetOpenOrders returns all open orders.

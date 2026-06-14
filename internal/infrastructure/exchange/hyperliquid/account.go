@@ -136,7 +136,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("hyperliquid get order by external ID %s failed: %w", extOrderID, err)
 	}

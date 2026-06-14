@@ -34,6 +34,7 @@ type OrderExecutor interface {
 	CancelOrders(ctx context.Context, orderIDs []string) error
 	CancelAllOpenOrders(ctx context.Context, symbol string) error
 	GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)
+	GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
 	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error
 	CloseAllPositions(ctx context.Context, symbol string) error
@@ -45,6 +46,12 @@ type OrderExecutor interface {
 // to support post-fill Take Profit and Stop Loss configuration.
 type TPSLProvider interface {
 	PlaceTPSL(ctx context.Context, req TPSLRequest) error
+}
+
+// PositionModeSwitcher is an optional interface that exchange REST clients can implement
+// to support switching position mode (Hedge vs One-Way).
+type PositionModeSwitcher interface {
+	SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error
 }
 
 // AccountProvider is the interface for reading account data.

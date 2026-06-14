@@ -64,19 +64,21 @@ type kucoinOpenOrdersRequest struct {
 }
 
 type kucoinOrder struct {
-	OrderID     string `json:"id"`
-	ClientOid   string `json:"clientOid"`
-	Symbol      string `json:"symbol"`
-	Side        string `json:"side"`
-	Type        string `json:"type"`
-	Size        int64  `json:"size"`
-	Price       string `json:"price"`
-	Status      string `json:"status"`
-	DealSize    int64  `json:"dealSize"`
-	StatusVal   string `json:"statusVal"`
-	CreatedAt   int64  `json:"createdAt"`
-	FilledValue string `json:"filledValue"`
-	IsActive    bool   `json:"isActive"`
+	OrderID      string `json:"id"`
+	ClientOid    string `json:"clientOid"`
+	Symbol       string `json:"symbol"`
+	Side         string `json:"side"`
+	Type         string `json:"type"`
+	Size         int64  `json:"size"`
+	Price        string `json:"price"`
+	Status       string `json:"status"`
+	DealSize     int64  `json:"dealSize"`
+	StatusVal    string `json:"statusVal"`
+	CreatedAt    int64  `json:"createdAt"`
+	FilledValue  string `json:"filledValue"`
+	AvgDealPrice string `json:"avgDealPrice"`
+	CancelExist  bool   `json:"cancelExist"`
+	IsActive     bool   `json:"isActive"`
 }
 
 // Private raw methods invoking the KuCoin REST API.
@@ -345,7 +347,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-// GetOrder fetches details of a specific order.
+// GetOrder fetches details of a specific order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	raw, err := c.getRawOrder(ctx, kucoinOrderRequest{
 		OrderID: orderID,
@@ -354,6 +356,15 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		return nil, err
 	}
 
+	return c.toOrderInfo(raw), nil
+}
+
+// GetOrderByExternalID fetches details of a specific order by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrderByClientOid(ctx, externalOrderID)
+	if err != nil {
+		return nil, err
+	}
 	return c.toOrderInfo(raw), nil
 }
 
@@ -470,9 +481,12 @@ func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 			state = exchange.OrderStateNew
 		}
 	} else {
-		if o.Status == stateFilled || o.StatusVal == stateFilled {
+		switch {
+		case o.CancelExist:
+			state = exchange.OrderStateCanceled
+		case o.Status == stateFilled || o.StatusVal == stateFilled:
 			state = exchange.OrderStateFilled
-		} else {
+		default:
 			state = exchange.OrderStateCanceled
 		}
 	}
@@ -486,9 +500,9 @@ func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 	qty := float64(o.Size)
 	exec := float64(o.DealSize)
 
-	var avg float64
-	val := decmath.ParseFloat(o.FilledValue)
-	if exec > 0 {
+	avg := decmath.ParseFloat(o.AvgDealPrice)
+	if avg == 0 && exec > 0 {
+		val := decmath.ParseFloat(o.FilledValue)
 		avg = val / exec
 	}
 

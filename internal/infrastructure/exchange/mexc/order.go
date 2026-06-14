@@ -270,9 +270,21 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 	return c.CancelOrders(ctx, []string{orderID})
 }
 
-// GetOrder queries a single order by ID.
+// GetOrder queries a single order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	raw, err := c.getRawOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
+	if err != nil {
+		return nil, err
+	}
+	return raw.toOrderInfo(), nil
+}
+
+// GetOrderByExternalID queries a single order by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrderByExOrderID(ctx, mexcGetOrderByExternalRequest{
+		Symbol:      symbol,
+		ExternalOID: externalOrderID,
+	})
 	if err != nil {
 		return nil, err
 	}

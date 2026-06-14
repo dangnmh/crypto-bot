@@ -216,6 +216,52 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	}, nil
 }
 
+// GetOrderByExternalID queries order status by client order ID (cloid).
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	if c.userAddress == "" {
+		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
+	}
+
+	res, err := c.getRawOrderByCloid(ctx, hyperliquidQueryOrderByCloidRequest{
+		UserAddress: c.userAddress,
+		Cloid:       externalOrderID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if res.Order.Order.Oid == 0 {
+		return nil, fmt.Errorf("order not found by external ID: %s", externalOrderID)
+	}
+
+	o := res.Order.Order
+	price, _ := strconv.ParseFloat(o.LimitPx, 64)
+	origSz, _ := strconv.ParseFloat(o.OrigSz, 64)
+
+	state := exchange.OrderStateNew
+	switch res.Order.Status {
+	case stateFilled:
+		state = exchange.OrderStateFilled
+	case stateCanceled:
+		state = exchange.OrderStateCanceled
+	default:
+		szVal, _ := strconv.ParseFloat(o.Sz, 64)
+		if szVal > 0 && szVal < origSz {
+			state = exchange.OrderStatePartiallyFilled
+		}
+	}
+
+	return &exchange.OrderInfo{
+		OrderID:    strconv.FormatInt(o.Oid, 10),
+		Symbol:     o.Coin,
+		Price:      price,
+		Vol:        origSz,
+		State:      state,
+		CreateTime: o.Timestamp,
+		UpdateTime: res.Order.StatusTimestamp,
+	}, nil
+}
+
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
 	if c.userAddress == "" {

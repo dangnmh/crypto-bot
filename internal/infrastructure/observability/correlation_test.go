@@ -11,44 +11,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWithCorrelationID(t *testing.T) {
+func TestWithRequestID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	ctx = observability.WithCorrelationID(ctx)
+	ctx = observability.WithRequestID(ctx)
 
-	id := observability.CorrelationID(ctx)
+	id := observability.RequestID(ctx)
 	require.NotEmpty(t, id)
 	assert.Len(t, id, 8)
 }
 
-func TestWithCorrelationIDValue(t *testing.T) {
+func TestWithRequestIDValue(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	ctx = observability.WithCorrelationIDValue(ctx, "custom-id")
+	ctx = observability.WithRequestIDValue(ctx, "custom-id")
 
-	id := observability.CorrelationID(ctx)
+	id := observability.RequestID(ctx)
 	assert.Equal(t, "custom-id", id)
 }
 
-func TestCorrelationID_Empty(t *testing.T) {
+func TestRequestID_Empty(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	id := observability.CorrelationID(ctx)
+	id := observability.RequestID(ctx)
 	assert.Empty(t, id)
 }
 
-func TestLoggerWithCorrelation_WithID(t *testing.T) {
+func TestLoggerWithRequestID_WithID(t *testing.T) {
 	t.Parallel()
-	ctx := observability.WithCorrelationIDValue(context.Background(), "abc123")
-	logger := observability.LoggerWithCorrelation(ctx, slog.Default())
+	ctx := observability.WithRequestIDValue(context.Background(), "abc123")
+	logger := observability.LoggerWithRequestID(ctx, slog.Default())
 	require.NotNil(t, logger)
 }
 
-func TestLoggerWithCorrelation_WithoutID(t *testing.T) {
+func TestLoggerWithRequestID_WithoutID(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	base := slog.Default()
-	logger := observability.LoggerWithCorrelation(ctx, base)
+	logger := observability.LoggerWithRequestID(ctx, base)
 	// Should return the base logger unchanged.
 	assert.Equal(t, base, logger)
 }

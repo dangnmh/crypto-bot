@@ -31,11 +31,8 @@ func (h *TraceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *TraceHandler) Handle(ctx context.Context, r slog.Record) error {
-	if cid := tracectx.CorrelationID(ctx); cid != "" {
-		r.AddAttrs(slog.String("correlation_id", cid))
-	}
-	if reversionID := tracectx.ReversionID(ctx); reversionID != "" {
-		r.AddAttrs(slog.String("reversion_id", reversionID))
+	if rid := tracectx.RequestID(ctx); rid != "" {
+		r.AddAttrs(slog.String("request_id", rid))
 	}
 	return h.inner.Handle(ctx, r)
 }

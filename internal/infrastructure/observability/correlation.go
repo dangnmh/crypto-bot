@@ -7,39 +7,27 @@ import (
 	"crypto-bot/pkg/tracectx"
 )
 
-// WithCorrelationID creates a new context with a correlation ID attached.
-func WithCorrelationID(ctx context.Context) context.Context {
-	return tracectx.WithCorrelationID(ctx)
+// WithRequestID creates a new context with a request ID attached.
+func WithRequestID(ctx context.Context) context.Context {
+	return tracectx.WithRequestID(ctx)
 }
 
-// WithCorrelationIDValue creates a new context with a specific correlation ID.
-func WithCorrelationIDValue(ctx context.Context, id string) context.Context {
-	return tracectx.WithCorrelationIDValue(ctx, id)
+// WithRequestIDValue creates a new context with a specific request ID.
+func WithRequestIDValue(ctx context.Context, id string) context.Context {
+	return tracectx.WithRequestIDValue(ctx, id)
 }
 
-// CorrelationID extracts the correlation ID from the context.
+// RequestID extracts the request ID from the context.
 // Returns empty string if not set.
-func CorrelationID(ctx context.Context) string {
-	return tracectx.CorrelationID(ctx)
+func RequestID(ctx context.Context) string {
+	return tracectx.RequestID(ctx)
 }
 
-func WithReversionID(ctx context.Context) context.Context {
-	return WithReversionIDValue(ctx, tracectx.NewID())
-}
-
-func WithReversionIDValue(ctx context.Context, id string) context.Context {
-	return tracectx.WithReversionID(ctx, id)
-}
-
-func ReversionID(ctx context.Context) string {
-	return tracectx.ReversionID(ctx)
-}
-
-// LoggerWithCorrelation creates a slog.Logger with the correlation ID from context attached.
-func LoggerWithCorrelation(ctx context.Context, base *slog.Logger) *slog.Logger {
-	cid := CorrelationID(ctx)
-	if cid == "" {
+// LoggerWithRequestID creates a slog.Logger with the request ID from context attached.
+func LoggerWithRequestID(ctx context.Context, base *slog.Logger) *slog.Logger {
+	rid := RequestID(ctx)
+	if rid == "" {
 		return base
 	}
-	return base.With("cid", cid)
+	return base.With("request_id", rid)
 }

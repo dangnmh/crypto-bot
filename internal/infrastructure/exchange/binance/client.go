@@ -18,6 +18,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -46,31 +47,34 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		clientCopy.Transport = http.DefaultTransport
 	}
 
-	if logCfg.HTTP {
-		rt := clientCopy.Transport
-		rt = &decompressionRoundTripper{underlying: rt}
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/fapi/v1/ping",
-					"GET|/fapi/v1/time",
-					"GET|/fapi/v1/ticker/24hr",
-					"GET|/fapi/v1/ticker/bookTicker",
-					"GET|/fapi/v1/exchangeInfo",
-					"GET|/fapi/v1/premiumIndex",
-					"POST|/fapi/v1/listenKey",
-				},
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{
-				"X-MBX-APIKEY",
-			}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = &decompressionRoundTripper{underlying: rt}
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"},
+					BlackListPaths: []string{
+						"GET|/fapi/v1/ping",
+						"GET|/fapi/v1/time",
+						"GET|/fapi/v1/ticker/24hr",
+						"GET|/fapi/v1/ticker/bookTicker",
+						"GET|/fapi/v1/exchangeInfo",
+						"GET|/fapi/v1/premiumIndex",
+						"POST|/fapi/v1/listenKey",
+					},
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{
+					"X-MBX-APIKEY",
+				}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	if baseURL == "" {

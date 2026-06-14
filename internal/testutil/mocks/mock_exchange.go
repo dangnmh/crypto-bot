@@ -739,6 +739,45 @@ func (c *MockClientGetOrderCall) DoAndReturn(f func(context.Context, string, str
 	return c
 }
 
+// GetOrderByExternalID mocks base method.
+func (m *MockClient) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOrderByExternalID", ctx, symbol, externalOrderID)
+	ret0, _ := ret[0].(*exchange.OrderInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetOrderByExternalID indicates an expected call of GetOrderByExternalID.
+func (mr *MockClientMockRecorder) GetOrderByExternalID(ctx, symbol, externalOrderID any) *MockClientGetOrderByExternalIDCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrderByExternalID", reflect.TypeOf((*MockClient)(nil).GetOrderByExternalID), ctx, symbol, externalOrderID)
+	return &MockClientGetOrderByExternalIDCall{Call: call}
+}
+
+// MockClientGetOrderByExternalIDCall wrap *gomock.Call
+type MockClientGetOrderByExternalIDCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientGetOrderByExternalIDCall) Return(arg0 *exchange.OrderInfo, arg1 error) *MockClientGetOrderByExternalIDCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientGetOrderByExternalIDCall) Do(f func(context.Context, string, string) (*exchange.OrderInfo, error)) *MockClientGetOrderByExternalIDCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientGetOrderByExternalIDCall) DoAndReturn(f func(context.Context, string, string) (*exchange.OrderInfo, error)) *MockClientGetOrderByExternalIDCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetServerTime mocks base method.
 func (m *MockClient) GetServerTime(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()

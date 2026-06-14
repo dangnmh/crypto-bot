@@ -103,7 +103,7 @@ func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt 
 	}
 
 	initEvt := ForceCloseInitiatedEvent{
-		BaseReversionEvent: nextNotifyReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Timeout:            evt.Timeout,
 		StartedAt:          evt.StartedAt,
 		HoldVol:            evt.HoldVol,

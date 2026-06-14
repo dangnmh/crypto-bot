@@ -18,6 +18,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -40,24 +41,27 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 
 	clientCopy := *httpClient
 
-	if logCfg.HTTP && clientCopy.Transport != nil {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"}, // match all paths
-				BlackListPaths: []string{
-					"GET|/api/v4/spot/time",
-					"GET|/api/v4/futures/usdt/tickers",
-					"GET|/api/v4/futures/usdt/contracts",
-				}, // match everything cleanly
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"Key"}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"}, // match all paths
+					BlackListPaths: []string{
+						"GET|/api/v4/spot/time",
+						"GET|/api/v4/futures/usdt/tickers",
+						"GET|/api/v4/futures/usdt/contracts",
+					}, // match everything cleanly
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"Key"}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	base := "https://api.gateio.ws/api/v4"
@@ -275,21 +279,38 @@ type gatePosition struct {
 	EntryPrice string      `json:"entry_price"`
 	Leverage   json.Number `json:"leverage"`
 	Mode       string      `json:"mode"`
+	//nolint:misspell // Gate.io API uses the British spelling realised_pnl.
+	RealisedPnl  string `json:"realised_pnl"`
+	PnlPnl       string `json:"pnl_pnl"`
+	PnlFund      string `json:"pnl_fund"`
+	PnlFee       string `json:"pnl_fee"`
+	HistoryPnl   string `json:"history_pnl"`
+	LastClosePnl string `json:"last_close_pnl"`
+	UpdateTime   int64  `json:"update_time"`
+	OpenTime     int64  `json:"open_time"`
 }
 
-type gatePositionClose struct {
-	Time          float64 `json:"time"`
-	FirstOpenTime int64   `json:"first_open_time"`
-	Pnl           string  `json:"pnl"`
-	PnlPnl        string  `json:"pnl_pnl"`
-	PnlFund       string  `json:"pnl_fund"`
-	PnlFee        string  `json:"pnl_fee"`
-	LongPrice     string  `json:"long_price"`
-	ShortPrice    string  `json:"short_price"`
-	Side          string  `json:"side"`
-	Contract      string  `json:"contract"`
-	Text          string  `json:"text"`
-	AccumSize     string  `json:"accum_size"`
+type gateMyTrade struct {
+	ID         int64       `json:"id"`
+	CreateTime float64     `json:"create_time"`
+	Contract   string      `json:"contract"`
+	OrderID    string      `json:"order_id"`
+	Size       json.Number `json:"size"`
+	CloseSize  json.Number `json:"close_size"`
+	Price      json.Number `json:"price"`
+	Role       string      `json:"role"`
+	Text       string      `json:"text"`
+	Fee        json.Number `json:"fee"`
+	PointFee   json.Number `json:"point_fee"`
+	TradeValue string      `json:"trade_value"`
+}
+
+type gateAccountBook struct {
+	Time    float64 `json:"time"`
+	Change  string  `json:"change"`
+	Balance string  `json:"balance"`
+	Type    string  `json:"type"`
+	Text    string  `json:"text"`
 }
 
 type gateFuturesOrder struct {

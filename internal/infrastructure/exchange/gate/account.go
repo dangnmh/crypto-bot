@@ -13,7 +13,10 @@ import (
 	"crypto-bot/pkg/decmath"
 )
 
-const exchangeName = "gate"
+const (
+	exchangeName       = "gate"
+	positionModeSingle = "single"
+)
 
 type gateAssetsRequest struct {
 	Settle string `json:"settle"`
@@ -56,17 +59,38 @@ func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) 
 	return result, nil
 }
 
-func (c *Client) getRawPositionClose(ctx context.Context, settle, contract string, startTime time.Time) ([]gatePositionClose, error) {
-	var result []gatePositionClose
+func (c *Client) getRawMyTrades(ctx context.Context, settle, contract string, orderID int64) ([]gateMyTrade, error) {
+	var result []gateMyTrade
 	query := url.Values{}
 	if contract != "" {
 		query.Set("contract", contract)
 	}
-	query.Set("limit", "10")
-	if !startTime.IsZero() {
-		query.Set("from", strconv.FormatInt(startTime.UnixMilli(), 10))
+	if orderID > 0 {
+		query.Set("order", strconv.FormatInt(orderID, 10))
 	}
-	path := fmt.Sprintf("/futures/%s/position_close", settle)
+	query.Set("limit", "100")
+	path := fmt.Sprintf("/futures/%s/my_trades", settle)
+	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, changeType string, startTime time.Time) ([]gateAccountBook, error) {
+	var result []gateAccountBook
+	query := url.Values{}
+	if contract != "" {
+		query.Set("contract", contract)
+	}
+	if changeType != "" {
+		query.Set("type", changeType)
+	}
+	if !startTime.IsZero() {
+		query.Set("from", strconv.FormatInt(startTime.Unix(), 10))
+	}
+	query.Set("limit", "100")
+	path := fmt.Sprintf("/futures/%s/account_book", settle)
 	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
 	if err != nil {
 		return nil, err
@@ -155,9 +179,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries position close history directly using a retry loop and maps the closed position metrics.
+// GetRecentClosedPnL queries personal trading records and account book history to map the closed position metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	orderInfo, err := c.GetOrderByExternalIDWithTime(ctx, symbol, extOrderID, startTime)
 	if err != nil {
 		return nil, fmt.Errorf("gate get order by external ID %s failed: %w", extOrderID, err)
 	}
@@ -168,65 +192,159 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		}, nil
 	}
 
-	var closeHistory []gatePositionClose
-	var matchedClose *gatePositionClose
-
-	// Retry up to 5 times (with 1s delay) to allow the exchange to process the position closure.
-	closeHistory, err = c.getRawPositionClose(ctx, gateSettleUsdt, symbol, startTime)
+	closingTrades, err := c.waitAndFindClosingTrades(ctx, symbol, orderInfo.OrderID, startTime)
 	if err != nil {
-		return nil, fmt.Errorf("gate.io get raw position close for %s: %w", symbol, err)
+		return nil, fmt.Errorf("gate.io wait for closing trades failed: %w", err)
 	}
 
-	matchedClose = findMatchingCloseRecord(closeHistory, symbol)
-	if matchedClose == nil {
-		return nil, fmt.Errorf("gate.io no matching position close record found in history for symbol %s", symbol)
-	}
-
-	pnlVal, _ := strconv.ParseFloat(matchedClose.Pnl, 64)
-	pnlPnlVal, _ := strconv.ParseFloat(matchedClose.PnlPnl, 64)
-	pnlFundVal, _ := strconv.ParseFloat(matchedClose.PnlFund, 64)
-	pnlFeeVal, _ := strconv.ParseFloat(matchedClose.PnlFee, 64)
-	longPriceVal, _ := strconv.ParseFloat(matchedClose.LongPrice, 64)
-	shortPriceVal, _ := strconv.ParseFloat(matchedClose.ShortPrice, 64)
-	closedSizeVal, _ := strconv.ParseFloat(matchedClose.AccumSize, 64)
-
-	entryPrice := 0.0
-	exitPrice := 0.0
-	pnlRate := 0.0
-
-	if matchedClose.Side == "long" {
-		entryPrice = longPriceVal
-		exitPrice = shortPriceVal
-		if entryPrice > 0 {
-			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
+	entryPrice, openFee := c.getOpeningTradesMetrics(ctx, symbol, orderInfo)
+	if entryPrice == 0 {
+		entryPrice = orderInfo.DealAvgPrice
+		if entryPrice == 0 {
+			entryPrice = orderInfo.Price
 		}
-	} else {
-		entryPrice = shortPriceVal
-		exitPrice = longPriceVal
-		if entryPrice > 0 {
+	}
+
+	exitPrice, sumVol, closeFee, latestTradeTime := c.calculateClosingTradesMetrics(closingTrades)
+
+	totalFee := openFee + closeFee
+
+	fundingFee, grossPnL := c.getLedgerMetrics(ctx, symbol, startTime)
+
+	// Fallback mathematically if ledger PnL entries were not found
+	if grossPnL == 0 {
+		if orderInfo.Side == exchange.SideOpenLong {
+			grossPnL = (exitPrice - entryPrice) * sumVol
+		} else {
+			grossPnL = (entryPrice - exitPrice) * sumVol
+		}
+	}
+	netPnL := grossPnL - totalFee + fundingFee
+
+	pnlRate := 0.0
+	if entryPrice > 0 {
+		if orderInfo.Side == exchange.SideOpenShort {
 			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
+		} else {
+			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
 		}
 	}
 
 	durationMs := int64(0)
-	durationSec := int64(matchedClose.Time) - matchedClose.FirstOpenTime
-	if durationSec > 0 {
-		durationMs = durationSec * 1000
+	if latestTradeTime > 0 {
+		durationMs = max(int64(latestTradeTime*1000)-orderInfo.CreateTime, 0)
 	}
 
 	return &exchange.ClosedPnLInfo{
 		Exchange:   exchangeName,
-		Symbol:     matchedClose.Contract,
+		Symbol:     symbol,
 		EntryPrice: entryPrice,
 		ExitPrice:  exitPrice,
-		ClosedSize: closedSizeVal,
-		GrossPnL:   pnlPnlVal,
-		Fee:        math.Abs(pnlFeeVal),
-		FundingFee: pnlFundVal,
+		ClosedSize: sumVol,
+		GrossPnL:   grossPnL,
+		Fee:        totalFee,
+		FundingFee: fundingFee,
 		DurationMs: durationMs,
-		NetPnl:     pnlVal,
+		NetPnl:     netPnL,
 		PnLRate:    pnlRate,
 	}, nil
+}
+
+func (c *Client) calculateClosingTradesMetrics(closingTrades []gateMyTrade) (exitPrice, sumVol, closeFee, latestTradeTime float64) {
+	var sumPriceVol float64
+	for i := range closingTrades {
+		trade := &closingTrades[i]
+		sizeVal, _ := trade.Size.Float64()
+		priceVal, _ := trade.Price.Float64()
+		feeVal, _ := trade.Fee.Float64()
+
+		szAbs := math.Abs(sizeVal)
+		sumPriceVol += priceVal * szAbs
+		sumVol += szAbs
+		closeFee += math.Abs(feeVal)
+
+		if trade.CreateTime > latestTradeTime {
+			latestTradeTime = trade.CreateTime
+		}
+	}
+	if sumVol > 0 {
+		exitPrice = sumPriceVol / sumVol
+	}
+	return
+}
+
+func (c *Client) getOpeningTradesMetrics(ctx context.Context, symbol string, orderInfo *exchange.OrderInfo) (entryPrice, openFee float64) {
+	openOrderID, err := strconv.ParseInt(orderInfo.OrderID, 10, 64)
+	if err != nil || openOrderID <= 0 {
+		return
+	}
+
+	openTrades, err := c.getRawMyTrades(ctx, gateSettleUsdt, symbol, openOrderID)
+	if err != nil || len(openTrades) == 0 {
+		return
+	}
+
+	var sumOpenPriceVol float64
+	var sumOpenVol float64
+	for i := range openTrades {
+		trade := &openTrades[i]
+		feeVal, _ := trade.Fee.Float64()
+		openFee += math.Abs(feeVal)
+
+		sz, _ := trade.Size.Float64()
+		px, _ := trade.Price.Float64()
+		szAbs := math.Abs(sz)
+		sumOpenPriceVol += px * szAbs
+		sumOpenVol += szAbs
+	}
+
+	if sumOpenVol > 0 {
+		entryPrice = sumOpenPriceVol / sumOpenVol
+	}
+	return
+}
+
+func (c *Client) getLedgerMetrics(ctx context.Context, symbol string, startTime time.Time) (fundingFee, grossPnL float64) {
+	ledgerEntries, err := c.getRawAccountBook(ctx, gateSettleUsdt, symbol, "", startTime)
+	if err != nil {
+		return
+	}
+	for i := range ledgerEntries {
+		entry := &ledgerEntries[i]
+		changeVal, _ := strconv.ParseFloat(entry.Change, 64)
+		switch entry.Type {
+		case "fund":
+			fundingFee += changeVal
+		case "pnl":
+			grossPnL += changeVal
+		}
+	}
+	return
+}
+
+func (c *Client) waitAndFindClosingTrades(ctx context.Context, symbol, openingOrderID string, startTime time.Time) ([]gateMyTrade, error) {
+	trades, err := c.getRawMyTrades(ctx, gateSettleUsdt, symbol, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	startUnix := startTime.Unix()
+	var found []gateMyTrade
+	for i := range trades {
+		trade := &trades[i]
+		if int64(trade.CreateTime) >= startUnix {
+			closeSizeVal, _ := trade.CloseSize.Float64()
+			if closeSizeVal != 0 && trade.OrderID != openingOrderID {
+				found = append(found, *trade)
+			}
+		}
+	}
+
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no closing trades found for symbol %s since %v", symbol, startTime)
+	}
+
+	return found, nil
 }
 
 // Helper mapping functions.
@@ -248,15 +366,4 @@ func mapPosition(raw gatePosition) exchange.Position {
 	}
 
 	return pos
-}
-
-// findMatchingCloseRecord searches a slice of gatePositionClose for the newest matching close history item.
-func findMatchingCloseRecord(closeHistory []gatePositionClose, symbol string) *gatePositionClose {
-	for i := range closeHistory {
-		item := &closeHistory[i]
-		if item.Contract == symbol {
-			return item
-		}
-	}
-	return nil
 }

@@ -17,6 +17,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -43,24 +44,27 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 		clientCopy = *httpClient
 	}
 
-	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"}, // match all paths
-				BlackListPaths: []string{
-					"GET|/v5/market/tickers",
-					"GET|/v5/market/time",
-					"GET|/v5/market/instruments-info",
-				}, // match everything cleanly
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key"}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if httpClient != nil && clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"}, // match all paths
+					BlackListPaths: []string{
+						"GET|/v5/market/tickers",
+						"GET|/v5/market/time",
+						"GET|/v5/market/instruments-info",
+					}, // match everything cleanly
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key"}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	return &Client{

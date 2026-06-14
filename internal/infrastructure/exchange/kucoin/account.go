@@ -229,27 +229,23 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries historical position records, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	// 1. Get closing order by client OID.
+	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("kucoin get order by external ID %s failed: %w", extOrderID, err)
 	}
-	if orderInfo.State == exchange.OrderStateCanceled {
+
+	if orderInfo.State == exchange.OrderStateCanceled && orderInfo.DealVol == 0 {
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,
 		}, nil
 	}
 
-	// 1. Get closing order by client OID.
-	closingOrder, err := c.getRawOrderByClientOid(ctx, extOrderID)
-	if err != nil {
-		return nil, fmt.Errorf("kucoin get order by client OID %s failed: %w", extOrderID, err)
-	}
-
 	// 2. Query fills for that closing order to compute total closed size.
-	fills, err := c.getRawFills(ctx, closingOrder.OrderID)
+	fills, err := c.getRawFills(ctx, orderInfo.OrderID)
 	if err != nil {
-		return nil, fmt.Errorf("kucoin get fills for closing order %s failed: %w", closingOrder.OrderID, err)
+		return nil, fmt.Errorf("kucoin get fills for closing order %s failed: %w", orderInfo.OrderID, err)
 	}
 
 	var closedSize float64

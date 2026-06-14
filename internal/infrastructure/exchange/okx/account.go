@@ -217,11 +217,11 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 // GetRecentClosedPnL queries the historical closed position metrics from OKX.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("okx get order by external ID %s failed: %w", extOrderID, err)
 	}
-	if orderInfo.State == exchange.OrderStateCanceled {
+	if orderInfo.State == exchange.OrderStateCanceled && orderInfo.DealVol == 0 {
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,

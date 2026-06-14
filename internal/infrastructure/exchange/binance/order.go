@@ -371,20 +371,31 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return err
 }
 
-// GetOrder queries order status.
+// GetOrder queries order status by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	rawReq := binanceQueryOrderRequest{
-		Symbol: symbol,
-	}
-
 	id, err := strconv.ParseInt(orderID, 10, 64)
 	if err != nil {
-		rawReq.OrigClientOrderId = orderID
-	} else {
-		rawReq.OrderID = id
+		return nil, fmt.Errorf("binance invalid order ID format %q: %w", orderID, err)
 	}
 
-	resp, err := c.getRawOrder(ctx, rawReq)
+	resp, err := c.getRawOrder(ctx, binanceQueryOrderRequest{
+		Symbol:  symbol,
+		OrderID: id,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	info := mapBinanceOrder(resp)
+	return &info, nil
+}
+
+// GetOrderByExternalID queries order status by client order ID.
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
+	resp, err := c.getRawOrder(ctx, binanceQueryOrderRequest{
+		Symbol:            symbol,
+		OrigClientOrderId: externalOrderID,
+	})
 	if err != nil {
 		return nil, err
 	}

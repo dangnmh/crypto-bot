@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -34,20 +35,23 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 		clientCopy = *httpClient
 	}
 
-	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"}, // match all paths
-				BlackListPaths: []string{},    // match everything cleanly
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if httpClient != nil && clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"}, // match all paths
+					BlackListPaths: []string{},    // match everything cleanly
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	var finalClient *http.Client

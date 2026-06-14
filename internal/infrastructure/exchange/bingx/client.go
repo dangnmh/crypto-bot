@@ -16,6 +16,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -41,26 +42,29 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		clientCopy = *httpClient
 	}
 
-	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/openApi/swap/v2/server/time",
-					"GET|/openApi/swap/v2/quote/premiumIndex",
-					"POST|/openApi/user/auth/userDataStream",
-					"GET|/openApi/swap/v2/quote/contracts",
-					"GET|/openApi/swap/v2/quote/ticker",
-				},
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{headerKey}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if httpClient != nil && clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"},
+					BlackListPaths: []string{
+						"GET|/openApi/swap/v2/server/time",
+						"GET|/openApi/swap/v2/quote/premiumIndex",
+						"POST|/openApi/user/auth/userDataStream",
+						"GET|/openApi/swap/v2/quote/contracts",
+						"GET|/openApi/swap/v2/quote/ticker",
+					},
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{headerKey}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	var finalClient *http.Client

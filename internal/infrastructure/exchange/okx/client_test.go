@@ -718,6 +718,30 @@ func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch r.URL.Path {
+		case "/api/v5/trade/order":
+			assert.Equal(t, "BTC-USDT-SWAP", r.URL.Query().Get("instId"))
+			assert.Equal(t, "order123", r.URL.Query().Get("ordId"))
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"ordId": "order123",
+						"clOrdId": "client123",
+						"px": "50000.0",
+						"sz": "1.0",
+						"side": "buy",
+						"posSide": "long",
+						"state": "filled",
+						"ordType": "limit",
+						"avgPx": "50000.0",
+						"uTime": "1597026383085",
+						"cTime": "1597026383085",
+						"fillSz": "1.0"
+					}
+				]
+			}`))
 		case "/api/v5/trade/orders-pending":
 			_, _ = w.Write([]byte(`{
 				"code": "0",
@@ -854,7 +878,7 @@ func TestClient_ErrorPaths(t *testing.T) {
 
 	// 2. CancelOrders unimplemented
 	err = client.CancelOrders(context.Background(), []string{"1"})
-	assert.ErrorContains(t, err, "order not found")
+	assert.ErrorContains(t, err, "batch cancel not supported on OKX without symbols")
 }
 
 func TestClient_GetRecentClosedPnL(t *testing.T) {
@@ -865,7 +889,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch r.URL.Path {
-		case "/api/v5/trade/orders-pending":
+		case "/api/v5/trade/order":
+			assert.Equal(t, "ext-123", r.URL.Query().Get("clOrdId"))
 			_, _ = w.Write([]byte(`{
 				"code": "0",
 				"msg": "",
@@ -928,7 +953,8 @@ func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch r.URL.Path {
-		case "/api/v5/trade/orders-pending":
+		case "/api/v5/trade/order":
+			assert.Equal(t, "ext-123", r.URL.Query().Get("clOrdId"))
 			_, _ = w.Write([]byte(`{
 				"code": "0",
 				"msg": "",

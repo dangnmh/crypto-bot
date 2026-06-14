@@ -15,6 +15,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -45,25 +46,28 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		clientCopy = *httpClient
 	}
 
-	if logCfg.HTTP && httpClient != nil && clientCopy.Transport != nil {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"},
-				BlackListPaths: []string{
-					"GET|/api/v5/public/time",
-					"GET|/api/v5/public/funding-rate",
-					"GET|/api/v5/market/tickers",
-					"GET|/api/v5/public/instruments",
-				},
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"OK-ACCESS-KEY", "OK-ACCESS-PASSPHRASE"}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if httpClient != nil && clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"},
+					BlackListPaths: []string{
+						"GET|/api/v5/public/time",
+						"GET|/api/v5/public/funding-rate",
+						"GET|/api/v5/market/tickers",
+						"GET|/api/v5/public/instruments",
+					},
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"OK-ACCESS-KEY", "OK-ACCESS-PASSPHRASE"}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	var finalClient *http.Client

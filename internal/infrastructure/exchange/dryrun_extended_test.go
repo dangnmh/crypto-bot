@@ -96,6 +96,9 @@ func TestDryRunClient_GetOrder_Delegates(t *testing.T) {
 	_, err := dry.GetOrder(context.Background(), "BTC_USDT", "order_123")
 	require.NoError(t, err)
 
+	_, err = dry.GetOrderByExternalID(context.Background(), "BTC_USDT", "ext_123")
+	require.NoError(t, err)
+
 	_, err = dry.GetOpenOrders(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
 }

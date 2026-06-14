@@ -56,6 +56,34 @@ func checkRetry(ctx context.Context, resp *http.Response, err error) (bool, erro
 	return false, nil
 }
 
+// requestIDRoundTripper injects request tracing headers extracted from context.
+type requestIDRoundTripper struct {
+	next http.RoundTripper
+}
+
+func (r *requestIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+	reqID := tracectx.RequestID(ctx)
+
+	if reqID != "" {
+		req = req.Clone(ctx)
+		req.Header.Set("X-Request-ID", reqID)
+		req.Header.Set("req_id", reqID)
+		req.Header.Set("request_id", reqID)
+		req.Header.Set("requestid", reqID)
+	}
+
+	return r.next.RoundTrip(req)
+}
+
+// WrapWithRequestID wraps a RoundTripper to inject request ID headers from context.
+func WrapWithRequestID(next http.RoundTripper) http.RoundTripper {
+	if next == nil {
+		return nil
+	}
+	return &requestIDRoundTripper{next: next}
+}
+
 // traceRoundTripper injects request tracing headers extracted from context and logs connection trace details.
 type traceRoundTripper struct {
 	next   http.RoundTripper
@@ -64,15 +92,14 @@ type traceRoundTripper struct {
 
 func (t *traceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
-	reqID := tracectx.CorrelationID(ctx)
-	if reqID == "" {
-		reqID = tracectx.ReversionID(ctx)
-	}
+	reqID := tracectx.RequestID(ctx)
 
 	if reqID != "" {
 		req = req.Clone(ctx)
 		req.Header.Set("X-Request-ID", reqID)
 		req.Header.Set("req_id", reqID)
+		req.Header.Set("request_id", reqID)
+		req.Header.Set("requestid", reqID)
 		ctx = req.Context()
 	}
 

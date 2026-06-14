@@ -220,7 +220,7 @@ type aggregatedTradeResults struct {
 
 // GetRecentClosedPnL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrder(ctx, symbol, extOrderID)
+	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
 	if err != nil {
 		return nil, fmt.Errorf("binance get order by external ID %s failed: %w", extOrderID, err)
 	}

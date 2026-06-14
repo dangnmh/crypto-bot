@@ -14,6 +14,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
@@ -36,27 +37,29 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 
 	clientCopy := *httpClient
 
-	// If HTTP logging is enabled, wrap the underlying transport of the injected client
-	if logCfg.HTTP && clientCopy.Transport != nil {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
-			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-				OnStatus:       []int{0},
-				WhiteListPaths: []string{"*"}, // match all paths
-				BlackListPaths: []string{
-					"GET|/api/v1/contract/ping",
-					"GET|/api/v1/contract/ticker",
-					"GET|/api/v1/contract/detail",
-					"GET|/api/v1/contract/funding_rate/*",
-					"GET|/api/v1/contract/kline/*",
-				}, // ignore ping spam
-			}),
-			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
-			transportlog.LogOptionQueryParams(true),
-		)
-		clientCopy.Transport = rt
+	if clientCopy.Transport != nil {
+		if logCfg.HTTP {
+			rt := clientCopy.Transport
+			rt = transportlog.NewTransportLog(rt,
+				transportlog.LogOptionLogger(logger),
+				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+					OnStatus:       []int{0},
+					WhiteListPaths: []string{"*"}, // match all paths
+					BlackListPaths: []string{
+						"GET|/api/v1/contract/ping",
+						"GET|/api/v1/contract/ticker",
+						"GET|/api/v1/contract/detail",
+						"GET|/api/v1/contract/funding_rate/*",
+						"GET|/api/v1/contract/kline/*",
+					}, // ignore ping spam
+				}),
+				transportlog.LogOptionRedactSensitive(true),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),
+				transportlog.LogOptionQueryParams(true),
+			)
+			clientCopy.Transport = rt
+		}
+		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
 	return &Client{

@@ -311,6 +311,20 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	return &info, nil
 }
 
+// GetOrderByExternalID queries a single order by external ID (orderLinkID).
+func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, orderLinkID string) (*exchange.OrderInfo, error) {
+	raw, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+		Category:    categoryLinear,
+		Symbol:      symbol,
+		OrderLinkID: orderLinkID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	info := mapOrderInfo(*raw)
+	return &info, nil
+}
+
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
 	rawList, err := c.getRawOpenOrders(ctx, bybitListOpenOrdersRequest{
@@ -443,6 +457,40 @@ func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string)
 	return nil
 }
 
+// SwitchPositionMode switches the position mode (Hedge vs One-Way) for Bybit.
+func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error {
+	mode := 0 // One-Way
+	if positionMode == domain.PositionModeHedge {
+		mode = 3 // Hedge
+	}
+
+	params := map[string]any{
+		categoryKey: categoryLinear,
+		symbolKey:   symbol,
+		"mode":      mode,
+	}
+
+	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/switch-mode", params, true)
+	if err != nil {
+		return fmt.Errorf("bybit switch position mode: %w", err)
+	}
+
+	var resp bybitResponse[any]
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("bybit switch position mode json unmarshal: %w", err)
+	}
+
+	if resp.RetCode != 0 {
+		// 110025: position mode is not modified (i.e. already in requested mode)
+		if resp.RetCode == 110025 || strings.Contains(strings.ToLower(resp.RetMsg), "already") || strings.Contains(strings.ToLower(resp.RetMsg), "not modified") {
+			return nil
+		}
+		return fmt.Errorf("bybit switch position mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+
+	return nil
+}
+
 // Helper mapping functions.
 
 func mapOrderTypeAndTif(orderType domain.OrderType) (string, string) {
@@ -519,13 +567,13 @@ func mapBybitSide(side string, positionIdx int) domain.Side {
 // mapBybitStatus maps raw Bybit order status to domain OrderState.
 func mapBybitStatus(status string) domain.OrderState {
 	switch strings.ToLower(status) {
-	case "new":
+	case "new", "triggered":
 		return exchange.OrderStateNew
 	case "partiallyfilled":
 		return exchange.OrderStatePartiallyFilled
 	case "filled":
 		return exchange.OrderStateFilled
-	case "cancelled", "rejected":
+	case "cancelled", "rejected", "deactivated", "partiallyfilledcanceled":
 		return exchange.OrderStateCanceled
 	case "untriggered":
 		return exchange.OrderStateUntriggered

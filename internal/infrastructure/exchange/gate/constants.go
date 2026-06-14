@@ -9,6 +9,7 @@ const (
 	gateOrderStatusFinished = "finished"
 	gateOrderStatusOpen     = "open"
 	gateFinishAsFilled      = "filled"
+	gateFinishAsCancelled   = "cancelled"
 
 	gateJSONTime    = "time"
 	gateJSONChannel = "channel"
