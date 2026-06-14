@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crypto-bot
+  namespace: default
+  labels:
+    app: crypto-bot
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # Ensures only 1 pod is running at a time (preventing double order placement)
+  selector:
+    matchLabels:
+      app: crypto-bot
+  template:
+    metadata:
+      labels:
+        app: crypto-bot
+    spec:
+      securityContext:
+        fsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: bot
+          image: crypto-bot:latest
+          imagePullPolicy: Never # Instructs local cluster (K3d/Minikube) to use local image
+          args:
+            - "-sys"
+            - "/app/configs/funding/prod/system.jsonc"
+            - "-bot"
+            - "/app/configs/funding/prod/funding.jsonc"
+          env:
+            - name: BITWARDEN_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-bot-secrets
+                  key: BITWARDEN_ACCESS_TOKEN
+            - name: BITWARDEN_ORGANIZATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-bot-secrets
+                  key: BITWARDEN_ORGANIZATION_ID
+            - name: BITWARDEN_PROJECT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-bot-secrets
+                  key: BITWARDEN_PROJECT_NAME
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: configs
+              mountPath: /app/configs/funding/prod
+              readOnly: true
+      volumes:
+        - name: configs
+          configMap:
+            name: crypto-bot-configs

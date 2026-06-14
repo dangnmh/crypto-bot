@@ -14,8 +14,14 @@ COVERAGE_HTML   := $(COVERAGE_DIR)/coverage.html
 MIN_COVERAGE    := 80
 GREP_V_MOCKS    := grep -v "mocks"
 TEST_PKGS       := $(shell $(GO) list ./internal/... ./pkg/... | $(GREP_V_MOCKS))
-FUNDING_SYS     := ./configs/funding/system.jsonc
-FUNDING_BOT     := ./configs/funding/funding.jsonc
+FUNDING_SYS     := ./configs/funding/local/system.jsonc
+FUNDING_BOT     := ./configs/funding/local/funding.jsonc
+
+# Registry Configuration
+REGISTRY        ?= ghcr.io/dangnmh
+IMAGE_NAME      ?= crypto-bot
+IMAGE_TAG       ?= latest
+FULL_IMAGE      := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
 # ── Build & Generate ───────────────────────────────────────────────────
 .PHONY: gen
@@ -29,6 +35,18 @@ build: ## Build all binaries
 .PHONY: build-funding
 build-funding: ## Build the funding bot
 	$(GO) build -o bin/funding-bot ./cmd/funding
+
+.PHONY: docker-build
+docker-build: ## Build the Docker container image locally
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+
+.PHONY: docker-tag
+docker-tag: ## Tag the local Docker image for registry
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE)
+
+.PHONY: docker-push
+docker-push: docker-tag ## Tag and Push the Docker image to registry
+	docker push $(FULL_IMAGE)
 
 # ── Run ───────────────────────────────────────────────────────────────
 .PHONY: run/funding
@@ -148,6 +166,54 @@ sonar-check: ## Verify SonarQube prerequisites
 	@if command -v $(SONAR_SCANNER) >/dev/null 2>&1; then echo "  [OK] sonar-scanner found"; else echo "  [MISSING] sonar-scanner not found"; fi
 	@if [ -n "$$SONAR_HOST_URL" ]; then echo "  [OK] SONAR_HOST_URL = $$SONAR_HOST_URL"; else echo "  [WARN] SONAR_HOST_URL not set (defaults to http://localhost:9000)"; fi
 	@if [ -n "$$SONAR_TOKEN" ]; then echo "  [OK] SONAR_TOKEN is set"; else echo "  [MISSING] SONAR_TOKEN not set"; fi
+
+# ── Terraform ────────────────────────────────────────────────────────
+.PHONY: tf-init
+tf-init: ## Initialize Terraform configurations
+	terraform -chdir=deploy/terraform init
+
+.PHONY: tf-apply
+tf-apply: ## Apply Terraform configurations
+	terraform -chdir=deploy/terraform apply
+
+.PHONY: tf-destroy
+tf-destroy: ## Destroy Terraform configurations (keeping PVC data due to resource policy)
+	terraform -chdir=deploy/terraform destroy
+
+.PHONY: tf-apply-bot
+tf-apply-bot: ## Apply changes only to the Go bot deployment and secrets
+	terraform -chdir=deploy/terraform apply \
+		-target=kubernetes_deployment.crypto_bot \
+		-target=kubernetes_secret.crypto_bot_secrets
+
+.PHONY: tf-destroy-bot
+tf-destroy-bot: ## Destroy only the Go bot deployment and secrets, preserving the monitoring stack
+	terraform -chdir=deploy/terraform destroy \
+		-target=kubernetes_deployment.crypto_bot \
+		-target=kubernetes_secret.crypto_bot_secrets
+
+.PHONY: destroy-bot
+destroy-bot: ## Destroy only the Go bot deployment and secrets, keeping Loki/Grafana and data
+	@chmod +x scripts/destroy-bot.sh
+	./scripts/destroy-bot.sh
+
+.PHONY: destroy-all
+destroy-all: ## Destroy everything, including Go bot, Loki/Grafana, and all historical data
+	@chmod +x scripts/destroy-all.sh
+	./scripts/destroy-all.sh
+
+.PHONY: apply-configs
+apply-configs: ## Hot-reload configurations to the running cluster without rebuilding docker image
+	kubectl create configmap crypto-bot-configs \
+		--from-file=configs/funding/system.jsonc \
+		--from-file=configs/funding/funding.jsonc \
+		-n default -o yaml --dry-run=client | kubectl apply -f -
+	kubectl rollout restart deployment/crypto-bot -n default
+
+.PHONY: logs
+logs: ## Watch the live container logs of the Go bot
+	@chmod +x scripts/watch-logs.sh
+	./scripts/watch-logs.sh
 
 # ── Clean ────────────────────────────────────────────────────────────
 .PHONY: clean

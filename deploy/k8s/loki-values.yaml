@@ -1,0 +1,60 @@
+# Helm chart override values for loki-stack
+# Usage: helm install loki-stack grafana/loki-stack --values deploy/k8s/loki-values.yaml
+
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: local-path
+    annotations:
+      helm.sh/resource-policy: keep
+  config:
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 2048
+    querier:
+      max_concurrent: 2048
+    limits_config:
+      retention_period: 2160h
+    compactor:
+      retention_enabled: true
+
+promtail:
+  enabled: true
+  config:
+    logLevel: info
+    serverPort: 3101
+    clients:
+      - url: http://{{ .Release.Name }}:3100/loki/api/v1/push
+    # Pipeline stages to extract 'topic' as a primary index label from JSON logs
+    snippets:
+      pipelineStages:
+        - cri: {}
+        - json:
+            expressions:
+              topic: topic
+              exchange: exchange
+              symbol: symbol
+        - labels:
+            topic:
+            exchange:
+            symbol:
+
+grafana:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClassName: local-path
+    annotations:
+      helm.sh/resource-policy: keep
+  adminPassword: "admin" # Set base admin dashboard password
+  sidecar:
+    datasources:
+      enabled: true
+      label: grafana_datasource
+      searchNamespace: ALL
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL

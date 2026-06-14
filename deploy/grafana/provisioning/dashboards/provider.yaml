@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'crypto-bot-dashboards'
+    orgId: 1
+    folder: 'Crypto Bot'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

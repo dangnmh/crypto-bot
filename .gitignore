@@ -21,3 +21,20 @@ coverage.html
 
 .codex
 .claude
+
+# Terraform
+deploy/terraform/.terraform
+deploy/terraform/**/*.hcl
+deploy/terraform/**/*.tfstate
+deploy/terraform/**/*.backup
+deploy/terraform/**/*.tfvars
+deploy/terraform/**/*.env
+deploy/terraform/**/*.log
+deploy/terraform/**/*.tmp
+deploy/terraform/**/bin
+deploy/terraform/**/*.hcl
+
+
+
+# Local config overrides
+configs/funding/**/*.local.jsonc
