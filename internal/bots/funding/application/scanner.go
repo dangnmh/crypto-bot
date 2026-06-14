@@ -413,7 +413,28 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		}
 	}
 
-	return opportunities, nil
+	return selectBestOpportunity(opportunities), nil
+}
+
+func selectBestOpportunity(opportunities []ScanOpportunity) []ScanOpportunity {
+	if len(opportunities) == 0 {
+		return nil
+	}
+
+	bestIdx := 0
+	for i := 1; i < len(opportunities); i++ {
+		rateI := math.Abs(opportunities[i].Candidate.FundingRate)
+		rateBest := math.Abs(opportunities[bestIdx].Candidate.FundingRate)
+		if rateI > rateBest {
+			bestIdx = i
+		} else if rateI == rateBest {
+			if opportunities[i].Candidate.Amount24 > opportunities[bestIdx].Candidate.Amount24 {
+				bestIdx = i
+			}
+		}
+	}
+
+	return []ScanOpportunity{opportunities[bestIdx]}
 }
 
 func (s *ScheduleScanner) processResult(

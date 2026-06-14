@@ -416,3 +416,88 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	assert.Equal(t, 5.0, opp.Candidate.Config.MarginUSDT)
 	assert.Equal(t, "mexc", opp.Candidate.Config.Exchange)
 }
+
+func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		tickers        []exchange.Ticker
+		rates          []exchange.FundingRateResult
+		expectedSymbol string
+		expectedRate   float64
+		expectedVolume float64
+	}{
+		{
+			name: "highest absolute funding rate",
+			tickers: []exchange.Ticker{
+				{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50010, Volume24: 40, Amount24: 2000000},
+				{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 1000, Amount24: 3000000},
+			},
+			rates: []exchange.FundingRateResult{
+				{Symbol: "BTC_USDT", Rate: 0.004, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
+				{Symbol: "ETH_USDT", Rate: -0.008, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()}, // chosen (0.008 > 0.004)
+			},
+			expectedSymbol: "ETH_USDT",
+			expectedRate:   -0.008,
+			expectedVolume: 3000000.0,
+		},
+		{
+			name: "same absolute funding rate - pick higher volume",
+			tickers: []exchange.Ticker{
+				{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50010, Volume24: 40, Amount24: 2000000},
+				{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 1333, Amount24: 4000000}, // chosen (4M > 2M)
+			},
+			rates: []exchange.FundingRateResult{
+				{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
+				{Symbol: "ETH_USDT", Rate: -0.005, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
+			},
+			expectedSymbol: "ETH_USDT",
+			expectedRate:   -0.005,
+			expectedVolume: 4000000.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			client := mocks.NewMockClient(ctrl)
+
+			client.EXPECT().GetTickers(gomock.Any(), "").Return(tt.tickers, nil).Times(2)
+			client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return(tt.rates, nil)
+			client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+				{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, PriceScale: 1, VolScale: 0, ContractSize: 0.001},
+				{Symbol: "ETH_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.01},
+			}, nil)
+
+			cfg := &config.Config{
+				System: &config.SystemConfig{
+					Safety: config.SafetyConfig{
+						MinVol24USD: 1000000,
+					},
+				},
+				Symbols: []config.SymbolConfig{
+					{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 5.0},
+					{Symbol: "ETH_USDT", Exchange: "mexc", MarginUSDT: 10.0},
+				},
+			}
+
+			scanner := NewScheduleScanner(
+				cfg,
+				client,
+				sniperTestLogger(),
+				func(string) (string, bool) { return "", false },
+			)
+
+			opportunities, err := scanner.Scan(context.Background())
+			require.NoError(t, err)
+			require.Len(t, opportunities, 1)
+
+			opp := opportunities[0]
+			assert.Equal(t, tt.expectedSymbol, opp.Candidate.Symbol)
+			assert.Equal(t, tt.expectedRate, opp.Candidate.FundingRate)
+			assert.Equal(t, tt.expectedVolume, opp.Candidate.Amount24)
+		})
+	}
+}
