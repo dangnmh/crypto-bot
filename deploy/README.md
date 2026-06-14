@@ -110,6 +110,10 @@ The `Crypto-Bot Trade P&L Analytics` dashboard contains 9 pre-configured panels 
   * **Type**: Time Series
   * **Query**: `sum(sum_over_time({app="crypto-bot",topic="funding.reversion.final_pnl"} | json | payload_exchange=~"$exchange" | payload_symbol=~"$symbol" | unwrap payload_hold_fees | __error__="" [1h]))`
   * **Responsibility**: Tracks funding fee trends in 1-hour intervals.
+- **Hourly Net P&L by Exchange** (ID 10)
+  * **Type**: Time Series
+  * **Query**: `sum by (payload_exchange) (sum_over_time({app="crypto-bot",topic="funding.reversion.final_pnl"} | json | payload_exchange=~"$exchange" | payload_symbol=~"$symbol" | unwrap payload_net_pnl | __error__="" [1h]))`
+  * **Responsibility**: Tracks and visualizes hourly net profit/loss trends individually for each active exchange, allowing multi-line comparisons.
 
 #### Breakdown Panels (Distribution & Share)
 - **PnL & Fee Breakdown** (ID 6)

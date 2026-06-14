@@ -279,9 +279,54 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 12
+      },
+      "id": 10,
+      "title": "Hourly Net P&L by Exchange",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "sum by (payload_exchange) (sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_net_pnl | __error__=\"\" [1h]))",
+          "legendFormat": "{{payload_exchange}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "always"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
       },
       "id": 6,
       "title": "PnL & Fee Breakdown",
@@ -394,7 +439,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 20
       },
       "id": 7,
       "title": "Net Profit by Exchange",
@@ -450,7 +495,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "id": 8,
       "title": "Execution Fees by Exchange",
@@ -506,7 +551,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 20
+        "y": 28
       },
       "id": 9,
       "title": "Funding Fees by Exchange",
