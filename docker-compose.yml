@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cryptobot-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: cryptobot-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./deploy/grafana/provisioning/datasources/postgres-local.yaml:/etc/grafana/provisioning/datasources/postgres.yaml
+      - ./deploy/grafana/provisioning/dashboards/provider-local.yaml:/etc/grafana/provisioning/dashboards/provider.yaml
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cryptobot-app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable}
+      - BITWARDEN_ACCESS_TOKEN=${BITWARDEN_ACCESS_TOKEN}
+      - BITWARDEN_ORGANIZATION_ID=${BITWARDEN_ORGANIZATION_ID}
+      - BITWARDEN_PROJECT_NAME=${BITWARDEN_PROJECT_NAME}
+    volumes:
+      - ./configs:/app/configs
+    command: ["-sys", "/app/configs/funding/local/system.jsonc", "-bot", "/app/configs/funding/local/funding.jsonc"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  grafana_data:

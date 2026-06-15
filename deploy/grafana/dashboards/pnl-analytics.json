@@ -25,7 +25,7 @@
       "collapsed": false,
       "gridPos": {
         "h": 4,
-        "w": 8,
+        "w": 4,
         "x": 0,
         "y": 0
       },
@@ -33,13 +33,13 @@
       "title": "Total Net Profit (USD)",
       "type": "stat",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_net_pnl | __error__=\"\" [$__range]))",
-          "legendFormat": "Total Net Profit",
+          "format": "time_series",
+          "rawSql": "SELECT COALESCE(SUM(net_profit), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -83,21 +83,175 @@
       "collapsed": false,
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 8,
+        "w": 4,
+        "x": 4,
         "y": 0
       },
       "id": 2,
-      "title": "Total Funding Fees",
+      "title": "Win Rate (%)",
       "type": "stat",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_hold_fees | __error__=\"\" [$__range]))",
-          "legendFormat": "Funding Captured",
+          "format": "time_series",
+          "rawSql": "SELECT COALESCE((COUNT(CASE WHEN net_profit > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN status = 'completed' THEN 1 END), 0)) * 100, 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 40
+              },
+              {
+                "color": "green",
+                "value": 70
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "id": 3,
+      "title": "Completed Trades",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "mappings": [],
+          "unit": "none"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "id": 4,
+      "title": "Total Volume (USDT)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT COALESCE(SUM(volume_usdt), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "id": 5,
+      "title": "Funding Captured",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT COALESCE(SUM(hold_fee), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -141,21 +295,21 @@
       "collapsed": false,
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 16,
+        "w": 4,
+        "x": 20,
         "y": 0
       },
-      "id": 3,
-      "title": "Total Fee",
+      "id": 6,
+      "title": "Total Fees Paid",
       "type": "stat",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_fees | __error__=\"\" [$__range]))",
-          "legendFormat": "Fees Paid",
+          "format": "time_series",
+          "rawSql": "SELECT COALESCE(SUM(fee), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -191,17 +345,17 @@
         "x": 0,
         "y": 4
       },
-      "id": 4,
-      "title": "Hourly Net P&L",
+      "id": 7,
+      "title": "Hourly/Daily P&L Trend",
       "type": "timeseries",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_net_pnl | __error__=\"\" [1h]))",
-          "legendFormat": "Hourly Net P&L",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), COALESCE(SUM(net_profit), 0) AS net_profit FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -237,17 +391,17 @@
         "x": 12,
         "y": 4
       },
-      "id": 5,
-      "title": "Hourly Funding Fees",
+      "id": 8,
+      "title": "Equity Growth Curve",
       "type": "timeseries",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_hold_fees | __error__=\"\" [1h]))",
-          "legendFormat": "Hourly Funding Fee",
+          "format": "time_series",
+          "rawSql": "SELECT timestamp, SUM(net_profit) OVER (ORDER BY timestamp ASC) AS cumulative_profit FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp ASC",
           "refId": "A"
         }
       ],
@@ -255,13 +409,13 @@
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "orange"
+            "fixedColor": "blue"
           },
           "custom": {
             "drawStyle": "line",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "showPoints": "always"
+            "showPoints": "never"
           },
           "mappings": [],
           "unit": "currencyUSD"
@@ -279,21 +433,21 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 8,
         "x": 0,
         "y": 12
       },
-      "id": 10,
-      "title": "Hourly Net P&L by Exchange",
+      "id": 9,
+      "title": "Execution Latency (RTT)",
       "type": "timeseries",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum by (payload_exchange) (sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_net_pnl | __error__=\"\" [1h]))",
-          "legendFormat": "{{payload_exchange}}",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -304,12 +458,96 @@
           },
           "custom": {
             "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 2,
-            "showPoints": "always"
+            "lineWidth": 2
           },
           "mappings": [],
-          "unit": "currencyUSD"
+          "unit": "ms"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 12
+      },
+      "id": 10,
+      "title": "Average Actual Slippage (%)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(actual_slippage) AS avg_slippage FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 12
+      },
+      "id": 11,
+      "title": "Target Buffer vs. Actual Fire Offset",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(buffer_time_ms) AS target_buffer_ms, AVG(fire_offset_ms) AS actual_fire_offset_ms FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "ms"
         }
       },
       "options": {
@@ -328,28 +566,18 @@
         "x": 0,
         "y": 20
       },
-      "id": 6,
-      "title": "PnL & Fee Breakdown",
-      "type": "piechart",
+      "id": 12,
+      "title": "Funding Fee Avoidance vs. Fire Offset",
+      "type": "timeseries",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_net_pnl | __error__=\"\" [$__range]))",
-          "legendFormat": "Net Profit",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(fire_offset_ms) AS avg_fire_offset_ms, SUM(hold_fee) AS total_funding_fee_usd FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
           "refId": "A"
-        },
-        {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_hold_fees | __error__=\"\" [$__range])) * -1",
-          "legendFormat": "Funding Fees",
-          "refId": "B"
-        },
-        {
-          "expr": "sum(sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_fees | __error__=\"\" [$__range]))",
-          "legendFormat": "Execution Fees",
-          "refId": "C"
         }
       ],
       "fieldConfig": {
@@ -357,79 +585,19 @@
           "color": {
             "mode": "palette-classic"
           },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
           "mappings": [],
-          "unit": "currencyUSD"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Net Profit"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Funding Fees"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Execution Fees"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+          "unit": "ms"
+        }
       },
       "options": {
         "legend": {
           "displayMode": "list",
-          "placement": "right",
-          "showLegend": true,
-          "showPercent": true,
-          "showValues": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "pie",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
+          "placement": "bottom",
+          "showLegend": true
         }
       }
     },
@@ -441,17 +609,60 @@
         "x": 12,
         "y": 20
       },
-      "id": 7,
-      "title": "Net Profit by Exchange",
-      "type": "piechart",
+      "id": 13,
+      "title": "Traded Funding Rates (%)",
+      "type": "timeseries",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum by (payload_exchange) (sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_net_pnl | __error__=\"\" [$__range]))",
-          "legendFormat": "{{payload_exchange}}",
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), normalized_symbol, AVG(funding_rate) * 100 AS avg_funding_rate FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
+      "id": 14,
+      "title": "IOC Order Fill Ratio",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT ioc_outcome, COUNT(*) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND ioc_outcome IS NOT NULL AND ioc_outcome <> '' AND $__timeFilter(timestamp) GROUP BY ioc_outcome",
           "refId": "A"
         }
       ],
@@ -461,7 +672,7 @@
             "mode": "palette-classic"
           },
           "mappings": [],
-          "unit": "currencyUSD"
+          "unit": "none"
         }
       },
       "options": {
@@ -470,22 +681,112 @@
           "placement": "right",
           "showLegend": true,
           "showPercent": true,
-          "showValues": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "pie",
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 28
+      },
+      "id": 15,
+      "title": "IOC Cancel Rate (%)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT (COUNT(CASE WHEN ioc_outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN ioc_order_id IS NOT NULL AND ioc_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
           "values": false
         },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
+      "id": 16,
+      "title": "Trade Hold Duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "ms"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         }
       }
     },
@@ -495,19 +796,19 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 36
       },
-      "id": 8,
-      "title": "Execution Fees by Exchange",
+      "id": 17,
+      "title": "Position Exit Reason Breakdown",
       "type": "piechart",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum by (payload_exchange) (sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_fees | __error__=\"\" [$__range]))",
-          "legendFormat": "{{payload_exchange}}",
+          "format": "time_series",
+          "rawSql": "SELECT exit_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exit_reason IS NOT NULL AND exit_reason <> '' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY exit_reason",
           "refId": "A"
         }
       ],
@@ -517,7 +818,7 @@
             "mode": "palette-classic"
           },
           "mappings": [],
-          "unit": "currencyUSD"
+          "unit": "none"
         }
       },
       "options": {
@@ -526,22 +827,7 @@
           "placement": "right",
           "showLegend": true,
           "showPercent": true,
-          "showValues": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "pie",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
+          "showValues": true
         }
       }
     },
@@ -551,19 +837,19 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 36
       },
-      "id": 9,
-      "title": "Funding Fees by Exchange",
+      "id": 18,
+      "title": "Abort Reasons Breakdown",
       "type": "piechart",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "postgres",
+        "uid": "postgres"
       },
       "targets": [
         {
-          "expr": "sum by (payload_exchange) (sum_over_time({app=\"crypto-bot\",topic=\"funding.reversion.final_pnl\"} | json | payload_exchange=~\"$exchange\" | payload_symbol=~\"$symbol\" | unwrap payload_hold_fees | __error__=\"\" [$__range])) * -1",
-          "legendFormat": "{{payload_exchange}}",
+          "format": "time_series",
+          "rawSql": "SELECT ioc_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'aborted' AND ioc_reason IS NOT NULL AND ioc_reason <> '' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY ioc_reason",
           "refId": "A"
         }
       ],
@@ -573,7 +859,7 @@
             "mode": "palette-classic"
           },
           "mappings": [],
-          "unit": "currencyUSD"
+          "unit": "none"
         }
       },
       "options": {
@@ -582,23 +868,43 @@
           "placement": "right",
           "showLegend": true,
           "showPercent": true,
-          "showValues": true,
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "pie",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
+          "showValues": true
         }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 19,
+      "title": "Live Trade History Ledger Table",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT timestamp, exchange, normalized_symbol, side, margin_usdt, leverage, fill_price, close_price, net_profit, hold_duration_ms, status, exit_reason, error_msg FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        }
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": []
       }
     }
   ],
@@ -606,11 +912,12 @@
   "style": "dark",
   "tags": [
     "crypto-bot",
-    "pnl"
+    "pnl",
+    "postgres"
   ],
   "title": "Crypto-Bot Trade P&L Analytics",
   "uid": "cryptobot-pnl-analytics",
-  "version": 1,
+  "version": 2,
   "templating": {
     "list": [
       {
@@ -621,17 +928,17 @@
           ]
         },
         "datasource": {
-          "type": "loki",
-          "uid": "loki"
+          "type": "postgres",
+          "uid": "postgres"
         },
-        "definition": "label_values(exchange)",
+        "definition": "SELECT DISTINCT exchange FROM reversion_trade_reports",
         "hide": 0,
         "includeAll": true,
         "label": "Exchange",
         "multi": true,
         "name": "exchange",
         "options": [],
-        "query": "label_values(exchange)",
+        "query": "SELECT DISTINCT exchange FROM reversion_trade_reports",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "query"
@@ -644,17 +951,17 @@
           ]
         },
         "datasource": {
-          "type": "loki",
-          "uid": "loki"
+          "type": "postgres",
+          "uid": "postgres"
         },
-        "definition": "label_values(symbol)",
+        "definition": "SELECT DISTINCT normalized_symbol FROM reversion_trade_reports",
         "hide": 0,
         "includeAll": true,
         "label": "Symbol",
         "multi": true,
         "name": "symbol",
         "options": [],
-        "query": "label_values(symbol)",
+        "query": "SELECT DISTINCT normalized_symbol FROM reversion_trade_reports",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "query"

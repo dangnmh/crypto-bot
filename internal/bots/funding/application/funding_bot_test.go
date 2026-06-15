@@ -32,7 +32,7 @@ func TestNewFundingBot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockNotifier(ctrl)
 
-	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	revStrat := reversion.NewStrategy(engine, cfg, m, nil, nil, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
@@ -54,7 +54,7 @@ func TestFundingBot_Stop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockNotifier(ctrl)
 
-	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	revStrat := reversion.NewStrategy(engine, cfg, m, nil, nil, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
@@ -79,7 +79,7 @@ func TestFundingBot_Run_CancelledContext(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockNotifier(ctrl)
 
-	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	revStrat := reversion.NewStrategy(engine, cfg, m, nil, nil, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,
@@ -119,7 +119,7 @@ func TestNewFundingBot_WithBlacklist(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mocks.NewMockNotifier(ctrl)
 
-	revStrat := reversion.NewStrategy(engine, cfg, m, slog.Default())
+	revStrat := reversion.NewStrategy(engine, cfg, m, nil, nil, slog.Default())
 
 	bot := application.NewFundingBot(
 		cfg, sysCfg, engine, m,

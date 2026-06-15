@@ -8,8 +8,7 @@ import (
 // ExternalOrderID generates a client order ID following the format:
 // SYMBOL (alphanumeric only) + SETTLETIME (alphanumeric DDMMYYYYHHmmss in GMT+7) + "_" + EXCHANGE.
 // The entire string is converted to upper case and truncated to a maximum of 32 characters.
-func ExternalOrderID(symbol string, settleTime time.Time, exchange string) string {
-	// 1. Filter symbol: alphanumeric characters only
+func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) string {
 	var sb strings.Builder
 	for _, r := range symbol {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
@@ -27,10 +26,11 @@ func ExternalOrderID(symbol string, settleTime time.Time, exchange string) strin
 	rawID := symFiltered + settleStr + exchange
 
 	// 4. Upper case the whole string
-	upperID := strings.ToUpper(rawID)
+	return strings.ToUpper(rawID)
+}
 
-	// 5. Truncate based on exchange limit (Gate.io has a 30-character limit for the client order ID,
-	// so with the "t-" prefix, the external ID is limited to 28 characters).
+func ExternalOrderID(symbol string, settleTime time.Time, exchange string) string {
+	upperID := ExternalUniqueID(symbol, settleTime, exchange)
 	maxLen := 32
 	if strings.EqualFold(exchange, "gate") {
 		maxLen = 28

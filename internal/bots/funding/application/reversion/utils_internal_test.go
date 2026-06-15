@@ -38,6 +38,8 @@ func TestStrategyMetadataAndCleanup(t *testing.T) {
 		&app.Engine{},
 		&config.Config{},
 		nil,
+		nil,
+		nil,
 		reversionTestLogger(),
 	)
 

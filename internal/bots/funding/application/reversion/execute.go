@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/pkg/eventbus"
 
@@ -172,8 +173,66 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 			if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 				return err
 			}
+			clonedRunner := runner.clone(evt.Exchange, evt.ReqID, evt.Symbol)
+			clonedRunner.recordEventState(topic, evt)
 			traceCtx := observability.WithRequestIDValue(ctx, evt.ReqID)
-			return runner.clone(evt.Exchange, evt.ReqID, evt.Symbol).handleCleanup(traceCtx, msg)
+			return clonedRunner.handleCleanup(traceCtx, msg)
+		})
+	}
+
+	// Database persistence subscriber
+	if runner.reportRepo != nil {
+		subscribeTopic(ctx, bus, runner.log, TopicReversionTradeReport, func(ctx context.Context, msg *message.Message) error {
+			var evt ReversionTradeReportEvent
+			if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+				return err
+			}
+
+			// Map to domain entity TradeReport
+			report := &domain.TradeReport{
+				ReqID:               evt.ReqID,
+				EventID:             evt.EventID,
+				Timestamp:           evt.Timestamp,
+				SettleTime:          evt.SettleTime,
+				Exchange:            evt.Exchange,
+				Symbol:              evt.Symbol,
+				NormalizedSymbol:    evt.NormalizedSymbol,
+				Side:                evt.Side,
+				FundingRate:         evt.FundingRate,
+				CandidateFoundTime:  evt.CandidateFoundTime,
+				MarginUSDT:          evt.MarginUSDT,
+				Leverage:            evt.Leverage,
+				BufferTimeMs:        evt.BufferTimeMs,
+				LatencyRTTMs:        evt.LatencyRTTMs,
+				ActualSlippage:      evt.ActualSlippage,
+				FireOffsetMs:        evt.FireOffsetMs,
+				IOCOrderID:          evt.IOCOrderID,
+				IOCOutcome:          evt.IOCOutcome,
+				IOCReason:           evt.IOCReason,
+				OrderFilled:         evt.OrderFilled,
+				FillPrice:           evt.FillPrice,
+				ClosePrice:          evt.ClosePrice,
+				VolumeUSDT:          evt.VolumeUSDT,
+				GrossProfit:         evt.GrossProfit,
+				NetProfit:           evt.NetProfit,
+				PnLPct:              evt.PnLPct,
+				Fee:                 evt.Fee,
+				HoldFee:             evt.HoldFee,
+				HoldDurationMs:      evt.HoldDurationMs,
+				ExitReason:          evt.ExitReason,
+				CloseRetryCount:     evt.CloseRetryCount,
+				ForceCloseAttempted: evt.ForceCloseAttempted,
+				ForceCloseSucceeded: evt.ForceCloseSucceeded,
+				Status:              evt.Status,
+				ErrorMsg:            evt.ErrorMsg,
+			}
+
+			if err := runner.reportRepo.Save(ctx, report); err != nil {
+				runner.log.ErrorContext(ctx, "Failed to persist trade report to database", slog.Any("error", err))
+				return err
+			}
+			runner.log.InfoContext(ctx, "Successfully persisted trade report to database", slog.String("req_id", evt.ReqID))
+			return nil
 		})
 	}
 }
@@ -193,7 +252,9 @@ func registerEventSubscription[T any](
 		}
 		exch, reqID, symbol := route(&evt)
 		traceCtx := observability.WithRequestIDValue(ctx, reqID)
-		return action(traceCtx, runner.clone(exch, reqID, symbol), evt)
+		clonedRunner := runner.clone(exch, reqID, symbol)
+		clonedRunner.recordEventState(topic, evt)
+		return action(traceCtx, clonedRunner, evt)
 	})
 }
 

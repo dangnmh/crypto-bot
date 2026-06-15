@@ -167,6 +167,27 @@ sonar-check: ## Verify SonarQube prerequisites
 	@if [ -n "$$SONAR_HOST_URL" ]; then echo "  [OK] SONAR_HOST_URL = $$SONAR_HOST_URL"; else echo "  [WARN] SONAR_HOST_URL not set (defaults to http://localhost:9000)"; fi
 	@if [ -n "$$SONAR_TOKEN" ]; then echo "  [OK] SONAR_TOKEN is set"; else echo "  [MISSING] SONAR_TOKEN not set"; fi
 
+# ── Local Development (Docker Compose) ───────────────────────────────
+.PHONY: dev-up
+dev-up: ## Start the local development environment using Docker Compose (with rebuild)
+	docker compose up -d --build
+
+.PHONY: dev-infra
+dev-infra: ## Start only the local infrastructure (PostgreSQL & Grafana, excluding the bot)
+	docker compose up -d postgres grafana
+
+.PHONY: dev-down
+dev-down: ## Stop the local development environment
+	docker compose down
+
+.PHONY: dev-logs
+dev-logs: ## Watch logs from the local development containers
+	docker compose logs -f
+
+.PHONY: dev-ps
+dev-ps: ## List running local development containers
+	docker compose ps
+
 # ── Terraform ────────────────────────────────────────────────────────
 .PHONY: tf-init
 tf-init: ## Initialize Terraform configurations

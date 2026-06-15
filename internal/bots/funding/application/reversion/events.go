@@ -13,6 +13,10 @@ import (
 
 const (
 	FlowReversion = "reversion"
+
+	StatusCompleted = "completed"
+	StatusAborted   = "aborted"
+	StatusError     = "error"
 )
 
 const (
@@ -42,6 +46,7 @@ const (
 	TopicReversionFinalPnL               = "funding.reversion.final_pnl"
 	TopicReversionCompleted              = "funding.reversion.completed"
 	TopicReversionTPSLRequired           = "funding.reversion.tpsl_required"
+	TopicReversionTradeReport            = "funding.reversion.trade_report"
 )
 
 type IOCOutcome string

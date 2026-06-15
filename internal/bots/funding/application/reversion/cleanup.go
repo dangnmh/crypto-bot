@@ -24,6 +24,9 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 	}
 	symbol := baseEvt.Symbol
 
+	// 1. Record the terminal event into the cache
+	r.recordTerminalEvent(baseEvt.Topic, msg.Payload)
+
 	r.unsubscribeWS(ctx, symbol)
 
 	completedPrev := baseEvt.BaseReversionEvent
@@ -31,9 +34,7 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 	// Check if this is a PositionClosedEvent containing rich trade metrics
 	var closedEvt PositionClosedEvent
 	err := json.Unmarshal(msg.Payload, &closedEvt)
-	if err != nil {
-		r.log.DebugContext(ctx, "unmarshal failed", slog.Any("error", err))
-	} else if closedEvt.CloseVol > 0 {
+	if err == nil && closedEvt.CloseVol > 0 {
 		finalEvt := r.calculateFinalPnL(closedEvt)
 		_ = r.publishEvent(ctx, TopicReversionFinalPnL, finalEvt)
 		completedPrev = finalEvt.BaseReversionEvent
@@ -45,6 +46,9 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 		Reason:             "cleanup_finished",
 	}
 	_ = r.publishEvent(ctx, TopicReversionCompleted, compEvt)
+
+	// 2. Compile, publish the unified trade report and evict from cache
+	r.compileAndPublishReport(ctx, baseEvt.ReqID, baseEvt.Topic, baseEvt.Error)
 
 	if reqID := baseEvt.ReqID; reqID != "" {
 		completedCleanups.Store(reqID, true)
@@ -67,4 +71,111 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 		HoldFee:            closeEvt.HoldFee,
 		HoldDurationMs:     closeEvt.HoldDurationMs,
 	}
+}
+
+// recordTerminalEvent handles unmarshaling the specific terminal event and caching it.
+func (r *StatelessRunner) recordTerminalEvent(topic string, payload []byte) {
+	switch topic {
+	case TopicReversionPositionClosed:
+		var evt PositionClosedEvent
+		if err := json.Unmarshal(payload, &evt); err == nil {
+			r.recordEventState(topic, evt)
+		}
+	case TopicReversionAbort:
+		var evt AbortEvent
+		if err := json.Unmarshal(payload, &evt); err == nil {
+			r.recordEventState(topic, evt)
+		}
+	case TopicReversionError:
+		var evt ErrorEvent
+		if err := json.Unmarshal(payload, &evt); err == nil {
+			r.recordEventState(topic, evt)
+		}
+	}
+}
+
+// compileAndPublishReport compiles the reversion cycle's final report, publishes it, and evicts from the cache.
+func (r *StatelessRunner) compileAndPublishReport(ctx context.Context, reqID, topic, errorMsg string) {
+	if r.cache == nil || reqID == "" {
+		return
+	}
+
+	cachedVal, found := r.cache.Get(reqID)
+	if !found {
+		return
+	}
+
+	state, ok := cachedVal.(*CycleState)
+	if !ok {
+		return
+	}
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	// Determine status based on terminal topic
+	var status string
+	switch topic {
+	case TopicReversionAbort:
+		status = StatusAborted
+	case TopicReversionError:
+		status = StatusError
+	default:
+		status = StatusCompleted
+	}
+	state.Status = status
+
+	// If error, also record the error msg
+	if topic == TopicReversionError && errorMsg != "" {
+		state.ErrorMsg = errorMsg
+	}
+
+	// Compile the final ReversionTradeReportEvent
+	reportEvt := ReversionTradeReportEvent{
+		BaseReversionEvent: BaseReversionEvent{
+			Flow:       FlowReversion,
+			ReqID:      state.ReqID,
+			Symbol:     state.Symbol,
+			Exchange:   state.Exchange,
+			Timestamp:  r.deps.Clock.Now(),
+			SettleTime: state.SettleTime,
+			Side:       state.Side,
+		},
+		NormalizedSymbol:    GetNormalizedSymbol(state.Symbol),
+		SettleTime:          state.SettleTime,
+		Side:                state.Side,
+		FundingRate:         state.FundingRate,
+		CandidateFoundTime:  state.CandidateFoundTime,
+		MarginUSDT:          state.MarginUSDT,
+		Leverage:            state.Leverage,
+		BufferTimeMs:        state.BufferTimeMs,
+		LatencyRTTMs:        state.LatencyRTTMs,
+		ActualSlippage:      state.ActualSlippage,
+		FireOffsetMs:        state.FireOffsetMs,
+		IOCOrderID:          state.IOCOrderID,
+		IOCOutcome:          state.IOCOutcome,
+		IOCReason:           state.IOCReason,
+		OrderFilled:         state.OrderFilled,
+		FillPrice:           state.FillPrice,
+		ClosePrice:          state.ClosePrice,
+		VolumeUSDT:          state.VolumeUSDT,
+		GrossProfit:         state.GrossProfit,
+		NetProfit:           state.NetProfit,
+		PnLPct:              state.PnLPct,
+		Fee:                 state.Fee,
+		HoldFee:             state.HoldFee,
+		HoldDurationMs:      state.HoldDurationMs,
+		ExitReason:          state.ExitReason,
+		CloseRetryCount:     state.CloseRetryCount,
+		ForceCloseAttempted: state.ForceCloseAttempted,
+		ForceCloseSucceeded: state.ForceCloseSucceeded,
+		Status:              state.Status,
+		ErrorMsg:            state.ErrorMsg,
+	}
+
+	// Publish the report event
+	_ = r.publishEvent(ctx, TopicReversionTradeReport, reportEvt)
+
+	// Delete the key from the cache
+	r.cache.Delete(reqID)
 }

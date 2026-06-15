@@ -279,7 +279,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	ch, err := bus.Subscribe(subCtx, reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, slog.Default())
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{
@@ -488,7 +488,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, slog.Default())
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{
@@ -702,7 +702,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, slog.Default())
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{

@@ -36,6 +36,40 @@ resource "helm_release" "loki_stack" {
   ]
 }
 
+# 1b. Install PostgreSQL (using Bitnami chart)
+resource "helm_release" "postgresql" {
+  name             = "postgresql"
+  repository       = "https://charts.bitnami.com/bitnami"
+  chart            = "postgresql"
+  namespace        = "default"
+  create_namespace = false
+
+  set {
+    name  = "fullnameOverride"
+    value = "postgresql"
+  }
+
+  set {
+    name  = "auth.database"
+    value = "postgres"
+  }
+
+  set {
+    name  = "auth.postgresPassword"
+    value = var.postgres_password
+  }
+
+  set {
+    name  = "primary.persistence.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "primary.persistence.size"
+    value = "8Gi"
+  }
+}
+
 # 2. Deploy Kubernetes Secret for Bitwarden Credentials
 resource "kubernetes_secret" "crypto_bot_secrets" {
   metadata {
@@ -52,6 +86,7 @@ resource "kubernetes_secret" "crypto_bot_secrets" {
     BITWARDEN_ACCESS_TOKEN    = var.bitwarden_access_token
     BITWARDEN_ORGANIZATION_ID = var.bitwarden_organization_id
     BITWARDEN_PROJECT_NAME    = var.bitwarden_project_name
+    DATABASE_URL              = "postgres://postgres:${var.postgres_password}@postgresql:5432/postgres?sslmode=disable"
   }
 }
 
@@ -160,6 +195,16 @@ resource "kubernetes_deployment" "crypto_bot" {
             }
           }
 
+          env {
+            name = "DATABASE_URL"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.crypto_bot_secrets.metadata[0].name
+                key  = "DATABASE_URL"
+              }
+            }
+          }
+
           resources {
             limits = {
               cpu    = "1000m"
@@ -224,6 +269,23 @@ resource "kubernetes_config_map" "grafana_dashboard_pnl" {
 
   data = {
     "pnl-analytics.json" = file("${path.module}/../grafana/dashboards/pnl-analytics.json")
+  }
+}
+
+# 8. Deploy Kubernetes ConfigMap for Grafana PostgreSQL Datasource
+resource "kubernetes_config_map" "grafana_datasource_postgres" {
+  metadata {
+    name      = "grafana-datasource-postgres"
+    namespace = "default"
+    labels = {
+      grafana_datasource = "1"
+    }
+  }
+
+  data = {
+    "postgres.yaml" = templatefile("${path.module}/postgres.yaml.tpl", {
+      postgres_password = var.postgres_password
+    })
   }
 }
 

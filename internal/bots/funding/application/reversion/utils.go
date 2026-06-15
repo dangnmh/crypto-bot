@@ -20,6 +20,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/patrickmn/go-cache"
 )
 
 const (
@@ -34,6 +35,8 @@ type Strategy struct {
 	notifier notifier.Notifier
 	log      *slog.Logger
 	stores   map[string]strategy.FundingStoreSet
+	repo     domain.TradeReportRepository
+	cache    *cache.Cache
 
 	// Test fallbacks
 	clock         shared.Clock
@@ -45,6 +48,8 @@ func NewStrategy(
 	engine *app.Engine,
 	global *config.Config,
 	n notifier.Notifier,
+	repo domain.TradeReportRepository,
+	c *cache.Cache,
 	log *slog.Logger,
 ) *Strategy {
 	logger := log.With("flow", FlowReversion)
@@ -52,6 +57,8 @@ func NewStrategy(
 		engine:   engine,
 		global:   global,
 		notifier: n,
+		repo:     repo,
+		cache:    c,
 		log:      logger,
 	}
 }
@@ -68,13 +75,16 @@ func (s *Strategy) Enabled(cfg config.SymbolConfig) bool {
 
 func (s *Strategy) Start(ctx context.Context, stores map[string]strategy.FundingStoreSet) error {
 	s.stores = stores
+
 	runner := &StatelessRunner{
-		globalCfg: s.global,
-		bus:       s.engine.Bus,
-		log:       s.log,
-		engine:    s.engine,
-		stores:    s.stores,
-		notifier:  s.notifier,
+		globalCfg:  s.global,
+		bus:        s.engine.Bus,
+		log:        s.log,
+		engine:     s.engine,
+		stores:     s.stores,
+		notifier:   s.notifier,
+		cache:      s.cache,
+		reportRepo: s.repo,
 		// Pass test fallbacks
 		clock:         s.clock,
 		orderNotifier: s.orderNotifier,
@@ -102,9 +112,11 @@ type StatelessRunner struct {
 	bus       *eventbus.Bus
 	log       *slog.Logger
 
-	engine   *app.Engine
-	stores   map[string]strategy.FundingStoreSet
-	notifier notifier.Notifier
+	engine     *app.Engine
+	stores     map[string]strategy.FundingStoreSet
+	notifier   notifier.Notifier
+	cache      *cache.Cache
+	reportRepo domain.TradeReportRepository
 
 	// Target context to resolve configuration conflicts across multiple exchanges
 	exchange string

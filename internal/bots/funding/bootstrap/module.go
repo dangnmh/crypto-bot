@@ -5,18 +5,23 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/bots/funding/application"
 	"crypto-bot/internal/bots/funding/application/reversion"
 	"crypto-bot/internal/bots/funding/application/strategy"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
+	"crypto-bot/internal/bots/funding/domain"
+	persistence "crypto-bot/internal/bots/funding/infrastructure/persistence"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/pkg/httpclient"
 	applogger "crypto-bot/pkg/logger"
 
+	"github.com/patrickmn/go-cache"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
+	"gorm.io/gorm"
 )
 
 // ConfigPaths contains the startup configuration file paths supplied by the CLI.
@@ -36,6 +41,9 @@ func Module(paths ConfigPaths) fx.Option {
 			provideNotifier,
 			provideHTTPClient,
 			provideEngine,
+			persistence.InitDatabase,
+			provideTradeReportRepository,
+			provideGoCache,
 			provideReversionStrategy,
 			provideBot,
 			infraapp.NewBotRunner,
@@ -119,8 +127,23 @@ func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Co
 	})
 }
 
-func provideReversionStrategy(engine *infraapp.Engine, cfg *fundingconfig.Config, n notifier.Notifier, log *slog.Logger) *reversion.Strategy {
-	return reversion.NewStrategy(engine, cfg, n, log)
+func provideGoCache() *cache.Cache {
+	return cache.New(time.Hour*24, time.Hour)
+}
+
+func provideReversionStrategy(
+	engine *infraapp.Engine,
+	cfg *fundingconfig.Config,
+	n notifier.Notifier,
+	repo domain.TradeReportRepository,
+	c *cache.Cache,
+	log *slog.Logger,
+) *reversion.Strategy {
+	return reversion.NewStrategy(engine, cfg, n, repo, c, log)
+}
+
+func provideTradeReportRepository(db *gorm.DB) domain.TradeReportRepository {
+	return persistence.NewGormTradeReportRepository(db)
 }
 
 func provideBot(

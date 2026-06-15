@@ -55,3 +55,10 @@ variable "registry_server" {
   default     = "https://index.docker.io/v1/"
 }
 
+variable "postgres_password" {
+  type        = string
+  description = "The password for the PostgreSQL postgres superuser"
+  default     = "postgres"
+  sensitive   = true
+}
+

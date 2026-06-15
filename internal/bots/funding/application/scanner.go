@@ -192,7 +192,7 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 	startEvt := reversion.CandidateFoundEvent{
 		BaseReversionEvent: reversion.BaseReversionEvent{
 			Flow:       reversion.FlowReversion,
-			ReqID:      externalID,
+			ReqID:      orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowReversion),
 			Symbol:     candidate.Symbol,
 			Exchange:   candidate.Config.Exchange,
 			SendNotify: false,
