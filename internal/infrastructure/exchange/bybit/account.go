@@ -233,27 +233,21 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries the most recent closed PnL ledger record from Bybit.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+		Category: categoryLinear,
+		OrderID:  orderID,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("bybit get order by external ID %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("bybit get order by ID %s failed: %w", orderID, err)
 	}
+
+	orderInfo := mapOrderInfo(*rawOrder)
 	if orderInfo.State == exchange.OrderStateCanceled && orderInfo.DealVol == 0 {
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,
 		}, nil
-	}
-
-	// Look up numeric orderID from client order ID (extOrderID / orderLinkId).
-	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
-		Category:    categoryLinear,
-		OrderLinkID: extOrderID,
-	})
-	if err != nil {
-		errStr := err.Error()
-		errStr = strings.Replace(errStr, "bybit get order error", "bybit get order by external ID error", 1)
-		return nil, fmt.Errorf("%s", errStr)
 	}
 
 	entryCreatedTimeStr := rawOrder.CreatedTime

@@ -208,11 +208,11 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries recent trades from BingX, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	// Look up the opening order details.
-	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
+	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("bingx get order by external ID %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("bingx get order by ID %s failed: %w", orderID, err)
 	}
 	if orderInfo.State == exchange.OrderStateCanceled {
 		return &exchange.ClosedPnLInfo{
@@ -222,7 +222,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 
 	if orderInfo.DealVol == 0 {
-		return nil, fmt.Errorf("zero deal volume for opening order %s", extOrderID)
+		return nil, fmt.Errorf("zero deal volume for opening order %s", orderID)
 	}
 
 	incomeEntries, err := c.fetchUserIncome(ctx, symbol, startTime)

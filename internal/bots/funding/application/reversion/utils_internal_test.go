@@ -22,6 +22,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -159,7 +160,7 @@ type mockClosedPnLClient struct {
 	closedErr  error
 }
 
-func (m *mockClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+func (m *mockClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	return m.closedInfo, m.closedErr
 }
 
@@ -227,7 +228,7 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 			CloseProfitLoss: 1,
 			Fee:             -0.1,
 			HoldFee:         -0.01,
-		}, BaseReversionEvent{ReqID: "test-req-enrich", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
+		}, BaseReversionEvent{ReqID: "test-req-enrich", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady, OrderID: "ord_123"})
 
 		select {
 		case msg := <-ch:
@@ -283,7 +284,7 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 			CloseProfitLoss: 1,
 			Fee:             -0.1,
 			HoldFee:         -0.01,
-		}, BaseReversionEvent{ReqID: "test-req-fallback", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
+		}, BaseReversionEvent{ReqID: "test-req-fallback", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady, OrderID: "ord_123"})
 
 		select {
 		case <-ch:
@@ -1111,4 +1112,46 @@ func TestStatelessRunnerSyncNowInvocation(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, clock.syncCalled)
+}
+
+func TestResolveOrderID(t *testing.T) {
+	t.Parallel()
+
+	// Scenario 1: orderID is not empty
+	runner := &StatelessRunner{}
+	res, err := runner.resolveOrderID("req-1", "order-123")
+	assert.NoError(t, err)
+	assert.Equal(t, "order-123", res)
+
+	// Scenario 2: orderID is empty, cache is nil
+	res, err = runner.resolveOrderID("req-2", "")
+	assert.Error(t, err)
+	assert.Empty(t, res)
+	assert.Contains(t, err.Error(), "order ID is empty and could not be resolved from cache")
+
+	// Scenario 3: orderID is empty, cache is not nil, but request ID not found in cache
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	runner = &StatelessRunner{cache: c}
+	res, err = runner.resolveOrderID("req-3", "")
+	assert.Error(t, err)
+	assert.Empty(t, res)
+
+	// Scenario 4: orderID is empty, cache has state, but IOCOrderID is empty
+	state := &CycleState{
+		ReqID: "req-4",
+	}
+	c.Set("req-4", state, cache.DefaultExpiration)
+	res, err = runner.resolveOrderID("req-4", "")
+	assert.Error(t, err)
+	assert.Empty(t, res)
+
+	// Scenario 5: orderID is empty, cache has state, IOCOrderID is present
+	stateWithID := &CycleState{
+		ReqID:      "req-5",
+		IOCOrderID: "ioc-order-999",
+	}
+	c.Set("req-5", stateWithID, cache.DefaultExpiration)
+	res, err = runner.resolveOrderID("req-5", "")
+	assert.NoError(t, err)
+	assert.Equal(t, "ioc-order-999", res)
 }

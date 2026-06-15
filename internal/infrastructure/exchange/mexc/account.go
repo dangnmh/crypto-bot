@@ -190,14 +190,14 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries the historical closed position metrics from MEXC.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	if extOrderID == "" {
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	if orderID == "" {
 		return nil, fmt.Errorf("orderID is required")
 	}
 
-	orderInfo, err := c.getRawOrderByExOrderID(ctx, mexcGetOrderByExternalRequest{Symbol: symbol, ExternalOID: extOrderID})
+	orderInfo, err := c.getRawOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
 	if err != nil {
-		return nil, fmt.Errorf("mexc get order by external ID %s details failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("mexc get order by ID %s details failed: %w", orderID, err)
 	}
 	mappedOrder := orderInfo.toOrderInfo()
 	if mappedOrder != nil && mappedOrder.State == exchange.OrderStateCanceled {
@@ -208,7 +208,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 	}
 	positionID := orderInfo.PositionID
 	if positionID == 0 {
-		return nil, fmt.Errorf("no positionId found associated with external order %s", extOrderID)
+		return nil, fmt.Errorf("no positionId found associated with order %s", orderID)
 	}
 
 	req := mexcHistoryPositionsRequest{

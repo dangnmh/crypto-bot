@@ -230,11 +230,11 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// Look up numeric orderID from client order ID (extOrderID / clientOid) to get update time.
-	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	// Look up order info by ID to get update time.
+	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("bitget get order by external ID %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("bitget get order by ID %s failed: %w", orderID, err)
 	}
 	if orderInfo.State == exchange.OrderStateCanceled {
 		return &exchange.ClosedPnLInfo{

@@ -600,7 +600,7 @@ func TestClient_GetRecentClosedPnL_Success(t *testing.T) {
 	defer server.Close()
 
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext123", time.Time{})
+	info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "order123", time.Time{})
 	require.NoError(t, err)
 	require.NotNil(t, info)
 
@@ -635,6 +635,6 @@ func TestClient_GetRecentClosedPnL_OrderNotFound(t *testing.T) {
 	defer server.Close()
 
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext123", time.Time{})
+	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "order123", time.Time{})
 	assert.ErrorContains(t, err, "order not found")
 }

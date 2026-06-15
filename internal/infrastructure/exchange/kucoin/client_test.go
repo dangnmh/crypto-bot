@@ -692,8 +692,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		switch r.URL.Path {
-		case "/api/v1/orders/byClientOid":
-			assert.Equal(t, "external_close_oid", r.URL.Query().Get("clientOid"))
+		case "/api/v1/orders/close_order_id_123":
 			_, _ = w.Write([]byte(`{
 				"code": "200000",
 				"msg": "success",
@@ -763,7 +762,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	defer server.Close()
 
 	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "XBTUSDTM", "external_close_oid", time.Time{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "XBTUSDTM", "close_order_id_123", time.Time{})
 	require.NoError(t, err)
 
 	assert.Equal(t, "XBTUSDTM", res.Symbol)

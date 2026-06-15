@@ -135,10 +135,10 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("hyperliquid get order by external ID %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("hyperliquid get order by ID %s failed: %w", orderID, err)
 	}
 	if orderInfo.State == exchange.OrderStateCanceled {
 		return &exchange.ClosedPnLInfo{
@@ -151,15 +151,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID stri
 		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
 	}
 
-	// Look up numeric orderID from client order ID (extOrderID / cloid).
-	orderRes, err := c.getRawOrderByCloid(ctx, hyperliquidQueryOrderByCloidRequest{
-		UserAddress: c.userAddress,
-		Cloid:       extOrderID,
-	})
+	// Parse numeric orderID.
+	closingOrderId, err := strconv.ParseInt(orderID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("hyperliquid query order by cloid %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("invalid orderID format: %w", err)
 	}
-	closingOrderId := orderRes.Order.Order.Oid
 
 	fills, err := c.getRawUserFills(ctx, hyperliquidUserFillsRequest{
 		UserAddress: c.userAddress,

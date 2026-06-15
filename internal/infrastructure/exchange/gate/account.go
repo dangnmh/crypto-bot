@@ -180,10 +180,10 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries personal trading records and account book history to map the closed position metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	orderInfo, err := c.GetOrderByExternalIDWithTime(ctx, symbol, extOrderID, startTime)
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("gate get order by external ID %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("gate get order by ID %s failed: %w", orderID, err)
 	}
 	if orderInfo.State == exchange.OrderStateCanceled {
 		return &exchange.ClosedPnLInfo{

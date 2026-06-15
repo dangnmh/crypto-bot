@@ -649,7 +649,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
 
 	startTime := time.UnixMilli(1695812280000)
-	closedInfo, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT", "ext-123", startTime)
+	closedInfo, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT", "123456", startTime)
 	require.NoError(t, err)
 	require.NotNil(t, closedInfo)
 

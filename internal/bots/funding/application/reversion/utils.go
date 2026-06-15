@@ -486,8 +486,12 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		// Wait 5 seconds before calling GetRecentClosedPnL to let exchange update trade database
 		_ = r.deps.Clock.Sleep(ctx, 5*time.Second)
 
+		orderID, err := r.resolveOrderID(prev.ReqID, prev.OrderID)
+		if err != nil {
+			return nil, err
+		}
+
 		var closedInfo *exchange.ClosedPnLInfo
-		var err error
 
 		bo := backoff.WithContext(
 			backoff.WithMaxRetries(
@@ -499,7 +503,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		)
 
 		err = backoff.Retry(func() error {
-			closedInfo, err = provider.GetRecentClosedPnL(ctx, pos.Symbol, prev.ExternalID, startTime)
+			closedInfo, err = provider.GetRecentClosedPnL(ctx, pos.Symbol, orderID, startTime)
 			return err
 		}, bo)
 		if err != nil {
@@ -519,4 +523,23 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 	}
 
 	return &evt, nil
+}
+
+func (r *StatelessRunner) resolveOrderID(reqID, orderID string) (string, error) {
+	if orderID != "" {
+		return orderID, nil
+	}
+	if r.cache != nil {
+		if cachedVal, found := r.cache.Get(reqID); found {
+			if state, ok := cachedVal.(*CycleState); ok {
+				state.mu.Lock()
+				resolved := state.IOCOrderID
+				state.mu.Unlock()
+				if resolved != "" {
+					return resolved, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("order ID is empty and could not be resolved from cache for request %s", reqID)
 }

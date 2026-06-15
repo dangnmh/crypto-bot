@@ -234,8 +234,13 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 			startTime = startTime.Add(-1 * time.Second)
 		}
 
+		orderID, err := r.resolveOrderID(evt.ReqID, evt.OrderID)
+		if err != nil {
+			r.log.ErrorContext(ctx, "failed to resolve order ID in fallback cleanup", slog.Any("error", err))
+			return
+		}
+
 		var closedInfo *exchange.ClosedPnLInfo
-		var err error
 
 		bo := backoff.WithContext(
 			backoff.WithMaxRetries(
@@ -247,7 +252,7 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 		)
 
 		err = backoff.Retry(func() error {
-			closedInfo, err = provider.GetRecentClosedPnL(ctx, evt.Symbol, evt.ExternalID, startTime)
+			closedInfo, err = provider.GetRecentClosedPnL(ctx, evt.Symbol, orderID, startTime)
 			return err
 		}, bo)
 

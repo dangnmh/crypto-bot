@@ -228,11 +228,11 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 // GetRecentClosedPnL queries historical position records, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	// 1. Get closing order by client OID.
-	orderInfo, err := c.GetOrderByExternalID(ctx, symbol, extOrderID)
+func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+	// 1. Get closing order by ID.
+	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("kucoin get order by external ID %s failed: %w", extOrderID, err)
+		return nil, fmt.Errorf("kucoin get order by ID %s failed: %w", orderID, err)
 	}
 
 	if orderInfo.State == exchange.OrderStateCanceled && orderInfo.DealVol == 0 {

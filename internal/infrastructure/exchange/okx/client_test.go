@@ -890,14 +890,14 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/api/v5/trade/order":
-			assert.Equal(t, "ext-123", r.URL.Query().Get("clOrdId"))
+			assert.Equal(t, "ord-123", r.URL.Query().Get("ordId"))
 			_, _ = w.Write([]byte(`{
 				"code": "0",
 				"msg": "",
 				"data": [
 					{
 						"instId": "BTC-USDT-SWAP",
-						"ordId": "ext-123",
+						"ordId": "ord-123",
 						"clOrdId": "ext-123",
 						"state": "filled"
 					}
@@ -931,7 +931,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ext-123", time.Time{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ord-123", time.Time{})
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)
@@ -954,14 +954,14 @@ func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/api/v5/trade/order":
-			assert.Equal(t, "ext-123", r.URL.Query().Get("clOrdId"))
+			assert.Equal(t, "ord-123", r.URL.Query().Get("ordId"))
 			_, _ = w.Write([]byte(`{
 				"code": "0",
 				"msg": "",
 				"data": [
 					{
 						"instId": "BTC-USDT-SWAP",
-						"ordId": "ext-123",
+						"ordId": "ord-123",
 						"clOrdId": "ext-123",
 						"state": "filled"
 					}
@@ -993,7 +993,7 @@ func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ext-123", time.Time{})
+	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ord-123", time.Time{})
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)

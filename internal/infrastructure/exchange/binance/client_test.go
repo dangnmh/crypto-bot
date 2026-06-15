@@ -825,7 +825,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		{
 			name:          "Order Error",
 			orderErr:      true,
-			expectedError: "binance get order by external ID",
+			expectedError: "binance get order by ID",
 		},
 		{
 			name: "Parse Order ID Error",
@@ -931,7 +931,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			defer server.Close()
 
 			client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-			res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext_123", time.UnixMilli(1672531100000))
+			res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "123456", time.UnixMilli(1672531100000))
 
 			if tc.expectedError != "" {
 				require.Error(t, err)

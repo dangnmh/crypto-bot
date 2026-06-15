@@ -306,13 +306,17 @@ func newGateServer(t *testing.T) *httptest.Server {
 			}
 			textVal := lastPart
 			size := int64(5)
-			if strings.Contains(textVal, "short") {
+			if strings.Contains(textVal, "short") || textVal == "43" {
 				size = -5
 			}
 			if _, err := strconv.ParseInt(lastPart, 10, 64); err == nil {
 				textVal = "t-ext"
 			}
-			writeJSON(t, w, gateOrder(42, "finished", "filled", size, 0, textVal))
+			idVal := int64(42)
+			if lastPart == "43" {
+				idVal = 43
+			}
+			writeJSON(t, w, gateOrder(idVal, "finished", "filled", size, 0, textVal))
 		case r.URL.Path == "/futures/usdt/dual_mode" && r.Method == http.MethodPost:
 			dualModeStr := r.URL.Query().Get("dual_mode")
 			if dualModeStr == "" {
@@ -331,14 +335,14 @@ func newGateServer(t *testing.T) *httptest.Server {
 				writeJSON(t, w, []any{})
 				return
 			}
-			if orderIDStr == "42" {
+			if orderIDStr == "42" || orderIDStr == "43" {
 				if contract == "ETH_USDT" {
 					writeJSON(t, w, []map[string]any{
 						{
 							"id":          1001,
 							"create_time": 1700000000.0,
 							"contract":    "ETH_USDT",
-							"order_id":    "42",
+							"order_id":    orderIDStr,
 							"size":        "-2.0",
 							"close_size":  "0",
 							"price":       "101.0",
@@ -351,7 +355,7 @@ func newGateServer(t *testing.T) *httptest.Server {
 							"id":          1001,
 							"create_time": 1700000000.0,
 							"contract":    contract,
-							"order_id":    "42",
+							"order_id":    orderIDStr,
 							"size":        "2.0",
 							"close_size":  "0",
 							"price":       "100.0",
@@ -369,7 +373,7 @@ func newGateServer(t *testing.T) *httptest.Server {
 						"id":          1002,
 						"create_time": 1700000005.0,
 						"contract":    "ETH_USDT",
-						"order_id":    "43",
+						"order_id":    "44",
 						"size":        "2.0",
 						"close_size":  "2",
 						"price":       "100.0",
@@ -516,7 +520,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("long side position close matched", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "BTC_USDT", "ext", time.Unix(1700000000, 0))
+		res, err := client.GetRecentClosedPnL(ctx, "BTC_USDT", "42", time.Unix(1700000000, 0))
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		assertPnLInfo(t, res, "BTC_USDT")
@@ -524,7 +528,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("short side position close matched", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "ETH_USDT", "ext_short", time.Unix(1700000000, 0))
+		res, err := client.GetRecentClosedPnL(ctx, "ETH_USDT", "43", time.Unix(1700000000, 0))
 		require.NoError(t, err)
 		require.NotNil(t, res)
 
@@ -543,7 +547,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("ignore opening trade if returned in trades query", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "LTC_USDT", "ext", time.Unix(1700000000, 0))
+		res, err := client.GetRecentClosedPnL(ctx, "LTC_USDT", "42", time.Unix(1700000000, 0))
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		assertPnLInfo(t, res, "LTC_USDT")
@@ -551,7 +555,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("position close history unmatched error", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "XRP_USDT", "ext", time.Unix(1700000000, 0))
+		res, err := client.GetRecentClosedPnL(ctx, "XRP_USDT", "42", time.Unix(1700000000, 0))
 		require.Error(t, err)
 		assert.Nil(t, res)
 		assert.Contains(t, err.Error(), "no closing trades found for symbol")
@@ -559,7 +563,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("no close records found error", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "DOGE_USDT", "ext", time.Unix(1700000000, 0))
+		res, err := client.GetRecentClosedPnL(ctx, "DOGE_USDT", "42", time.Unix(1700000000, 0))
 		require.Error(t, err)
 		assert.Nil(t, res)
 		assert.Contains(t, err.Error(), "no closing trades found for symbol")

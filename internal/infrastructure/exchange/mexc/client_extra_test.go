@@ -288,7 +288,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			t.Parallel()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == fmt.Sprintf("/api/v1/private/order/external/%s/%s", tt.symbol, tt.targetOrderID) {
+				if r.URL.Path == fmt.Sprintf("/api/v1/private/order/get/%s", tt.targetOrderID) {
 					_, _ = w.Write(mustJSON(t, tt.mockOrder))
 					return
 				}

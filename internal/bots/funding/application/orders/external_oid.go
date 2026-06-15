@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// ExternalOrderID generates a client order ID following the format:
+// ExternalUniqueID generates a client order ID following the format:
 // SYMBOL (alphanumeric only) + SETTLETIME (alphanumeric DDMMYYYYHHmmss in GMT+7) + "_" + EXCHANGE.
 // The entire string is converted to upper case and truncated to a maximum of 32 characters.
 func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) string {

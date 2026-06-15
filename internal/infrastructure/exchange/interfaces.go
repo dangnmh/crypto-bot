@@ -79,7 +79,7 @@ type ClosedPnLInfo struct {
 
 // ClosedPnLProvider is an optional interface that exchange REST clients can implement.
 type ClosedPnLProvider interface {
-	GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*ClosedPnLInfo, error)
+	GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*ClosedPnLInfo, error)
 }
 
 // Client is the generic composite interface for any Exchange provider.

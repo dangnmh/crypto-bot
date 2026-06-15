@@ -148,7 +148,7 @@ type stubClosedPnLClient struct {
 	stubClient
 }
 
-func (s *stubClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, extOrderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+func (s *stubClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
 	return &exchange.ClosedPnLInfo{Exchange: "stub", Symbol: symbol, EntryPrice: 123}, nil
 }
 
