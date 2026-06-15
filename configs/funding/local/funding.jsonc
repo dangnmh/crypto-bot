@@ -3,11 +3,11 @@
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
   {
-    "symbol": "H_USDT",
+    "symbol": "OPG_USDT",
     "marginUSDT": 3,
     "exchange": "mexc",
-    "simulateSettle": "2026-06-15T13:15:00.000+07:00"
-  },
+    "simulateSettle": "2026-06-15T21:15:00.000+07:00"
+  }
   // {
   //   "symbol": "SIRENUSDT",
   //   "marginUSDT": 3,

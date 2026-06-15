@@ -50,6 +50,7 @@ type EngineConfig struct {
 	Logger            *slog.Logger
 	ProviderFactories []ProviderFactory
 	ActiveExchanges   []string
+	TimeSyncInterval  time.Duration
 }
 
 // NewEngine dynamically instantiates exchange providers based on configured credentials and endpoints.
@@ -89,10 +90,11 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 		factories = DefaultProviderFactories()
 	}
 	factoryCfg := ProviderFactoryConfig{
-		SystemConfig: sysCfg,
-		HTTPClient:   httpClient,
-		Logger:       engineLogger,
-		Bus:          bus,
+		SystemConfig:     sysCfg,
+		HTTPClient:       httpClient,
+		Logger:           engineLogger,
+		Bus:              bus,
+		TimeSyncInterval: cfg.TimeSyncInterval,
 	}
 	if err := validateProviderFactoryConfig(factoryCfg); err != nil {
 		return nil, err

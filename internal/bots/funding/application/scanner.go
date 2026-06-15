@@ -135,8 +135,8 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	}
 
 	// 24h volume check (safety limit)
-	if j.cfg != nil && j.cfg.System != nil {
-		minVol := j.cfg.System.Safety.MinVol24USD
+	if j.cfg != nil {
+		minVol := j.cfg.Reversion.Safety.MinVol24USD
 		if minVol > 0 && c.Amount24 < minVol {
 			j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
 				slog.String("symbol", c.Symbol),
@@ -371,6 +371,7 @@ func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 
 // ScheduleScanner scans for high-funding opportunities dynamically.
 type ScheduleScanner struct {
+	exchange       string
 	cfg            *config.Config
 	client         exchange.Client
 	log            *slog.Logger
@@ -379,20 +380,22 @@ type ScheduleScanner struct {
 
 // NewScheduleScanner creates a new ScheduleScanner.
 func NewScheduleScanner(
+	exchangeName string,
 	cfg *config.Config,
 	client exchange.Client,
 	log *slog.Logger,
 	disabledReason func(string) (string, bool),
 ) *ScheduleScanner {
 	return &ScheduleScanner{
+		exchange:       exchangeName,
 		cfg:            cfg,
 		client:         client,
-		log:            log.With("component", "schedule_scanner"),
+		log:            log.With("component", "schedule_scanner", "exchange", exchangeName),
 		disabledReason: disabledReason,
 	}
 }
 
-// Scan queries MEXC tickers, filters by volume, fetches funding rates, and builds candidate opportunities.
+// Scan queries tickers, filters by volume, fetches funding rates, and builds candidate opportunities.
 func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	var opportunities []ScanOpportunity
 
@@ -400,10 +403,10 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	var blacklist []string
 	if s.cfg.Blacklist != nil {
 		blacklist = append(blacklist, s.cfg.Blacklist.Common...)
-		blacklist = append(blacklist, s.cfg.Blacklist.Mexc...)
+		blacklist = append(blacklist, s.cfg.Blacklist.GetExchangeBlacklist(s.exchange)...)
 	}
 
-	minVol := s.cfg.System.Safety.MinVol24USD
+	minVol := s.cfg.Reversion.Safety.MinVol24USD
 	if minVol <= 0 {
 		minVol = 1000000
 	}
@@ -482,11 +485,11 @@ func (s *ScheduleScanner) processResult(
 ) (ScanOpportunity, bool, error) {
 	// Skip if disabled in-memory
 	if reason, disabled := s.disabledReason(r.Symbol); disabled {
-		s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("exchange", exchange.ExchangeMexc), slog.String("symbol", r.Symbol), slog.String("reason", reason))
+		s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("exchange", s.exchange), slog.String("symbol", r.Symbol), slog.String("reason", reason))
 		return ScanOpportunity{}, false, nil
 	}
 
-	symCfg, err := s.cfg.NewSymbolConfig(exchange.ExchangeMexc, r.Symbol)
+	symCfg, err := s.cfg.NewSymbolConfig(s.exchange, r.Symbol)
 	if err != nil {
 		s.log.WarnContext(ctx, "Failed to resolve symbol config", slog.String("symbol", r.Symbol), slog.Any("error", err))
 		return ScanOpportunity{}, false, nil
@@ -498,26 +501,27 @@ func (s *ScheduleScanner) processResult(
 		return ScanOpportunity{}, false, nil
 	}
 
-	// Resolve MarginUSDT dynamically
-	marginUSDT := 3.0
+	// Resolve MarginUSDT dynamically: try to find a static symbol configuration for the same exchange first
 	for i := range s.cfg.Symbols {
 		sym := &s.cfg.Symbols[i]
-		if strings.EqualFold(sym.Exchange, exchange.ExchangeMexc) {
-			marginUSDT = sym.MarginUSDT
+		if strings.EqualFold(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
+			symCfg.MarginUSDT = sym.MarginUSDT
 			break
 		}
 	}
-	symCfg.MarginUSDT = marginUSDT
+	if symCfg.MarginUSDT <= 0 {
+		symCfg.MarginUSDT = 3.0 // hard fallback
+	}
 
 	td, ok := tickerMap[r.Symbol]
 	if !ok {
-		s.log.DebugContext(ctx, "No ticker data available for symbol", slog.String("exchange", exchange.ExchangeMexc), slog.String("symbol", r.Symbol))
+		s.log.DebugContext(ctx, "No ticker data available for symbol", slog.String("exchange", s.exchange), slog.String("symbol", r.Symbol))
 		return ScanOpportunity{}, false, nil
 	}
 
 	cd, ok := contracts[r.Symbol]
 	if !ok {
-		s.log.WarnContext(ctx, "No contract data available for symbol", slog.String("exchange", exchange.ExchangeMexc), slog.String("symbol", r.Symbol))
+		s.log.WarnContext(ctx, "No contract data available for symbol", slog.String("exchange", s.exchange), slog.String("symbol", r.Symbol))
 		return ScanOpportunity{}, false, nil
 	}
 

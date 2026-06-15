@@ -2,12 +2,43 @@
   // Funding Reversion (Dao chieu sau Funding)
   "enabled": true,
   "maxLatency": "400ms", // Abort if RTT > 400ms
+  "minFundingRate": 0.3,
+  "maxPriceDiffPercent": 0.8,
+  "openType": "ISOLATED",
+  "positionMode": "HEDGE",
+  "default": {
+    "takeProfitPct": 1,
+    "stopLossPct": 2,
+    "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+    "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close
+    "leverage": 5,
+    "marginUSD": 3
+  },
+  "sync": {
+    "time": "60s",
+    "ticker": "300s",
+    "contract": "3600s",
+    "funding": "30s"
+  },
+  "safety": {
+    "minVol24USD": 1000000,
+    "maxImpactRatio": 5
+  },
+  "notifier": {
+    "enable": true
+  },
+  "scanners": {
+    "configured": true,
+    "schedule": {
+      "mexc": false
+    }
+  },
   "exchanges": {
     "mexc": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
-      "postSettleTimeout": "3s" // Force close if reversion lifecycle does not terminally close
+      "postSettleTimeout": "3s" // Force close if reversion lifecycle does not terminally close,
     },
     "bybit": {
       "takeProfitPct": 1,
@@ -56,7 +87,7 @@
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
-    },
+    }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
   // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.

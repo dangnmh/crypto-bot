@@ -48,7 +48,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 
 	n, err := provideNotifier(lc, &fundingconfig.SystemConfig{
 		SystemConfig: config.SystemConfig{NotiConfig: config.NotiConfig{Enabled: false}},
-	}, bootstrapTestLogger())
+	}, &fundingconfig.Config{}, bootstrapTestLogger())
 	require.NoError(t, err)
 	require.NotNil(t, n)
 	require.NoError(t, lc.Start(context.Background()))

@@ -52,6 +52,7 @@ func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, 
 	}
 
 	// Create symbol set for quick lookup
+	checkSymbol := len(symbols) > 0
 	symbolMap := make(map[string]bool)
 	for _, sym := range symbols {
 		symbolMap[sym] = true
@@ -59,7 +60,7 @@ func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, 
 
 	s.mu.Lock()
 	for _, res := range results {
-		if symbolMap[res.Symbol] {
+		if !checkSymbol || symbolMap[res.Symbol] {
 			s.funding[res.Symbol] = &FundingData{
 				Symbol:         res.Symbol,
 				FundingRate:    res.Rate,
@@ -70,7 +71,7 @@ func (s *FundingStore) syncFunding(ctx context.Context, client exchange.Client, 
 	}
 	s.mu.Unlock()
 
-	s.logger.DebugContext(ctx, "store.SyncFunding.done", slog.Int("count", len(symbols)))
+	s.logger.DebugContext(ctx, "store.SyncFunding.done", slog.Int("count", len(results)))
 	s.fundingReadyOnce.Do(func() { s.readyWG.Done() })
 }
 

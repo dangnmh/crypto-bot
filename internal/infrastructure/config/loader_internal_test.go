@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"crypto-bot/pkg/types"
-
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -278,9 +276,6 @@ func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
 
 	applySystemDefaults(cfg)
 
-	assert.Equal(t, types.Duration(30*1e9), cfg.Sync.Time)
-	assert.Equal(t, types.Duration(30*1e9), cfg.Sync.Ticker)
-	assert.Equal(t, types.Duration(300*1e9), cfg.Sync.Contract)
 	assert.Equal(t, 30, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, 30, cfg.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)

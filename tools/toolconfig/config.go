@@ -74,15 +74,6 @@ func validateEndpoints(cfg *sysconfig.SystemConfig) error {
 }
 
 func applySystemDefaults(cfg *sysconfig.SystemConfig) {
-	if cfg.Sync.Time <= 0 {
-		cfg.Sync.Time = 30000000000 // 30s
-	}
-	if cfg.Sync.Ticker <= 0 {
-		cfg.Sync.Ticker = 300000000000 // 300s
-	}
-	if cfg.Sync.Contract <= 0 {
-		cfg.Sync.Contract = 3600000000000 // 3600s
-	}
 	if cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
 		cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn = 30
 	}

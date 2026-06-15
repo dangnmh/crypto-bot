@@ -71,14 +71,19 @@ func TestNewFundingBotBuildsExchangeScopedResources(t *testing.T) {
 			},
 		},
 	}
-	cfg := &config.Config{Symbols: []config.SymbolConfig{
-		{Symbol: "BTC_USDT", Exchange: "mexc"},
-		{Symbol: "ETH_USDT", Exchange: "gate"},
-	}}
-	sysCfg := &config.SystemConfig{Sync: config.SyncConfig{
-		SyncConfig:  sysconfig.SyncConfig{Ticker: types.Duration(time.Second), Contract: types.Duration(time.Second)},
-		FundingSync: types.Duration(time.Second),
-	}}
+	cfg := &config.Config{
+		Symbols: []config.SymbolConfig{
+			{Symbol: "BTC_USDT", Exchange: "mexc"},
+			{Symbol: "ETH_USDT", Exchange: "gate"},
+		},
+		Reversion: &config.ReversionConfig{
+			Sync: config.SyncConfig{
+				SyncConfig:  sysconfig.SyncConfig{Ticker: types.Duration(time.Second), Contract: types.Duration(time.Second)},
+				FundingSync: types.Duration(time.Second),
+			},
+		},
+	}
+	sysCfg := &config.SystemConfig{}
 
 	s := NewFundingBot(
 		cfg,

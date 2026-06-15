@@ -95,7 +95,6 @@ type LoggingConfig struct {
 // SystemConfig contains universally required configuration for any bot connecting to the exchange.
 type SystemConfig struct {
 	Logging        LoggingConfig  `json:"logging"`
-	Sync           SyncConfig     `json:"sync"`
 	DryRun         bool           `json:"dryRun"`
 	ExchangeConfig ExchangeConfig `json:"exchange"`
 	NotiConfig     NotiConfig     `json:"notifier"`

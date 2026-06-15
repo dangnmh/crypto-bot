@@ -95,15 +95,6 @@
     }
   },
   // ══════════════════════════════════════════════════════════════
-  // Sync — Tần suất đồng bộ dữ liệu
-  // ══════════════════════════════════════════════════════════════
-  "sync": {
-    "time": "60s", // Đồng bộ đồng hồ local ↔ server (cho fire chính xác tại T-Nms)
-    "ticker": "300s", // Refresh bảng giá tổng quan qua REST (WS bổ sung real-time)
-    "contract": "3600s", // Refresh thông số hợp đồng (PriceUnit, MinVol, Fee — hiếm đổi)
-    "funding": "30s" // Refresh FR per-symbol (cần tươi cho recheck tại T-2s)
-  },
-  // ══════════════════════════════════════════════════════════════
   // Logging
   // ══════════════════════════════════════════════════════════════
   "logging": {
@@ -114,36 +105,5 @@
       "position": true
     },
     "http": true
-  },
-  // ══════════════════════════════════════════════════════════════
-  // Safety — Ngưỡng bảo vệ hệ thống
-  // ══════════════════════════════════════════════════════════════
-  "safety": {
-    "minVol24USD": 1000000, // Reject nếu volume 24h theo USD/USDT nhỏ hơn ngưỡng này
-    "maxImpactRatio": 5 // Tự giảm notional xuống tối đa 5% thanh khoản trung bình 1 phút (amount24h / 1440)
-  },
-  "notifier": {
-    "enable": true
-  },
-  "scanners": {
-    "configured": true,
-    "schedule": {
-      "mexc": false
-    }
-  },
-  // ══════════════════════════════════════════════════════════════
-  // Trading Defaults — Giá trị mặc định cho TẤT CẢ symbol
-  // Mỗi field có thể override per-symbol trong funding.jsonc
-  // ══════════════════════════════════════════════════════════════
-  "tradingDefaults": {
-    // ── 1. Entry Filter ──────────────────────────────────────────
-    "minFundingRate": 0.3, // FR tối thiểu (%)
-    "maxPriceDiffPercent": 0.8, // Slippage tĩnh fallback (%)
-    // ── 2. Position ──────────────────────────────────────────────
-    "leverage": 5,
-    "openType": "ISOLATED", // ISOLATED (an toàn) | CROSS (rủi ro cao)
-    "positionMode": "HEDGE" // HEDGE (bắt buộc cho Straddle Trap) | ONE_WAY
-    // Strategy defaults live in sibling files:
-    // - reversion.jsonc -> tradingDefaults.fundingReversion
   }
 }

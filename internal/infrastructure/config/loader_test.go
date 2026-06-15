@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"crypto-bot/internal/infrastructure/config"
-	"crypto-bot/pkg/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,9 +49,6 @@ func TestInitializeBase_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify defaults are applied.
-	assert.Greater(t, cfg.Sync.Time, types.Duration(0))
-	assert.Greater(t, cfg.Sync.Ticker, types.Duration(0))
-	assert.Greater(t, cfg.Sync.Contract, types.Duration(0))
 	assert.Equal(t, 30, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
@@ -61,7 +57,6 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 	t.Setenv("MEXC_API_KEY", "key")
 	t.Setenv("MEXC_API_SECRET", "secret")
 
-	customTime := types.Duration(60 * 1e9) // 60s
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
 			Mexc: config.APIConfig{
@@ -70,14 +65,12 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 50},
 			},
 		},
-		Sync:    config.SyncConfig{Time: customTime},
 		Logging: config.LoggingConfig{Level: "debug"},
 	}
 
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, customTime, cfg.Sync.Time)
 	assert.Equal(t, 50, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "debug", cfg.Logging.Level)
 }

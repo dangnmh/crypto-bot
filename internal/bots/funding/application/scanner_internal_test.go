@@ -392,7 +392,7 @@ func TestScheduleScanner_Scan(t *testing.T) {
 
 	// Setup minimal config
 	cfg := &config.Config{
-		System: &config.SystemConfig{
+		Reversion: &config.ReversionConfig{
 			Safety: config.SafetyConfig{
 				MinVol24USD: 1000000,
 			},
@@ -403,6 +403,7 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	}
 
 	scanner := NewScheduleScanner(
+		"mexc",
 		cfg,
 		client,
 		sniperTestLogger(),
@@ -475,7 +476,7 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			}, nil)
 
 			cfg := &config.Config{
-				System: &config.SystemConfig{
+				Reversion: &config.ReversionConfig{
 					Safety: config.SafetyConfig{
 						MinVol24USD: 1000000,
 					},
@@ -487,6 +488,7 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			}
 
 			scanner := NewScheduleScanner(
+				"mexc",
 				cfg,
 				client,
 				sniperTestLogger(),
@@ -509,7 +511,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		System: &config.SystemConfig{
+		Reversion: &config.ReversionConfig{
 			Safety: config.SafetyConfig{
 				MinVol24USD: 1000000,
 			},

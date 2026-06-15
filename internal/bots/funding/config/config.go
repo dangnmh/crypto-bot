@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,27 +10,17 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	pkgconfig "crypto-bot/pkg/config"
 	"crypto-bot/pkg/types"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/tailscale/hujson"
 )
 
 // Load reads funding.json and returns the Config.
 func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
-	fundData, err := os.ReadFile(fundingPath)
+	symCfgs, err := loadSymbolsConfig(fundingPath)
 	if err != nil {
-		return nil, fmt.Errorf("read funding config %s: %w", fundingPath, err)
-	}
-
-	fundData, err = hujson.Standardize(fundData)
-	if err != nil {
-		return nil, fmt.Errorf("standardize funding config json: %w", err)
-	}
-
-	var symCfgs []SymbolConfig
-	if err := json.Unmarshal(fundData, &symCfgs); err != nil {
-		return nil, fmt.Errorf("parse funding config: %w", err)
+		return nil, err
 	}
 
 	cfg := &Config{
@@ -52,6 +41,15 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 		}
 	}
 
+	reversionCfg, err := loadReversionConfig(configDir)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Reversion = reversionCfg
+
+	// Normalize Safety limit percentage
+	cfg.Reversion.Safety.MaxImpactRatio /= 100
+
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
@@ -59,36 +57,52 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	return cfg, nil
 }
 
-func LoadBlacklist(path string) (*BlacklistConfig, error) {
-	data, err := os.ReadFile(path)
+func loadSymbolsConfig(fundingPath string) ([]SymbolConfig, error) {
+	symCfgs, err := pkgconfig.Load[[]SymbolConfig](fundingPath)
 	if err != nil {
-		return nil, err
-	}
-
-	data, err = hujson.Standardize(data)
-	if err != nil {
-		return nil, fmt.Errorf("standardize blacklist config: %w", err)
-	}
-
-	var blacklist BlacklistConfig
-	if err := json.Unmarshal(data, &blacklist); err != nil {
-		return nil, fmt.Errorf("parse blacklist config: %w", err)
-	}
-
-	return &blacklist, nil
-}
-
-func (c *Config) parseTradingDefaults() (TradingDefaults, error) {
-	var defaults TradingDefaults
-	if c.System.TradingDefaults != nil {
-		if err := json.Unmarshal(c.System.TradingDefaults, &defaults); err != nil {
-			return defaults, fmt.Errorf("parse trading defaults: %w", err)
+		if strings.Contains(err.Error(), "read config") {
+			return nil, fmt.Errorf("read funding config %s: %w", fundingPath, err)
 		}
+		return nil, fmt.Errorf("parse funding config: %w", err)
 	}
-	return defaults, nil
+	return *symCfgs, nil
 }
 
-func (c *Config) validateSymbols(defaults *TradingDefaults) error {
+func loadReversionConfig(configDir string) (*ReversionConfig, error) {
+	reversionPath := filepath.Join(configDir, "reversion.jsonc")
+	reversionCfg, err := pkgconfig.Load[ReversionConfig](reversionPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "read config") {
+			return nil, fmt.Errorf("read reversion config %s: %w", reversionPath, err)
+		}
+		return nil, fmt.Errorf("parse reversion config: %w", err)
+	}
+
+	if reversionCfg.Sync.FundingSync <= 0 {
+		reversionCfg.Sync.FundingSync = types.Duration(30 * time.Second)
+	}
+	if reversionCfg.Sync.Time <= 0 {
+		reversionCfg.Sync.Time = types.Duration(30 * time.Second)
+	}
+	if reversionCfg.Sync.Ticker <= 0 {
+		reversionCfg.Sync.Ticker = types.Duration(30 * time.Second)
+	}
+	if reversionCfg.Sync.Contract <= 0 {
+		reversionCfg.Sync.Contract = types.Duration(300 * time.Second)
+	}
+
+	return reversionCfg, nil
+}
+
+func LoadBlacklist(path string) (*BlacklistConfig, error) {
+	return pkgconfig.Load[BlacklistConfig](path)
+}
+
+func (c *Config) parseTradingDefaults() (RawFundingReversionConfig, error) {
+	return c.Reversion.RawFundingReversionConfig, nil
+}
+
+func (c *Config) validateSymbols(defaults *RawFundingReversionConfig) error {
 	for i := range c.Symbols {
 		sc := &c.Symbols[i]
 
@@ -160,29 +174,55 @@ func (c *Config) exchangeConfigured(name string) bool {
 	}
 }
 
-func (c *Config) applyDefaults(sc *SymbolConfig, d *TradingDefaults) {
+func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
+	// Merge exchange-specific configs with strategy defaults.
+	exchName := sc.Exchange
+	exchConfig := d.Default // Start with defaults
+
+	// Override with exchange-specific settings if present
+	if specific, exists := d.Exchanges[exchName]; exists {
+		if specific.TakeProfitPct > 0 {
+			exchConfig.TakeProfitPct = specific.TakeProfitPct
+		}
+		if specific.StopLossPct > 0 {
+			exchConfig.StopLossPct = specific.StopLossPct
+		}
+		if specific.BufferTime != 0 {
+			exchConfig.BufferTime = specific.BufferTime
+		}
+		if specific.PostSettleTimeout != 0 {
+			exchConfig.PostSettleTimeout = specific.PostSettleTimeout
+		}
+		if specific.Leverage > 0 {
+			exchConfig.Leverage = specific.Leverage
+		}
+		if specific.MarginUSD > 0 {
+			exchConfig.MarginUSD = specific.MarginUSD
+		}
+	}
+
 	defaultFloat(&sc.MaxPriceDiffPercent, d.MaxPriceDiffPercent)
 	defaultFloat(&sc.MinFundingRate, d.MinFundingRate)
-	defaultInt(&sc.Leverage, d.Leverage)
+
+	// Apply leverage and margin (either exchange-specific, or default fallback)
+	defaultInt(&sc.Leverage, exchConfig.Leverage)
+	defaultFloat(&sc.MarginUSDT, exchConfig.MarginUSD)
+
 	defaultStr((*string)(&sc.OpenType), d.OpenType)
 	defaultStr((*string)(&sc.PositionMode), d.PositionMode)
 
-	// 1. Resolve raw nested reversion config from defaults for the symbol's exchange
-	exchName := sc.Exchange
-	exchDefault := d.FundingReversion.Exchanges[exchName]
-
-	if !sc.FundingReversion.Enabled && d.FundingReversion.Enabled {
+	if !sc.FundingReversion.Enabled && d.Enabled {
 		sc.FundingReversion.Enabled = true
-		sc.FundingReversion.MaxLatency = d.FundingReversion.MaxLatency
-		sc.FundingReversion.TakeProfitPct = exchDefault.TakeProfitPct
-		sc.FundingReversion.StopLossPct = exchDefault.StopLossPct
-		sc.FundingReversion.BufferTime = exchDefault.BufferTime
-		sc.FundingReversion.PostSettleTimeout = exchDefault.PostSettleTimeout
+		sc.FundingReversion.MaxLatency = d.MaxLatency
+		sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
+		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
+		sc.FundingReversion.BufferTime = exchConfig.BufferTime
+		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
 	} else if sc.FundingReversion.Enabled {
-		defaultDuration(&sc.FundingReversion.MaxLatency, d.FundingReversion.MaxLatency)
-		defaultFloat(&sc.FundingReversion.TakeProfitPct, exchDefault.TakeProfitPct)
-		defaultFloat(&sc.FundingReversion.StopLossPct, exchDefault.StopLossPct)
-		defaultDuration(&sc.FundingReversion.BufferTime, exchDefault.BufferTime)
+		defaultDuration(&sc.FundingReversion.MaxLatency, d.MaxLatency)
+		defaultFloat(&sc.FundingReversion.TakeProfitPct, exchConfig.TakeProfitPct)
+		defaultFloat(&sc.FundingReversion.StopLossPct, exchConfig.StopLossPct)
+		defaultDuration(&sc.FundingReversion.BufferTime, exchConfig.BufferTime)
 	}
 }
 

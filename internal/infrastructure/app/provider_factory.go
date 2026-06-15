@@ -38,10 +38,11 @@ type ProviderFactory interface {
 
 // ProviderFactoryConfig holds shared dependencies for provider construction.
 type ProviderFactoryConfig struct {
-	SystemConfig *sysconfig.SystemConfig
-	HTTPClient   *http.Client
-	Logger       *slog.Logger
-	Bus          *eventbus.Bus
+	SystemConfig     *sysconfig.SystemConfig
+	HTTPClient       *http.Client
+	Logger           *slog.Logger
+	Bus              *eventbus.Bus
+	TimeSyncInterval time.Duration
 }
 
 // DefaultProviderFactories returns the exchange factories supported by the app layer.
@@ -230,7 +231,11 @@ func buildProvider(
 	wsPool := newWSPool(ctx, watcherExchangeName, apiCfg, adapter, log, apiCfg.APIKey, apiCfg.APISecret)
 	adapter.SetPool(wsPool)
 
-	ts := timesync.New(client, log, time.Duration(sysCfg.Sync.Time))
+	syncTime := cfg.TimeSyncInterval
+	if syncTime <= 0 {
+		syncTime = 30 * time.Second
+	}
+	ts := timesync.New(client, log, syncTime)
 	type clockSetter interface {
 		SetClock(exchange.Clock)
 	}

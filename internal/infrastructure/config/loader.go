@@ -7,8 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"crypto-bot/pkg/types"
-
 	"github.com/bitwarden/sdk-go/v2"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
@@ -322,15 +320,6 @@ func isValidURL(rawURL string) bool {
 }
 
 func applySystemDefaults(c *SystemConfig) {
-	if c.Sync.Time <= 0 {
-		c.Sync.Time = types.Duration(30 * 1e9) // 30s
-	}
-	if c.Sync.Ticker <= 0 {
-		c.Sync.Ticker = types.Duration(30 * 1e9) // 30s
-	}
-	if c.Sync.Contract <= 0 {
-		c.Sync.Contract = types.Duration(300 * 1e9) // 5min
-	}
 	applyExchangeWSDefaults(&c.ExchangeConfig.Mexc)
 	applyExchangeWSDefaults(&c.ExchangeConfig.Gate)
 	applyExchangeWSDefaults(&c.ExchangeConfig.Bybit)

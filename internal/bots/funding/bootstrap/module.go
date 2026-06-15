@@ -74,9 +74,14 @@ func provideFundingConfig(paths ConfigPaths, cfg *fundingconfig.SystemConfig) (*
 	return fundingconfig.Load(cfg, paths.Bot)
 }
 
-func provideNotifier(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig, log *slog.Logger) (notifier.Notifier, error) {
+func provideNotifier(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config, log *slog.Logger) (notifier.Notifier, error) {
+	enabled := false
+	if fundingCfg != nil && fundingCfg.Reversion != nil {
+		enabled = fundingCfg.Reversion.Notifier.Enabled
+	}
+
 	n, err := notifier.NewFromConfig(notifier.Config{
-		Enabled:          cfg.NotiConfig.Enabled,
+		Enabled:          enabled,
 		TelegramBotToken: cfg.NotiConfig.TelegramBotToken,
 		TelegramChatID:   cfg.NotiConfig.TelegramChatID,
 	}, log)
@@ -102,28 +107,51 @@ func provideHTTPClient(log *slog.Logger) *http.Client {
 	return httpclient.NewPool(cfg)
 }
 
-func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config, httpClient *http.Client, log *slog.Logger) (*infraapp.Engine, error) {
+func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
+	if fundingCfg == nil {
+		return nil
+	}
 	var activeExchanges []string
-	if fundingCfg != nil {
-		seen := make(map[string]bool)
-		for i := range fundingCfg.Symbols {
-			sym := &fundingCfg.Symbols[i]
-			if fundingCfg.Blacklist != nil && fundingCfg.Blacklist.IsBlacklisted(sym.Exchange, sym.Symbol) {
-				continue
-			}
-			exch := strings.ToLower(strings.TrimSpace(sym.Exchange))
-			if exch != "" && !seen[exch] {
-				seen[exch] = true
-				activeExchanges = append(activeExchanges, exch)
+	seen := make(map[string]bool)
+	for i := range fundingCfg.Symbols {
+		sym := &fundingCfg.Symbols[i]
+		if fundingCfg.Blacklist != nil && fundingCfg.Blacklist.IsBlacklisted(sym.Exchange, sym.Symbol) {
+			continue
+		}
+		exch := strings.ToLower(strings.TrimSpace(sym.Exchange))
+		if exch != "" && !seen[exch] {
+			seen[exch] = true
+			activeExchanges = append(activeExchanges, exch)
+		}
+	}
+	if fundingCfg.Reversion != nil {
+		for exch, enabled := range fundingCfg.Reversion.Scanners.Schedule {
+			if enabled {
+				exch = strings.ToLower(strings.TrimSpace(exch))
+				if exch != "" && !seen[exch] {
+					seen[exch] = true
+					activeExchanges = append(activeExchanges, exch)
+				}
 			}
 		}
 	}
+	return activeExchanges
+}
+
+func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config, httpClient *http.Client, log *slog.Logger) (*infraapp.Engine, error) {
+	activeExchanges := collectActiveExchanges(fundingCfg)
+
+	var timeSyncInterval time.Duration
+	if fundingCfg != nil && fundingCfg.Reversion != nil {
+		timeSyncInterval = time.Duration(fundingCfg.Reversion.Sync.Time)
+	}
 
 	return infraapp.NewEngine(context.Background(), infraapp.EngineConfig{
-		SystemConfig:    &cfg.SystemConfig,
-		HTTPClient:      httpClient,
-		Logger:          log,
-		ActiveExchanges: activeExchanges,
+		SystemConfig:     &cfg.SystemConfig,
+		HTTPClient:       httpClient,
+		Logger:           log,
+		ActiveExchanges:  activeExchanges,
+		TimeSyncInterval: timeSyncInterval,
 	})
 }
 

@@ -61,12 +61,24 @@ func NewFundingBot(
 			}
 		}
 
-		if len(symbols) > 0 || name == exchange.ExchangeMexc {
+		var scheduleEnabled bool
+		var tickerDuration time.Duration
+		var contractDuration time.Duration
+		var fundingSyncDuration time.Duration
+
+		if cfg.Reversion != nil {
+			scheduleEnabled = cfg.Reversion.Scanners.Schedule[name]
+			tickerDuration = time.Duration(cfg.Reversion.Sync.Ticker)
+			contractDuration = time.Duration(cfg.Reversion.Sync.Contract)
+			fundingSyncDuration = time.Duration(cfg.Reversion.Sync.FundingSync)
+		}
+
+		if len(symbols) > 0 || name == exchange.ExchangeMexc || scheduleEnabled {
 			storesMap[name] = app.NewCentralStore(
 				app.WithLogger(log.With("exchange", name)),
-				app.WithTicker(prov.Client, time.Duration(sysCfg.Sync.Ticker)),
-				app.WithContract(prov.Client, time.Duration(sysCfg.Sync.Contract)),
-				app.WithFunding(prov.Client, time.Duration(sysCfg.Sync.FundingSync), symbols),
+				app.WithTicker(prov.Client, tickerDuration),
+				app.WithContract(prov.Client, contractDuration),
+				app.WithFunding(prov.Client, fundingSyncDuration, symbols),
 				app.WithPrice(),
 				app.WithDepth(),
 				app.WithKline(),
@@ -179,7 +191,7 @@ func (s *FundingBot) Run(ctx context.Context) error {
 
 	var scanners []Scanner
 
-	if s.sysCfg.Scanners.Configured {
+	if s.cfg.Reversion != nil && s.cfg.Reversion.Scanners.Configured {
 		configuredScanner := NewConfiguredScanner(
 			s.cfg,
 			s.engine,
@@ -191,22 +203,25 @@ func (s *FundingBot) Run(ctx context.Context) error {
 		s.log.InfoContext(ctx, "Registered ConfiguredScanner")
 	}
 
-	for exch, enabled := range s.sysCfg.Scanners.Schedule {
-		if !enabled {
-			continue
-		}
+	if s.cfg.Reversion != nil {
+		for exch, enabled := range s.cfg.Reversion.Scanners.Schedule {
+			if !enabled {
+				continue
+			}
 
-		if exchangeProvider, ok := s.engine.Providers[exch]; ok {
-			scheduleScanner := NewScheduleScanner(
-				s.cfg,
-				exchangeProvider.Client,
-				s.log,
-				s.disabledReason,
-			)
-			scanners = append(scanners, scheduleScanner)
-			s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
-		} else {
-			s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.", slog.String("exchange", exch))
+			if exchangeProvider, ok := s.engine.Providers[exch]; ok {
+				scheduleScanner := NewScheduleScanner(
+					exch,
+					s.cfg,
+					exchangeProvider.Client,
+					s.log,
+					s.disabledReason,
+				)
+				scanners = append(scanners, scheduleScanner)
+				s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
+			} else {
+				s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.", slog.String("exchange", exch))
+			}
 		}
 	}
 

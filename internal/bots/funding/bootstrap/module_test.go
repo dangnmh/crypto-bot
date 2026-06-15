@@ -50,6 +50,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[
 		{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 10, "leverage": 5}
 	]`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
 
 	var (
 		log        *slog.Logger

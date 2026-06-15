@@ -5,37 +5,37 @@
   {
     "symbol": "SIREN_USDT",
     "marginUSDT": 3,
-    "exchange": "mexc",
+    "exchange": "mexc"
     // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
     "symbol": "SIRENUSDT",
     "marginUSDT": 3,
-    "exchange": "bybit",
+    "exchange": "bybit"
     // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
     "symbol": "SIRENUSDT",
     "marginUSDT": 3,
-    "exchange": "binance",
+    "exchange": "binance"
     // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
     "symbol": "SIRENUSDTM",
     "marginUSDT": 3,
-    "exchange": "kucoin",
+    "exchange": "kucoin"
     // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
     "symbol": "HOME-USDT-SWAP",
     "marginUSDT": 3,
-    "exchange": "okx",
+    "exchange": "okx"
     // "simulateSettle": "2026-06-14T13:30:00.000+07:00"
   },
   {
     "symbol": "SIREN_USDT",
     "marginUSDT": 3,
-    "exchange": "gate",
+    "exchange": "gate"
     // "simulateSettle": "2026-06-14T15:10:00.000+07:00"
-  },
+  }
 ]

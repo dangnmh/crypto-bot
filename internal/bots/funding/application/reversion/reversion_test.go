@@ -166,7 +166,8 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}
 
 	globalCfg := &config.Config{
-		System: &config.SystemConfig{
+		System: &config.SystemConfig{},
+		Reversion: &config.ReversionConfig{
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
 				MinVol24USD:    10000,
@@ -369,7 +370,8 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	}
 
 	globalCfg := &config.Config{
-		System: &config.SystemConfig{
+		System: &config.SystemConfig{},
+		Reversion: &config.ReversionConfig{
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
 				MinVol24USD:    10000,
@@ -595,7 +597,8 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	}
 
 	globalCfg := &config.Config{
-		System: &config.SystemConfig{
+		System: &config.SystemConfig{},
+		Reversion: &config.ReversionConfig{
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
 				MinVol24USD:    10000,

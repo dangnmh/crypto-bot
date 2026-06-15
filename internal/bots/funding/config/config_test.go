@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,19 +20,73 @@ import (
 // Helper: creates a temp funding.json and loads it with the given system config.
 // ──────────────────────────────────────────────────────────────────────.
 
+var (
+	testReversionDefaultsMu sync.RWMutex
+	testReversionDefaults   = make(map[*config.SystemConfig]config.RawFundingReversionConfig)
+)
+
+func setTestDefaults(sc *config.SystemConfig, defaults config.RawFundingReversionConfig) {
+	testReversionDefaultsMu.Lock()
+	defer testReversionDefaultsMu.Unlock()
+	testReversionDefaults[sc] = defaults
+}
+
+func getTestDefaults(sc *config.SystemConfig) (config.RawFundingReversionConfig, bool) {
+	testReversionDefaultsMu.RLock()
+	defer testReversionDefaultsMu.RUnlock()
+	val, ok := testReversionDefaults[sc]
+	return val, ok
+}
+
 func loadWith(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) *config.Config {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(fundingJSON), 0o600))
+
+	defaults, ok := getTestDefaults(sysCfg)
+	if !ok {
+		defaults = config.RawFundingReversionConfig{Enabled: true}
+	}
+
+	mockRev := struct {
+		config.RawFundingReversionConfig
+		Safety   config.SafetyConfig            `json:"safety"`
+		Scanners config.ScannersConfig          `json:"scanners"`
+		Notifier config.ReversionNotifierConfig `json:"notifier"`
+		Sync     config.SyncConfig              `json:"sync"`
+	}{
+		RawFundingReversionConfig: defaults,
+		Sync: config.SyncConfig{
+			SyncConfig: sysconfig.SyncConfig{
+				Ticker:   types.Duration(time.Second),
+				Contract: types.Duration(time.Second),
+				Time:     types.Duration(time.Second),
+			},
+			FundingSync: types.Duration(time.Second),
+		},
+	}
+	revData, err := json.Marshal(mockRev)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), revData, 0o600))
+
 	cfg, err := config.Load(sysCfg, path)
 	require.NoError(t, err)
 	return cfg
 }
 
-func sysWithDefaults(defaults config.TradingDefaults) *config.SystemConfig {
-	raw, _ := json.Marshal(defaults)
-	return &config.SystemConfig{
+func loadWithError(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) error {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "funding.jsonc")
+	require.NoError(t, os.WriteFile(path, []byte(fundingJSON), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
+	_, err := config.Load(sysCfg, path)
+	return err
+}
+
+func sysWithDefaults(defaults config.RawFundingReversionConfig) *config.SystemConfig {
+	sc := &config.SystemConfig{
 		SystemConfig: sysconfig.SystemConfig{
 			ExchangeConfig: sysconfig.ExchangeConfig{
 				Mexc: sysconfig.APIConfig{
@@ -43,12 +98,13 @@ func sysWithDefaults(defaults config.TradingDefaults) *config.SystemConfig {
 				},
 			},
 		},
-		TradingDefaults: json.RawMessage(raw),
 	}
+	setTestDefaults(sc, defaults)
+	return sc
 }
 
 func sysWithMexc() *config.SystemConfig {
-	return sysWithDefaults(config.TradingDefaults{})
+	return sysWithDefaults(config.RawFundingReversionConfig{})
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -79,6 +135,7 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
 	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
 }
@@ -88,47 +145,69 @@ func TestLoad_EmptySymbols(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "empty.json")
 	require.NoError(t, os.WriteFile(path, []byte("[]"), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, path)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "'symbols' failed on the 'gt' tag")
+
+	sysCfg := sysWithDefaults(config.RawFundingReversionConfig{
+		Enabled: true,
+		Default: config.ExchangeReversionConfig{
+			MarginUSD: 100,
+		},
+	})
+
+	// Manually write the reversion.jsonc because we are calling Load directly here
+	defaults, _ := getTestDefaults(sysCfg)
+	mockRev := struct {
+		config.RawFundingReversionConfig
+		Sync config.SyncConfig `json:"sync"`
+	}{
+		RawFundingReversionConfig: defaults,
+		Sync: config.SyncConfig{
+			SyncConfig: sysconfig.SyncConfig{
+				Ticker:   types.Duration(time.Second),
+				Contract: types.Duration(time.Second),
+				Time:     types.Duration(time.Second),
+			},
+			FundingSync: types.Duration(time.Second),
+		},
+	}
+	revData, err := json.Marshal(mockRev)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), revData, 0o600))
+
+	cfg, err := config.Load(sysCfg, path)
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Symbols)
+
+	// Verify that NewSymbolConfig works correctly on this config with empty symbols
+	symCfg, err := cfg.NewSymbolConfig("mexc", "BTC_USDT")
+	require.NoError(t, err)
+	assert.Equal(t, "BTC_USDT", symCfg.Symbol)
+	assert.Equal(t, float64(100), symCfg.MarginUSDT)
 }
 
 func TestLoad_MissingSymbolName(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "no_sym.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"exchange": "mexc", "marginUSDT": 100, "leverage": 20}]`), 0o600))
-	_, err := config.Load(sysWithMexc(), path)
+	err := loadWithError(t, sysWithMexc(), `[{"exchange": "mexc", "marginUSDT": 100, "leverage": 20}]`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "'symbol' failed on the 'required' tag")
 }
 
 func TestLoad_InvalidMargin(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad_margin.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 0, "leverage": 20}]`), 0o600))
-	_, err := config.Load(sysWithMexc(), path)
+	err := loadWithError(t, sysWithMexc(), `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 0, "leverage": 20}]`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "'marginUSDT' failed on the 'gt' tag")
 }
 
 func TestLoad_InvalidLeverage(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad_lev.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 0}]`), 0o600))
-	_, err := config.Load(sysWithMexc(), path)
+	err := loadWithError(t, sysWithMexc(), `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 0}]`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "'leverage' failed on the 'gte' tag")
 }
 
 func TestLoad_InvalidExchange(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad_exch.json")
-	require.NoError(t, os.WriteFile(path, []byte(`[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 2, "exchange": "binance"}]`), 0o600))
-	_, err := config.Load(sysWithMexc(), path)
+	err := loadWithError(t, sysWithMexc(), `[{"symbol": "BTC_USDT", "marginUSDT": 100, "leverage": 2, "exchange": "binance"}]`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), `exchange "binance" is not configured`)
 }
@@ -140,21 +219,21 @@ func TestLoad_InvalidExchange(t *testing.T) {
 func TestLoad_AppliesDefaults(t *testing.T) {
 	t.Parallel()
 
-	sysCfg := sysWithDefaults(config.TradingDefaults{
+	sysCfg := sysWithDefaults(config.RawFundingReversionConfig{
+		Enabled:             true,
 		MinFundingRate:      0.5,
 		MaxPriceDiffPercent: 0.2,
-		Leverage:            10,
 		OpenType:            "ISOLATED",
 		PositionMode:        "HEDGE",
-		FundingReversion: config.RawFundingReversionConfig{
-			Enabled:    true,
-			MaxLatency: types.Duration(200 * time.Millisecond),
-			Exchanges: map[string]config.ExchangeReversionConfig{
-				"mexc": {
-					TakeProfitPct: 15,
-					StopLossPct:   3,
-					BufferTime:    types.Duration(10 * time.Millisecond),
-				},
+		MaxLatency:          types.Duration(200 * time.Millisecond),
+		Default: config.ExchangeReversionConfig{
+			Leverage: 10,
+		},
+		Exchanges: map[string]config.ExchangeReversionConfig{
+			"mexc": {
+				TakeProfitPct: 15,
+				StopLossPct:   3,
+				BufferTime:    types.Duration(10 * time.Millisecond),
 			},
 		},
 	})
@@ -177,9 +256,11 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 	t.Parallel()
 
-	sysCfg := sysWithDefaults(config.TradingDefaults{
-		Leverage:       10,
+	sysCfg := sysWithDefaults(config.RawFundingReversionConfig{
 		MinFundingRate: 0.5,
+		Default: config.ExchangeReversionConfig{
+			Leverage: 10,
+		},
 	})
 
 	cfg := loadWith(t, sysCfg,
@@ -212,7 +293,7 @@ func TestLoad_NormalizesPercentages(t *testing.T) {
 func TestLoad_DefaultTPSL_WhenZero(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, sysWithDefaults(config.TradingDefaults{FundingReversion: config.RawFundingReversionConfig{Enabled: true}}),
+	cfg := loadWith(t, sysWithDefaults(config.RawFundingReversionConfig{Enabled: true}),
 		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5}]`)
 	sc := cfg.Symbols[0]
 
@@ -271,10 +352,12 @@ func TestLoad_ParsesSymbolModes(t *testing.T) {
 func TestLoad_WithTradingDefaults(t *testing.T) {
 	t.Parallel()
 
-	sysCfg := sysWithDefaults(config.TradingDefaults{
-		Leverage:            10,
+	sysCfg := sysWithDefaults(config.RawFundingReversionConfig{
 		MinFundingRate:      0.3,
 		MaxPriceDiffPercent: 0.1,
+		Default: config.ExchangeReversionConfig{
+			Leverage: 10,
+		},
 	})
 
 	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 50}]`)
@@ -301,6 +384,9 @@ func TestLoad_WithBlacklist(t *testing.T) {
 		"common": ["ETH_USDT"]
 	}`
 	require.NoError(t, os.WriteFile(blacklistPath, []byte(blacklistContent), 0o600))
+
+	// Create reversion.jsonc
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
 
 	cfg, err := config.Load(sysWithMexc(), fundingPath)
 	require.NoError(t, err)

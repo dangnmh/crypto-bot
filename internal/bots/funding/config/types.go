@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"crypto-bot/internal/bots/funding/domain"
+	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/types"
 )
 
@@ -41,17 +42,42 @@ type SymbolConfig struct {
 	ParsedPositionMode int `json:"-"`
 }
 
+// SyncConfig holds intervals for background sync tasks.
+type SyncConfig struct {
+	sysconfig.SyncConfig
+	// Funding Sync Interval
+	FundingSync types.Duration `json:"funding"`
+}
+
+type ReversionNotifierConfig struct {
+	Enabled bool `json:"enable"`
+}
+
+type ReversionConfig struct {
+	RawFundingReversionConfig
+	Sync     SyncConfig              `json:"sync"`
+	Safety   SafetyConfig            `json:"safety"`
+	Scanners ScannersConfig          `json:"scanners"`
+	Notifier ReversionNotifierConfig `json:"notifier"`
+}
+
 // Config is the root configuration containing both System and Funding configs.
 type Config struct {
-	System    *SystemConfig    `validate:"required"`
-	Symbols   []SymbolConfig   `json:"symbols" validate:"required,gt=0,dive"`
+	System    *SystemConfig    `json:"-" validate:"required"`
+	Symbols   []SymbolConfig   `json:"-" validate:"dive"`
 	Blacklist *BlacklistConfig `json:"-"`
+	Reversion *ReversionConfig `json:"-" validate:"required"`
 }
 
 type RawFundingReversionConfig struct {
-	Enabled    bool                               `json:"enabled"`
-	MaxLatency types.Duration                     `json:"maxLatency"`
-	Exchanges  map[string]ExchangeReversionConfig `json:"exchanges"`
+	Enabled             bool                               `json:"enabled"`
+	MaxLatency          types.Duration                     `json:"maxLatency"`
+	MinFundingRate      float64                            `json:"minFundingRate"`
+	MaxPriceDiffPercent float64                            `json:"maxPriceDiffPercent"`
+	OpenType            string                             `json:"openType"`
+	PositionMode        string                             `json:"positionMode"`
+	Default             ExchangeReversionConfig            `json:"default"`
+	Exchanges           map[string]ExchangeReversionConfig `json:"exchanges"`
 }
 
 type ExchangeReversionConfig struct {
@@ -59,19 +85,8 @@ type ExchangeReversionConfig struct {
 	StopLossPct       float64        `json:"stopLossPct"`
 	BufferTime        types.Duration `json:"bufferTime"`
 	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
-}
-
-// TradingDefaults is a temporary parsing struct to extract the opaque tradingDefaults
-// block from system config and merge into per-symbol configs.
-type TradingDefaults struct {
-	MinFundingRate      float64 `json:"minFundingRate"`
-	MaxPriceDiffPercent float64 `json:"maxPriceDiffPercent"`
-	Leverage            int     `json:"leverage"`
-	OpenType            string  `json:"openType"`
-	PositionMode        string  `json:"positionMode"`
-
-	// Raw parsed defaults
-	FundingReversion RawFundingReversionConfig `json:"fundingReversion"`
+	Leverage          int            `json:"leverage"`
+	MarginUSD         float64        `json:"marginUSD"`
 }
 
 type BlacklistConfig struct {
@@ -87,6 +102,34 @@ type BlacklistConfig struct {
 	Bingx       []string `json:"bingx"`
 }
 
+func (b *BlacklistConfig) GetExchangeBlacklist(exchange string) []string {
+	if b == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(exchange)) {
+	case "mexc":
+		return b.Mexc
+	case "gate":
+		return b.Gate
+	case "bybit":
+		return b.Bybit
+	case "binance":
+		return b.Binance
+	case "okx":
+		return b.Okx
+	case "hyperliquid":
+		return b.Hyperliquid
+	case "bitget":
+		return b.Bitget
+	case "kucoin":
+		return b.Kucoin
+	case "bingx":
+		return b.Bingx
+	default:
+		return nil
+	}
+}
+
 func (b *BlacklistConfig) IsBlacklisted(exchange, symbol string) bool {
 	if b == nil {
 		return false
@@ -99,27 +142,7 @@ func (b *BlacklistConfig) IsBlacklisted(exchange, symbol string) bool {
 		}
 	}
 	// Check exchange specific blacklist
-	var exchList []string
-	switch strings.ToLower(exchange) {
-	case "mexc":
-		exchList = b.Mexc
-	case "gate":
-		exchList = b.Gate
-	case "bybit":
-		exchList = b.Bybit
-	case "binance":
-		exchList = b.Binance
-	case "okx":
-		exchList = b.Okx
-	case "hyperliquid":
-		exchList = b.Hyperliquid
-	case "bitget":
-		exchList = b.Bitget
-	case "kucoin":
-		exchList = b.Kucoin
-	case "bingx":
-		exchList = b.Bingx
-	}
+	exchList := b.GetExchangeBlacklist(exchange)
 	for _, s := range exchList {
 		if strings.ToUpper(strings.TrimSpace(s)) == sym {
 			return true

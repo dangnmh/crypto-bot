@@ -111,7 +111,7 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 		c.Slippage = decmath.Mul(decmath.Div(math.Abs(decmath.Sub(ioc, refPrice)), refPrice), 100.0)
 	}
 
-	safety := r.globalCfg.System.Safety
+	safety := r.globalCfg.Reversion.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
 		MinVol24USD:    safety.MinVol24USD,
