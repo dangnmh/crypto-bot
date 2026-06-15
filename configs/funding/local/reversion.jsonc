@@ -28,9 +28,9 @@
     "enable": true
   },
   "scanners": {
-    "configured": true,
+    "configured": false,
     "schedule": {
-      "mexc": false
+      "mexc": true
     }
   },
   "exchanges": {

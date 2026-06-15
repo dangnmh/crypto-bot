@@ -4,17 +4,12 @@
 # IMPORTANT: Never commit 'terraform.tfvars' to Git (it is ignored by .gitignore).
 # ==============================================================================
 
-# Your Bitwarden Secrets Manager Access Token
-bitwarden_access_token = "your-bitwarden-access-token-here"
-
-# Your Bitwarden Organization ID
-bitwarden_organization_id = "your-bitwarden-organization-id-here"
-
-# Your Bitwarden Project Name
-bitwarden_project_name = "your-bitwarden-project-name-here"
 
 # Optional: Path to kubeconfig if not using default (~/.kube/config)
 # kubeconfig_path = "~/.kube/config"
 
 docker_image = "ghcr.io/dangnmh/crypto-bot:latest"
 
+# grafana_password = "admin"
+# vault_password   = "root"
+# postgres_password = "postgres"

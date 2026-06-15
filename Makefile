@@ -202,16 +202,42 @@ tf-destroy: ## Destroy Terraform configurations (keeping PVC data due to resourc
 	terraform -chdir=deploy/terraform destroy
 
 .PHONY: tf-apply-bot
-tf-apply-bot: ## Apply changes only to the Go bot deployment and secrets
+tf-apply-bot: ## Apply changes only to the Go bot deployment
 	terraform -chdir=deploy/terraform apply \
 		-target=kubernetes_deployment.crypto_bot \
-		-target=kubernetes_secret.crypto_bot_secrets
+		-target=kubernetes_config_map.crypto_bot_configs
 
 .PHONY: tf-destroy-bot
-tf-destroy-bot: ## Destroy only the Go bot deployment and secrets, preserving the monitoring stack
+tf-destroy-bot: ## Destroy only the Go bot deployment, preserving the monitoring stack
 	terraform -chdir=deploy/terraform destroy \
 		-target=kubernetes_deployment.crypto_bot \
-		-target=kubernetes_secret.crypto_bot_secrets
+		-target=kubernetes_config_map.crypto_bot_configs
+
+.PHONY: tf-apply-infra
+tf-apply-infra: ## Apply only infrastructure configurations (DB, Vault, Loki Stack, and ConfigMaps)
+	terraform -chdir=deploy/terraform apply \
+		-target=helm_release.postgresql \
+		-target=helm_release.vault \
+		-target=helm_release.vault_secrets_operator \
+		-target=helm_release.loki_stack \
+		-target=kubernetes_service_account.crypto_bot \
+		-target=kubernetes_config_map.grafana_datasource_loki \
+		-target=kubernetes_config_map.grafana_dashboard_pnl \
+		-target=kubernetes_config_map.grafana_datasource_postgres \
+		-target=kubernetes_secret.registry_pull_secret
+
+.PHONY: tf-destroy-infra
+tf-destroy-infra: ## Destroy only infrastructure configurations
+	terraform -chdir=deploy/terraform destroy \
+		-target=helm_release.postgresql \
+		-target=helm_release.vault \
+		-target=helm_release.vault_secrets_operator \
+		-target=helm_release.loki_stack \
+		-target=kubernetes_service_account.crypto_bot \
+		-target=kubernetes_config_map.grafana_datasource_loki \
+		-target=kubernetes_config_map.grafana_dashboard_pnl \
+		-target=kubernetes_config_map.grafana_datasource_postgres \
+		-target=kubernetes_secret.registry_pull_secret
 
 .PHONY: destroy-bot
 destroy-bot: ## Destroy only the Go bot deployment and secrets, keeping Loki/Grafana and data

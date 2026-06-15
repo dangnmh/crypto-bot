@@ -12,7 +12,7 @@
     "bufferTime": "-150ms",
     "postSettleTimeout": "3s",
     "leverage": 5,
-    "marginUSD": 100
+    "marginUSD": 3
   },
   "sync": {
     "time": "60s",

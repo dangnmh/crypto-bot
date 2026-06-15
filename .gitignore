@@ -33,6 +33,7 @@ deploy/terraform/**/*.log
 deploy/terraform/**/*.tmp
 deploy/terraform/**/bin
 deploy/terraform/**/*.hcl
+.terraform.tfstate.lock.info
 
 
 

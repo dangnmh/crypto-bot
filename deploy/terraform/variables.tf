@@ -1,18 +1,3 @@
-variable "bitwarden_access_token" {
-  type        = string
-  description = "The access token for Bitwarden Secrets Manager"
-  sensitive   = true
-}
-
-variable "bitwarden_organization_id" {
-  type        = string
-  description = "The organization ID in Bitwarden"
-}
-
-variable "bitwarden_project_name" {
-  type        = string
-  description = "The project name in Bitwarden"
-}
 
 variable "kubeconfig_path" {
   type        = string
@@ -59,6 +44,20 @@ variable "postgres_password" {
   type        = string
   description = "The password for the PostgreSQL postgres superuser"
   default     = "postgres"
+  sensitive   = true
+}
+
+variable "grafana_password" {
+  type        = string
+  description = "The admin password for Grafana"
+  default     = "admin"
+  sensitive   = true
+}
+
+variable "vault_password" {
+  type        = string
+  description = "The root token for HashiCorp Vault in dev mode"
+  default     = "root"
   sensitive   = true
 }
 

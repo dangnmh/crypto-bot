@@ -38,8 +38,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT COALESCE(SUM(net_profit), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(net_profit), 0) FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -96,8 +96,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT COALESCE((COUNT(CASE WHEN net_profit > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN status = 'completed' THEN 1 END), 0)) * 100, 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT COALESCE((COUNT(CASE WHEN net_profit > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(*), 0)) * 100, 0) FROM reversion_trade_reports WHERE status = 'completed' AND exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -158,8 +158,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -204,8 +204,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT COALESCE(SUM(volume_usdt), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(volume_usdt), 0) FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -242,7 +242,7 @@
         "y": 0
       },
       "id": 5,
-      "title": "Funding Captured",
+      "title": "Funding Fee",
       "type": "stat",
       "datasource": {
         "type": "postgres",
@@ -250,8 +250,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT COALESCE(SUM(hold_fee), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(hold_fee), 0) FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -308,8 +308,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT COALESCE(SUM(fee), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(fee), 0) FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -355,7 +355,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), COALESCE(SUM(net_profit), 0) AS net_profit FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), COALESCE(SUM(net_profit), 0) AS net_profit FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -401,7 +401,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT timestamp, SUM(net_profit) OVER (ORDER BY timestamp ASC) AS cumulative_profit FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp ASC",
+          "rawSql": "SELECT timestamp AS time, SUM(net_profit) OVER (ORDER BY timestamp ASC) AS cumulative_profit FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp ASC",
           "refId": "A"
         }
       ],
@@ -447,7 +447,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -490,7 +490,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(actual_slippage) AS avg_slippage FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(actual_slippage) AS avg_slippage FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -533,7 +533,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(buffer_time_ms) AS target_buffer_ms, AVG(fire_offset_ms) AS actual_fire_offset_ms FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(buffer_time_ms) AS target_buffer_ms, AVG(fire_offset_ms) AS actual_fire_offset_ms FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -548,7 +548,144 @@
           },
           "mappings": [],
           "unit": "ms"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/mexc/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bybit/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/binance/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/okx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bingx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bitget/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/gate/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/kucoin/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/hyperliquid/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -576,7 +713,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(fire_offset_ms) AS avg_fire_offset_ms, SUM(hold_fee) AS total_funding_fee_usd FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(fire_offset_ms) AS avg_fire_offset_ms, SUM(hold_fee) AS total_funding_fee_usd FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -591,7 +728,144 @@
           },
           "mappings": [],
           "unit": "ms"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/mexc/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bybit/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/binance/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/okx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bingx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bitget/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/gate/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/kucoin/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/hyperliquid/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -619,7 +893,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), normalized_symbol, AVG(funding_rate) * 100 AS avg_funding_rate FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), normalized_symbol, AVG(funding_rate) * 100 AS avg_funding_rate FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -634,7 +908,99 @@
           },
           "mappings": [],
           "unit": "percent"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/HOME/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/OPG/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BTC/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ETH/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/SOL/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BNB/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -648,7 +1014,7 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 28
       },
@@ -661,8 +1027,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT ioc_outcome, COUNT(*) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND ioc_outcome IS NOT NULL AND ioc_outcome <> '' AND $__timeFilter(timestamp) GROUP BY ioc_outcome",
+          "format": "table",
+          "rawSql": "SELECT ioc_outcome, COUNT(*) FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND ioc_outcome IS NOT NULL AND ioc_outcome <> '' AND $__timeFilter(timestamp) GROUP BY ioc_outcome",
           "refId": "A"
         }
       ],
@@ -688,9 +1054,9 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 8,
+        "h": 8,
+        "w": 6,
+        "x": 6,
         "y": 28
       },
       "id": 15,
@@ -702,8 +1068,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT (COUNT(CASE WHEN ioc_outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN ioc_order_id IS NOT NULL AND ioc_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)",
+          "format": "table",
+          "rawSql": "SELECT (COUNT(CASE WHEN ioc_outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN ioc_order_id IS NOT NULL AND ioc_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp)",
           "refId": "A"
         }
       ],
@@ -751,8 +1117,185 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
+        "y": 28
+      },
+      "id": 27,
+      "title": "IOC Cancel Rate by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, (COUNT(CASE WHEN ioc_outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN ioc_order_id IS NOT NULL AND ioc_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/mexc/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bybit/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/binance/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/okx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bingx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bitget/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/gate/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/kucoin/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/hyperliquid/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
         "y": 28
       },
       "id": 16,
@@ -765,7 +1308,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -794,9 +1337,9 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 36
+        "w": 8,
+        "x": 8,
+        "y": 60
       },
       "id": 17,
       "title": "Position Exit Reason Breakdown",
@@ -807,8 +1350,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT exit_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exit_reason IS NOT NULL AND exit_reason <> '' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY exit_reason",
+          "format": "table",
+          "rawSql": "SELECT exit_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exit_reason IS NOT NULL AND exit_reason <> '' AND exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY exit_reason",
           "refId": "A"
         }
       ],
@@ -835,9 +1378,9 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 36
+        "w": 8,
+        "x": 16,
+        "y": 60
       },
       "id": 18,
       "title": "Abort Reasons Breakdown",
@@ -848,8 +1391,8 @@
       },
       "targets": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT ioc_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'aborted' AND ioc_reason IS NOT NULL AND ioc_reason <> '' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY ioc_reason",
+          "format": "table",
+          "rawSql": "SELECT ioc_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'aborted' AND ioc_reason IS NOT NULL AND ioc_reason <> '' AND exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY ioc_reason",
           "refId": "A"
         }
       ],
@@ -875,10 +1418,977 @@
     {
       "collapsed": false,
       "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 44
+      },
+      "id": 20,
+      "title": "Net Profit Breakdown by Symbol",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT normalized_symbol, SUM(net_profit) AS total_profit FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY normalized_symbol",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/HOME/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/OPG/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BTC/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ETH/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/SOL/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BNB/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 44
+      },
+      "id": 21,
+      "title": "Total Fees Paid by Symbol",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT normalized_symbol, SUM(fee) AS total_fee FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY normalized_symbol",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/HOME/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/OPG/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BTC/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ETH/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/SOL/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BNB/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 44
+      },
+      "id": 22,
+      "title": "Funding Fee by Symbol",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT normalized_symbol, SUM(hold_fee) AS funding_fee FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY normalized_symbol",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/HOME/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/OPG/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BTC/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/ETH/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/SOL/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BNB/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 52
+      },
+      "id": 23,
+      "title": "Net Profit Breakdown by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(net_profit) AS total_profit FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/mexc/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bybit/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/binance/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/okx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bingx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bitget/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/gate/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/kucoin/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/hyperliquid/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 52
+      },
+      "id": 24,
+      "title": "Total Fees Paid by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(fee) AS total_fee FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/mexc/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bybit/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/binance/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/okx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bingx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bitget/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/gate/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/kucoin/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/hyperliquid/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 52
+      },
+      "id": 25,
+      "title": "Funding Fee by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(hold_fee) AS funding_fee FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/mexc/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bybit/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/binance/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/okx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bingx/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/bitget/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/gate/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/kucoin/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/hyperliquid/i"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 60
+      },
+      "id": 26,
+      "title": "Win/Loss Ratio (Completed Trades)",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN net_profit > 0 THEN 'Win' ELSE 'Loss' END AS outcome, COUNT(*) AS count FROM reversion_trade_reports WHERE status = 'completed' AND exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) GROUP BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "unit": "none"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 68
       },
       "id": 19,
       "title": "Live Trade History Ledger Table",
@@ -890,7 +2400,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT timestamp, exchange, normalized_symbol, side, margin_usdt, leverage, fill_price, close_price, net_profit, hold_duration_ms, status, exit_reason, error_msg FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp DESC",
+          "rawSql": "SELECT timestamp, exchange, normalized_symbol, side, margin_usdt, leverage, fill_price, close_price, net_profit, hold_duration_ms, status, exit_reason, error_msg FROM reversion_trade_reports WHERE exchange IN ($exchange) AND normalized_symbol IN ($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp DESC",
           "refId": "A"
         }
       ],

@@ -41,17 +41,32 @@ k3d image import ghcr.io/dangnmh/crypto-bot:latest -c cryptobot-cluster
 ```
 
 ### Step 3: Deploy via Terraform
-Initialize and apply the Terraform configurations to automatically deploy the secrets, deployment resources, and Loki Stack:
+Initialize and apply the Terraform configurations to automatically deploy Vault, the Vault Secrets Operator, the PostgreSQL database, and the bot configuration resources:
 ```bash
 # Initialize Terraform
 make tf-init
 
 # Apply the infrastructure deployment
-# This will prompt you to enter your Bitwarden Secrets Manager credentials
 make tf-apply
 ```
 
----
+### Step 4: Configure and Seed Vault
+Since the bot fetches its credentials from Vault at runtime, you must initialize the Vault Kubernetes auth backend, create policies/roles, and seed the secrets (such as exchange API keys):
+```bash
+# Run the Vault bootstrapping and initialization script
+./deploy/k8s/vault-init.sh
+```
+The Vault Secrets Operator will automatically sync the credentials from Vault to a local Kubernetes Secret (`crypto-bot-vault-secrets`), injecting them directly into the bot's environment variables.
+
+### Step 5: Access Vault Web UI (Optional)
+If you want to inspect or manage the secret values through the Vault Web User Interface, port-forward the Vault service port:
+```bash
+# Port-forward the Vault service on port 8200
+kubectl port-forward svc/vault 8200:8200
+```
+Open your browser and navigate to `http://localhost:8200`. You can log in using:
+* **Method**: Token
+* **Token**: `root`
 
 ---
 
@@ -87,72 +102,7 @@ The `deploy/grafana/` directory holds configurations to automatically provision 
 
 ### 4. P&L Analytics Dashboard Panels
 
-The `Crypto-Bot Trade P&L Analytics` dashboard contains 19 pre-configured panels to provide comprehensive operational and performance visibility. Each panel queries the PostgreSQL database (table `reversion_trade_reports`), respecting variables (`$exchange` and `$symbol`) to dynamically filter data:
-
-#### Key Performance Indicators (KPIs)
-- **Total Net Profit (USD)**
-  * **Type**: Stat
-  * **Query**: `SELECT COALESCE(SUM(net_profit), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-- **Win Rate (%)**
-  * **Type**: Stat
-  * **Query**: `SELECT (COUNT(CASE WHEN net_profit > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN status = 'completed' THEN 1 END), 0)) * 100 FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-- **Total Completed Trades**
-  * **Type**: Stat
-  * **Query**: `SELECT COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-- **Total Volume Traded (USDT)**
-  * **Type**: Stat
-  * **Query**: `SELECT COALESCE(SUM(volume_usdt), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-- **Total Funding Captured (USD)**
-  * **Type**: Stat
-  * **Query**: `SELECT COALESCE(SUM(hold_fee), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-- **Total Fee (USD)**
-  * **Type**: Stat
-  * **Query**: `SELECT COALESCE(SUM(fee), 0) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-
-#### Execution Diagnostics & Latency
-- **Hourly/Daily P&L Trend**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), COALESCE(SUM(net_profit), 0) AS net_profit FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1`
-- **Equity Growth Curve (Cumulative)**
-  * **Type**: Time Series
-  * **Query**: `SELECT timestamp, SUM(net_profit) OVER (ORDER BY timestamp ASC) AS cumulative_profit FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp ASC`
-- **Execution Latency (RTT)**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1`
-- **Average Actual Slippage (%)**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), AVG(actual_slippage) AS avg_slippage FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1`
-- **Target Buffer vs. Actual Fire Offset (ms)**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(buffer_time_ms) AS target_buffer_ms, AVG(fire_offset_ms) AS actual_fire_offset_ms FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1`
-- **Funding Fee Avoidance vs. Fire Offset**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), exchange, AVG(fire_offset_ms) AS avg_fire_offset_ms, SUM(hold_fee) AS total_funding_fee_usd FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1`
-- **Traded Funding Rates (%)**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), normalized_symbol, AVG(funding_rate) * 100 AS avg_funding_rate FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1`
-- **IOC Order Fill Ratio**
-  * **Type**: Pie Chart
-  * **Query**: `SELECT ioc_outcome, COUNT(*) FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND ioc_outcome IS NOT NULL AND ioc_outcome <> '' AND $__timeFilter(timestamp) GROUP BY ioc_outcome`
-- **IOC Cancel Rate (%)**
-  * **Type**: Stat
-  * **Query**: `SELECT (COUNT(CASE WHEN ioc_outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN ioc_order_id IS NOT NULL AND ioc_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp)`
-- **Trade Hold Duration**
-  * **Type**: Time Series
-  * **Query**: `SELECT $__timeGroupAlias(timestamp, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1`
-
-#### Exit & Abort Breakdown
-- **Position Exit Reason Breakdown**
-  * **Type**: Pie Chart
-  * **Query**: `SELECT exit_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'completed' AND exit_reason IS NOT NULL AND exit_reason <> '' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY exit_reason`
-- **Abort Reasons Breakdown**
-  * **Type**: Pie Chart
-  * **Query**: `SELECT ioc_reason, COUNT(*) FROM reversion_trade_reports WHERE status = 'aborted' AND ioc_reason IS NOT NULL AND ioc_reason <> '' AND exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) GROUP BY ioc_reason`
-
-#### Historical Ledger
-- **Live Trade History Ledger Table**
-  * **Type**: Table
-  * **Query**: `SELECT timestamp, exchange, normalized_symbol, side, margin_usdt, leverage, fill_price, close_price, net_profit, hold_duration_ms, status, exit_reason, error_msg FROM reversion_trade_reports WHERE exchange = ANY($exchange) AND normalized_symbol = ANY($symbol) AND $__timeFilter(timestamp) ORDER BY timestamp DESC`
+For detailed information on the 19 pre-configured panels, visualization types, and raw SQL queries used by the metrics dashboard, please refer to the dedicated [DASHBOARD.md](file:///home/four/projects/crypto-bot/deploy/DASHBOARD.md) guide.
 
 
 ---
