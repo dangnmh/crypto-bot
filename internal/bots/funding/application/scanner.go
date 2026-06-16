@@ -158,6 +158,30 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 		}
 	}
 
+	// Time window check: only trigger if we are within 15 minutes before the settlement time
+	now := time.Now()
+	if j.engine != nil {
+		if prov, err := j.engine.GetProvider(c.Config.Exchange); err == nil {
+			now = prov.TimeSync.Now()
+		}
+	}
+	if now.Add(15 * time.Minute).Before(settle) {
+		j.log.Debug("Skipping trigger: too early for settlement",
+			slog.String("symbol", c.Symbol),
+			slog.Time("now", now),
+			slog.Time("settle", settle),
+		)
+		return false
+	}
+	if !now.Before(settle) {
+		j.log.Debug("Skipping trigger: settlement time already passed",
+			slog.String("symbol", c.Symbol),
+			slog.Time("now", now),
+			slog.Time("settle", settle),
+		)
+		return false
+	}
+
 	key := c.Config.Exchange + ":" + c.Symbol
 	state, exists := j.states[key]
 	if !exists {

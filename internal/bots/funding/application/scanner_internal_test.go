@@ -538,21 +538,21 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 			Amount24: 2000000,
 		},
 	}
-	assert.True(t, job.shouldTrigger(candOk, time.Now()))
+	assert.True(t, job.shouldTrigger(candOk, time.Now().Add(10*time.Minute)))
 
 	// Candidate fails funding rate check
 	candLowFR := candOk
 	candLowFR.FundingRate = 0.0005
-	assert.False(t, job.shouldTrigger(candLowFR, time.Now()))
+	assert.False(t, job.shouldTrigger(candLowFR, time.Now().Add(10*time.Minute)))
 
 	// Candidate fails volume check
 	candLowVol := candOk
 	candLowVol.Amount24 = 500000
-	assert.False(t, job.shouldTrigger(candLowVol, time.Now()))
+	assert.False(t, job.shouldTrigger(candLowVol, time.Now().Add(10*time.Minute)))
 
 	// Candidate is blacklisted
 	candBlacklisted := candOk
 	candBlacklisted.Symbol = "XRP_USDT"
 	candBlacklisted.Config.Symbol = "XRP_USDT"
-	assert.False(t, job.shouldTrigger(candBlacklisted, time.Now()))
+	assert.False(t, job.shouldTrigger(candBlacklisted, time.Now().Add(10*time.Minute)))
 }
