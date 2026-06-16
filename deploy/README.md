@@ -70,14 +70,22 @@ Open your browser and navigate to `http://localhost:8200`. You can log in using:
 
 ---
 
-## Configuration Hot-Reloading
+## Configuration & Secret Hot-Reloading
 
-Instead of rebuilding the entire Docker image and importing it to the cluster when configurations change, you can modify your configurations (`configs/funding/system.jsonc` and `configs/funding/funding.jsonc`) and apply them instantly:
-
+### 1. Reloading System Configurations (ConfigMaps)
+Instead of rebuilding the entire Docker image when local configurations (`configs/funding/system.jsonc` or `configs/funding/funding.jsonc`) change, you can apply them instantly using Terraform:
 ```bash
 make tf-apply-bot
 ```
-This updates the Kubernetes ConfigMap directly from your workspace and triggers a rollout restart of the bot pod to load the new configuration in 1–2 seconds.
+This updates the Kubernetes ConfigMap and triggers a rolling restart of the bot pod automatically in 1–2 seconds.
+
+### 2. Reloading Vault Secrets (Manual Restart)
+When you update secrets in Vault (e.g., by re-running the bootstrap scripts or editing them in the Vault Web UI), the **Vault Secrets Operator** will automatically sync the new values into the Kubernetes Secret (`crypto-bot-vault-secrets`).
+
+Since the application loads secrets as environment variables on startup, you must restart the bot manually to apply the changes:
+```bash
+make restart-bot
+```
 
 ---
 

@@ -249,12 +249,22 @@ destroy-all: ## Destroy everything, including Go bot, Loki/Grafana, and all hist
 	@chmod +x scripts/destroy-all.sh
 	./scripts/destroy-all.sh
 
+.PHONY: destroy-pgsql
+destroy-pgsql: ## Destroy all PostgreSQL deployment resources, configurations, and data volume
+	@chmod +x scripts/destroy-pgsql.sh
+	./scripts/destroy-pgsql.sh
+
+
 .PHONY: apply-configs
 apply-configs: ## Hot-reload configurations to the running cluster without rebuilding docker image
 	kubectl create configmap crypto-bot-configs \
 		--from-file=configs/funding/system.jsonc \
 		--from-file=configs/funding/funding.jsonc \
 		-n default -o yaml --dry-run=client | kubectl apply -f -
+	kubectl rollout restart deployment/crypto-bot -n default
+
+.PHONY: restart-bot
+restart-bot: ## Restart the Go bot deployment to apply updated configurations or secrets
 	kubectl rollout restart deployment/crypto-bot -n default
 
 .PHONY: logs

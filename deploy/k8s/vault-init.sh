@@ -1,14 +1,92 @@
 #!/bin/bash
 set -e
 
-echo "Waiting for vault pod to be ready..."
-kubectl wait --for=condition=Ready pod/vault-0 --timeout=120s
+# Path to the keys file
+KEYS_FILE="$(dirname "$0")/vault-keys.json"
 
-echo "Initializing and configuring Vault K8s auth backend..."
+echo "Waiting for vault-0 pod to be running..."
+# Wait for the pod to be in the "Running" phase (sealed pod won't reach "Ready" state)
+for i in {1..60}; do
+  PHASE=$(kubectl get pod vault-0 -o jsonpath='{.status.phase}' 2>/dev/null || true)
+  if [ "$PHASE" = "Running" ]; then
+    echo "vault-0 pod is running."
+    break
+  fi
+  if [ $i -eq 60 ]; then
+    echo "Timed out waiting for vault-0 pod to run."
+    exit 1
+  fi
+  sleep 2
+done
+
+# Wait for vault port to be responsive (vault status command works)
+echo "Waiting for vault API inside container to respond..."
+for i in {1..30}; do
+  if kubectl exec vault-0 -- vault status -format=json >/dev/null 2>&1; STATUS_EXIT=$?; [ $STATUS_EXIT -eq 0 ] || [ $STATUS_EXIT -eq 2 ]; then
+    echo "Vault API is responding."
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "Timed out waiting for Vault API to respond."
+    exit 1
+  fi
+  sleep 2
+done
+
+# Retrieve Vault status
+INIT_STATUS=$(kubectl exec vault-0 -- vault status -format=json 2>/dev/null || true)
+IS_INIT=$(echo "$INIT_STATUS" | jq -r '.initialized' 2>/dev/null || true)
+
+# 1. Initialize Vault if not initialized
+if [ "$IS_INIT" != "true" ]; then
+  echo "Vault is not initialized. Initializing..."
+  INIT_OUT=$(kubectl exec vault-0 -- vault operator init -key-shares=1 -key-threshold=1 -format=json)
+  echo "$INIT_OUT" > "$KEYS_FILE"
+  echo "Initialization keys saved to $KEYS_FILE."
+fi
+
+# 2. Extract unseal key and root token from the keys file
+if [ ! -f "$KEYS_FILE" ]; then
+  echo "Error: Vault is initialized, but $KEYS_FILE is missing. Cannot unseal."
+  exit 1
+fi
+
+UNSEAL_KEY=$(jq -r '.unseal_keys_b64[0]' "$KEYS_FILE")
+ROOT_TOKEN=$(jq -r '.root_token' "$KEYS_FILE")
+
+# 3. Unseal Vault if sealed
+INIT_STATUS=$(kubectl exec vault-0 -- vault status -format=json 2>/dev/null || true)
+IS_SEALED=$(echo "$INIT_STATUS" | jq -r '.sealed' 2>/dev/null || true)
+if [ "$IS_SEALED" = "true" ]; then
+  echo "Vault is sealed. Unsealing..."
+  kubectl exec vault-0 -- vault operator unseal "$UNSEAL_KEY"
+fi
+
+# Extract vault_password from terraform.tfvars
+TF_VARS_FILE="$(dirname "$0")/../terraform/terraform.tfvars"
+VAULT_PASSWORD=""
+if [ -f "$TF_VARS_FILE" ]; then
+  VAULT_PASSWORD=$(grep -E '^\s*vault_password\s*=' "$TF_VARS_FILE" | sed -E 's/.*=\s*"([^"]*)".*/\1/' || true)
+fi
+VAULT_PASSWORD="${VAULT_PASSWORD:-root}"
+
+echo "Vault is unsealed. Configuring and seeding Vault..."
+
+# Use the root token extracted from the keys file
+export VAULT_TOKEN="$ROOT_TOKEN"
 
 # Run commands inside the vault-0 pod using kubectl exec
-kubectl exec -i vault-0 -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" sh <<'EOF'
+kubectl exec -i vault-0 -- env VAULT_TOKEN="$VAULT_TOKEN" VAULT_PASSWORD="$VAULT_PASSWORD" sh <<'EOF'
 export VAULT_ADDR="http://127.0.0.1:8200"
+
+# Revoke existing custom root token if it exists and create it anew
+vault token revoke "$VAULT_PASSWORD" 2>/dev/null || true
+vault token create -id="$VAULT_PASSWORD" -policy="root" >/dev/null
+
+# Enable Key-Value v2 engine at 'secret' path if not enabled
+if ! vault secrets list | grep -q "secret/"; then
+    vault secrets enable -path=secret kv-v2
+fi
 
 # Enable Kubernetes Auth if not already enabled
 if ! vault auth list | grep -q "kubernetes/"; then
@@ -65,4 +143,3 @@ EOF
 
 echo "Applying Vault secret synchronization manifests..."
 kubectl apply -f "$(dirname "$0")/vault-secret-sync.yaml"
-

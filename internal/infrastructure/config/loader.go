@@ -46,6 +46,8 @@ func InitializeBase(c *SystemConfig) error {
 	c.ExchangeConfig.Kucoin.APIPassphrase = strings.TrimSpace(os.Getenv("KUCOIN_API_PASSPHRASE"))
 	c.ExchangeConfig.Bingx.APIKey = strings.TrimSpace(os.Getenv("BINGX_API_KEY"))
 	c.ExchangeConfig.Bingx.APISecret = strings.TrimSpace(os.Getenv("BINGX_API_SECRET"))
+	c.NotiConfig.TelegramChatID = strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
+	c.NotiConfig.TelegramBotToken = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	if err := applyBitwardenFallback(c); err != nil {
 		return err
 	}

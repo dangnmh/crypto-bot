@@ -72,7 +72,7 @@ resource "kubernetes_deployment" "crypto_bot" {
         container {
           name              = "bot"
           image             = var.docker_image
-          image_pull_policy = var.docker_image == "crypto-bot:latest" ? "Never" : (var.registry_auth_enabled ? "Always" : "IfNotPresent")
+          image_pull_policy = var.docker_image == "crypto-bot:latest" ? "Never" : "Always"
 
           args = [
             "-sys", "/app/configs/funding/prod/system.jsonc",

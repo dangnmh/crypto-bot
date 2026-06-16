@@ -1,7 +1,10 @@
 server:
   dev:
+    enabled: false
+  dataStorage:
     enabled: true
-    devRootToken: "${vault_password}"
+    size: 10Gi
+    storageClass: "local-path"
 ui:
   enabled: true
 injector:

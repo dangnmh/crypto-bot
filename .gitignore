@@ -35,6 +35,11 @@ deploy/terraform/**/bin
 deploy/terraform/**/*.hcl
 .terraform.tfstate.lock.info
 
+vault-init-prod.sh
+k3d-kubeconfig.yaml
+vpn.md
+deploy/k8s/vault-keys.json
+
 
 
 # Local config overrides

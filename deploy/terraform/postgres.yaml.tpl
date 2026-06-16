@@ -1,7 +1,8 @@
 apiVersion: 1
 
 datasources:
-  - name: PostgreSQL
+  - name: postgres
+    uid: postgres
     type: postgres
     access: proxy
     url: postgresql:5432
