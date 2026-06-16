@@ -24,9 +24,6 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 	}
 	symbol := baseEvt.Symbol
 
-	// 1. Record the terminal event into the cache
-	r.recordTerminalEvent(baseEvt.Topic, msg.Payload)
-
 	r.unsubscribeWS(ctx, symbol)
 
 	completedPrev := baseEvt.BaseReversionEvent
@@ -70,27 +67,6 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 		Fees:               closeEvt.Fee,
 		HoldFee:            closeEvt.HoldFee,
 		HoldDurationMs:     closeEvt.HoldDurationMs,
-	}
-}
-
-// recordTerminalEvent handles unmarshaling the specific terminal event and caching it.
-func (r *StatelessRunner) recordTerminalEvent(topic string, payload []byte) {
-	switch topic {
-	case TopicReversionPositionClosed:
-		var evt PositionClosedEvent
-		if err := json.Unmarshal(payload, &evt); err == nil {
-			r.recordEventState(topic, evt)
-		}
-	case TopicReversionAbort:
-		var evt AbortEvent
-		if err := json.Unmarshal(payload, &evt); err == nil {
-			r.recordEventState(topic, evt)
-		}
-	case TopicReversionError:
-		var evt ErrorEvent
-		if err := json.Unmarshal(payload, &evt); err == nil {
-			r.recordEventState(topic, evt)
-		}
 	}
 }
 
