@@ -10,7 +10,6 @@ import (
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
 
@@ -64,7 +63,7 @@ func NewFundingBot(
 			fundingSyncDuration = time.Duration(cfg.Reversion.Sync.FundingSync)
 		}
 
-		if len(symbols) > 0 || name == exchange.ExchangeMexc || scheduleEnabled {
+		if len(symbols) > 0 || scheduleEnabled {
 			opts := []app.StoreOption{
 				app.WithLogger(log.With("exchange", name)),
 				app.WithTicker(prov.Client, tickerDuration),
