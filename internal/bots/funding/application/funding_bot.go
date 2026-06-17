@@ -50,16 +50,7 @@ func NewFundingBot(
 	storesMap := make(map[string]strategy.FundingStoreSet)
 
 	for name, prov := range engine.Providers {
-		var symbols []string
-		for i := range cfg.Symbols {
-			exch := cfg.Symbols[i].Exchange
-			if exch == name {
-				if cfg.Blacklist != nil && cfg.Blacklist.IsBlacklisted(exch, cfg.Symbols[i].Symbol) {
-					continue
-				}
-				symbols = append(symbols, cfg.Symbols[i].Symbol)
-			}
-		}
+		symbols := getActiveSymbols(cfg, name)
 
 		var scheduleEnabled bool
 		var tickerDuration time.Duration
@@ -74,15 +65,18 @@ func NewFundingBot(
 		}
 
 		if len(symbols) > 0 || name == exchange.ExchangeMexc || scheduleEnabled {
-			storesMap[name] = app.NewCentralStore(
+			opts := []app.StoreOption{
 				app.WithLogger(log.With("exchange", name)),
 				app.WithTicker(prov.Client, tickerDuration),
 				app.WithContract(prov.Client, contractDuration),
-				app.WithFunding(prov.Client, fundingSyncDuration, symbols),
 				app.WithPrice(),
 				app.WithDepth(),
 				app.WithKline(),
-			)
+			}
+			if len(symbols) > 0 {
+				opts = append(opts, app.WithFunding(prov.Client, fundingSyncDuration, symbols))
+			}
+			storesMap[name] = app.NewCentralStore(opts...)
 		}
 	}
 
@@ -257,4 +251,21 @@ func (s *FundingBot) disabledReason(symbol string) (string, bool) {
 	defer s.disabledMu.RUnlock()
 	reason, ok := s.disabled[symbol]
 	return reason, ok
+}
+
+func getActiveSymbols(cfg *config.Config, exchangeName string) []string {
+	if cfg.Reversion == nil || !cfg.Reversion.Scanners.Configured {
+		return nil
+	}
+	var symbols []string
+	for i := range cfg.Symbols {
+		sym := cfg.Symbols[i]
+		if sym.Exchange == exchangeName {
+			if cfg.Blacklist != nil && cfg.Blacklist.IsBlacklisted(exchangeName, sym.Symbol) {
+				continue
+			}
+			symbols = append(symbols, sym.Symbol)
+		}
+	}
+	return symbols
 }
