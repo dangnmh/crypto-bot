@@ -496,8 +496,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		bo := backoff.WithContext(
 			backoff.WithMaxRetries(
 				backoff.NewExponentialBackOff(
-					backoff.WithInitialInterval(time.Second),
-					backoff.WithMaxInterval(time.Second*2)),
+					backoff.WithInitialInterval(time.Second)),
 				5),
 			ctx,
 		)
