@@ -732,9 +732,9 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 		log:       reversionTestLogger(),
 	}
 
-	fundingStore := mocks.NewMockFundingReader(ctrl)
-	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(nil, errors.New("missing funding"))
-	runner.deps.FundingStore = fundingStore
+	client := mocks.NewMockClient(ctrl)
+	runner.deps.Client = client
+	client.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return(nil, errors.New("missing funding"))
 	err := runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		Candidate: fundingdomain.Candidate{
@@ -746,9 +746,8 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "no funding data for recheck")
 
-	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
-		Symbol:      "BTC_USDT",
-		FundingRate: -0.01,
+	client.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
+		{Symbol: "BTC_USDT", Rate: -0.01},
 	}, nil)
 	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
@@ -761,9 +760,8 @@ func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "FR sign flip")
 
-	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
-		Symbol:      "BTC_USDT",
-		FundingRate: 0.0001,
+	client.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
+		{Symbol: "BTC_USDT", Rate: 0.0001},
 	}, nil)
 	err = runner.handleRecheck(context.Background(), WaitCompleteEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
@@ -1048,10 +1046,9 @@ func TestStatelessRunnerSyncNowInvocation(t *testing.T) {
 	bus := eventbus.New(reversionTestLogger())
 	t.Cleanup(func() { _ = bus.Close() })
 
-	fundingStore := mocks.NewMockFundingReader(ctrl)
-	fundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
-		Symbol:      "BTC_USDT",
-		FundingRate: 0.01,
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
+		{Symbol: "BTC_USDT", Rate: 0.01},
 	}, nil).AnyTimes()
 
 	ws := mocks.NewMockSubscriber(ctrl)
@@ -1067,10 +1064,10 @@ func TestStatelessRunnerSyncNowInvocation(t *testing.T) {
 
 	runner := &StatelessRunner{
 		deps: strategy.Deps{
-			Clock:        clock,
-			FundingStore: fundingStore,
-			WsSub:        ws,
-			PriceStore:   priceStore,
+			Clock:      clock,
+			Client:     client,
+			WsSub:      ws,
+			PriceStore: priceStore,
 		},
 		globalCfg: &config.Config{
 			Symbols: []config.SymbolConfig{

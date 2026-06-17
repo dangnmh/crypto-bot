@@ -220,9 +220,8 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}, nil).AnyTimes()
 
 	// 2. Recheck expectations
-	mockFundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
-		Symbol:      "BTC_USDT",
-		FundingRate: 0.001,
+	mockClient.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
+		{Symbol: "BTC_USDT", Rate: 0.001},
 	}, nil)
 
 	// 3. FireIOC expectations
@@ -422,9 +421,8 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		ContractSize: 0.001,
 	}, nil).AnyTimes()
 
-	mockFundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
-		Symbol:      "BTC_USDT",
-		FundingRate: 0.001,
+	mockClient.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
+		{Symbol: "BTC_USDT", Rate: 0.001},
 	}, nil)
 
 	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", "ISOLATED", 0, gomock.Any()).Return(nil)
@@ -652,9 +650,8 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	}, nil).AnyTimes()
 
 	// 2. Recheck expectations
-	mockFundingStore.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
-		Symbol:      "BTC_USDT",
-		FundingRate: 0.001,
+	mockClient.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
+		{Symbol: "BTC_USDT", Rate: 0.001},
 	}, nil)
 
 	// 3. FireIOC expectations (we assert CreateOrder receives Leverage = 10, and ChangeLeverage is NOT called)
