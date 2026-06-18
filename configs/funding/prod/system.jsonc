@@ -25,7 +25,7 @@
       "accountType": "unified"
     },
     "binance": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://fapi.binance.com"
       },

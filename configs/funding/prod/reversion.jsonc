@@ -18,10 +18,10 @@
     "funding": "30s"
   },
   "safety": {
-    "minVol24USD": 20000000,
+    "minVol24USD": 1000000,
     "maxImpactRatio": 5,
     "maxLatency": "400ms", // Abort if RTT > 400ms
-    "minFundingRate": 0.8,
+    "minFundingRate": 0.3,
     "maxPriceDiffPercent": 0.8,
     "maxSymbolUSDTPrice": 50
   },
@@ -32,6 +32,7 @@
     "configured": false,
     "schedule": {
       "mexc": true,
+      "binance": true,
       "bybit": true,
       "kucoin": true,
       "okx": true,
