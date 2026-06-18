@@ -486,11 +486,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		// Wait 5 seconds before calling GetRecentClosedPnL to let exchange update trade database
 		_ = r.deps.Clock.Sleep(ctx, 5*time.Second)
 
-		orderID, err := r.resolveOrderID(prev.ReqID, prev.OrderID)
-		if err != nil {
-			return nil, err
-		}
-
+		var orderID string
 		var closedInfo *exchange.ClosedPnLInfo
 
 		bo := backoff.WithContext(
@@ -503,7 +499,12 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 			ctx,
 		)
 
-		err = backoff.Retry(func() error {
+		err := backoff.Retry(func() error {
+			var err error
+			orderID, err = r.resolveOrderID(prev.ReqID, prev.OrderID)
+			if err != nil {
+				return err
+			}
 			closedInfo, err = provider.GetRecentClosedPnL(ctx, pos.Symbol, orderID, startTime)
 			return err
 		}, bo)

@@ -220,6 +220,19 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 	res := orders.FireIOC(ctx, r.deps.Client, &c, r.deps.Clock, r.log)
 
 	if res.IsSuccess() {
+		// Update the cache immediately to prevent race conditions with WebSocket notifications
+		if r.cache != nil {
+			_cacheMu.Lock()
+			if cachedVal, found := r.cache.Get(evt.ReqID); found {
+				if state, ok := cachedVal.(*CycleState); ok {
+					state.mu.Lock()
+					state.IOCOrderID = res.OrderID
+					state.mu.Unlock()
+				}
+			}
+			_cacheMu.Unlock()
+		}
+
 		base := nextNotifyReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp)
 		base.OrderID = res.OrderID
 		base.ExternalID = res.ExternalID
