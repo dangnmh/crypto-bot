@@ -18,14 +18,9 @@ import (
 
 // Load reads funding.json and returns the Config.
 func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
-	symCfgs, err := loadSymbolsConfig(fundingPath)
-	if err != nil {
-		return nil, err
-	}
-
 	cfg := &Config{
 		System:    sysCfg,
-		Symbols:   symCfgs,
+		Symbols:   nil,
 		Blacklist: &BlacklistConfig{},
 	}
 
@@ -53,6 +48,17 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
+
+	if !cfg.Reversion.Scanners.Configured {
+		return cfg, nil
+	}
+
+	symCfgs, err := loadSymbolsConfig(fundingPath)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.Symbols = symCfgs
 
 	return cfg, nil
 }
