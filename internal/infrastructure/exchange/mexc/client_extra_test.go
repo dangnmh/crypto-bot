@@ -215,44 +215,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				PnLRate:    ((0.0312 - 0.0089) / 3.0059) * 100,
 			},
 		},
-		{
-			name:          "error stale closed position",
-			symbol:        "ID_USDT",
-			targetOrderID: "ord-123",
-			mockOrder: mockResponse{
-				Success: true,
-				Code:    0,
-				Data: map[string]any{
-					"orderId":    "ord-123",
-					"symbol":     "ID_USDT",
-					"positionId": 1397401616,
-				},
-			},
-			mockHistoryFn: func() mockResponse {
-				currentTime := time.Now().UnixMilli()
-				return mockResponse{
-					Success: true,
-					Code:    0,
-					Data: []map[string]any{
-						{
-							"positionId":      1397401616,
-							"symbol":          "ID_USDT",
-							"openAvgPrice":    0.0384,
-							"closeAvgPrice":   0.03832,
-							"closeVol":        39,
-							"closeProfitLoss": 0.0312,
-							"totalFee":        0.0089,
-							"holdFee":         0.0,
-							"oim":             3.0059,
-							"createTime":      currentTime - 30000,
-							"updateTime":      currentTime - 20000, // closed 20 seconds ago (stale!)
-							"profitRatio":     (0.0312 - 0.0089) / 3.0059,
-						},
-					},
-				}
-			},
-			expectedErr: "query closed pnl failed: found stale closed position record",
-		},
+
 		{
 			name:          "error position not found",
 			symbol:        "ID_USDT",

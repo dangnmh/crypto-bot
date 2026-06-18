@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
@@ -231,11 +230,6 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	})
 	if !found {
 		return nil, fmt.Errorf("query closed pnl failed: position record for ID %d not yet closed/finalized in history", positionID)
-	}
-
-	timeDiff := time.Now().UnixMilli() - row.UpdateTime
-	if timeDiff >= 15000 {
-		return nil, fmt.Errorf("query closed pnl failed: found stale closed position record for ID %d (age: %s)", positionID, time.Duration(timeDiff)*time.Millisecond)
 	}
 
 	netPnl := row.CloseProfitLoss - row.TotalFee + row.HoldFee
