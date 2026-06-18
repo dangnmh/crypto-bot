@@ -113,17 +113,24 @@ func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
 	}
 	var activeExchanges []string
 	seen := make(map[string]bool)
-	for i := range fundingCfg.Symbols {
-		sym := &fundingCfg.Symbols[i]
-		if fundingCfg.Blacklist != nil && fundingCfg.Blacklist.IsBlacklisted(sym.Exchange, sym.Symbol) {
-			continue
-		}
-		exch := strings.ToLower(strings.TrimSpace(sym.Exchange))
-		if exch != "" && !seen[exch] {
-			seen[exch] = true
-			activeExchanges = append(activeExchanges, exch)
+
+	// Case 1: Configured scanner (collect from Symbols if configured scanner is enabled)
+	isConfigured := fundingCfg.Reversion == nil || fundingCfg.Reversion.Scanners.Configured
+	if isConfigured {
+		for i := range fundingCfg.Symbols {
+			sym := &fundingCfg.Symbols[i]
+			if fundingCfg.Blacklist != nil && fundingCfg.Blacklist.IsBlacklisted(sym.Exchange, sym.Symbol) {
+				continue
+			}
+			exch := strings.ToLower(strings.TrimSpace(sym.Exchange))
+			if exch != "" && !seen[exch] {
+				seen[exch] = true
+				activeExchanges = append(activeExchanges, exch)
+			}
 		}
 	}
+
+	// Case 2: Schedule scanner (collect from Reversion Schedule)
 	if fundingCfg.Reversion != nil {
 		for exch, enabled := range fundingCfg.Reversion.Scanners.Schedule {
 			if enabled {
@@ -135,6 +142,7 @@ func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
 			}
 		}
 	}
+
 	return activeExchanges
 }
 
