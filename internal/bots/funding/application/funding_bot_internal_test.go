@@ -77,6 +77,7 @@ func TestNewFundingBotBuildsExchangeScopedResources(t *testing.T) {
 			{Symbol: "ETH_USDT", Exchange: "gate"},
 		},
 		Reversion: &config.ReversionConfig{
+			Scanners: config.ScannersConfig{Configured: true},
 			Sync: config.SyncConfig{
 				SyncConfig:  sysconfig.SyncConfig{Ticker: types.Duration(time.Second), Contract: types.Duration(time.Second)},
 				FundingSync: types.Duration(time.Second),

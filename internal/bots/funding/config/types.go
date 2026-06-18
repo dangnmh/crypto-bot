@@ -70,11 +70,11 @@ type Config struct {
 }
 
 type RawFundingReversionConfig struct {
-	Enabled             bool                               `json:"enabled"`
-	OpenType            string                             `json:"openType"`
-	PositionMode        string                             `json:"positionMode"`
-	Default             ExchangeReversionConfig            `json:"default"`
-	Exchanges           map[string]ExchangeReversionConfig `json:"exchanges"`
+	Enabled      bool                               `json:"enabled"`
+	OpenType     string                             `json:"openType"`
+	PositionMode string                             `json:"positionMode"`
+	Default      ExchangeReversionConfig            `json:"default"`
+	Exchanges    map[string]ExchangeReversionConfig `json:"exchanges"`
 }
 
 type ExchangeReversionConfig struct {
