@@ -85,7 +85,11 @@ func (c *Client) getRawOrdersByStatus(ctx context.Context, settle, symbol, statu
 		paramContract: symbol,
 		"status":      status,
 	}
-	body, err := c.GetOrdersRaw(ctx, params)
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/orders", settle)
+	body, err := c.RawRequest(ctx, "GET", path, params, nil)
 	if err != nil {
 		return nil, err
 	}

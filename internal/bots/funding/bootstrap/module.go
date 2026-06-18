@@ -14,7 +14,9 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	persistence "crypto-bot/internal/bots/funding/infrastructure/persistence"
 	infraapp "crypto-bot/internal/infrastructure/app"
+	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/notifier"
+	"crypto-bot/internal/infrastructure/server"
 	"crypto-bot/pkg/httpclient"
 	applogger "crypto-bot/pkg/logger"
 
@@ -36,6 +38,7 @@ func Module(paths ConfigPaths) fx.Option {
 		fx.Supply(paths),
 		fx.Provide(
 			provideSystemConfig,
+			provideBaseSystemConfig,
 			provideLogger,
 			provideFundingConfig,
 			provideNotifier,
@@ -47,8 +50,12 @@ func Module(paths ConfigPaths) fx.Option {
 			provideReversionStrategy,
 			provideBot,
 			infraapp.NewBotRunner,
+			server.NewAPIServer,
 		),
-		fx.Invoke(infraapp.RegisterBotRunner),
+		fx.Invoke(
+			infraapp.RegisterBotRunner,
+			server.Register,
+		),
 		fx.WithLogger(func(log *slog.Logger) fxevent.Logger {
 			return &fxevent.SlogLogger{Logger: log.With("component", "fx")}
 		}),
@@ -57,6 +64,10 @@ func Module(paths ConfigPaths) fx.Option {
 
 func provideSystemConfig(paths ConfigPaths) (*fundingconfig.SystemConfig, error) {
 	return fundingconfig.LoadSystemConfig(paths.System)
+}
+
+func provideBaseSystemConfig(cfg *fundingconfig.SystemConfig) *sysconfig.SystemConfig {
+	return &cfg.SystemConfig
 }
 
 func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logger {

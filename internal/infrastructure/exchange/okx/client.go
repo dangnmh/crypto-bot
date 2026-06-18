@@ -268,13 +268,13 @@ func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params m
 	return c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/order", p, nil)
 }
 
-func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	p := make(map[string]string)
 	maps.Copy(p, params)
 	if p["instType"] == "" {
 		p["instType"] = instTypeSwap
 	}
-	return c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/orders-pending", p, nil)
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/orders-history", p, nil)
 }
 
 func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {

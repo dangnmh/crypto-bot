@@ -197,7 +197,10 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 	if req.Symbol != "" {
 		params["symbol"] = req.Symbol
 	}
-	body, err := c.GetOrdersRaw(ctx, params)
+	if params["category"] == "" {
+		params["category"] = categoryLinear
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/order/realtime", params, nil)
 	if err != nil {
 		return nil, err
 	}

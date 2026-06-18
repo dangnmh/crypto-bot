@@ -139,7 +139,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersReque
 		params[paramSymbol] = req.Symbol
 	}
 
-	body, err := c.GetOrdersRaw(ctx, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/orders", params, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -334,6 +334,12 @@ func applySystemDefaults(c *SystemConfig) {
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
 	}
+	if c.APIServer.Port == 0 {
+		c.APIServer.Port = 8080
+	}
+	if c.APIServer.Host == "" {
+		c.APIServer.Host = "0.0.0.0"
+	}
 }
 
 func applyExchangeWSDefaults(cfg *APIConfig) {

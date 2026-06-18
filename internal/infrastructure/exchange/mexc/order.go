@@ -152,7 +152,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req mexcOpenOrdersRequest
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
 	}
-	body, err := c.GetOrdersRaw(ctx, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/private/order/open_orders/", params, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -89,13 +89,6 @@ func (d *DryRunClient) RawRequest(ctx context.Context, method, path string, quer
 	return nil, ErrNotSupported
 }
 
-func (d *DryRunClient) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	if r, ok := d.inner.(RawRequest); ok {
-		return r.GetAssetsRaw(ctx, params)
-	}
-	return nil, ErrNotSupported
-}
-
 func (d *DryRunClient) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	if r, ok := d.inner.(RawRequest); ok {
 		return r.GetFundingRateRaw(ctx, params)
@@ -131,16 +124,9 @@ func (d *DryRunClient) GetOrderDetailRaw(ctx context.Context, orderID string, pa
 	return nil, ErrNotSupported
 }
 
-func (d *DryRunClient) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+func (d *DryRunClient) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	if r, ok := d.inner.(RawRequest); ok {
-		return r.GetOrdersRaw(ctx, params)
-	}
-	return nil, ErrNotSupported
-}
-
-func (d *DryRunClient) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	if r, ok := d.inner.(RawRequest); ok {
-		return r.GetOrderDealsRaw(ctx, params)
+		return r.GetHistoryOrdersRaw(ctx, params)
 	}
 	return nil, ErrNotSupported
 }

@@ -160,7 +160,10 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]
 	if req.InstID != "" {
 		params[paramInstId] = req.InstID
 	}
-	body, err := c.GetOrdersRaw(ctx, params)
+	if params[paramInstType] == "" {
+		params[paramInstType] = instTypeSwap
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/orders-pending", params, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -92,12 +92,18 @@ type LoggingConfig struct {
 	WS    LogWSConfig `json:"ws"`
 }
 
+type APIServerConfig struct {
+	Port int    `json:"port"`
+	Host string `json:"host"`
+}
+
 // SystemConfig contains universally required configuration for any bot connecting to the exchange.
 type SystemConfig struct {
-	Logging        LoggingConfig  `json:"logging"`
-	DryRun         bool           `json:"dryRun"`
-	ExchangeConfig ExchangeConfig `json:"exchange"`
-	NotiConfig     NotiConfig     `json:"notifier"`
+	Logging        LoggingConfig   `json:"logging"`
+	DryRun         bool            `json:"dryRun"`
+	ExchangeConfig ExchangeConfig  `json:"exchange"`
+	NotiConfig     NotiConfig      `json:"notifier"`
+	APIServer      APIServerConfig `json:"api_server"`
 }
 
 type ExchangeConfig struct {

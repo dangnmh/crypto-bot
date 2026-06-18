@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -429,13 +430,18 @@ func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params m
 	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }
 
-func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	settle := params["settle"]
+func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	settle := p["settle"]
 	if settle == "" {
 		settle = gateSettleUsdt
 	}
+	if p["status"] == "" {
+		p["status"] = "finished"
+	}
 	path := fmt.Sprintf("/futures/%s/orders", settle)
-	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+	return c.RawRequest(ctx, http.MethodGet, path, p, nil)
 }
 
 func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {

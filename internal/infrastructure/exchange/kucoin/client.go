@@ -255,8 +255,8 @@ func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params m
 	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }
 
-func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	return c.RawRequest(ctx, http.MethodGet, "/api/v1/orders", params, nil)
+func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/history-orders", params, nil)
 }
 
 func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
