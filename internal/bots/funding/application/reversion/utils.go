@@ -479,10 +479,6 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 	}
 
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
-		startTime := prev.SettleTime
-		if !startTime.IsZero() {
-			startTime = startTime.Add(-1 * time.Minute)
-		}
 		// Wait 5 seconds before calling GetRecentClosedPnL to let exchange update trade database
 		_ = r.deps.Clock.Sleep(ctx, 5*time.Second)
 
@@ -505,7 +501,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 			if err != nil {
 				return err
 			}
-			closedInfo, err = provider.GetRecentClosedPnL(ctx, pos.Symbol, orderID, startTime)
+			closedInfo, err = provider.GetOrderPNL(ctx, pos.Symbol, orderID)
 			return err
 		}, bo)
 		if err != nil {

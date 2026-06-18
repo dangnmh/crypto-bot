@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -881,7 +880,7 @@ func TestClient_ErrorPaths(t *testing.T) {
 	assert.ErrorContains(t, err, "batch cancel not supported on OKX without symbols")
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -931,7 +930,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ord-123", time.Time{})
+	res, err := client.GetOrderPNL(context.Background(), "BTC-USDT-SWAP", "ord-123")
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)
@@ -945,7 +944,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	assert.InDelta(t, 2.0, res.PnLRate, 0.0001)
 }
 
-func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
+func TestClient_GetOrderPNL_Short(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -993,7 +992,7 @@ func TestClient_GetRecentClosedPnL_Short(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT-SWAP", "ord-123", time.Time{})
+	res, err := client.GetOrderPNL(context.Background(), "BTC-USDT-SWAP", "ord-123")
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)

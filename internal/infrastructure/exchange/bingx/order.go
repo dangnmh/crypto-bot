@@ -531,5 +531,6 @@ func (c *Client) toOrderInfo(o *bingxOrder) *exchange.OrderInfo {
 		State:        state,
 		ExternalOID:  o.ClientOid,
 		Side:         sideVal,
+		CreateTime:   o.Time,
 	}
 }

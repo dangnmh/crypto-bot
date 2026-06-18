@@ -3,7 +3,6 @@ package exchange_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
@@ -148,29 +147,29 @@ type stubClosedPnLClient struct {
 	stubClient
 }
 
-func (s *stubClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+func (s *stubClosedPnLClient) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	return &exchange.ClosedPnLInfo{Exchange: "stub", Symbol: symbol, EntryPrice: 123}, nil
 }
 
-func TestDryRunClient_GetRecentClosedPnL_Supported(t *testing.T) {
+func TestDryRunClient_GetOrderPNL_Supported(t *testing.T) {
 	t.Parallel()
 
 	inner := &stubClosedPnLClient{}
 	dry := exchange.NewDryRunClient(inner)
 
-	info, err := dry.GetRecentClosedPnL(context.Background(), "BTC", "ord123", time.Time{})
+	info, err := dry.GetOrderPNL(context.Background(), "BTC", "ord123")
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, "BTC", info.Symbol)
 	assert.Equal(t, 123.0, info.EntryPrice)
 }
 
-func TestDryRunClient_GetRecentClosedPnL_NotSupported(t *testing.T) {
+func TestDryRunClient_GetOrderPNL_NotSupported(t *testing.T) {
 	t.Parallel()
 
 	inner := &stubClient{}
 	dry := exchange.NewDryRunClient(inner)
 
-	_, err := dry.GetRecentClosedPnL(context.Background(), "BTC", "ord123", time.Time{})
+	_, err := dry.GetOrderPNL(context.Background(), "BTC", "ord123")
 	require.ErrorIs(t, err, exchange.ErrNotSupported)
 }

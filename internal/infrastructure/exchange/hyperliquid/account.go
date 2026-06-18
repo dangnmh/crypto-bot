@@ -135,7 +135,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("hyperliquid get order by ID %s failed: %w", orderID, err)
@@ -155,6 +155,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 	closingOrderId, err := strconv.ParseInt(orderID, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid orderID format: %w", err)
+	}
+
+	var startTime time.Time
+	if orderInfo.CreateTime > 0 {
+		startTime = time.UnixMilli(orderInfo.CreateTime - 1000)
 	}
 
 	fills, err := c.getRawUserFills(ctx, hyperliquidUserFillsRequest{

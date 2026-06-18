@@ -228,8 +228,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
-// GetRecentClosedPnL queries historical position records, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries historical position records, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	// 1. Get closing order by ID.
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
@@ -253,6 +253,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 	for i := range fills {
 		sizeVal := float64(fills[i].Size)
 		closedSize += sizeVal
+	}
+
+	var startTime time.Time
+	if orderInfo.CreateTime > 0 {
+		startTime = time.UnixMilli(orderInfo.CreateTime - 1000)
 	}
 
 	// 3. Query positions history to match the closed position record.

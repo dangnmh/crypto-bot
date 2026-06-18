@@ -229,8 +229,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
-// GetRecentClosedPnL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries the recent trade fills from Bitget for a symbol, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	// Look up order info by ID to get update time.
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
@@ -243,6 +243,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 		}, nil
 	}
 	orderTime := orderInfo.UpdateTime
+
+	var startTime time.Time
+	if orderInfo.CreateTime > 0 {
+		startTime = time.UnixMilli(orderInfo.CreateTime - 1000)
+	}
 
 	req := bitgetHistoryPositionsRequest{
 		ProductType: productTypeUsdtFutures,

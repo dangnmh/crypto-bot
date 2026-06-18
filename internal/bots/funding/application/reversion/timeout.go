@@ -229,11 +229,6 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 	}
 
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
-		startTime := evt.SettleTime
-		if !startTime.IsZero() {
-			startTime = startTime.Add(-1 * time.Second)
-		}
-
 		var orderID string
 		var closedInfo *exchange.ClosedPnLInfo
 
@@ -253,7 +248,7 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 			if err != nil {
 				return err
 			}
-			closedInfo, err = provider.GetRecentClosedPnL(ctx, evt.Symbol, orderID, startTime)
+			closedInfo, err = provider.GetOrderPNL(ctx, evt.Symbol, orderID)
 			return err
 		}, bo)
 

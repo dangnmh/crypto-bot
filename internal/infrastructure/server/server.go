@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	errKey                  = "error"
-	errRawRequestNotSupport = "Client does not support RawRequest interface"
-	errOrderIDRequired      = "order ID is required"
-	errProviderNotFound     = "provider not found in context"
-	errInvalidProviderType  = "invalid provider type"
+	errKey                   = "error"
+	errRawRequestNotSupport  = "Client does not support RawRequest interface"
+	errOrderIDRequired       = "order ID is required"
+	errProviderNotFound      = "provider not found in context"
+	errInvalidProviderType   = "invalid provider type"
+	errClosedPnLNotSupported = "Closed PnL retrieval not supported for this exchange"
 )
 
 type APIServer struct {
@@ -59,7 +60,7 @@ func (s *APIServer) Start(ctx context.Context) error {
 	debug.GET("/open_positions", s.handleOpenPositions)
 	debug.GET("/history_positions", s.handleHistoryPositions)
 	debug.GET("/history_orders", s.handleHistoryOrders)
-	debug.GET("/closed_pnl", s.handleClosedPnL)
+	debug.GET("/order_pnl", s.handleOrderPNL)
 	debug.GET("/order/:id", s.handleOrderDetail)
 
 	addr := fmt.Sprintf("%s:%d", s.config.APIServer.Host, s.config.APIServer.Port)
@@ -169,7 +170,7 @@ func (s *APIServer) proxyRoute(c *gin.Context, routeKey string) {
 	c.Data(http.StatusOK, "application/json", respBytes)
 }
 
-func (s *APIServer) handleClosedPnL(c *gin.Context) {
+func (s *APIServer) handleOrderPNL(c *gin.Context) {
 	provVal, ok := c.Get("provider")
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{errKey: errProviderNotFound})
@@ -181,28 +182,34 @@ func (s *APIServer) handleClosedPnL(c *gin.Context) {
 		return
 	}
 
-	if _, ok := prov.Client.(exchange.ClosedPnLProvider); !ok {
-		c.JSON(http.StatusNotImplemented, gin.H{errKey: "Closed PnL retrieval not supported for this exchange"})
-		return
-	}
-
-	rawReq, ok := prov.Client.(exchange.RawRequest)
+	pnlProv, ok := prov.Client.(exchange.ClosedPnLProvider)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{errKey: errRawRequestNotSupport})
+		c.JSON(http.StatusNotImplemented, gin.H{errKey: errClosedPnLNotSupported})
 		return
 	}
 
-	queryParams := parseParams(c)
-	exchangeName := strings.ToLower(c.Param("exchange"))
-	injectParams(exchangeName, queryParams)
+	symbol := c.Query("symbol")
+	orderID := c.Query("order_id")
+	if orderID == "" {
+		orderID = c.Query("orderId")
+	}
 
-	respBytes, err := rawReq.GetClosedPnLRaw(c, queryParams)
+	if symbol == "" {
+		c.JSON(http.StatusBadRequest, gin.H{errKey: "symbol is required"})
+		return
+	}
+	if orderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{errKey: "order_id is required"})
+		return
+	}
+
+	info, err := pnlProv.GetOrderPNL(c.Request.Context(), symbol, orderID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{errKey: err.Error()})
 		return
 	}
 
-	c.Data(http.StatusOK, "application/json", respBytes)
+	c.JSON(http.StatusOK, info)
 }
 
 func (s *APIServer) handleOrderDetail(c *gin.Context) {

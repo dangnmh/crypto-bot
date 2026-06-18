@@ -275,8 +275,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries the most recent closed PnL ledger record from Bybit.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries the most recent closed PnL ledger record from Bybit.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
 		Category: categoryLinear,
 		OrderID:  orderID,
@@ -300,8 +300,10 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 		Symbol:   symbol,
 		Limit:    10,
 	}
-	if !startTime.IsZero() {
-		req.StartTime = startTime.UnixMilli()
+	var startTimeVal time.Time
+	if orderInfo.CreateTime > 0 {
+		req.StartTime = orderInfo.CreateTime - 1000
+		startTimeVal = time.UnixMilli(req.StartTime)
 	}
 
 	res, err := c.getRawClosedPnL(ctx, req)
@@ -328,7 +330,7 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 	closeFee := decmath.ParseFloat(row.CloseFee)
 
 	// Query Bybit's Transaction Log to get the settled funding fee (holdFee) for this symbol.
-	fdFee, err := c.getHoldFee(ctx, symbol, startTime)
+	fdFee, err := c.getHoldFee(ctx, symbol, startTimeVal)
 	if err != nil {
 		c.logger.Debug("Bybit failed to query transaction log for funding fee", slog.Any("error", err))
 	}

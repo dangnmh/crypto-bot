@@ -506,6 +506,7 @@ func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 		DealAvgPrice: avg,
 		State:        state,
 		Side:         sideVal,
+		CreateTime:   o.CreatedAt,
 	}
 }
 

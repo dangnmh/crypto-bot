@@ -663,7 +663,7 @@ func TestClient_PlaceTPSL(t *testing.T) {
 	})
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -688,7 +688,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"symbol": "BTCUSDT",
 				"status": "FILLED",
 				"clientOrderId": "ext_123",
-				"side": "BUY"
+				"side": "BUY",
+				"time": 1672531200000
 			}`,
 			tradesResponse: `[
 				{
@@ -741,7 +742,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"status": "FILLED",
 				"clientOrderId": "ext_123",
 				"side": "BUY",
-				"executedQty": "0.5"
+				"executedQty": "0.5",
+				"time": 1672531200000
 			}`,
 			tradesResponse: `[
 				{
@@ -797,7 +799,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"symbol": "BTCUSDT",
 				"status": "FILLED",
 				"clientOrderId": "ext_123",
-				"side": "BUY"
+				"side": "BUY",
+				"time": 1672531200000
 			}`,
 			tradesResponse: `[
 				{
@@ -842,7 +845,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"symbol": "BTCUSDT",
 				"status": "FILLED",
 				"clientOrderId": "ext_123",
-				"side": "BUY"
+				"side": "BUY",
+				"time": 1672531200000
 			}`,
 			tradesResponse: `[
 				{
@@ -869,7 +873,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				"status": "FILLED",
 				"clientOrderId": "ext_123",
 				"side": "SELL",
-				"executedQty": "0.5"
+				"executedQty": "0.5",
+				"time": 1672531200000
 			}`,
 			tradesResponse: `[
 				{
@@ -931,7 +936,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			defer server.Close()
 
 			client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-			res, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "123456", time.UnixMilli(1672531100000))
+			res, err := client.GetOrderPNL(context.Background(), "BTCUSDT", "123456")
 
 			if tc.expectedError != "" {
 				require.Error(t, err)

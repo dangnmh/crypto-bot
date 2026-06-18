@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -584,7 +583,7 @@ func TestClient_ListenKeys(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -648,8 +647,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
 
-	startTime := time.UnixMilli(1695812280000)
-	closedInfo, err := client.GetRecentClosedPnL(context.Background(), "BTC-USDT", "123456", startTime)
+	closedInfo, err := client.GetOrderPNL(context.Background(), "BTC-USDT", "123456")
 	require.NoError(t, err)
 	require.NotNil(t, closedInfo)
 
@@ -659,7 +657,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	assert.Equal(t, 150.50, closedInfo.GrossPnL)
 	assert.Equal(t, 5.50, closedInfo.Fee)
 	assert.Equal(t, -2.00, closedInfo.FundingFee)
-	assert.Equal(t, int64(15000), closedInfo.DurationMs)   // 1695812295000 - 1695812280000 = 15000
+	assert.Equal(t, int64(11000), closedInfo.DurationMs)   // 1695812295000 - 1695812284000 = 11000
 	assert.Equal(t, 143.00, closedInfo.NetPnl)             // 150.50 - 5.50 + (-2.00) = 143.00
 	assert.InDelta(t, 50301.0, closedInfo.ExitPrice, 1e-9) // 50000 + (150.50 / 0.5) = 50301.0
 }

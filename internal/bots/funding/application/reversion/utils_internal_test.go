@@ -160,7 +160,7 @@ type mockClosedPnLClient struct {
 	closedErr  error
 }
 
-func (m *mockClosedPnLClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+func (m *mockClosedPnLClient) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	return m.closedInfo, m.closedErr
 }
 

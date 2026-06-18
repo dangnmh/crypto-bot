@@ -453,7 +453,7 @@ func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string)
 	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }
 
-func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+func (c *Client) GetAccountBook(ctx context.Context, params map[string]string) ([]byte, error) {
 	settle := params["settle"]
 	if settle == "" {
 		settle = gateSettleUsdt

@@ -207,8 +207,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries recent trades from BingX, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries recent trades from BingX, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	// Look up the opening order details.
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
@@ -223,6 +223,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 
 	if orderInfo.DealVol == 0 {
 		return nil, fmt.Errorf("zero deal volume for opening order %s", orderID)
+	}
+
+	var startTime time.Time
+	if orderInfo.CreateTime > 0 {
+		startTime = time.UnixMilli(orderInfo.CreateTime - 1000)
 	}
 
 	incomeEntries, err := c.fetchUserIncome(ctx, symbol, startTime)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -215,8 +214,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
-// GetRecentClosedPnL queries the historical closed position metrics from OKX.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries the historical closed position metrics from OKX.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("okx get order by ID %s failed: %w", orderID, err)
@@ -233,8 +232,8 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 		Limit:    "10",
 		InstID:   symbol,
 	}
-	if !startTime.IsZero() {
-		req.Begin = strconv.FormatInt(startTime.UnixMilli(), 10)
+	if orderInfo.CreateTime > 0 {
+		req.Begin = strconv.FormatInt(orderInfo.CreateTime-1000, 10)
 	}
 
 	positions, err := c.getRawClosedPositions(ctx, req)

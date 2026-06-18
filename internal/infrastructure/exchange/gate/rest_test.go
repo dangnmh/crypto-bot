@@ -497,7 +497,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 	require.NoError(t, json.NewEncoder(w).Encode(value))
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	server := newGateServer(t)
@@ -520,7 +520,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("long side position close matched", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "BTC_USDT", "42", time.Unix(1700000000, 0))
+		res, err := client.GetOrderPNL(ctx, "BTC_USDT", "42")
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		assertPnLInfo(t, res, "BTC_USDT")
@@ -528,7 +528,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("short side position close matched", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "ETH_USDT", "43", time.Unix(1700000000, 0))
+		res, err := client.GetOrderPNL(ctx, "ETH_USDT", "43")
 		require.NoError(t, err)
 		require.NotNil(t, res)
 
@@ -547,7 +547,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("ignore opening trade if returned in trades query", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "LTC_USDT", "42", time.Unix(1700000000, 0))
+		res, err := client.GetOrderPNL(ctx, "LTC_USDT", "42")
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		assertPnLInfo(t, res, "LTC_USDT")
@@ -555,7 +555,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("position close history unmatched error", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "XRP_USDT", "42", time.Unix(1700000000, 0))
+		res, err := client.GetOrderPNL(ctx, "XRP_USDT", "42")
 		require.Error(t, err)
 		assert.Nil(t, res)
 		assert.Contains(t, err.Error(), "no closing trades found for symbol")
@@ -563,7 +563,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 
 	t.Run("no close records found error", func(t *testing.T) {
 		t.Parallel()
-		res, err := client.GetRecentClosedPnL(ctx, "DOGE_USDT", "42", time.Unix(1700000000, 0))
+		res, err := client.GetOrderPNL(ctx, "DOGE_USDT", "42")
 		require.Error(t, err)
 		assert.Nil(t, res)
 		assert.Contains(t, err.Error(), "no closing trades found for symbol")

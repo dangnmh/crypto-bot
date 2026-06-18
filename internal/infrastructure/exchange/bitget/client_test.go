@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -537,7 +536,7 @@ func TestClient_GetDepthCommits(t *testing.T) {
 	assert.ErrorContains(t, err, "GetDepthCommits not supported")
 }
 
-func TestClient_GetRecentClosedPnL_Success(t *testing.T) {
+func TestClient_GetOrderPNL_Success(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -600,7 +599,7 @@ func TestClient_GetRecentClosedPnL_Success(t *testing.T) {
 	defer server.Close()
 
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "order123", time.Time{})
+	info, err := client.GetOrderPNL(context.Background(), "BTCUSDT", "order123")
 	require.NoError(t, err)
 	require.NotNil(t, info)
 
@@ -616,7 +615,7 @@ func TestClient_GetRecentClosedPnL_Success(t *testing.T) {
 	assert.InDelta(t, 2.0408, info.PnLRate, 0.0001)
 }
 
-func TestClient_GetRecentClosedPnL_OrderNotFound(t *testing.T) {
+func TestClient_GetOrderPNL_OrderNotFound(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -635,6 +634,6 @@ func TestClient_GetRecentClosedPnL_OrderNotFound(t *testing.T) {
 	defer server.Close()
 
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	_, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "order123", time.Time{})
+	_, err := client.GetOrderPNL(context.Background(), "BTCUSDT", "order123")
 	assert.ErrorContains(t, err, "order not found")
 }

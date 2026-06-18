@@ -218,8 +218,8 @@ type aggregatedTradeResults struct {
 	hasClosingTrade         bool
 }
 
-// GetRecentClosedPnL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries recent trades from Binance, aggregates closing fills, and returns closed trade metrics.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("binance get order by ID %s failed: %w", orderID, err)
@@ -233,6 +233,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 	openingOrderId, parseErr := strconv.ParseInt(orderInfo.OrderID, 10, 64)
 	if parseErr != nil {
 		return nil, fmt.Errorf("binance parse numeric order ID %s failed: %w", orderInfo.OrderID, parseErr)
+	}
+
+	var startTime time.Time
+	if orderInfo.CreateTime > 0 {
+		startTime = time.UnixMilli(orderInfo.CreateTime - 1000)
 	}
 
 	req := binanceAccountTradeListRequest{

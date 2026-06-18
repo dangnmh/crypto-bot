@@ -73,10 +73,10 @@ func (d *DryRunClient) GetOpenPositions(ctx context.Context, symbol string) ([]P
 	return d.inner.GetOpenPositions(ctx, symbol)
 }
 
-// GetRecentClosedPnL delegates to the inner client if it implements ClosedPnLProvider.
-func (d *DryRunClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*ClosedPnLInfo, error) {
+// GetOrderPNL delegates to the inner client if it implements ClosedPnLProvider.
+func (d *DryRunClient) GetOrderPNL(ctx context.Context, symbol, orderID string) (*ClosedPnLInfo, error) {
 	if provider, ok := d.inner.(ClosedPnLProvider); ok {
-		return provider.GetRecentClosedPnL(ctx, symbol, orderID, startTime)
+		return provider.GetOrderPNL(ctx, symbol, orderID)
 	}
 	return nil, ErrNotSupported
 }
@@ -131,9 +131,9 @@ func (d *DryRunClient) GetHistoryOrdersRaw(ctx context.Context, params map[strin
 	return nil, ErrNotSupported
 }
 
-func (d *DryRunClient) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+func (d *DryRunClient) GetRecentClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	if r, ok := d.inner.(RawRequest); ok {
-		return r.GetClosedPnLRaw(ctx, params)
+		return r.GetRecentClosedPnLRaw(ctx, params)
 	}
 	return nil, ErrNotSupported
 }

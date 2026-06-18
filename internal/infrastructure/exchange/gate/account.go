@@ -111,7 +111,7 @@ func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, change
 		params["from"] = strconv.FormatInt(startTime.Unix(), 10)
 	}
 	params["limit"] = "100"
-	body, err := c.GetClosedPnLRaw(ctx, params)
+	body, err := c.GetAccountBook(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -203,8 +203,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries personal trading records and account book history to map the closed position metrics.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries personal trading records and account book history to map the closed position metrics.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("gate get order by ID %s failed: %w", orderID, err)
@@ -214,6 +214,11 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 			Exchange: exchangeName,
 			Symbol:   symbol,
 		}, nil
+	}
+
+	var startTime time.Time
+	if orderInfo.CreateTime > 0 {
+		startTime = time.UnixMilli(orderInfo.CreateTime - 1000)
 	}
 
 	closingTrades, err := c.waitAndFindClosingTrades(ctx, symbol, orderInfo.OrderID, startTime)

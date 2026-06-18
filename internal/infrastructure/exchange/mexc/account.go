@@ -190,8 +190,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// GetRecentClosedPnL queries the historical closed position metrics from MEXC.
-func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
+// GetOrderPNL queries the historical closed position metrics from MEXC.
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	if orderID == "" {
 		return nil, fmt.Errorf("orderID is required")
 	}
@@ -217,8 +217,8 @@ func (c *Client) GetRecentClosedPnL(ctx context.Context, symbol, orderID string,
 		PageNum:  1,
 		PageSize: 10,
 	}
-	if !startTime.IsZero() {
-		req.StartTime = startTime.UnixMilli()
+	if orderInfo.CreateTime > 0 {
+		req.StartTime = orderInfo.CreateTime - 1000 // 1 second in milliseconds
 	}
 
 	histData, err := c.getRawHistoryPositions(ctx, req)

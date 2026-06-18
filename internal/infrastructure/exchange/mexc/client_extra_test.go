@@ -146,7 +146,7 @@ func TestClient_NewClient_WithHTTPLogging(t *testing.T) {
 	assert.NotNil(t, client)
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	type mockResponse struct {
@@ -303,7 +303,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			defer srv.Close()
 
 			client := newTestClient(srv)
-			info, err := client.GetRecentClosedPnL(context.Background(), tt.symbol, tt.targetOrderID, time.Time{})
+			info, err := client.GetOrderPNL(context.Background(), tt.symbol, tt.targetOrderID)
 
 			if tt.expectedErr != "" {
 				require.Error(t, err)

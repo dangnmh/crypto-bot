@@ -3,6 +3,7 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -89,8 +90,12 @@ func (s *stubClient) GetOpenPositions(ctx context.Context, symbol string) ([]exc
 	return nil, nil
 }
 
-func (s *stubClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID string, startTime time.Time) (*exchange.ClosedPnLInfo, error) {
-	return nil, nil
+func (s *stubClient) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
+	return &exchange.ClosedPnLInfo{
+		Exchange:  "mexc",
+		Symbol:    symbol,
+		ExitPrice: 50000,
+	}, nil
 }
 
 func (s *stubClient) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
@@ -130,8 +135,8 @@ func (s *stubClient) GetHistoryOrdersRaw(ctx context.Context, params map[string]
 	return s.returnBytes, s.returnErr
 }
 
-func (s *stubClient) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	s.lastMethod = "GetClosedPnLRaw"
+func (s *stubClient) GetRecentClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	s.lastMethod = "GetRecentClosedPnLRaw"
 	s.lastParams = params
 	return s.returnBytes, s.returnErr
 }
@@ -250,8 +255,8 @@ func (s *stubClientNoClosedPnL) GetHistoryOrdersRaw(ctx context.Context, params 
 	return s.returnBytes, s.returnErr
 }
 
-func (s *stubClientNoClosedPnL) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	s.lastMethod = "GetClosedPnLRaw"
+func (s *stubClientNoClosedPnL) GetRecentClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	s.lastMethod = "GetRecentClosedPnLRaw"
 	s.lastParams = params
 	return s.returnBytes, s.returnErr
 }
@@ -311,7 +316,6 @@ func TestAPIServer_ProxyRoutes(t *testing.T) {
 		{http.MethodGet, "/debug/mexc/open_positions", "", "GetOpenPositionsRaw", 9882},
 		{http.MethodGet, "/debug/mexc/history_positions", "", "GetHistoryPositionsRaw", 9883},
 		{http.MethodGet, "/debug/mexc/history_orders", "", "GetHistoryOrdersRaw", 9884},
-		{http.MethodGet, "/debug/mexc/closed_pnl", "", "GetClosedPnLRaw", 9885},
 		{http.MethodGet, "/debug/mexc/order/order-123", "", "GetOrderDetailRaw", 9886},
 	}
 
@@ -358,7 +362,7 @@ func TestAPIServer_ProxyRoutes(t *testing.T) {
 	}
 }
 
-func TestAPIServer_ClosedPnLProviderGate(t *testing.T) {
+func TestAPIServer_OrderPNLProviderGate(t *testing.T) {
 	t.Parallel()
 	clientSupported := &stubClient{}
 	clientNotSupported := &stubClientNoClosedPnL{}
@@ -380,7 +384,7 @@ func TestAPIServer_ClosedPnLProviderGate(t *testing.T) {
 	t.Cleanup(func() { _ = srv.Stop(context.Background()) })
 
 	// MEXC (Supported)
-	reqMexc, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9873/debug/mexc/closed_pnl", http.NoBody)
+	reqMexc, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9873/debug/mexc/order_pnl?symbol=BTCUSDT&order_id=123", http.NoBody)
 	require.NoError(t, err)
 	respMexc, err := http.DefaultClient.Do(reqMexc)
 	require.NoError(t, err)
@@ -388,7 +392,7 @@ func TestAPIServer_ClosedPnLProviderGate(t *testing.T) {
 	_ = respMexc.Body.Close()
 
 	// Gate (Not Supported)
-	reqGate, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9873/debug/gate/closed_pnl", http.NoBody)
+	reqGate, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9873/debug/gate/order_pnl?symbol=BTCUSDT&order_id=123", http.NoBody)
 	require.NoError(t, err)
 	respGate, err := http.DefaultClient.Do(reqGate)
 	require.NoError(t, err)
@@ -474,4 +478,43 @@ func TestAPIServer_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	_ = resp.Body.Close()
+}
+
+func TestAPIServer_OrderPNL(t *testing.T) {
+	t.Parallel()
+	client := &stubClient{}
+	engine := &app.Engine{
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:   "mexc",
+				Client: client,
+			},
+		},
+	}
+	srv := setupTestServer(t, engine, 9890)
+	require.NoError(t, srv.Start(context.Background()))
+	time.Sleep(50 * time.Millisecond)
+	t.Cleanup(func() { _ = srv.Stop(context.Background()) })
+
+	// Valid Request
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9890/debug/mexc/order_pnl?symbol=BTCUSDT&order_id=123", http.NoBody)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var info exchange.ClosedPnLInfo
+	err = json.NewDecoder(resp.Body).Decode(&info)
+	require.NoError(t, err)
+	assert.Equal(t, "BTCUSDT", info.Symbol)
+	assert.Equal(t, 50000.0, info.ExitPrice)
+	_ = resp.Body.Close()
+
+	// Missing parameters
+	reqBad, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9890/debug/mexc/order_pnl?symbol=BTCUSDT", http.NoBody)
+	require.NoError(t, err)
+	respBad, err := http.DefaultClient.Do(reqBad)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, respBad.StatusCode)
+	_ = respBad.Body.Close()
 }

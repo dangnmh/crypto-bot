@@ -954,7 +954,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	assert.Equal(t, domain.SideUnknown, info.Side) // Unknown side is mapped to 0
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1021,6 +1021,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			now := time.Now().UnixMilli()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if strings.Contains(r.URL.Path, "/v5/order/realtime") {
@@ -1031,16 +1032,17 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 						}`))
 						return
 					}
-					_, _ = w.Write([]byte(`{
+					_, _ = fmt.Fprintf(w, `{
 						"retCode": 0,
 						"retMsg": "OK",
 						"result": {
 							"list": [{
 								"orderId": "bybit-ord-987654",
-								"orderLinkId": "ext-123"
+								"orderLinkId": "ext-123",
+								"createdTime": "%d"
 							}]
 						}
-					}`))
+					}`, now-5000)
 					return
 				}
 				if strings.Contains(r.URL.Path, "transaction-log") {
@@ -1059,9 +1061,8 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 				}
 				if strings.Contains(r.URL.Path, "/v5/position/closed-pnl") {
 					st := r.URL.Query().Get("startTime")
-					assert.Equal(t, "1780415999000", st)
+					assert.Equal(t, fmt.Sprintf("%d", now-6000), st)
 				}
-				now := time.Now().UnixMilli()
 				resStr := strings.ReplaceAll(tt.response, "{{UPDATED_TIME}}", fmt.Sprintf("%d", now))
 				resStr = strings.ReplaceAll(resStr, "{{CREATED_TIME}}", fmt.Sprintf("%d", now-5000))
 				_, _ = w.Write([]byte(resStr))
@@ -1069,8 +1070,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 			defer server.Close()
 
 			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
-			testTime := time.UnixMilli(1780415999000)
-			info, err := client.GetRecentClosedPnL(context.Background(), "BTCUSDT", "ext-123", testTime)
+			info, err := client.GetOrderPNL(context.Background(), "BTCUSDT", "ext-123")
 
 			if tt.wantErr != "" {
 				assert.Error(t, err)

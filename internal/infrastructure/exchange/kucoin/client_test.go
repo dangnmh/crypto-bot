@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -684,7 +683,7 @@ func TestClient_PlaceTPSL(t *testing.T) {
 	assert.Equal(t, "45000", receivedBody["triggerStopDownPrice"])
 }
 
-func TestClient_GetRecentClosedPnL(t *testing.T) {
+func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -762,7 +761,7 @@ func TestClient_GetRecentClosedPnL(t *testing.T) {
 	defer server.Close()
 
 	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	res, err := client.GetRecentClosedPnL(context.Background(), "XBTUSDTM", "close_order_id_123", time.Time{})
+	res, err := client.GetOrderPNL(context.Background(), "XBTUSDTM", "close_order_id_123")
 	require.NoError(t, err)
 
 	assert.Equal(t, "XBTUSDTM", res.Symbol)
