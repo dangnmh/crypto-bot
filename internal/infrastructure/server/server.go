@@ -62,6 +62,7 @@ func (s *APIServer) Start(ctx context.Context) error {
 	debug.GET("/history_orders", s.handleHistoryOrders)
 	debug.GET("/order_pnl", s.handleOrderPNL)
 	debug.GET("/order/:id", s.handleOrderDetail)
+	r.GET("/debug/funding_scanner", s.handleFundingScanner)
 
 	addr := fmt.Sprintf("%s:%d", s.config.APIServer.Host, s.config.APIServer.Port)
 	s.server = &http.Server{

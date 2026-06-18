@@ -29,15 +29,23 @@ type stubClient struct {
 	lastMethod  string
 	returnBytes []byte
 	returnErr   error
+	tickers     []exchange.Ticker
+	rates       []exchange.FundingRateResult
 }
 
 func (s *stubClient) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	if s.tickers != nil {
+		return s.tickers, nil
+	}
 	return nil, nil
 }
 func (s *stubClient) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
 	return nil, nil
 }
 func (s *stubClient) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	if s.rates != nil {
+		return s.rates, nil
+	}
 	return nil, nil
 }
 func (s *stubClient) GetServerTime(ctx context.Context) (int64, error) { return 0, nil }
@@ -517,4 +525,52 @@ func TestAPIServer_OrderPNL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, respBad.StatusCode)
 	_ = respBad.Body.Close()
+}
+
+func TestAPIServer_FundingScanner(t *testing.T) {
+	t.Parallel()
+	clientMexc := &stubClient{
+		tickers: []exchange.Ticker{
+			{Symbol: "HIGH_USDT", Amount24: 2000000.0},
+		},
+		rates: []exchange.FundingRateResult{
+			{Symbol: "HIGH_USDT", Rate: -0.003852},
+		},
+	}
+	clientGate := &stubClient{}
+	engine := &app.Engine{
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:   "mexc",
+				Client: clientMexc,
+			},
+			"gate": {
+				Name:   "gate",
+				Client: clientGate,
+			},
+		},
+	}
+	srv := setupTestServer(t, engine, 9895)
+	require.NoError(t, srv.Start(context.Background()))
+	time.Sleep(50 * time.Millisecond)
+	t.Cleanup(func() { _ = srv.Stop(context.Background()) })
+
+	// Request with exchange parameters
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:9895/debug/funding_scanner?exchange=mexc,gate&min_rate=0.1&min_vol=1000", http.NoBody)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var payload struct {
+		Success bool                 `json:"success"`
+		Groups  []server.SymbolGroup `json:"groups"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&payload)
+	require.NoError(t, err)
+	assert.True(t, payload.Success)
+	require.Len(t, payload.Groups, 1)
+	assert.Equal(t, "HIGH_USDT", payload.Groups[0].StandardSymbol)
+	assert.Equal(t, -0.003852, payload.Groups[0].ScoreRate)
+	_ = resp.Body.Close()
 }
