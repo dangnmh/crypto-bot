@@ -71,7 +71,7 @@ func provideBaseSystemConfig(cfg *fundingconfig.SystemConfig) *sysconfig.SystemC
 }
 
 func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logger {
-	cleanup := applogger.InitLogger(cfg.Logging.Level)
+	cleanup := applogger.InitLogger(cfg.Logging.Level, cfg.Env)
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			cleanup()

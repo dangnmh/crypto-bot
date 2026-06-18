@@ -65,7 +65,7 @@ func main() {
 		}
 	}
 
-	logger.InitLogger("error")
+	logger.InitLogger("error", "dev")
 	// Create exchange clients. No API keys needed for public market data.
 	httpPool := httpclient.NewPool(httpclient.DefaultPoolConfig())
 	logCfg := sysconfig.LoggingConfig{

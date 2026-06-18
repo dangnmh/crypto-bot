@@ -25,7 +25,7 @@ func main() {
 	_ = godotenv.Load()
 
 	// Init slog for debugging
-	cleanup := logger.InitLogger("debug")
+	cleanup := logger.InitLogger("debug", "dev")
 	defer cleanup()
 
 	// Load Configuration with Bitwarden fallback

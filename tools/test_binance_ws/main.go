@@ -27,7 +27,7 @@ func main() {
 	flag.Parse()
 
 	// Init slog for debugging
-	cleanup := logger.InitLogger("debug")
+	cleanup := logger.InitLogger("debug", "dev")
 	defer cleanup()
 
 	slog.Info("Loading system configuration...", slog.String("path", *sysCfgPath))

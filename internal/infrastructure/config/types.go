@@ -99,6 +99,7 @@ type APIServerConfig struct {
 
 // SystemConfig contains universally required configuration for any bot connecting to the exchange.
 type SystemConfig struct {
+	Env            string          `json:"env"`
 	Logging        LoggingConfig   `json:"logging"`
 	DryRun         bool            `json:"dryRun"`
 	ExchangeConfig ExchangeConfig  `json:"exchange"`

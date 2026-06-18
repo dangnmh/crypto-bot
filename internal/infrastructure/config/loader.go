@@ -331,6 +331,9 @@ func applySystemDefaults(c *SystemConfig) {
 	applyExchangeWSDefaults(&c.ExchangeConfig.Bitget)
 	applyExchangeWSDefaults(&c.ExchangeConfig.Kucoin)
 	applyExchangeWSDefaults(&c.ExchangeConfig.Bingx)
+	if c.Env == "" {
+		c.Env = "dev"
+	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
 	}

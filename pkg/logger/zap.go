@@ -141,7 +141,7 @@ func sourceReplaceAttr(groups []string, a slog.Attr) slog.Attr {
 // InitLogger initializes the global slog logger with console (JSON) + file (JSON) output.
 // All handlers are wrapped with TraceHandler to auto-inject req_id.
 // Returns a cleanup function to close the log file.
-func InitLogger(level string) func() {
+func InitLogger(level, env string) func() {
 	var slogLevel slog.Level
 	switch level {
 	case "debug":
@@ -162,14 +162,17 @@ func InitLogger(level string) func() {
 	handlers := []slog.Handler{NewTraceHandler(consoleHandler)}
 
 	var file *os.File
-	if err := os.MkdirAll("logs", 0o755); err == nil {
-		file, err = os.OpenFile(
-			fmt.Sprintf("logs/app-%s.jsonl", time.Now().Format("2006-01-02_15-04-05")),
-			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666,
-		)
-		if err == nil {
-			fileHandler := slog.NewJSONHandler(file, opts)
-			handlers = append(handlers, NewTraceHandler(fileHandler))
+	var err error
+	if env != "prod" && env != "production" {
+		if err = os.MkdirAll("logs", 0o755); err == nil {
+			file, err = os.OpenFile(
+				fmt.Sprintf("logs/app-%s.jsonl", time.Now().Format("2006-01-02_15-04-05")),
+				os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666,
+			)
+			if err == nil {
+				fileHandler := slog.NewJSONHandler(file, opts)
+				handlers = append(handlers, NewTraceHandler(fileHandler))
+			}
 		}
 	}
 

@@ -107,7 +107,7 @@ func TestInitLoggerCreatesLogFileAndCleanup(t *testing.T) {
 		seen[path] = struct{}{}
 	}
 
-	cleanup := logger.InitLogger("debug")
+	cleanup := logger.InitLogger("debug", "dev")
 	slog.Info("test log")
 	cleanup()
 
@@ -129,7 +129,31 @@ func TestInitLoggerCreatesLogFileAndCleanup(t *testing.T) {
 func TestInitLoggerLevelsAndSourceReplaceAttr(t *testing.T) {
 	levels := []string{"info", "warn", "error", "unknown"}
 	for _, l := range levels {
-		cleanup := logger.InitLogger(l)
+		cleanup := logger.InitLogger(l, "dev")
 		cleanup()
 	}
+}
+
+//nolint:paralleltest // Mutates global slog default logger, cannot run in parallel
+func TestInitLoggerProdDoesNotCreateLogFile(t *testing.T) {
+	before, err := filepath.Glob(filepath.Join("logs", "app-*.jsonl"))
+	require.NoError(t, err)
+	seen := make(map[string]struct{}, len(before))
+	for _, path := range before {
+		seen[path] = struct{}{}
+	}
+
+	cleanup := logger.InitLogger("debug", "prod")
+	slog.Info("test log prod")
+	cleanup()
+
+	files, err := filepath.Glob(filepath.Join("logs", "app-*.jsonl"))
+	require.NoError(t, err)
+	var created []string
+	for _, path := range files {
+		if _, ok := seen[path]; !ok {
+			created = append(created, path)
+		}
+	}
+	require.Empty(t, created)
 }
