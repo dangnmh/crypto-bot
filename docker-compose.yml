@@ -51,7 +51,7 @@ services:
       - BITWARDEN_PROJECT_NAME=${BITWARDEN_PROJECT_NAME}
     volumes:
       - ./configs:/app/configs
-    command: ["-sys", "/app/configs/funding/local/system.jsonc", "-bot", "/app/configs/funding/local/funding.jsonc"]
+    command: ["-sys", "/app/configs/funding/local/system.jsonc", "-exch", "/app/configs/funding/local/exchange.jsonc", "-bot", "/app/configs/funding/local/funding.jsonc"]
     depends_on:
       postgres:
         condition: service_healthy

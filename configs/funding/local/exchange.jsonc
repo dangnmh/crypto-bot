@@ -1,0 +1,94 @@
+{
+  "exchange": {
+    "mexc": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api.mexc.com"
+      },
+      "websocket": {
+        "wsURL": "wss://contract.mexc.com/edge"
+      }
+    },
+    "bybit": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api.bybit.com"
+      },
+      "websocket": {
+        "publicURL": "wss://stream.bybit.com/v5/public/linear",
+        "privateURL": "wss://stream.bybit.com/v5/private",
+        "maxPairsPerWSConn": 30
+      },
+      "accountType": "unified"
+    },
+    "binance": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://fapi.binance.com"
+      },
+      "websocket": {
+        "wsURL": "wss://fstream.binance.com/ws",
+        "publicURL": "wss://fstream.binance.com/public/ws",
+        "marketURL": "wss://fstream.binance.com/market/ws",
+        "privateURL": "wss://fstream.binance.com/private/ws"
+      }
+    },
+    "kucoin": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api-futures.kucoin.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws-api-futures.kucoin.com",
+        "privateURL": "wss://ws-api-futures.kucoin.com"
+      }
+    },
+    "okx": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://openapi.okx.com"
+      },
+      "websocket": {
+        "privateURL": "wss://ws.okx.com:8443/ws/v5/private",
+        "publicURL": "wss://ws.okx.com:8443/ws/v5/public"
+      }
+    },
+    "gate": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api.gateio.ws/api/v4"
+      },
+      "websocket": {
+        "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt"
+      }
+    },
+    "hyperliquid": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://api.hyperliquid.xyz"
+      },
+      "websocket": {
+        "wsURL": "wss://api.hyperliquid.xyz/ws"
+      }
+    },
+    "bitget": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://api.bitget.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws.bitget.com/v2/ws/public",
+        "privateURL": "wss://ws.bitget.com/v2/ws/private"
+      }
+    },
+    "bingx": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://open-api.bingx.com"
+      },
+      "websocket": {
+        "wsURL": "wss://open-api-ws.bingx.com/market"
+      }
+    }
+  }
+}

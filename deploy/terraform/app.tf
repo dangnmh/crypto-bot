@@ -14,6 +14,7 @@ resource "kubernetes_config_map" "crypto_bot_configs" {
 
   data = {
     "system.jsonc"    = file("${path.module}/../../configs/funding/prod/system.jsonc")
+    "exchange.jsonc"  = file("${path.module}/../../configs/funding/prod/exchange.jsonc")
     "funding.jsonc"   = file("${path.module}/../../configs/funding/prod/funding.jsonc")
     "blacklist.jsonc" = file("${path.module}/../../configs/funding/prod/blacklist.jsonc")
     "reversion.jsonc" = file("${path.module}/../../configs/funding/prod/reversion.jsonc")
@@ -76,6 +77,7 @@ resource "kubernetes_deployment" "crypto_bot" {
 
           args = [
             "-sys", "/app/configs/funding/prod/system.jsonc",
+            "-exch", "/app/configs/funding/prod/exchange.jsonc",
             "-bot", "/app/configs/funding/prod/funding.jsonc"
           ]
 

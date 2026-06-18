@@ -15,6 +15,7 @@ MIN_COVERAGE    := 80
 GREP_V_MOCKS    := grep -v "mocks"
 TEST_PKGS       := $(shell $(GO) list ./internal/... ./pkg/... | $(GREP_V_MOCKS))
 FUNDING_SYS     := ./configs/funding/local/system.jsonc
+FUNDING_EXCH    := ./configs/funding/local/exchange.jsonc
 FUNDING_BOT     := ./configs/funding/local/funding.jsonc
 
 # Registry Configuration
@@ -47,7 +48,7 @@ docker-push: docker-build ## Build and Push the Docker image to registry
 # ── Run ───────────────────────────────────────────────────────────────
 .PHONY: run/funding
 run/funding: ## Run the funding bot
-	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -bot $(FUNDING_BOT)
+	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -bot $(FUNDING_BOT)
 
 .PHONY: scan/funding
 scan/funding: ## Scan funding rates across supported futures exchanges. Usage: make scan/funding [exchanges=binance,bybit] [minFundingRate=0.1]
@@ -254,8 +255,9 @@ destroy-pgsql: ## Destroy all PostgreSQL deployment resources, configurations, a
 .PHONY: apply-configs
 apply-configs: ## Hot-reload configurations to the running cluster without rebuilding docker image
 	kubectl create configmap crypto-bot-configs \
-		--from-file=configs/funding/system.jsonc \
-		--from-file=configs/funding/funding.jsonc \
+		--from-file=configs/funding/prod/system.jsonc \
+		--from-file=configs/funding/prod/exchange.jsonc \
+		--from-file=configs/funding/prod/funding.jsonc \
 		-n default -o yaml --dry-run=client | kubectl apply -f -
 	kubectl rollout restart deployment/crypto-bot -n default
 

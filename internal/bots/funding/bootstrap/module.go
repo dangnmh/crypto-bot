@@ -28,8 +28,9 @@ import (
 
 // ConfigPaths contains the startup configuration file paths supplied by the CLI.
 type ConfigPaths struct {
-	System string
-	Bot    string
+	System   string
+	Exchange string
+	Bot      string
 }
 
 // Module wires the funding bot dependency graph and lifecycle.
@@ -63,7 +64,7 @@ func Module(paths ConfigPaths) fx.Option {
 }
 
 func provideSystemConfig(paths ConfigPaths) (*fundingconfig.SystemConfig, error) {
-	return fundingconfig.LoadSystemConfig(paths.System)
+	return fundingconfig.LoadSystemConfig(paths.System, paths.Exchange)
 }
 
 func provideBaseSystemConfig(cfg *fundingconfig.SystemConfig) *sysconfig.SystemConfig {

@@ -4,6 +4,7 @@ package toolconfig
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	pkgconfig "crypto-bot/pkg/config"
@@ -15,6 +16,13 @@ func Load(configPath string) (*sysconfig.SystemConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+
+	exchPath := filepath.Join(filepath.Dir(configPath), "exchange.jsonc")
+	exchCfg, err := pkgconfig.Load[sysconfig.SystemConfig](exchPath)
+	if err != nil {
+		return nil, fmt.Errorf("load exchange config: %w", err)
+	}
+	cfg.ExchangeConfig = exchCfg.ExchangeConfig
 
 	if err := applyBitwardenFallback(cfg); err != nil {
 		return nil, err

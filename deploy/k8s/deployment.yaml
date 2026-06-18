@@ -29,6 +29,8 @@ spec:
           args:
             - "-sys"
             - "/app/configs/funding/prod/system.jsonc"
+            - "-exch"
+            - "/app/configs/funding/prod/exchange.jsonc"
             - "-bot"
             - "/app/configs/funding/prod/funding.jsonc"
           env:

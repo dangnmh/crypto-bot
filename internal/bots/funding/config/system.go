@@ -34,11 +34,17 @@ type SafetyConfig struct {
 }
 
 // LoadSystemConfig loads the system configuration from the given path.
-func LoadSystemConfig(systemPath string) (*SystemConfig, error) {
+func LoadSystemConfig(systemPath, exchangePath string) (*SystemConfig, error) {
 	sysCfg, err := pkgconfig.Load[SystemConfig](systemPath)
 	if err != nil {
 		return nil, fmt.Errorf("load funding reversion system config: %w", err)
 	}
+
+	exchCfg, err := pkgconfig.Load[sysconfig.SystemConfig](exchangePath)
+	if err != nil {
+		return nil, fmt.Errorf("load exchange config from %s: %w", exchangePath, err)
+	}
+	sysCfg.ExchangeConfig = exchCfg.ExchangeConfig
 
 	if err := sysconfig.InitializeBase(&sysCfg.SystemConfig); err != nil {
 		return nil, fmt.Errorf("initialize base config: %w", err)

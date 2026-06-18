@@ -18,7 +18,8 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 	t.Setenv("MEXC_API_KEY", "test-key")
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
-	content := `{
+	content := `{}`
+	exchContent := `{
 		"exchange": {
 			"mexc": {
 				"enable": true,
@@ -47,10 +48,12 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "system.json")
+	exchPath := filepath.Join(dir, "exchange.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(exchPath, []byte(exchContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
 
-	sysCfg, err := config.LoadSystemConfig(path)
+	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
 	require.NotNil(t, sysCfg)
 
@@ -73,7 +76,7 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 
 func TestLoadSystemConfig_MissingFile(t *testing.T) {
 	t.Parallel()
-	_, err := config.LoadSystemConfig("/nonexistent/path/system.json")
+	_, err := config.LoadSystemConfig("/nonexistent/path/system.json", "/nonexistent/path/exchange.json")
 	assert.Error(t, err)
 }
 
@@ -82,9 +85,10 @@ func TestLoadSystemConfig_InvalidJSON(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
+	exchPath := filepath.Join(dir, "exchange.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(`{not valid`), 0o600))
 
-	_, err := config.LoadSystemConfig(path)
+	_, err := config.LoadSystemConfig(path, exchPath)
 	assert.Error(t, err)
 }
 
@@ -94,7 +98,8 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
 	// Minimal config.
-	content := `{
+	content := `{}`
+	exchContent := `{
 		"exchange": {
 			"mexc": {
 				"enable": true,
@@ -111,10 +116,12 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "system.json")
+	exchPath := filepath.Join(dir, "exchange.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(exchPath, []byte(exchContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
 
-	sysCfg, err := config.LoadSystemConfig(path)
+	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
 
 	// Load full config to assert strategy FundingSync is defaulted.
@@ -136,7 +143,9 @@ func TestLoadSystemConfig_InvalidBybitAccountType(t *testing.T) {
 
 	content := `{
 		"sync": {},
-		"safety": {},
+		"safety": {}
+	}`
+	exchContent := `{
 		"exchange": {
 			"bybit": {
 				"enable": true,
@@ -153,9 +162,11 @@ func TestLoadSystemConfig_InvalidBybitAccountType(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "system.jsonc")
+	exChangePath := filepath.Join(dir, "exchange.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(exChangePath, []byte(exchContent), 0o600))
 
-	_, err := config.LoadSystemConfig(path)
+	_, err := config.LoadSystemConfig(path, exChangePath)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "api_config")
@@ -168,7 +179,9 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 
 	content := `{
 		"sync": {},
-		"safety": {},
+		"safety": {}
+	}`
+	exchContent := `{
 		"exchange": {
 			"mexc": {
 				"enable": true,
@@ -197,10 +210,12 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "system.jsonc")
+	exchPath := filepath.Join(dir, "exchange.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(exchPath, []byte(exchContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
 
-	cfg, err := config.LoadSystemConfig(path)
+	cfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
 
 	fundingContent := `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 50}]`
@@ -224,7 +239,8 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 	t.Setenv("MEXC_API_KEY", "test-key")
 	t.Setenv("MEXC_API_SECRET", "test-secret")
 
-	content := `{
+	content := `{}`
+	exchContent := `{
 		"exchange": {
 			"mexc": {
 				"enable": true,
@@ -236,10 +252,12 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "system.jsonc")
+	exchPath := filepath.Join(dir, "exchange.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+	require.NoError(t, os.WriteFile(exchPath, []byte(exchContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`[]`), 0o600))
 
-	sysCfg, err := config.LoadSystemConfig(path)
+	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
 
 	fundingPath := filepath.Join(dir, "funding.jsonc")
@@ -248,4 +266,34 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 	_, err = config.Load(sysCfg, fundingPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse reversion config")
+}
+
+func TestLoadSystemConfig_WithExplicitExchange(t *testing.T) {
+	// Cannot run parallel: sets env vars.
+	t.Setenv("MEXC_API_KEY", "test-key")
+	t.Setenv("MEXC_API_SECRET", "test-secret")
+
+	sysDir := t.TempDir()
+	exchDir := t.TempDir()
+
+	sysPath := filepath.Join(sysDir, "system.jsonc")
+	exchPath := filepath.Join(exchDir, "custom_exchange.jsonc")
+
+	sysContent := `{}`
+	exchContent := `{
+		"exchange": {
+			"mexc": {
+				"enable": true,
+				"future": {"baseURL": "https://test.api.com"},
+				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+			}
+		}
+	}`
+
+	require.NoError(t, os.WriteFile(sysPath, []byte(sysContent), 0o600))
+	require.NoError(t, os.WriteFile(exchPath, []byte(exchContent), 0o600))
+
+	cfg, err := config.LoadSystemConfig(sysPath, exchPath)
+	require.NoError(t, err)
+	require.True(t, cfg.ExchangeConfig.Mexc.Enable)
 }

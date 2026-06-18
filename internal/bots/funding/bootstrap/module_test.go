@@ -21,8 +21,9 @@ func TestModuleDependencyGraph(t *testing.T) {
 	t.Parallel()
 
 	err := fx.ValidateApp(bootstrap.Module(bootstrap.ConfigPaths{
-		System: "system.jsonc",
-		Bot:    "funding.jsonc",
+		System:   "system.jsonc",
+		Exchange: "exchange.jsonc",
+		Bot:      "funding.jsonc",
 	}))
 	require.NoError(t, err)
 }
@@ -33,19 +34,20 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 
 	dir := t.TempDir()
 	systemPath := filepath.Join(dir, "system.jsonc")
+	exchangePath := filepath.Join(dir, "exchange.jsonc")
 	fundingPath := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(systemPath, []byte(`{
 		"dryRun": true,
-		"sync": {},
-		"safety": {},
+		"notifier": {"enabled": false}
+	}`), 0o600))
+	require.NoError(t, os.WriteFile(exchangePath, []byte(`{
 		"exchange": {
 			"mexc": {
 				"enable": true,
 				"future": {"baseURL": "https://example.test"},
 				"websocket": {"wsURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
 			}
-		},
-		"notifier": {"enabled": false}
+		}
 	}`), 0o600))
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[
 		{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 10, "leverage": 5}
@@ -64,7 +66,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 
 	app := fxtest.New(
 		t,
-		bootstrap.Module(bootstrap.ConfigPaths{System: systemPath, Bot: fundingPath}),
+		bootstrap.Module(bootstrap.ConfigPaths{System: systemPath, Exchange: exchangePath, Bot: fundingPath}),
 		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
 	)
 	require.NotNil(t, app)
