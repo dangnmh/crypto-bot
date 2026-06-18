@@ -37,15 +37,11 @@ build-funding: ## Build the funding bot
 	$(GO) build -o bin/funding-bot ./cmd/funding
 
 .PHONY: docker-build
-docker-build: ## Build the Docker container image locally
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
-
-.PHONY: docker-tag
-docker-tag: ## Tag the local Docker image for registry
-	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE)
+docker-build: ## Build and tag the Docker container image locally and for registry
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) -t $(FULL_IMAGE) .
 
 .PHONY: docker-push
-docker-push: docker-tag ## Tag and Push the Docker image to registry
+docker-push: docker-build ## Build and Push the Docker image to registry
 	docker push $(FULL_IMAGE)
 
 # ── Run ───────────────────────────────────────────────────────────────
