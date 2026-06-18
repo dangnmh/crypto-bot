@@ -231,7 +231,7 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
 		startTime := evt.SettleTime
 		if !startTime.IsZero() {
-			startTime = startTime.Add(-1 * time.Minute)
+			startTime = startTime.Add(-1 * time.Second)
 		}
 
 		orderID, err := r.resolveOrderID(evt.ReqID, evt.OrderID)
@@ -245,8 +245,9 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 		bo := backoff.WithContext(
 			backoff.WithMaxRetries(
 				backoff.NewExponentialBackOff(
-					backoff.WithInitialInterval(time.Second)),
-				5),
+					backoff.WithInitialInterval(2*time.Second),
+					backoff.WithMaxInterval(time.Second*10)),
+				10),
 			ctx,
 		)
 
