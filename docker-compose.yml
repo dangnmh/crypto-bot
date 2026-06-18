@@ -27,6 +27,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./deploy/grafana/provisioning/datasources/postgres-local.yaml:/etc/grafana/provisioning/datasources/postgres.yaml
+      - ./deploy/grafana/provisioning/datasources/prometheus-local.yaml:/etc/grafana/provisioning/datasources/prometheus-local.yaml
       - ./deploy/grafana/provisioning/dashboards/provider-local.yaml:/etc/grafana/provisioning/dashboards/provider.yaml
       - ./deploy/grafana/dashboards:/etc/grafana/dashboards
       - grafana_data:/var/lib/grafana
@@ -55,6 +56,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: cryptobot-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus-local.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - bot
     restart: unless-stopped
 
 volumes:

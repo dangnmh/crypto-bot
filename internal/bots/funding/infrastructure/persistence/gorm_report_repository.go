@@ -12,6 +12,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 )
 
 // ReversionTradeReport is the GORM database model representing a finalized trade reversion cycle.
@@ -152,6 +154,10 @@ func InitDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	if err := db.Use(otelgorm.NewPlugin()); err != nil {
+		return nil, fmt.Errorf("failed to register otelgorm plugin: %w", err)
 	}
 
 	if err := db.AutoMigrate(&ReversionTradeReport{}); err != nil {

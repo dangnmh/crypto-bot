@@ -67,3 +67,31 @@ resource "kubernetes_config_map" "grafana_datasource_postgres" {
     })
   }
 }
+
+# 5. Install Prometheus Server
+resource "helm_release" "prometheus" {
+  name             = "prometheus"
+  repository       = "https://prometheus-community.github.io/helm-charts"
+  chart            = "prometheus"
+  namespace        = "default"
+  create_namespace = false
+
+  values = [
+    file("${path.module}/../k8s/prometheus-values.yaml")
+  ]
+}
+
+# 6. Deploy Kubernetes ConfigMap for Grafana Prometheus Datasource
+resource "kubernetes_config_map" "grafana_datasource_prometheus" {
+  metadata {
+    name      = "grafana-datasource-prometheus"
+    namespace = "default"
+    labels = {
+      grafana_datasource = "1"
+    }
+  }
+
+  data = {
+    "prometheus.yaml" = file("${path.module}/../grafana/provisioning/datasources/prometheus.yaml")
+  }
+}

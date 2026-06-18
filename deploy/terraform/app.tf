@@ -49,7 +49,10 @@ resource "kubernetes_deployment" "crypto_bot" {
           app = "crypto-bot"
         }
         annotations = {
-          "checksum/config" = sha256(jsonencode(kubernetes_config_map.crypto_bot_configs.data))
+          "checksum/config"      = sha256(jsonencode(kubernetes_config_map.crypto_bot_configs.data))
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/path"   = "/metrics"
+          "prometheus.io/port"   = "8080"
         }
       }
 

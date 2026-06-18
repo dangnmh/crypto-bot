@@ -274,7 +274,7 @@ func setupTestServer(t *testing.T, engine *app.Engine, port int) *server.APIServ
 	cfg.APIServer.Port = port
 	cfg.APIServer.Host = "127.0.0.1"
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	return server.NewAPIServer(engine, cfg, logger)
+	return server.NewAPIServer(engine, cfg, nil, logger)
 }
 
 func TestAPIServer_ExchangeValidationMiddleware(t *testing.T) {
@@ -468,6 +468,9 @@ func TestAPIServer_Lifecycle(t *testing.T) {
 				cfg.APIServer.Port = 9875
 				cfg.APIServer.Host = "127.0.0.1"
 				return cfg
+			},
+			func() http.Handler {
+				return nil
 			},
 			server.NewAPIServer,
 		),

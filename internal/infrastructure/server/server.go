@@ -14,6 +14,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/fx"
 )
 
@@ -27,17 +28,19 @@ const (
 )
 
 type APIServer struct {
-	engine *app.Engine
-	config *sysconfig.SystemConfig
-	log    *slog.Logger
-	server *http.Server
+	engine         *app.Engine
+	config         *sysconfig.SystemConfig
+	log            *slog.Logger
+	server         *http.Server
+	metricsHandler http.Handler
 }
 
-func NewAPIServer(engine *app.Engine, config *sysconfig.SystemConfig, log *slog.Logger) *APIServer {
+func NewAPIServer(engine *app.Engine, config *sysconfig.SystemConfig, metricsHandler http.Handler, log *slog.Logger) *APIServer {
 	return &APIServer{
-		engine: engine,
-		config: config,
-		log:    log.With("component", "api-server"),
+		engine:         engine,
+		config:         config,
+		metricsHandler: metricsHandler,
+		log:            log.With("component", "api-server"),
 	}
 }
 
@@ -52,6 +55,13 @@ func (s *APIServer) Start(ctx context.Context) error {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	// Register OpenTelemetry Gin middleware for metrics and tracing
+	r.Use(otelgin.Middleware("crypto-bot"))
+
+	if s.metricsHandler != nil {
+		r.GET("/metrics", gin.WrapH(s.metricsHandler))
+	}
 
 	debug := r.Group("/debug/:exchange")
 	debug.Use(s.exchangeValidationMiddleware())

@@ -1,0 +1,14 @@
+server:
+  persistentVolume:
+    enabled: true
+    size: 8Gi
+    storageClass: "local-path"
+  service:
+    type: ClusterIP
+    servicePort: 80
+
+alertmanager:
+  enabled: false
+
+pushgateway:
+  enabled: false
