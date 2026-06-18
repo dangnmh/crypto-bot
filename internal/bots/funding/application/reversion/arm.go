@@ -11,6 +11,8 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
+	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/store"
 )
 
 func (r *StatelessRunner) handleArm(ctx context.Context, startEvt CandidateFoundEvent) error {
@@ -151,14 +153,53 @@ func (r *StatelessRunner) waitForFreshPrice(ctx context.Context, symbol string, 
 	for {
 		select {
 		case <-waitCtx.Done():
-			return fmt.Errorf("wait for price data %s: %w", symbol, waitCtx.Err())
+			r.log.WarnContext(ctx, "Price data wait timed out, falling back to REST API ticker query", slog.String("symbol", symbol))
+			if err := r.fallbackRESTPrice(ctx, symbol); err != nil {
+				return fmt.Errorf("wait for price data %s: timed out and REST fallback failed: %w", symbol, err)
+			}
+			return nil
 		case pd, ok := <-updates:
 			if !ok {
-				return fmt.Errorf("wait for price data %s: %w", symbol, waitCtx.Err())
+				r.log.WarnContext(ctx, "Price subscription closed, falling back to REST API ticker query", slog.String("symbol", symbol))
+				if err := r.fallbackRESTPrice(ctx, symbol); err != nil {
+					return fmt.Errorf("wait for price data %s: sub closed and REST fallback failed: %w", symbol, err)
+				}
+				return nil
 			}
 			if pd != nil {
 				return nil
 			}
 		}
 	}
+}
+
+func (r *StatelessRunner) fallbackRESTPrice(ctx context.Context, symbol string) error {
+	tickers, err := r.deps.Client.GetTickers(ctx, symbol)
+	if err != nil {
+		return err
+	}
+	var found *exchange.Ticker
+	for _, t := range tickers {
+		if t.Symbol == symbol {
+			found = &t
+			break
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("symbol not found in REST tickers")
+	}
+	pd := &store.PriceData{
+		Symbol:    found.Symbol,
+		LastPrice: found.LastPrice,
+		BestBid:   found.Bid1,
+		BestAsk:   found.Ask1,
+		UpdatedAt: time.Now(),
+	}
+	writer, ok := r.deps.PriceStore.(store.PriceWriter)
+	if !ok {
+		return fmt.Errorf("price store does not support PriceWriter")
+	}
+	writer.UpdatePrice(symbol, pd)
+	r.log.WarnContext(ctx, "Successfully fetched and updated price from REST fallback", slog.String("symbol", symbol), slog.Float64("price", pd.LastPrice))
+	return nil
 }
