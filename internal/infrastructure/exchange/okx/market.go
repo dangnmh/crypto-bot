@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 
@@ -82,7 +83,7 @@ type okxDepthResponse struct {
 // Private raw methods invoking the OKX V5 REST API.
 
 func (c *Client) getRawServerTime(ctx context.Context) (*okxServerTimeResponse, error) {
-	body, err := c.GetCtx(ctx, pathServerTime, nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathServerTime, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +98,7 @@ func (c *Client) getRawContractDetails(ctx context.Context, req okxInstrumentsRe
 	params := map[string]string{
 		paramInstType: req.InstType,
 	}
-	body, err := c.GetCtx(ctx, pathInstruments, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathInstruments, params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +112,7 @@ func (c *Client) getRawTickers(ctx context.Context, req okxTickersRequest) ([]ok
 	if req.InstID != "" {
 		params[paramInstId] = req.InstID
 	}
-	body, err := c.GetCtx(ctx, pathTickers, params)
+	body, err := c.GetTickersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (c *Client) getRawFundingRate(ctx context.Context, req okxFundingRateReques
 	params := map[string]string{
 		paramInstId: req.InstID,
 	}
-	body, err := c.GetCtx(ctx, pathFundingRate, params)
+	body, err := c.GetFundingRateRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (c *Client) getRawKlines(ctx context.Context, req okxKlinesRequest) ([][]st
 		params[paramLimit] = req.Limit
 	}
 
-	body, err := c.GetCtx(ctx, pathKlines, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathKlines, params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +176,7 @@ func (c *Client) getRawDepthSnapshot(ctx context.Context, req okxDepthRequest) (
 	if req.Sz != "" {
 		params["sz"] = req.Sz
 	}
-	body, err := c.GetCtx(ctx, pathBooks, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathBooks, params, nil)
 	if err != nil {
 		return nil, err
 	}

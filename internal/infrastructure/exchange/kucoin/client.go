@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -115,44 +116,7 @@ func (c *Client) Get(ctx context.Context, path string, params map[string]string)
 
 // GetCtx makes a signed GET request with context.
 func (c *Client) GetCtx(ctx context.Context, path string, params map[string]string) ([]byte, error) {
-	urlPath := path
-	if len(params) > 0 {
-		parts := make([]string, 0, len(params))
-		for k, v := range params {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
-		}
-		urlPath += "?" + strings.Join(parts, "&")
-	}
-
-	url := c.baseURL + urlPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create GET request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	isPrivate := !strings.Contains(path, "/timestamp") &&
-		!strings.Contains(path, "/allTickers") &&
-		!strings.Contains(path, "/ticker") &&
-		!strings.Contains(path, "/contracts/active") &&
-		!strings.Contains(path, "/kline/query") &&
-		!strings.Contains(path, "/level2/snapshot") &&
-		!strings.Contains(path, "/bullet-public") &&
-		!strings.Contains(path, "/funding-rate/") &&
-		!strings.Contains(path, "/ua/v1/")
-
-	if isPrivate && c.apiKey != "" {
-		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
-		sig := SignRequest(c.apiSecret, ts, http.MethodGet, urlPath, "")
-		req.Header.Set(headerKey, c.apiKey)
-		req.Header.Set(headerSign, sig)
-		req.Header.Set(headerTimestamp, ts)
-		req.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
-		req.Header.Set(headerVersion, "2")
-	}
-
-	return c.doRequest(ctx, req)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }
 
 // Post makes a signed POST request.
@@ -162,30 +126,54 @@ func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error
 
 // PostCtx makes a signed POST request with context.
 func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, error) {
-	url := c.baseURL + path
-
-	var bodyReader io.Reader
-	var bodyStr string
+	var bodyBytes []byte
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal POST body: %w", err)
 		}
-		bodyReader = bytes.NewReader(bodyBytes)
-		bodyStr = string(bodyBytes)
+	}
+	return c.RawRequest(ctx, http.MethodPost, path, nil, bodyBytes)
+}
+
+// RawRequest makes a signed HTTP request of any method to the Kucoin API.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	reqURL, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse path: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bodyReader)
+	q := reqURL.Query()
+	for k, v := range query {
+		q.Set(k, v)
+	}
+	if len(q) > 0 {
+		reqURL.RawQuery = q.Encode()
+	}
+	urlPath := reqURL.String()
+
+	fullURL := c.baseURL + urlPath
+
+	var bodyReader io.Reader
+	var bodyStr string
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
+		bodyStr = string(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("create POST request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	isPrivate := !strings.Contains(path, "/bullet-public")
+	isPrivate := isKucoinPrivatePath(path)
+
 	if isPrivate && c.apiKey != "" {
 		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
-		sig := SignRequest(c.apiSecret, ts, http.MethodPost, path, bodyStr)
+		sig := SignRequest(c.apiSecret, ts, method, urlPath, bodyStr)
 		req.Header.Set(headerKey, c.apiKey)
 		req.Header.Set(headerSign, sig)
 		req.Header.Set(headerTimestamp, ts)
@@ -235,4 +223,58 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 // SupportLeverageOnOrder returns false since KuCoin doesn't support setting leverage directly on orders.
 func (c *Client) SupportLeverageOnOrder() bool {
 	return true
+}
+
+func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/account-overview", params, nil)
+}
+
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	path := fmt.Sprintf("/api/v1/funding-rate/%s/current", symbol)
+	return c.RawRequest(ctx, http.MethodGet, path, nil, nil)
+}
+
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if params["symbol"] != "" {
+		return c.RawRequest(ctx, http.MethodGet, "/api/v1/ticker", params, nil)
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/allTickers", params, nil)
+}
+
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/positions", params, nil)
+}
+
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/history-positions", params, nil)
+}
+
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	path := fmt.Sprintf("/api/v1/orders/%s", orderID)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/orders", params, nil)
+}
+
+func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/fills", params, nil)
+}
+
+func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/history-positions", params, nil)
+}
+
+func isKucoinPrivatePath(path string) bool {
+	return !strings.Contains(path, "/timestamp") &&
+		!strings.Contains(path, "/allTickers") &&
+		!strings.Contains(path, "/ticker") &&
+		!strings.Contains(path, "/contracts/active") &&
+		!strings.Contains(path, "/kline/query") &&
+		!strings.Contains(path, "/level2/snapshot") &&
+		!strings.Contains(path, "/bullet-public") &&
+		!strings.Contains(path, "/funding-rate/") &&
+		!strings.Contains(path, "/ua/v1/")
 }

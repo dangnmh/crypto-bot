@@ -102,3 +102,22 @@ type RealClock struct{}
 func (RealClock) Now() time.Time {
 	return time.Now()
 }
+
+// RawRequester is an optional interface that exchange REST clients can implement
+// to allow raw, signed HTTP requests for debugging or proxying.
+type RawRequester interface {
+	RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error)
+}
+
+// RawRequest is a unified interface that exposes exchange endpoints returning raw bytes.
+type RawRequest interface {
+	GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error)
+	GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error)
+}

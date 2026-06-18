@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -76,7 +77,7 @@ type kucoinFillsData struct {
 // Private raw methods invoking the KuCoin REST API.
 
 func (c *Client) getRawAssets(ctx context.Context, _ kucoinAssetsRequest) (*kucoinAccountOverview, error) {
-	body, err := c.GetCtx(ctx, pathAccountBalance, nil)
+	body, err := c.GetAssetsRaw(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func (c *Client) getRawAssets(ctx context.Context, _ kucoinAssetsRequest) (*kuco
 }
 
 func (c *Client) getRawOpenPositions(ctx context.Context, _ kucoinOpenPositionsRequest) ([]kucoinPosition, error) {
-	body, err := c.GetCtx(ctx, pathOpenPositions, nil)
+	body, err := c.GetOpenPositionsRaw(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +102,7 @@ func (c *Client) getRawOrderByClientOid(ctx context.Context, clientOid string) (
 	params := map[string]string{
 		constantClientOid: clientOid,
 	}
-	body, err := c.GetCtx(ctx, pathGetOrderByClientOid, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathGetOrderByClientOid, params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +117,7 @@ func (c *Client) getRawFills(ctx context.Context, orderID string) ([]kucoinFillI
 	params := map[string]string{
 		"orderId": orderID,
 	}
-	body, err := c.GetCtx(ctx, pathFills, params)
+	body, err := c.GetOrderDealsRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func (c *Client) getRawPositionsHistory(ctx context.Context, symbol string, star
 	if !startTime.IsZero() {
 		params["from"] = strconv.FormatInt(startTime.UnixMilli(), 10)
 	}
-	body, err := c.GetCtx(ctx, pathPositionsHistory, params)
+	body, err := c.GetHistoryPositionsRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}

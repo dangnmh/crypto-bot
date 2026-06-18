@@ -77,7 +77,7 @@ func (c *Client) getRawBalance(ctx context.Context, req okxBalanceRequest) ([]ok
 	if req.Ccy != "" {
 		params["ccy"] = req.Ccy
 	}
-	body, err := c.GetCtx(ctx, pathAccountBalance, params)
+	body, err := c.GetAssetsRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsReques
 	if req.InstID != "" {
 		params[paramInstId] = req.InstID
 	}
-	body, err := c.GetCtx(ctx, pathOpenPositions, params)
+	body, err := c.GetOpenPositionsRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (c *Client) getRawClosedPositions(ctx context.Context, req okxClosedPositio
 	if req.Begin != "" {
 		params["before"] = req.Begin
 	}
-	body, err := c.GetCtx(ctx, "/api/v5/account/positions-history", params)
+	body, err := c.GetClosedPnLRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}

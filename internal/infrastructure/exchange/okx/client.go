@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -116,40 +118,7 @@ func (c *Client) Get(ctx context.Context, path string, params map[string]string)
 
 // GetCtx makes a signed GET request with context.
 func (c *Client) GetCtx(ctx context.Context, path string, params map[string]string) ([]byte, error) {
-	urlPath := path
-	if len(params) > 0 {
-		keys := make([]string, 0, len(params))
-		for k := range params {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		parts := make([]string, 0, len(params))
-		for _, k := range keys {
-			parts = append(parts, fmt.Sprintf("%s=%s", k, params[k]))
-		}
-		urlPath += "?" + strings.Join(parts, "&")
-	}
-
-	url := c.baseURL + urlPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create GET request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	// OKX private endpoints require credentials
-	isPrivate := !strings.Contains(path, "/public/") && !strings.Contains(path, "/market/")
-	if isPrivate && c.apiKey != "" {
-		ts := c.clock.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-		sig := SignRequest(c.apiSecret, ts, http.MethodGet, urlPath, "")
-		req.Header.Set("OK-ACCESS-KEY", c.apiKey)
-		req.Header.Set("OK-ACCESS-SIGN", sig)
-		req.Header.Set("OK-ACCESS-TIMESTAMP", ts)
-		req.Header.Set("OK-ACCESS-PASSPHRASE", c.passphrase)
-	}
-
-	return c.doRequest(ctx, req)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }
 
 // Post makes a signed POST request.
@@ -159,29 +128,54 @@ func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error
 
 // PostCtx makes a signed POST request with context.
 func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, error) {
-	url := c.baseURL + path
-
-	var bodyReader io.Reader
-	var bodyStr string
+	var bodyBytes []byte
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal POST body: %w", err)
 		}
-		bodyReader = bytes.NewReader(bodyBytes)
-		bodyStr = string(bodyBytes)
+	}
+	return c.RawRequest(ctx, http.MethodPost, path, nil, bodyBytes)
+}
+
+// RawRequest makes a signed HTTP request of any method to the OKX API.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	reqURL, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse path: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bodyReader)
+	q := reqURL.Query()
+	for k, v := range query {
+		q.Set(k, v)
+	}
+
+	if len(q) > 0 {
+		reqURL.RawQuery = buildOKXQueryString(q)
+	}
+	urlPath := reqURL.String()
+
+	fullURL := c.baseURL + urlPath
+
+	var bodyReader io.Reader
+	var bodyStr string
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
+		bodyStr = string(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("create POST request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	if c.apiKey != "" {
+	isPrivate := !strings.Contains(path, "/public/") && !strings.Contains(path, "/market/")
+	if isPrivate && c.apiKey != "" {
 		ts := c.clock.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-		sig := SignRequest(c.apiSecret, ts, http.MethodPost, path, bodyStr)
+		sig := SignRequest(c.apiSecret, ts, method, urlPath, bodyStr)
 		req.Header.Set("OK-ACCESS-KEY", c.apiKey)
 		req.Header.Set("OK-ACCESS-SIGN", sig)
 		req.Header.Set("OK-ACCESS-TIMESTAMP", ts)
@@ -230,4 +224,89 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 // SupportLeverageOnOrder returns false since OKX doesn't support setting leverage directly on orders.
 func (c *Client) SupportLeverageOnOrder() bool {
 	return false
+}
+
+func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/balance", params, nil)
+}
+
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/public/funding-rate", params, nil)
+}
+
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["instType"] == "" {
+		p["instType"] = instTypeSwap
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/market/tickers", p, nil)
+}
+
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["instType"] == "" {
+		p["instType"] = instTypeSwap
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions", p, nil)
+}
+
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["instType"] == "" {
+		p["instType"] = instTypeSwap
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions-history", p, nil)
+}
+
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	p["ordId"] = orderID
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/order", p, nil)
+}
+
+func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["instType"] == "" {
+		p["instType"] = instTypeSwap
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/orders-pending", p, nil)
+}
+
+func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["instType"] == "" {
+		p["instType"] = instTypeSwap
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/trade/fills", p, nil)
+}
+
+func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["instType"] == "" {
+		p["instType"] = instTypeSwap
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions-history", p, nil)
+}
+
+func buildOKXQueryString(q url.Values) string {
+	if len(q) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(q))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, q.Get(k)))
+	}
+	return strings.Join(parts, "&")
 }

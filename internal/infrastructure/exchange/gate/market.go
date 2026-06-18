@@ -2,8 +2,8 @@ package gate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -41,68 +41,86 @@ type gateDepthRequest struct {
 // Private raw methods using raw HTTP requests.
 
 func (c *Client) getRawServerTime(ctx context.Context) (*gateSystemTime, error) {
-	var result gateSystemTime
-	err := c.sendRequest(ctx, "GET", "/spot/time", nil, nil, &result)
+	body, err := c.RawRequest(ctx, "GET", "/spot/time", nil, nil)
 	if err != nil {
 		return nil, err
+	}
+	var result gateSystemTime
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
 }
 
 func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsRequest) ([]gateContract, error) {
-	var result []gateContract
 	path := fmt.Sprintf("/futures/%s/contracts", req.Settle)
-	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
+	body, err := c.RawRequest(ctx, "GET", path, nil, nil)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateContract
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]gateFuturesTicker, error) {
-	var result []gateFuturesTicker
-	query := url.Values{}
-	if req.Contract != "" {
-		query.Set("contract", req.Contract)
+	params := map[string]string{
+		paramSettle: req.Settle,
 	}
-	path := fmt.Sprintf("/futures/%s/tickers", req.Settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	if req.Contract != "" {
+		params[paramContract] = req.Contract
+	}
+	body, err := c.GetTickersRaw(ctx, params)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateFuturesTicker
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawKlines(ctx context.Context, req gateKlinesRequest) ([]gateFuturesCandlestick, error) {
-	var result []gateFuturesCandlestick
-	query := url.Values{}
-	query.Set("contract", req.Contract)
-	query.Set("interval", req.Interval)
+	params := map[string]string{
+		paramContract: req.Contract,
+		"interval":    req.Interval,
+	}
 	if req.From > 0 {
-		query.Set("from", strconv.FormatInt(req.From, 10))
+		params["from"] = strconv.FormatInt(req.From, 10)
 	}
 	if req.To > 0 {
-		query.Set("to", strconv.FormatInt(req.To, 10))
+		params["to"] = strconv.FormatInt(req.To, 10)
 	}
 	path := fmt.Sprintf("/futures/%s/candlesticks", req.Settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	body, err := c.RawRequest(ctx, "GET", path, params, nil)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateFuturesCandlestick
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawDepthSnapshot(ctx context.Context, req gateDepthRequest) (*gateFuturesOrderBook, error) {
-	var result gateFuturesOrderBook
-	query := url.Values{}
-	query.Set("contract", req.Contract)
+	params := map[string]string{
+		paramContract: req.Contract,
+	}
 	if req.Limit > 0 {
-		query.Set("limit", strconv.Itoa(req.Limit))
+		params["limit"] = strconv.Itoa(req.Limit)
 	}
 	path := fmt.Sprintf("/futures/%s/order_book", req.Settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	body, err := c.RawRequest(ctx, "GET", path, params, nil)
 	if err != nil {
 		return nil, err
+	}
+	var result gateFuturesOrderBook
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
 }

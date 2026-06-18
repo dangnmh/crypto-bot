@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"crypto-bot/internal/infrastructure/exchange"
 )
@@ -125,7 +126,7 @@ type mexcRawCommit struct {
 // Private raw methods invoking the MEXC API.
 
 func (c *Client) rawPing(ctx context.Context) ([]byte, error) {
-	return c.GetCtx(ctx, "/api/v1/contract/ping", nil)
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/ping", nil, nil)
 }
 
 func (c *Client) getRawServerTime(ctx context.Context) (int64, error) {
@@ -137,7 +138,7 @@ func (c *Client) getRawServerTime(ctx context.Context) (int64, error) {
 }
 
 func (c *Client) getRawContractDetails(ctx context.Context) ([]mexcContractDetail, error) {
-	body, err := c.GetCtx(ctx, "/api/v1/contract/detail", nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/detail", nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -145,12 +146,12 @@ func (c *Client) getRawContractDetails(ctx context.Context) ([]mexcContractDetai
 }
 
 func (c *Client) getRawTickers(ctx context.Context, req mexcTickersRequest) ([]mexcTicker, error) {
-	params := map[string]any{}
+	params := map[string]string{}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
 	}
 
-	body, err := c.GetCtx(ctx, "/api/v1/contract/ticker", params)
+	body, err := c.GetTickersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -173,11 +174,11 @@ func (c *Client) getRawTickers(ctx context.Context, req mexcTickersRequest) ([]m
 }
 
 func (c *Client) getRawFundingRate(ctx context.Context, req mexcFundingRateRequest) (*mexcFundingRate, error) {
-	params := map[string]any{}
+	params := map[string]string{}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
 	}
-	body, err := c.GetCtx(ctx, "/api/v1/contract/funding_rate", params)
+	body, err := c.GetFundingRateRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -194,12 +195,12 @@ func (c *Client) getRawFundingRate(ctx context.Context, req mexcFundingRateReque
 }
 
 func (c *Client) getRawFundingRateHistory(ctx context.Context, req mexcFundingRateHistoryRequest) ([]mexcFundingRateHistory, error) {
-	params := map[string]any{
+	params := map[string]string{
 		paramSymbol: req.Symbol,
 		pageNumKey:  req.PageNum,
 		pageSizeKey: req.PageSize,
 	}
-	body, err := c.GetCtx(ctx, "/api/v1/contract/funding_rate/history", params)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/funding_rate/history", params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +215,7 @@ func (c *Client) getRawFundingRateHistory(ctx context.Context, req mexcFundingRa
 }
 
 func (c *Client) getRawKlines(ctx context.Context, req mexcKlinesRequest) (*mexcKlineData, error) {
-	params := map[string]any{
+	params := map[string]string{
 		paramInterval: req.Interval,
 	}
 	if req.Start != "" {
@@ -223,7 +224,8 @@ func (c *Client) getRawKlines(ctx context.Context, req mexcKlinesRequest) (*mexc
 	if req.End != "" {
 		params["end"] = req.End
 	}
-	body, err := c.GetCtx(ctx, "/api/v1/contract/kline/"+req.Symbol, params)
+	path := "/api/v1/contract/kline/" + req.Symbol
+	body, err := c.RawRequest(ctx, http.MethodGet, path, params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -235,11 +237,12 @@ func (c *Client) getRawKlines(ctx context.Context, req mexcKlinesRequest) (*mexc
 }
 
 func (c *Client) getRawDepthSnapshot(ctx context.Context, req mexcDepthRequest) (*mexcDepthData, error) {
-	params := map[string]any{}
+	params := map[string]string{}
 	if req.Limit != "" {
 		params["limit"] = req.Limit
 	}
-	body, err := c.GetCtx(ctx, "/api/v1/contract/depth/"+req.Symbol, params)
+	path := "/api/v1/contract/depth/" + req.Symbol
+	body, err := c.RawRequest(ctx, http.MethodGet, path, params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +255,7 @@ func (c *Client) getRawDepthSnapshot(ctx context.Context, req mexcDepthRequest) 
 
 func (c *Client) getRawDepthCommits(ctx context.Context, req mexcDepthCommitsRequest) ([]mexcRawCommit, error) {
 	path := fmt.Sprintf("/api/v1/contract/depth_commits/%s/%d", req.Symbol, req.Limit)
-	body, err := c.GetCtx(ctx, path, nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err
 	}

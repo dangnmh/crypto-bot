@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -101,12 +102,25 @@ func (c *Client) SetClock(clk exchange.Clock) {
 
 // request sends a raw HTTP request to the Binance API, automatically signing it if required.
 func (c *Client) request(ctx context.Context, method, path string, params map[string]any, signed bool, result any) error {
-	urlPath := path
-	if len(params) > 0 || signed {
-		urlPath += "?" + c.encodeParams(params, signed)
+	reqURL, err := url.Parse(path)
+	if err != nil {
+		return fmt.Errorf("parse path: %w", err)
 	}
 
-	fullURL := c.baseURL + urlPath
+	// Extract existing query parameters
+	mergedParams := make(map[string]any)
+	for k, vs := range reqURL.Query() {
+		if len(vs) > 0 {
+			mergedParams[k] = vs[0]
+		}
+	}
+	maps.Copy(mergedParams, params)
+
+	if len(mergedParams) > 0 || signed {
+		reqURL.RawQuery = c.encodeParams(mergedParams, signed)
+	}
+
+	fullURL := c.baseURL + reqURL.String()
 	req, err := http.NewRequestWithContext(ctx, method, fullURL, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create HTTP request: %w", err)
@@ -130,23 +144,7 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == 418 {
-			return &exchange.RateLimitError{
-				Message: string(body),
-				Path:    path,
-			}
-		}
-		// Skip warning logs and return nil if margin type change is not needed
-		bodyStr := string(body)
-		if strings.Contains(bodyStr, "-4046") || strings.Contains(strings.ToLower(bodyStr), "no need to change") {
-			return nil
-		}
-		c.logger.WarnContext(ctx, "🟡 Binance Non-200 response",
-			"status", resp.StatusCode,
-			"path", path,
-			"body", bodyStr,
-		)
-		return fmt.Errorf("binance API error: status=%d body=%s", resp.StatusCode, bodyStr)
+		return handleBinanceError(ctx, resp.StatusCode, body, path, c.logger)
 	}
 
 	if result != nil {
@@ -274,4 +272,23 @@ func (g *gzipReadCloser) Close() error {
 		return err1
 	}
 	return err2
+}
+
+func handleBinanceError(ctx context.Context, statusCode int, body []byte, path string, logger *slog.Logger) error {
+	if statusCode == http.StatusTooManyRequests || statusCode == 418 {
+		return &exchange.RateLimitError{
+			Message: string(body),
+			Path:    path,
+		}
+	}
+	bodyStr := string(body)
+	if strings.Contains(bodyStr, "-4046") || strings.Contains(strings.ToLower(bodyStr), "no need to change") {
+		return nil
+	}
+	logger.WarnContext(ctx, "🟡 Binance Non-200 response",
+		"status", statusCode,
+		"path", path,
+		"body", bodyStr,
+	)
+	return fmt.Errorf("binance API error: status=%d body=%s", statusCode, bodyStr)
 }

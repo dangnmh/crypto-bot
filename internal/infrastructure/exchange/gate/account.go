@@ -2,9 +2,9 @@ package gate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,70 +30,94 @@ type gatePositionsRequest struct {
 // Private raw methods invoking HTTP requests.
 
 func (c *Client) getRawAssets(ctx context.Context, req gateAssetsRequest) (*gateFuturesAccount, error) {
-	var result gateFuturesAccount
-	path := fmt.Sprintf("/futures/%s/accounts", req.Settle)
-	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
+	params := map[string]string{
+		paramSettle: req.Settle,
+	}
+	body, err := c.GetAssetsRaw(ctx, params)
 	if err != nil {
 		return nil, err
+	}
+	var result gateFuturesAccount
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
 }
 
 func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
-	var result []gatePosition
+	params := map[string]string{
+		paramSettle: req.Settle,
+	}
 	path := fmt.Sprintf("/futures/%s/dual_comp/positions/%s", req.Settle, req.Symbol)
-	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
+	body, err := c.RawRequest(ctx, "GET", path, params, nil)
 	if err != nil {
 		return nil, err
+	}
+	var result []gatePosition
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
-	var result []gatePosition
-	path := fmt.Sprintf("/futures/%s/positions", req.Settle)
-	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
+	params := map[string]string{
+		paramSettle: req.Settle,
+	}
+	body, err := c.GetOpenPositionsRaw(ctx, params)
 	if err != nil {
 		return nil, err
+	}
+	var result []gatePosition
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawMyTrades(ctx context.Context, settle, contract string, orderID int64) ([]gateMyTrade, error) {
-	var result []gateMyTrade
-	query := url.Values{}
+	params := map[string]string{
+		paramSettle: settle,
+	}
 	if contract != "" {
-		query.Set("contract", contract)
+		params[paramContract] = contract
 	}
 	if orderID > 0 {
-		query.Set("order", strconv.FormatInt(orderID, 10))
+		params["order"] = strconv.FormatInt(orderID, 10)
 	}
-	query.Set("limit", "100")
-	path := fmt.Sprintf("/futures/%s/my_trades", settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	params["limit"] = "100"
+	body, err := c.GetOrderDealsRaw(ctx, params)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateMyTrade
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, changeType string, startTime time.Time) ([]gateAccountBook, error) {
-	var result []gateAccountBook
-	query := url.Values{}
+	params := map[string]string{
+		paramSettle: settle,
+	}
 	if contract != "" {
-		query.Set("contract", contract)
+		params[paramContract] = contract
 	}
 	if changeType != "" {
-		query.Set("type", changeType)
+		params["type"] = changeType
 	}
 	if !startTime.IsZero() {
-		query.Set("from", strconv.FormatInt(startTime.Unix(), 10))
+		params["from"] = strconv.FormatInt(startTime.Unix(), 10)
 	}
-	query.Set("limit", "100")
-	path := fmt.Sprintf("/futures/%s/account_book", settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	params["limit"] = "100"
+	body, err := c.GetClosedPnLRaw(ctx, params)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateAccountBook
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }

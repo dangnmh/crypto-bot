@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/config"
@@ -102,37 +104,6 @@ func (c *Client) SupportLeverageOnOrder() bool {
 	return true
 }
 
-func (c *Client) buildRequestPayload(method string, params any) (io.Reader, []byte, string, error) {
-	if method == http.MethodGet {
-		if params == nil {
-			return nil, nil, "", nil
-		}
-		var paramsMap map[string]any
-		if m, ok := params.(map[string]any); ok {
-			paramsMap = m
-		} else {
-			paramsMap = structToMap(params)
-		}
-		if len(paramsMap) == 0 {
-			return nil, nil, "", nil
-		}
-		vals := url.Values{}
-		for k, v := range paramsMap {
-			vals.Set(k, fmt.Sprintf("%v", v))
-		}
-		return nil, nil, vals.Encode(), nil
-	}
-
-	if params == nil {
-		return nil, nil, "", nil
-	}
-	bodyBytes, err := json.Marshal(params)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("marshal request body: %w", err)
-	}
-	return bytes.NewReader(bodyBytes), bodyBytes, "", nil
-}
-
 func (c *Client) signRequest(method string, bodyBytes []byte, queryString string) (string, string) {
 	ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 	recvWindow := "5000"
@@ -151,16 +122,30 @@ func (c *Client) signRequest(method string, bodyBytes []byte, queryString string
 	return ts, signature
 }
 
-func (c *Client) sendRequest(ctx context.Context, method, path string, params any, isSigned bool) ([]byte, error) {
-	bodyReader, bodyBytes, queryString, err := c.buildRequestPayload(method, params)
-	if err != nil {
-		return nil, err
+// RawRequest makes a signed HTTP request of any method to the Bybit V5 API.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	var bodyReader io.Reader
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
 	}
 
-	urlPath := c.baseURL + path
-	if method == http.MethodGet && queryString != "" {
-		urlPath += "?" + queryString
+	reqURL, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse URL: %w", err)
 	}
+
+	var queryString string
+	if method == http.MethodGet || method == http.MethodDelete {
+		q := reqURL.Query()
+		for k, v := range query {
+			q.Set(k, v)
+		}
+		if len(q) > 0 {
+			queryString = q.Encode()
+			reqURL.RawQuery = queryString
+		}
+	}
+	urlPath := reqURL.String()
 
 	req, err := http.NewRequestWithContext(ctx, method, urlPath, bodyReader)
 	if err != nil {
@@ -168,12 +153,13 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, params an
 	}
 
 	req.Header.Set("User-Agent", "bybit.api.go/1.0.7")
-	if method != http.MethodGet && bodyBytes != nil {
+	if method != http.MethodGet && len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	isSigned := c.apiKey != "" && !strings.Contains(path, "/market/")
 	if isSigned {
-		ts, signature := c.signRequest(method, bodyBytes, queryString)
+		ts, signature := c.signRequest(method, body, queryString)
 		req.Header.Set("X-BAPI-API-KEY", c.apiKey)
 		req.Header.Set("X-BAPI-SIGN-TYPE", "2")
 		req.Header.Set("X-BAPI-TIMESTAMP", ts)
@@ -229,4 +215,86 @@ func decodeListResponse[T any](body []byte, errPrefix string) ([]T, error) {
 		return nil, fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
 	}
 	return resp.Result.List, nil
+}
+
+func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["accountType"] == "" {
+		p["accountType"] = c.accountType
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/account/wallet-balance", p, nil)
+}
+
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/market/tickers", p, nil)
+}
+
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/market/tickers", p, nil)
+}
+
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/position/list", p, nil)
+}
+
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/position/closed-pnl", p, nil)
+}
+
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	p["orderId"] = orderID
+	return c.RawRequest(ctx, http.MethodGet, "/v5/order/realtime", p, nil)
+}
+
+func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/order/realtime", p, nil)
+}
+
+func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/execution/list", p, nil)
+}
+
+func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	if p["category"] == "" {
+		p["category"] = categoryLinear
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/v5/position/closed-pnl", p, nil)
 }

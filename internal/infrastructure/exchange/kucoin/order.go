@@ -2,6 +2,7 @@ package kucoin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -88,7 +89,11 @@ func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderReques
 	if req.TriggerStopUpPrice != "" || req.TriggerStopDownPrice != "" {
 		path = "/api/v1/st-orders"
 	}
-	body, err := c.PostCtx(ctx, path, req)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("kucoin marshal create order request: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, path, nil, bodyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -102,24 +107,7 @@ func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderReques
 
 func (c *Client) cancelRawOrder(ctx context.Context, req kucoinCancelOrderRequest) (*kucoinCancelOrderResponse, error) {
 	path := fmt.Sprintf("%s/%s", pathCancelOrder, req.OrderID)
-	url := c.baseURL + path
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create DELETE request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
-		sig := SignRequest(c.apiSecret, ts, http.MethodDelete, path, "")
-		httpReq.Header.Set(headerKey, c.apiKey)
-		httpReq.Header.Set(headerSign, sig)
-		httpReq.Header.Set(headerTimestamp, ts)
-		httpReq.Header.Set(headerAuthPhrase, SignPassphrase(c.apiSecret, c.passphrase))
-		httpReq.Header.Set(headerVersion, "2")
-	}
-
-	body, err := c.doRequest(ctx, httpReq)
+	body, err := c.RawRequest(ctx, http.MethodDelete, path, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +119,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req kucoinCancelOrderReques
 }
 
 func (c *Client) getRawOrder(ctx context.Context, req kucoinOrderRequest) (*kucoinOrder, error) {
-	path := fmt.Sprintf("%s/%s", pathGetOrder, req.OrderID)
-	body, err := c.GetCtx(ctx, path, nil)
+	body, err := c.GetOrderDetailRaw(ctx, req.OrderID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +139,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersReque
 		params[paramSymbol] = req.Symbol
 	}
 
-	body, err := c.GetCtx(ctx, pathPendingOrders, params)
+	body, err := c.GetOrdersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -464,7 +451,11 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 		bodyMap["triggerStopDownPrice"] = decmath.FormatFloat(stopDownPrice)
 	}
 
-	body, err := c.PostCtx(ctx, "/api/v1/st-orders", bodyMap)
+	bodyBytes, err := json.Marshal(bodyMap)
+	if err != nil {
+		return fmt.Errorf("kucoin marshal place tpsl request: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/api/v1/st-orders", nil, bodyBytes)
 	if err != nil {
 		return err
 	}
@@ -529,7 +520,11 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		paramSymbol:  symbol,
 		"marginMode": marginMode,
 	}
-	body, err := c.PostCtx(ctx, "/api/v2/position/changeMarginMode", bodyMap)
+	bodyBytes, err := json.Marshal(bodyMap)
+	if err != nil {
+		return fmt.Errorf("kucoin marshal switch margin mode request: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/api/v2/position/changeMarginMode", nil, bodyBytes)
 	if err != nil {
 		return err
 	}

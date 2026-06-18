@@ -108,7 +108,7 @@ type bybitOrderbookResult struct {
 // Private raw methods invoking the Bybit SDK.
 
 func (c *Client) getRawServerTime(ctx context.Context, _ bybitServerTimeRequest) (int64, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/time", nil, false)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/time", nil, nil)
 	if err != nil {
 		return 0, fmt.Errorf("bybit get server time: %w", err)
 	}
@@ -127,13 +127,14 @@ func (c *Client) getRawServerTime(ctx context.Context, _ bybitServerTimeRequest)
 }
 
 func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentInfoRequest) (*bybitInstrumentsInfoResult, error) {
-	params := map[string]any{
-		categoryKey: req.Category,
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
 	}
 	if req.Limit > 0 {
-		params[limitKey] = req.Limit
+		params["limit"] = fmt.Sprintf("%d", req.Limit)
 	}
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/instruments-info", params, false)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/instruments-info", params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("bybit list contracts: %w", err)
 	}
@@ -145,13 +146,14 @@ func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentIn
 }
 
 func (c *Client) getRawMarketTickers(ctx context.Context, req bybitMarketTickersRequest) (*bybitTickerList, error) {
-	params := map[string]any{
-		categoryKey: req.Category,
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
 	}
 	if req.Symbol != "" {
-		params[symbolKey] = req.Symbol
+		params["symbol"] = req.Symbol
 	}
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/tickers", params, false)
+	body, err := c.GetTickersRaw(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("bybit list tickers: %w", err)
 	}
@@ -177,18 +179,23 @@ func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*bybitTi
 }
 
 func (c *Client) getRawKlines(ctx context.Context, req bybitKlinesRequest) (*bybitKlineResult, error) {
-	params := map[string]any{
-		categoryKey: req.Category,
-		symbolKey:   req.Symbol,
-		"interval":  req.Interval,
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
+	}
+	if req.Interval != "" {
+		params["interval"] = req.Interval
 	}
 	if req.Start > 0 {
-		params["start"] = req.Start
+		params["start"] = fmt.Sprintf("%d", req.Start)
 	}
 	if req.End > 0 {
-		params["end"] = req.End
+		params["end"] = fmt.Sprintf("%d", req.End)
 	}
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/kline", params, false)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/kline", params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("bybit get klines: %w", err)
 	}
@@ -200,14 +207,17 @@ func (c *Client) getRawKlines(ctx context.Context, req bybitKlinesRequest) (*byb
 }
 
 func (c *Client) getRawDepthSnapshot(ctx context.Context, req bybitOrderbookRequest) (*bybitOrderbookResult, error) {
-	params := map[string]any{
-		categoryKey: req.Category,
-		symbolKey:   req.Symbol,
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
 	}
 	if req.Limit > 0 {
-		params[limitKey] = req.Limit
+		params["limit"] = fmt.Sprintf("%d", req.Limit)
 	}
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/market/orderbook", params, false)
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/orderbook", params, nil)
 	if err != nil {
 		return nil, fmt.Errorf("bybit order book: %w", err)
 	}

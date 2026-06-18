@@ -38,4 +38,7 @@ const (
 
 	gateMarginModeCross    = "CROSS"
 	gateMarginModeIsolated = "ISOLATED"
+
+	paramSettle   = "settle"
+	paramContract = "contract"
 )

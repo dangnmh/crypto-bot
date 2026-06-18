@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -67,7 +68,7 @@ type mexcHistoryPositionsRequest struct {
 // Private raw methods invoking the MEXC API.
 
 func (c *Client) getRawAssets(ctx context.Context) ([]mexcAssetInfo, error) {
-	body, err := c.GetCtx(ctx, "/api/v1/private/account/assets", nil)
+	body, err := c.GetAssetsRaw(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func (c *Client) getRawAssets(ctx context.Context) ([]mexcAssetInfo, error) {
 
 func (c *Client) getRawAssetByCurrency(ctx context.Context, req mexcAssetRequest) (*mexcAssetInfo, error) {
 	path := fmt.Sprintf("/api/v1/private/account/asset/%s", req.Currency)
-	body, err := c.GetCtx(ctx, path, nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +89,12 @@ func (c *Client) getRawAssetByCurrency(ctx context.Context, req mexcAssetRequest
 }
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req mexcPositionsRequest) ([]mexcPosition, error) {
-	params := map[string]any{}
+	params := map[string]string{}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
 	}
 
-	body, err := c.GetCtx(ctx, "/api/v1/private/position/open_positions", params)
+	body, err := c.GetOpenPositionsRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -101,17 +102,17 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req mexcPositionsReque
 }
 
 func (c *Client) getRawHistoryPositions(ctx context.Context, req mexcHistoryPositionsRequest) ([]mexcHistoryPosRow, error) {
-	histParams := map[string]any{
-		pageNumKey:  req.PageNum,
-		pageSizeKey: req.PageSize,
+	histParams := map[string]string{
+		pageNumKey:  fmt.Sprintf("%d", req.PageNum),
+		pageSizeKey: fmt.Sprintf("%d", req.PageSize),
 	}
 	if req.Symbol != "" {
 		histParams["symbol"] = req.Symbol
 	}
 	if req.StartTime > 0 {
-		histParams["start_time"] = req.StartTime
+		histParams["start_time"] = fmt.Sprintf("%d", req.StartTime)
 	}
-	histBody, err := c.GetCtx(ctx, "/api/v1/private/position/list/history_positions", histParams)
+	histBody, err := c.GetHistoryPositionsRaw(ctx, histParams)
 	if err != nil {
 		return nil, err
 	}

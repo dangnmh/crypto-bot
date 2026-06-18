@@ -97,7 +97,11 @@ type bybitOrder struct {
 // Private raw methods invoking the Bybit API.
 
 func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/order/create", req, true)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("bybit create order marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/order/create", nil, bodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("bybit create order: %w", err)
 	}
@@ -109,7 +113,11 @@ func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest
 }
 
 func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/trading-stop", req, true)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("bybit set trading stop marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/trading-stop", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit set trading stop: %w", err)
 	}
@@ -118,7 +126,11 @@ func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) er
 }
 
 func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest) error {
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/order/cancel", req, true)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("bybit cancel order marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/order/cancel", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit cancel order: %w", err)
 	}
@@ -136,7 +148,11 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest
 }
 
 func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllOpenOrdersRequest) error {
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/order/cancel-all", req, true)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("bybit cancel all orders marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/order/cancel-all", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit cancel all orders: %w", err)
 	}
@@ -145,7 +161,17 @@ func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllO
 }
 
 func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*bybitOrder, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/order/realtime", req, true)
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.OrderLinkID != "" {
+		params["orderLinkId"] = req.OrderLinkID
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
+	}
+	body, err := c.GetOrderDetailRaw(ctx, req.OrderID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +190,14 @@ func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*by
 }
 
 func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRequest) ([]bybitOrder, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/order/realtime", req, true)
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
+	}
+	body, err := c.GetOrdersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +205,11 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 }
 
 func (c *Client) changeRawLeverage(ctx context.Context, req bybitChangeLeverageRequest) error {
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/set-leverage", req, true)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("bybit change leverage marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/set-leverage", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit change leverage: %w", err)
 	}
@@ -410,7 +447,11 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		"buyLeverage":  leverageStr,
 		"sellLeverage": leverageStr,
 	}
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/switch-isolated", params, true)
+	bodyBytes, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Errorf("bybit switch margin mode marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/switch-isolated", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit switch margin mode: %w", err)
 	}
@@ -440,7 +481,11 @@ func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string)
 	utaParams := map[string]any{
 		paramSetMarginMode: utaMarginMode,
 	}
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/account/set-margin-mode", utaParams, true)
+	bodyBytes, err := json.Marshal(utaParams)
+	if err != nil {
+		return fmt.Errorf("bybit set account margin mode marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/account/set-margin-mode", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit set account margin mode: %w", err)
 	}
@@ -470,7 +515,11 @@ func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, position
 		"mode":      mode,
 	}
 
-	body, err := c.sendRequest(ctx, http.MethodPost, "/v5/position/switch-mode", params, true)
+	bodyBytes, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Errorf("bybit switch position mode marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/switch-mode", nil, bodyBytes)
 	if err != nil {
 		return fmt.Errorf("bybit switch position mode: %w", err)
 	}
@@ -615,19 +664,4 @@ func mapOrderInfo(raw bybitOrder) exchange.OrderInfo {
 	info.State = mapBybitStatus(raw.OrderStatus)
 
 	return info
-}
-
-// structToMap converts any struct to a map[string]any.
-func structToMap(val any) map[string]any {
-	data, err := json.Marshal(val)
-	if err != nil {
-		return nil
-	}
-	var res map[string]any
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.UseNumber()
-	if err := decoder.Decode(&res); err != nil {
-		return nil
-	}
-	return res
 }

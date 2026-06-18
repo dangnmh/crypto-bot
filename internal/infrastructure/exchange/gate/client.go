@@ -110,7 +110,7 @@ func (c *Client) addAuthHeaders(req *http.Request, method string, reqURL *url.UR
 }
 
 func handleResponse(resp *http.Response, respBody []byte, result any) error {
-	if resp.StatusCode >= 300 {
+	if resp != nil && resp.StatusCode >= 300 {
 		var apiErr struct {
 			Label   string `json:"label"`
 			Message string `json:"message"`
@@ -137,52 +137,91 @@ func handleResponse(resp *http.Response, respBody []byte, result any) error {
 
 // sendRequest makes a signed HTTP request to Gate.io and parses the response.
 func (c *Client) sendRequest(ctx context.Context, method, path string, query url.Values, bodyObj, result any) error {
-	reqURL, err := url.Parse(c.baseURL + path)
-	if err != nil {
-		return err
-	}
+	var queryMap map[string]string
 	if query != nil {
-		reqURL.RawQuery = query.Encode()
+		queryMap = make(map[string]string)
+		for k, v := range query {
+			if len(v) > 0 {
+				queryMap[k] = v[0]
+			}
+		}
 	}
 
 	var bodyBytes []byte
 	if bodyObj != nil {
+		var err error
 		bodyBytes, err = json.Marshal(bodyObj)
 		if err != nil {
 			return err
 		}
 	}
 
+	respBody, err := c.RawRequest(ctx, method, path, queryMap, bodyBytes)
+	if err != nil {
+		return err
+	}
+
+	return handleResponse(nil, respBody, result)
+}
+
+// RawRequest makes a signed HTTP request of any method to the Gate.io API.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	reqURL, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, err
+	}
+	q := reqURL.Query()
+	for k, v := range query {
+		q.Set(k, v)
+	}
+	if len(q) > 0 {
+		reqURL.RawQuery = q.Encode()
+	}
+
 	var bodyReader io.Reader
-	if bodyBytes != nil {
-		bodyReader = bytes.NewReader(bodyBytes)
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), bodyReader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Gate-API-Go-Client/v7")
 
-	c.addAuthHeaders(req, method, reqURL, bodyBytes)
+	c.addAuthHeaders(req, method, reqURL, body)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return handleResponse(resp, respBody, result)
+	if resp.StatusCode >= 300 {
+		var apiErr struct {
+			Label   string `json:"label"`
+			Message string `json:"message"`
+			Detail  string `json:"detail"`
+		}
+		if err := json.Unmarshal(respBody, &apiErr); err == nil && apiErr.Label != "" {
+			msg := apiErr.Message
+			if apiErr.Detail != "" {
+				msg = apiErr.Detail
+			}
+			return nil, fmt.Errorf("gate.io api error: label=%s message=%s", apiErr.Label, msg)
+		}
+		return nil, fmt.Errorf("gate.io http error: status=%d body=%s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
 }
 
 // WarmUp maintaining connection pool via periodic ping requests (/spot/time).
@@ -334,4 +373,85 @@ type gateFuturesOrder struct {
 	TpslSlTriggerPrice string `json:"tpsl_sl_trigger_price,omitempty"`
 	TpslTpPriceType    string `json:"tpsl_tp_price_type,omitempty"`
 	TpslSlPriceType    string `json:"tpsl_sl_price_type,omitempty"`
+}
+
+func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/accounts", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/tickers", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/tickers", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/positions", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/my_trades", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/orders/%s", settle, orderID)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/orders", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/my_trades", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	settle := params["settle"]
+	if settle == "" {
+		settle = gateSettleUsdt
+	}
+	path := fmt.Sprintf("/futures/%s/account_book", settle)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }

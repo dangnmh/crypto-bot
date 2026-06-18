@@ -2,8 +2,10 @@ package okx
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -120,7 +122,11 @@ type okxSetLeverageRequest struct {
 // Private raw methods invoking the OKX V5 REST API.
 
 func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) (*okxCreateOrderResult, error) {
-	body, err := c.PostCtx(ctx, pathPlaceOrder, req)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("okx marshal create order request: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, pathPlaceOrder, nil, bodyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +138,11 @@ func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) 
 }
 
 func (c *Client) cancelRawOrder(ctx context.Context, req okxCancelOrderRequest) (*okxCancelOrderResult, error) {
-	body, err := c.PostCtx(ctx, pathCancelOrder, req)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("okx marshal cancel order request: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, pathCancelOrder, nil, bodyBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +160,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]
 	if req.InstID != "" {
 		params[paramInstId] = req.InstID
 	}
-	body, err := c.GetCtx(ctx, pathPendingOrders, params)
+	body, err := c.GetOrdersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -161,13 +171,10 @@ func (c *Client) getRawOrderDetail(ctx context.Context, req okxOrderDetailReques
 	params := map[string]string{
 		"instId": req.InstID,
 	}
-	if req.OrdID != "" {
-		params["ordId"] = req.OrdID
-	}
 	if req.ClOrdID != "" {
 		params["clOrdId"] = req.ClOrdID
 	}
-	body, err := c.GetCtx(ctx, "/api/v5/trade/order", params)
+	body, err := c.GetOrderDetailRaw(ctx, req.OrdID, params)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +189,11 @@ func (c *Client) getRawOrderDetail(ctx context.Context, req okxOrderDetailReques
 }
 
 func (c *Client) setRawLeverage(ctx context.Context, req okxSetLeverageRequest) error {
-	body, err := c.PostCtx(ctx, pathSetLeverage, req)
+	bodyBytes, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("okx marshal set leverage request: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, pathSetLeverage, nil, bodyBytes)
 	if err != nil {
 		return err
 	}

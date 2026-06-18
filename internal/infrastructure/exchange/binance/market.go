@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -64,17 +65,26 @@ func (c *Client) getRawContractDetails(ctx context.Context, _ binanceContractDet
 }
 
 func getRawList[T any](c *Client, ctx context.Context, path, symbol, label string) ([]T, error) {
+	reqURL, err := url.Parse(path)
+	if err != nil {
+		return nil, fmt.Errorf("parse path: %w", err)
+	}
+
 	params := make(map[string]any)
+	for k, vs := range reqURL.Query() {
+		if len(vs) > 0 {
+			params[k] = vs[0]
+		}
+	}
 	if symbol != "" {
 		params["symbol"] = symbol
 	}
 
-	urlPath := path
 	if len(params) > 0 {
-		urlPath += "?" + c.encodeParams(params, false)
+		reqURL.RawQuery = c.encodeParams(params, false)
 	}
 
-	fullURL := c.baseURL + urlPath
+	fullURL := c.baseURL + reqURL.String()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, http.NoBody)
 	if err != nil {
 		return nil, err

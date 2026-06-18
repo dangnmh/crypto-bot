@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,33 +29,48 @@ type gatePositionCrossModeRequest struct {
 // Private raw methods invoking raw HTTP requests.
 
 func (c *Client) createRawOrder(ctx context.Context, settle string, order gateFuturesOrder) (*gateFuturesOrder, error) {
-	var result gateFuturesOrder
+	bodyBytes, err := json.Marshal(order)
+	if err != nil {
+		return nil, fmt.Errorf("gate marshal order: %w", err)
+	}
 	path := fmt.Sprintf("/futures/%s/orders", settle)
-	err := c.sendRequest(ctx, "POST", path, nil, &order, &result)
+	body, err := c.RawRequest(ctx, "POST", path, nil, bodyBytes)
 	if err != nil {
 		return nil, err
+	}
+	var result gateFuturesOrder
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
 }
 
 func (c *Client) cancelRawOrder(ctx context.Context, settle, orderID string) error {
 	path := fmt.Sprintf("/futures/%s/orders/%s", settle, orderID)
-	return c.sendRequest(ctx, "DELETE", path, nil, nil, nil)
+	_, err := c.RawRequest(ctx, "DELETE", path, nil, nil)
+	return err
 }
 
 func (c *Client) cancelRawAllOpenOrders(ctx context.Context, settle, symbol string) error {
-	query := url.Values{}
-	query.Set("contract", symbol)
+	params := map[string]string{
+		paramContract: symbol,
+	}
 	path := fmt.Sprintf("/futures/%s/orders", settle)
-	return c.sendRequest(ctx, "DELETE", path, query, nil, nil)
+	_, err := c.RawRequest(ctx, "DELETE", path, params, nil)
+	return err
 }
 
 func (c *Client) getRawOrder(ctx context.Context, settle, orderID string) (*gateFuturesOrder, error) {
-	var result gateFuturesOrder
-	path := fmt.Sprintf("/futures/%s/orders/%s", settle, orderID)
-	err := c.sendRequest(ctx, "GET", path, nil, nil, &result)
+	params := map[string]string{
+		paramSettle: settle,
+	}
+	body, err := c.GetOrderDetailRaw(ctx, orderID, params)
 	if err != nil {
 		return nil, err
+	}
+	var result gateFuturesOrder
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
 }
@@ -66,45 +80,54 @@ func (c *Client) getRawOpenOrders(ctx context.Context, settle, symbol string) ([
 }
 
 func (c *Client) getRawOrdersByStatus(ctx context.Context, settle, symbol, status string) ([]gateFuturesOrder, error) {
-	var result []gateFuturesOrder
-	query := url.Values{}
-	query.Set("contract", symbol)
-	query.Set("status", status)
-	path := fmt.Sprintf("/futures/%s/orders", settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	params := map[string]string{
+		paramSettle:   settle,
+		paramContract: symbol,
+		"status":      status,
+	}
+	body, err := c.GetOrdersRaw(ctx, params)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateFuturesOrder
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) getRawOrdersTimerange(ctx context.Context, settle, symbol string, fromTime time.Time) ([]gateFuturesOrderTimerange, error) {
-	var result []gateFuturesOrderTimerange
-	query := url.Values{}
-	query.Set("contract", symbol)
+	params := map[string]string{
+		paramContract: symbol,
+	}
 	if !fromTime.IsZero() {
-		query.Set("from", strconv.FormatInt(fromTime.UnixMilli(), 10))
+		params["from"] = strconv.FormatInt(fromTime.UnixMilli(), 10)
 	}
 	path := fmt.Sprintf("/futures/%s/orders_timerange", settle)
-	err := c.sendRequest(ctx, "GET", path, query, nil, &result)
+	body, err := c.RawRequest(ctx, "GET", path, params, nil)
 	if err != nil {
 		return nil, err
+	}
+	var result []gateFuturesOrderTimerange
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
 }
 
 func (c *Client) changeRawLeverage(ctx context.Context, settle string, req gateChangeLeverageRequest) error {
-	query := url.Values{}
-	query.Set("leverage", req.Leverage)
+	params := map[string]string{
+		"leverage": req.Leverage,
+	}
 	if req.CrossLeverageLimit != "" {
-		query.Set("cross_leverage_limit", req.CrossLeverageLimit)
+		params["cross_leverage_limit"] = req.CrossLeverageLimit
 	}
 
 	path := fmt.Sprintf("/futures/%s/positions/%s/leverage", settle, req.Symbol)
-	err := c.sendRequest(ctx, "POST", path, query, nil, nil)
+	_, err := c.RawRequest(ctx, "POST", path, params, nil)
 	if err != nil {
 		dualPath := fmt.Sprintf("/futures/%s/dual_comp/positions/%s/leverage", settle, req.Symbol)
-		errDual := c.sendRequest(ctx, "POST", dualPath, query, nil, nil)
+		_, errDual := c.RawRequest(ctx, "POST", dualPath, params, nil)
 		if errDual != nil {
 			return fmt.Errorf("gate.io update leverage error (standard: %s, dual: %w)", err.Error(), errDual)
 		}
@@ -308,12 +331,12 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 
 // SetPositionMode sets the position mode (Hedge Mode vs One-Way Mode) on Gate.io.
 func (c *Client) SetPositionMode(ctx context.Context, settle string, dualMode bool) error {
-	query := url.Values{}
-	query.Set("dual_mode", strconv.FormatBool(dualMode))
-
-	var result struct{}
+	params := map[string]string{
+		"dual_mode": strconv.FormatBool(dualMode),
+	}
 	path := fmt.Sprintf("/futures/%s/dual_mode", settle)
-	return c.sendRequest(ctx, "POST", path, query, nil, &result)
+	_, err := c.RawRequest(ctx, "POST", path, params, nil)
+	return err
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Gate.io.
@@ -328,14 +351,16 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		Contract: symbol,
 		Mode:     modeStr,
 	}
+	bodyBytes, err := json.Marshal(&body)
+	if err != nil {
+		return err
+	}
 
-	var result []gatePosition
 	path := fmt.Sprintf("/futures/%s/positions/cross_mode", settle)
-	err := c.sendRequest(ctx, "POST", path, nil, &body, &result)
+	_, err = c.RawRequest(ctx, "POST", path, nil, bodyBytes)
 	if err != nil {
 		dualPath := fmt.Sprintf("/futures/%s/dual_comp/positions/cross_mode", settle)
-		var dualResult []gatePosition
-		errDual := c.sendRequest(ctx, "POST", dualPath, nil, &body, &dualResult)
+		_, errDual := c.RawRequest(ctx, "POST", dualPath, nil, bodyBytes)
 		if errDual != nil {
 			return fmt.Errorf("gate.io update margin mode error (standard: %s, dual: %w)", err.Error(), errDual)
 		}

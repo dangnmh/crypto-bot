@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -100,31 +101,11 @@ func (c *Client) Get(ctx context.Context, path string, params map[string]any) ([
 
 // GetCtx makes a signed GET request with context.
 func (c *Client) GetCtx(ctx context.Context, path string, params map[string]any) ([]byte, error) {
-	url := c.baseURL + path
-	isPrivate := strings.Contains(path, "/private/")
-
-	// Build query string
-	if len(params) > 0 {
-		qs := buildSortedQueryString(params)
-		url += "?" + qs
+	query := make(map[string]string)
+	for k, v := range params {
+		query[k] = fmt.Sprintf("%v", v)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create GET request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	if isPrivate {
-		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
-		sig := SignRequest(c.apiKey, c.apiSecret, ts, "GET", params)
-		req.Header["ApiKey"] = []string{c.apiKey}
-		req.Header["Request-Time"] = []string{ts}
-		req.Header["Signature"] = []string{sig}
-	}
-
-	return c.doRequest(ctx, req)
+	return c.RawRequest(ctx, http.MethodGet, path, query, nil)
 }
 
 // Post makes a signed POST request to a private endpoint.
@@ -134,30 +115,67 @@ func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error
 
 // PostCtx makes a signed POST request with context.
 func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, error) {
-	url := c.baseURL + path
-
-	var bodyReader io.Reader
+	var bodyBytes []byte
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		var err error
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal POST body: %w", err)
 		}
-		bodyReader = bytes.NewReader(bodyBytes)
+	}
+	return c.RawRequest(ctx, http.MethodPost, path, nil, bodyBytes)
+}
+
+// RawRequest makes a signed HTTP request of any method to the MEXC API.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	reqURL, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse URL: %w", err)
+	}
+	isPrivate := strings.Contains(path, "/private/")
+
+	// Build query string
+	params := make(map[string]any)
+	for k, vs := range reqURL.Query() {
+		if len(vs) > 0 {
+			params[k] = vs[0]
+		}
+	}
+	for k, v := range query {
+		params[k] = v
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bodyReader)
+	if len(params) > 0 {
+		qs := buildSortedQueryString(params)
+		reqURL.RawQuery = qs
+	}
+	urlPath := reqURL.String()
+
+	var bodyReader io.Reader
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, urlPath, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("create POST request: %w", err)
+		return nil, fmt.Errorf("create %s request: %w", method, err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// Sign the request
-	ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
-	sig := SignRequest(c.apiKey, c.apiSecret, ts, "POST", body)
-	req.Header.Set("ApiKey", c.apiKey)
-	req.Header.Set("Request-Time", ts)
-	req.Header.Set("Signature", sig)
+	if isPrivate && c.apiKey != "" {
+		ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
+		var signTarget any
+		if method == http.MethodGet || method == http.MethodDelete {
+			signTarget = params
+		} else if len(body) > 0 {
+			signTarget = body
+		}
+		sig := SignRequest(c.apiKey, c.apiSecret, ts, method, signTarget)
+		req.Header.Set("ApiKey", c.apiKey)
+		req.Header.Set("Request-Time", ts)
+		req.Header.Set("Signature", sig)
+	}
 
 	return c.doRequest(ctx, req)
 }
@@ -210,4 +228,41 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 // SupportLeverageOnOrder returns false since MEXC doesn't support setting leverage directly on orders.
 func (c *Client) SupportLeverageOnOrder() bool {
 	return true
+}
+
+func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/account/assets", params, nil)
+}
+
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/funding_rate", params, nil)
+}
+
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/ticker", params, nil)
+}
+
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/position/open_positions", params, nil)
+}
+
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/position/list/history_positions", params, nil)
+}
+
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	path := fmt.Sprintf("/api/v1/private/order/get/%s", orderID)
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/order/open_orders/", params, nil)
+}
+
+func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/order/list/order_deals/v3", params, nil)
+}
+
+func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/position/list/history_positions", params, nil)
 }

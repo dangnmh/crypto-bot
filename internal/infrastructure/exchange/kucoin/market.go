@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -76,7 +77,7 @@ type kucoinDepth struct {
 // Private raw methods invoking the KuCoin REST API.
 
 func (c *Client) getRawServerTime(ctx context.Context, _ kucoinServerTimeRequest) (json.RawMessage, error) {
-	body, err := c.GetCtx(ctx, pathServerTime, nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathServerTime, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (c *Client) getRawServerTime(ctx context.Context, _ kucoinServerTimeRequest
 }
 
 func (c *Client) getRawContractDetails(ctx context.Context, _ kucoinContractsRequest) ([]kucoinContract, error) {
-	body, err := c.GetCtx(ctx, pathContracts, nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathContracts, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +96,7 @@ func (c *Client) getRawTickerSingle(ctx context.Context, req kucoinTickerSingleR
 	params := map[string]string{
 		paramSymbol: req.Symbol,
 	}
-	body, err := c.GetCtx(ctx, pathTickerSingle, params)
+	body, err := c.GetTickersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +108,7 @@ func (c *Client) getRawTickerSingle(ctx context.Context, req kucoinTickerSingleR
 }
 
 func (c *Client) getRawTickers(ctx context.Context, _ kucoinTickersRequest) ([]kucoinTicker, error) {
-	body, err := c.GetCtx(ctx, pathTickers, nil)
+	body, err := c.GetTickersRaw(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +126,7 @@ func (c *Client) getRawKlines(ctx context.Context, req kucoinKlinesRequest) ([][
 	if req.To != "" {
 		params["to"] = req.To
 	}
-	body, err := c.GetCtx(ctx, pathKlines, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathKlines, params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +137,7 @@ func (c *Client) getRawDepthSnapshot(ctx context.Context, req kucoinDepthRequest
 	params := map[string]string{
 		paramSymbol: req.Symbol,
 	}
-	body, err := c.GetCtx(ctx, pathDepth, params)
+	body, err := c.RawRequest(ctx, http.MethodGet, pathDepth, params, nil)
 	if err != nil {
 		return nil, err
 	}

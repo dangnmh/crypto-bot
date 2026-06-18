@@ -26,9 +26,16 @@ func SignRequest(apiKey, apiSecret, timestamp, method string, params any) string
 		}
 	case "POST":
 		if params != nil {
-			data, err := json.Marshal(params)
-			if err == nil {
-				paramStr = string(data)
+			switch p := params.(type) {
+			case string:
+				paramStr = p
+			case []byte:
+				paramStr = string(p)
+			default:
+				data, err := json.Marshal(params)
+				if err == nil {
+					paramStr = string(data)
+				}
 			}
 		}
 	}

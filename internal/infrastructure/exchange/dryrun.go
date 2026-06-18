@@ -81,6 +81,77 @@ func (d *DryRunClient) GetRecentClosedPnL(ctx context.Context, symbol, orderID s
 	return nil, ErrNotSupported
 }
 
+// RawRequest delegates to the inner client if it implements RawRequester.
+func (d *DryRunClient) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	if provider, ok := d.inner.(RawRequester); ok {
+		return provider.RawRequest(ctx, method, path, query, body)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetAssetsRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetFundingRateRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetTickersRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetOpenPositionsRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetHistoryPositionsRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetOrderDetailRaw(ctx, orderID, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetOrdersRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetOrderDealsRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
+func (d *DryRunClient) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetClosedPnLRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
 // ── OrderExecutor (intercepted — no real orders) ─────────────────────.
 
 func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error) {

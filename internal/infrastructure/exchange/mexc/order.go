@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -122,8 +123,7 @@ func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req mexcCancelAllOp
 }
 
 func (c *Client) getRawOrder(ctx context.Context, req mexcGetOrderRequest) (*mexcOrder, error) {
-	path := fmt.Sprintf("/api/v1/private/order/get/%s", req.OrderID)
-	body, err := c.GetCtx(ctx, path, nil)
+	body, err := c.GetOrderDetailRaw(ctx, req.OrderID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (c *Client) getRawOrder(ctx context.Context, req mexcGetOrderRequest) (*mex
 
 func (c *Client) getRawOrderByExOrderID(ctx context.Context, req mexcGetOrderByExternalRequest) (*mexcOrder, error) {
 	path := fmt.Sprintf("/api/v1/private/order/external/%s/%s", req.Symbol, req.ExternalOID)
-	body, err := c.GetCtx(ctx, path, nil)
+	body, err := c.RawRequest(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -148,11 +148,11 @@ func (c *Client) getRawOrderByExOrderID(ctx context.Context, req mexcGetOrderByE
 }
 
 func (c *Client) getRawOpenOrders(ctx context.Context, req mexcOpenOrdersRequest) ([]mexcOrder, error) {
-	params := map[string]any{}
+	params := map[string]string{}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
 	}
-	body, err := c.GetCtx(ctx, "/api/v1/private/order/open_orders/", params)
+	body, err := c.GetOrdersRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}

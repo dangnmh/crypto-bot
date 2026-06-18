@@ -111,7 +111,11 @@ type bybitTransactionLogChange struct {
 // Private raw methods invoking the Bybit API.
 
 func (c *Client) getRawAssets(ctx context.Context, req bybitWalletBalanceRequest) (*bybitWalletBalanceResult, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/account/wallet-balance", req, true)
+	params := map[string]string{}
+	if req.AccountType != "" {
+		params["accountType"] = req.AccountType
+	}
+	body, err := c.GetAssetsRaw(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("bybit list assets: %w", err)
 	}
@@ -123,7 +127,14 @@ func (c *Client) getRawAssets(ctx context.Context, req bybitWalletBalanceRequest
 }
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req bybitPositionsRequest) ([]bybitPosition, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/position/list", req, true)
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
+	}
+	body, err := c.GetOpenPositionsRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +142,20 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req bybitPositionsRequ
 }
 
 func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/position/closed-pnl", req, true)
+	params := map[string]string{}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
+	}
+	if req.Limit > 0 {
+		params["limit"] = fmt.Sprintf("%d", req.Limit)
+	}
+	if req.StartTime > 0 {
+		params["startTime"] = fmt.Sprintf("%d", req.StartTime)
+	}
+	body, err := c.GetClosedPnLRaw(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +167,26 @@ func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest)
 }
 
 func (c *Client) getRawTransactionLog(ctx context.Context, req bybitTransactionLogRequest) ([]bybitTransactionLogChange, error) {
-	body, err := c.sendRequest(ctx, http.MethodGet, "/v5/account/transaction-log", req, true)
+	params := map[string]string{}
+	if req.AccountType != "" {
+		params["accountType"] = req.AccountType
+	}
+	if req.Category != "" {
+		params["category"] = req.Category
+	}
+	if req.Type != "" {
+		params["type"] = req.Type
+	}
+	if req.Symbol != "" {
+		params["symbol"] = req.Symbol
+	}
+	if req.Limit > 0 {
+		params["limit"] = fmt.Sprintf("%d", req.Limit)
+	}
+	if req.StartTime > 0 {
+		params["startTime"] = fmt.Sprintf("%d", req.StartTime)
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/account/transaction-log", params, nil)
 	if err != nil {
 		return nil, err
 	}
