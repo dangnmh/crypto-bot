@@ -71,9 +71,6 @@ type Config struct {
 
 type RawFundingReversionConfig struct {
 	Enabled             bool                               `json:"enabled"`
-	MaxLatency          types.Duration                     `json:"maxLatency"`
-	MinFundingRate      float64                            `json:"minFundingRate"`
-	MaxPriceDiffPercent float64                            `json:"maxPriceDiffPercent"`
 	OpenType            string                             `json:"openType"`
 	PositionMode        string                             `json:"positionMode"`
 	Default             ExchangeReversionConfig            `json:"default"`

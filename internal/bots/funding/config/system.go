@@ -5,6 +5,7 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	pkgconfig "crypto-bot/pkg/config"
+	"crypto-bot/pkg/types"
 )
 
 type ScannersConfig struct {
@@ -24,8 +25,11 @@ type NotifierConfig struct {
 
 // SafetyConfig holds safety metrics specific to funding reversion.
 type SafetyConfig struct {
-	MinVol24USD    float64 `json:"minVol24USD"`
-	MaxImpactRatio float64 `json:"maxImpactRatio"`
+	MinVol24USD         float64        `json:"minVol24USD"`
+	MaxImpactRatio      float64        `json:"maxImpactRatio"`
+	MaxLatency          types.Duration `json:"maxLatency"`
+	MinFundingRate      float64        `json:"minFundingRate"`
+	MaxPriceDiffPercent float64        `json:"maxPriceDiffPercent"`
 }
 
 // LoadSystemConfig loads the system configuration from the given path.

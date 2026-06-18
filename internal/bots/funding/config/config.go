@@ -201,8 +201,8 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 		}
 	}
 
-	defaultFloat(&sc.MaxPriceDiffPercent, d.MaxPriceDiffPercent)
-	defaultFloat(&sc.MinFundingRate, d.MinFundingRate)
+	defaultFloat(&sc.MaxPriceDiffPercent, c.Reversion.Safety.MaxPriceDiffPercent)
+	defaultFloat(&sc.MinFundingRate, c.Reversion.Safety.MinFundingRate)
 
 	// Apply leverage and margin (either exchange-specific, or default fallback)
 	defaultInt(&sc.Leverage, exchConfig.Leverage)
@@ -213,13 +213,13 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 
 	if !sc.FundingReversion.Enabled && d.Enabled {
 		sc.FundingReversion.Enabled = true
-		sc.FundingReversion.MaxLatency = d.MaxLatency
+		sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
 		sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
 		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
 		sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
 	} else if sc.FundingReversion.Enabled {
-		defaultDuration(&sc.FundingReversion.MaxLatency, d.MaxLatency)
+		defaultDuration(&sc.FundingReversion.MaxLatency, c.Reversion.Safety.MaxLatency)
 		defaultFloat(&sc.FundingReversion.TakeProfitPct, exchConfig.TakeProfitPct)
 		defaultFloat(&sc.FundingReversion.StopLossPct, exchConfig.StopLossPct)
 		defaultDuration(&sc.FundingReversion.BufferTime, exchConfig.BufferTime)
