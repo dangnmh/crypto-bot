@@ -13,7 +13,7 @@
       }
     },
     "bybit": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://api.bybit.com"
       },
@@ -25,7 +25,7 @@
       "accountType": "unified"
     },
     "binance": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://fapi.binance.com"
       },
@@ -37,7 +37,7 @@
       }
     },
     "kucoin": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://api-futures.kucoin.com"
       },
@@ -47,7 +47,7 @@
       }
     },
     "okx": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://openapi.okx.com"
       },
@@ -57,7 +57,7 @@
       }
     },
     "gate": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://api.gateio.ws/api/v4"
       },

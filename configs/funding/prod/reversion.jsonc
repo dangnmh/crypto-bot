@@ -22,7 +22,8 @@
     "maxImpactRatio": 5,
     "maxLatency": "400ms", // Abort if RTT > 400ms
     "minFundingRate": 0.8,
-    "maxPriceDiffPercent": 0.8
+    "maxPriceDiffPercent": 0.8,
+    "maxSymbolUSDTPrice": 50
   },
   "notifier": {
     "enable": true

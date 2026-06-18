@@ -30,6 +30,7 @@ type SafetyConfig struct {
 	MaxLatency          types.Duration `json:"maxLatency"`
 	MinFundingRate      float64        `json:"minFundingRate"`
 	MaxPriceDiffPercent float64        `json:"maxPriceDiffPercent"`
+	MaxSymbolUSDTPrice  float64        `json:"maxSymbolUSDTPrice"`
 }
 
 // LoadSystemConfig loads the system configuration from the given path.

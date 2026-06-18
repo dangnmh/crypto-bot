@@ -134,17 +134,9 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 		return false
 	}
 
-	// 24h volume check (safety limit)
-	if j.cfg != nil {
-		minVol := j.cfg.Reversion.Safety.MinVol24USD
-		if minVol > 0 && c.Amount24 < minVol {
-			j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
-				slog.String("symbol", c.Symbol),
-				slog.Float64("vol24h", c.Amount24),
-				slog.Float64("minVol", minVol),
-			)
-			return false
-		}
+	// Safety limits check
+	if !j.checkSafetyLimits(c) {
+		return false
 	}
 
 	// Blacklist check
@@ -591,4 +583,60 @@ func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Tic
 			Amount24:  td.Amount24,
 		},
 	}
+}
+
+func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
+	// 24h volume check (safety limit)
+	if j.cfg != nil {
+		minVol := j.cfg.Reversion.Safety.MinVol24USD
+		if minVol > 0 && c.Amount24 < minVol {
+			j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
+				slog.String("symbol", c.Symbol),
+				slog.Float64("vol24h", c.Amount24),
+				slog.Float64("minVol", minVol),
+			)
+			return false
+		}
+	}
+
+	refPrice := c.ExecutionRefPrice()
+	marginUSDT := c.Config.MarginUSDT
+	leverage := float64(c.Config.Leverage)
+	maxSpend := marginUSDT * leverage
+
+	// Price over marginUSDT * leverage check
+	if refPrice > maxSpend {
+		j.log.Debug("Skipping trigger: price exceeds marginUSDT * leverage limit",
+			slog.String("symbol", c.Symbol),
+			slog.Float64("price", refPrice),
+			slog.Float64("maxSpend", maxSpend),
+		)
+		return false
+	}
+
+	// Minimum trade value check
+	minTradeUSDT := float64(c.MinVol) * refPrice * c.ContractSize
+	if maxSpend < minTradeUSDT {
+		j.log.Debug("Skipping trigger: max spend below minimum symbol trade value",
+			slog.String("symbol", c.Symbol),
+			slog.Float64("maxSpend", maxSpend),
+			slog.Float64("minTradeUSDT", minTradeUSDT),
+		)
+		return false
+	}
+
+	// Max symbol USDT price safety limit check
+	if j.cfg != nil {
+		maxPrice := j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
+		if maxPrice > 0 && refPrice > maxPrice {
+			j.log.Debug("Skipping trigger: price exceeds maxSymbolUSDTPrice safety limit",
+				slog.String("symbol", c.Symbol),
+				slog.Float64("price", refPrice),
+				slog.Float64("maxPrice", maxPrice),
+			)
+			return false
+		}
+	}
+
+	return true
 }
