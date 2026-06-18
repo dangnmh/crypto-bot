@@ -181,6 +181,9 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 		"enabled": true,
 		"openType": "ISOLATED",
 		"positionMode": "HEDGE",
+		"scanners": {
+			"configured": true
+		},
 		"default": {
 			"leverage": 5
 		},

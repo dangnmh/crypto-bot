@@ -63,6 +63,9 @@ func loadWith(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) *co
 	}{
 		RawFundingReversionConfig: defaults.RawFundingReversionConfig,
 		Safety:                    defaults.Safety,
+		Scanners: config.ScannersConfig{
+			Configured: true,
+		},
 		Sync: config.SyncConfig{
 			SyncConfig: sysconfig.SyncConfig{
 				Ticker:   types.Duration(time.Second),
@@ -86,7 +89,7 @@ func loadWithError(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string
 	dir := t.TempDir()
 	path := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(fundingJSON), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 	_, err := config.Load(sysCfg, path)
 	return err
 }
@@ -131,7 +134,9 @@ func TestLoad_ValidConfig(t *testing.T) {
 
 func TestLoad_FileNotFound(t *testing.T) {
 	t.Parallel()
-	_, err := config.Load(&config.SystemConfig{}, "/nonexistent/funding.json")
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
+	_, err := config.Load(&config.SystemConfig{}, filepath.Join(dir, "nonexistent.json"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "read funding config")
 }
@@ -141,7 +146,7 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 	_, err := config.Load(sysWithMexc(), path)
 	assert.Error(t, err)
 }

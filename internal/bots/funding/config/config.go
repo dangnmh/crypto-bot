@@ -45,20 +45,17 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	// Normalize Safety limit percentage
 	cfg.Reversion.Safety.MaxImpactRatio /= 100
 
+	if cfg.Reversion.Scanners.Configured {
+		symCfgs, err := loadSymbolsConfig(fundingPath)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Symbols = symCfgs
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
-
-	if !cfg.Reversion.Scanners.Configured {
-		return cfg, nil
-	}
-
-	symCfgs, err := loadSymbolsConfig(fundingPath)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.Symbols = symCfgs
 
 	return cfg, nil
 }
