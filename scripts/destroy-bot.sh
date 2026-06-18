@@ -16,8 +16,8 @@ echo ""
 # Check if a fast kubectl delete is preferred
 if [[ "${1:-}" == "--fast" ]]; then
     echo "⚡ Using fast kubectl deletion..."
-    kubectl delete deployment "$DEPLOYMENT_NAME" -n "$NAMESPACE" --ignore-not-found
-    echo "✅ Bot deployment deleted successfully."
+    kubectl delete deployment,service "$DEPLOYMENT_NAME" -n "$NAMESPACE" --ignore-not-found
+    echo "✅ Bot deployment and service deleted successfully."
     exit 0
 fi
 
@@ -25,6 +25,7 @@ fi
 echo "⏳ Running targeted Terraform destroy..."
 terraform -chdir=deploy/terraform destroy \
     -target=kubernetes_deployment.crypto_bot \
+    -target=kubernetes_service.crypto_bot \
     -target=kubernetes_secret.crypto_bot_secrets \
     -auto-approve
 

@@ -202,38 +202,44 @@ tf-destroy: ## Destroy Terraform configurations (keeping PVC data due to resourc
 tf-apply-bot: ## Apply changes only to the Go bot deployment
 	terraform -chdir=deploy/terraform apply \
 		-target=kubernetes_deployment.crypto_bot \
-		-target=kubernetes_config_map.crypto_bot_configs
+		-target=kubernetes_config_map.crypto_bot_configs \
+		-target=kubernetes_service.crypto_bot
 
 .PHONY: tf-destroy-bot
 tf-destroy-bot: ## Destroy only the Go bot deployment, preserving the monitoring stack
 	terraform -chdir=deploy/terraform destroy \
 		-target=kubernetes_deployment.crypto_bot \
-		-target=kubernetes_config_map.crypto_bot_configs
+		-target=kubernetes_config_map.crypto_bot_configs \
+		-target=kubernetes_service.crypto_bot
 
 .PHONY: tf-apply-infra
-tf-apply-infra: ## Apply only infrastructure configurations (DB, Vault, Loki Stack, and ConfigMaps)
+tf-apply-infra: ## Apply only infrastructure configurations (DB, Vault, Loki Stack, Prometheus, and ConfigMaps)
 	terraform -chdir=deploy/terraform apply \
 		-target=helm_release.postgresql \
 		-target=helm_release.vault \
 		-target=helm_release.vault_secrets_operator \
 		-target=helm_release.loki_stack \
+		-target=helm_release.prometheus \
 		-target=kubernetes_service_account.crypto_bot \
 		-target=kubernetes_config_map.grafana_datasource_loki \
 		-target=kubernetes_config_map.grafana_dashboard_pnl \
 		-target=kubernetes_config_map.grafana_datasource_postgres \
+		-target=kubernetes_config_map.grafana_datasource_prometheus \
 		-target=kubernetes_secret.registry_pull_secret
 
 .PHONY: tf-destroy-infra
-tf-destroy-infra: ## Destroy only infrastructure configurations
+tf-destroy-infra: ## Destroy only infrastructure configurations (DB, Vault, Loki Stack, Prometheus, and ConfigMaps)
 	terraform -chdir=deploy/terraform destroy \
 		-target=helm_release.postgresql \
 		-target=helm_release.vault \
 		-target=helm_release.vault_secrets_operator \
 		-target=helm_release.loki_stack \
+		-target=helm_release.prometheus \
 		-target=kubernetes_service_account.crypto_bot \
 		-target=kubernetes_config_map.grafana_datasource_loki \
 		-target=kubernetes_config_map.grafana_dashboard_pnl \
 		-target=kubernetes_config_map.grafana_datasource_postgres \
+		-target=kubernetes_config_map.grafana_datasource_prometheus \
 		-target=kubernetes_secret.registry_pull_secret
 
 .PHONY: destroy-bot

@@ -126,3 +126,21 @@ resource "kubernetes_deployment" "crypto_bot" {
     }
   }
 }
+
+# Deploy Kubernetes Service for the Bot
+resource "kubernetes_service" "crypto_bot" {
+  metadata {
+    name      = "crypto-bot"
+    namespace = "default"
+  }
+  spec {
+    selector = {
+      app = "crypto-bot"
+    }
+    port {
+      port        = 8080
+      target_port = 8080
+    }
+    type = "ClusterIP"
+  }
+}
