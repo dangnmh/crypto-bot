@@ -143,8 +143,8 @@ func (s *stubClient) GetHistoryOrdersRaw(ctx context.Context, params map[string]
 	return s.returnBytes, s.returnErr
 }
 
-func (s *stubClient) GetRecentClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	s.lastMethod = "GetRecentClosedPnLRaw"
+func (s *stubClient) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	s.lastMethod = "GetOrderPNLRaw"
 	s.lastParams = params
 	return s.returnBytes, s.returnErr
 }
@@ -263,8 +263,8 @@ func (s *stubClientNoClosedPnL) GetHistoryOrdersRaw(ctx context.Context, params 
 	return s.returnBytes, s.returnErr
 }
 
-func (s *stubClientNoClosedPnL) GetRecentClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	s.lastMethod = "GetRecentClosedPnLRaw"
+func (s *stubClientNoClosedPnL) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	s.lastMethod = "GetOrderPNLRaw"
 	s.lastParams = params
 	return s.returnBytes, s.returnErr
 }
