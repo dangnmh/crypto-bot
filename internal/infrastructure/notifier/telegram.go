@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"crypto-bot/pkg/formatutil"
+	"crypto-bot/pkg/version"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -73,7 +74,7 @@ func (p *TelegramProvider) Start(ctx context.Context) error {
 	p.startOnce.Do(func() {
 		_ = p.Send(ctx, Event{
 			Level:   LevelInfo,
-			Message: "🚀 Funding Bot started successfully",
+			Message: fmt.Sprintf("🚀 Funding Bot started successfully (version: %s, commit: %s, built: %s)", version.Version, version.Commit, version.BuildTime),
 		})
 
 		go func() {

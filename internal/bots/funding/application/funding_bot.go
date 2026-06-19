@@ -12,6 +12,7 @@ import (
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
+	"crypto-bot/pkg/version"
 
 	"github.com/samber/lo"
 )
@@ -179,7 +180,11 @@ func (s *FundingBot) wirePersonalWSForProvider(ctx context.Context, prov *app.Ex
 
 // Run starts the funding scanner loops for all symbols and keeps them alive.
 func (s *FundingBot) Run(ctx context.Context) error {
-	s.log.InfoContext(ctx, "🚀 Funding bot manager started", slog.Int("symbols", len(s.cfg.Symbols)))
+	s.log.InfoContext(ctx, "🚀 Funding bot manager started",
+		slog.String("version", version.Version),
+		slog.String("commit", version.Commit),
+		slog.String("built", version.BuildTime),
+	)
 	defer s.log.InfoContext(context.WithoutCancel(ctx), "🛑 Funding bot manager stopped")
 
 	var scanners []Scanner

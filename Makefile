@@ -24,6 +24,16 @@ IMAGE_NAME      ?= crypto-bot
 IMAGE_TAG       ?= latest
 FULL_IMAGE      := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
+# Build version metadata
+VERSION         ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT          ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+BUILD_TIME      ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "unknown")
+
+LDFLAGS         := -w -s \
+                   -X crypto-bot/pkg/version.Version=$(VERSION) \
+                   -X crypto-bot/pkg/version.Commit=$(COMMIT) \
+                   -X crypto-bot/pkg/version.BuildTime=$(BUILD_TIME)
+
 # ── Build & Generate ───────────────────────────────────────────────────
 .PHONY: gen
 gen: ## Generate mocks and other generated files
@@ -31,15 +41,19 @@ gen: ## Generate mocks and other generated files
 
 .PHONY: build
 build: ## Build all binaries
-	$(GO) build ./...
+	$(GO) build -ldflags="$(LDFLAGS)" ./...
 
 .PHONY: build-funding
 build-funding: ## Build the funding bot
-	$(GO) build -o bin/funding-bot ./cmd/funding
+	$(GO) build -ldflags="$(LDFLAGS)" -o bin/funding-bot ./cmd/funding
 
 .PHONY: docker-build
 docker-build: ## Build and tag the Docker container image locally and for registry
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) -t $(FULL_IMAGE) .
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) -t $(FULL_IMAGE) .
 
 .PHONY: docker-push
 docker-push: docker-build ## Build and Push the Docker image to registry
