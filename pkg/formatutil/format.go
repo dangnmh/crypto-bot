@@ -125,3 +125,28 @@ func FormatFloatMax4(val float64) string {
 	s = strings.TrimRight(s, ".")
 	return s
 }
+
+// FormatCompactUSD formats a float64 USD value into a compact money format (e.g. 12k, 22m, 1.5b).
+func FormatCompactUSD(val float64) string {
+	absVal := math.Abs(val)
+	suffix := ""
+	divisor := 1.0
+
+	switch {
+	case absVal >= 1_000_000_000:
+		suffix = "b"
+		divisor = 1_000_000_000
+	case absVal >= 1_000_000:
+		suffix = "m"
+		divisor = 1_000_000
+	case absVal >= 1_000:
+		suffix = "k"
+		divisor = 1_000
+	}
+
+	reduced := val / divisor
+	s := fmt.Sprintf("%.2f", reduced)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	return s + suffix
+}

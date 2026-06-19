@@ -189,3 +189,35 @@ func TestFormatFloatMax4(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatCompactUSD(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		val  float64
+		want string
+	}{
+		{"zero", 0, "0"},
+		{"negative sub-thousand", -0.5, "-0.5"},
+		{"under thousand", 999.9, "999.9"},
+		{"exact thousand", 1000, "1k"},
+		{"thousand decimal", 1250, "1.25k"},
+		{"thousand decimal rounding", 1256, "1.26k"},
+		{"exact million", 22000000, "22m"},
+		{"million decimal", 22500000, "22.5m"},
+		{"exact billion", 1500000000, "1.5b"},
+		{"negative exact thousand", -12000, "-12k"},
+		{"negative exact million", -22000000, "-22m"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatutil.FormatCompactUSD(tt.val)
+			if got != tt.want {
+				t.Errorf("FormatCompactUSD() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

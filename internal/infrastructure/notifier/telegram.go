@@ -12,6 +12,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+const keyVolUSDT24h = "volusdt24h"
+
 type TelegramProvider struct {
 	bot    *tgbotapi.BotAPI
 	chatID int64
@@ -143,9 +145,17 @@ func (p *TelegramProvider) formatMessage(evt Event) string {
 		valStr := fmt.Sprintf("%v", v)
 		switch val := v.(type) {
 		case float64:
-			valStr = formatutil.FormatFloatMax4(val)
+			if k == keyVolUSDT24h {
+				valStr = formatutil.FormatCompactUSD(val)
+			} else {
+				valStr = formatutil.FormatFloatMax4(val)
+			}
 		case float32:
-			valStr = formatutil.FormatFloatMax4(float64(val))
+			if k == keyVolUSDT24h {
+				valStr = formatutil.FormatCompactUSD(float64(val))
+			} else {
+				valStr = formatutil.FormatFloatMax4(float64(val))
+			}
 		}
 		data = fmt.Sprintf("%s\n%s: %s", data, k, valStr)
 	}

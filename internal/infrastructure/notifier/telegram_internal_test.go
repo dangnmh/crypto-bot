@@ -76,13 +76,14 @@ func TestTelegramProviderFormatMessage(t *testing.T) {
 		Exchange: "bybit",
 		Symbol:   "BTC_USDT",
 		Message:  "order filled",
-		Data:     map[string]any{"price": 60000, "floatVal": 0.038429, "wholeFloat": 5.0},
+		Data:     map[string]any{"price": 60000, "floatVal": 0.038429, "wholeFloat": 5.0, "volusdt24h": 60000000.0},
 	})
 	assert.Contains(t, trading, "[TRADING] [bybit] [BTC_USDT]")
 	assert.Contains(t, trading, "order filled")
 	assert.Contains(t, trading, "price: 60000")
 	assert.Contains(t, trading, "floatVal: 0.0384")
 	assert.Contains(t, trading, "wholeFloat: 5")
+	assert.Contains(t, trading, "volusdt24h: 60m")
 
 	exchangeOnly := p.formatMessage(Event{Level: LevelTrading, Exchange: "mexc", Message: "risk"})
 	assert.Contains(t, exchangeOnly, "[TRADING] [mexc]")
