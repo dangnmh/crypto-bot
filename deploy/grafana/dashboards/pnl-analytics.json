@@ -975,6 +975,15 @@
           "showLegend": true,
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -1214,6 +1223,15 @@
           "placement": "right",
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -1360,6 +1378,15 @@
           "showLegend": true,
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -1433,6 +1460,15 @@
           "showLegend": true,
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -1610,6 +1646,15 @@
           "placement": "right",
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -1787,6 +1832,15 @@
           "placement": "right",
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -1964,6 +2018,15 @@
           "placement": "right",
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
@@ -2036,6 +2099,15 @@
           "placement": "right",
           "showPercent": true,
           "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
         }
       }
     },
