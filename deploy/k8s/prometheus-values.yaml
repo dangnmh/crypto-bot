@@ -12,3 +12,7 @@ alertmanager:
 
 pushgateway:
   enabled: false
+
+prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false

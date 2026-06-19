@@ -25,7 +25,7 @@ resource "helm_release" "loki_stack" {
 }
 
 # 2. Deploy Kubernetes ConfigMap for Grafana Loki Datasource
-resource "kubernetes_config_map" "grafana_datasource_loki" {
+resource "kubernetes_config_map_v1" "grafana_datasource_loki" {
   metadata {
     name      = "grafana-datasource-loki"
     namespace = "default"
@@ -40,7 +40,7 @@ resource "kubernetes_config_map" "grafana_datasource_loki" {
 }
 
 # 3. Deploy Kubernetes ConfigMap for Grafana P&L Dashboard
-resource "kubernetes_config_map" "grafana_dashboard_pnl" {
+resource "kubernetes_config_map_v1" "grafana_dashboard_pnl" {
   metadata {
     name      = "grafana-dashboard-pnl"
     namespace = "default"
@@ -55,7 +55,7 @@ resource "kubernetes_config_map" "grafana_dashboard_pnl" {
 }
 
 # 4. Deploy Kubernetes ConfigMap for Grafana PostgreSQL Datasource
-resource "kubernetes_config_map" "grafana_datasource_postgres" {
+resource "kubernetes_config_map_v1" "grafana_datasource_postgres" {
   metadata {
     name      = "grafana-datasource-postgres"
     namespace = "default"
@@ -86,7 +86,7 @@ resource "helm_release" "prometheus" {
 }
 
 # 6. Deploy Kubernetes ConfigMap for Grafana Prometheus Datasource
-resource "kubernetes_config_map" "grafana_datasource_prometheus" {
+resource "kubernetes_config_map_v1" "grafana_datasource_prometheus" {
   metadata {
     name      = "grafana-datasource-prometheus"
     namespace = "default"

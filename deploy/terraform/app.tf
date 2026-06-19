@@ -3,7 +3,7 @@
 # ==============================================================================
 
 # Deploy Kubernetes ConfigMap for Bot Configurations
-resource "kubernetes_config_map" "crypto_bot_configs" {
+resource "kubernetes_config_map_v1" "crypto_bot_configs" {
   metadata {
     name      = "crypto-bot-configs"
     namespace = "default"
@@ -22,7 +22,7 @@ resource "kubernetes_config_map" "crypto_bot_configs" {
 }
 
 # Deploy Kubernetes Deployment for the Bot
-resource "kubernetes_deployment" "crypto_bot" {
+resource "kubernetes_deployment_v1" "crypto_bot" {
   metadata {
     name      = "crypto-bot"
     namespace = "default"
@@ -49,7 +49,7 @@ resource "kubernetes_deployment" "crypto_bot" {
           app = "crypto-bot"
         }
         annotations = {
-          "checksum/config"      = sha256(jsonencode(kubernetes_config_map.crypto_bot_configs.data))
+          "checksum/config"      = sha256(jsonencode(kubernetes_config_map_v1.crypto_bot_configs.data))
           "prometheus.io/scrape" = "true"
           "prometheus.io/path"   = "/metrics"
           "prometheus.io/port"   = "3100"
@@ -57,12 +57,12 @@ resource "kubernetes_deployment" "crypto_bot" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.crypto_bot.metadata[0].name
+        service_account_name = kubernetes_service_account_v1.crypto_bot.metadata[0].name
 
         dynamic "image_pull_secrets" {
           for_each = var.registry_auth_enabled ? [1] : []
           content {
-            name = kubernetes_secret.registry_pull_secret[0].metadata[0].name
+            name = kubernetes_secret_v1.registry_pull_secret[0].metadata[0].name
           }
         }
 
@@ -119,7 +119,7 @@ resource "kubernetes_deployment" "crypto_bot" {
         volume {
           name = "configs"
           config_map {
-            name = kubernetes_config_map.crypto_bot_configs.metadata[0].name
+            name = kubernetes_config_map_v1.crypto_bot_configs.metadata[0].name
           }
         }
       }
@@ -128,7 +128,7 @@ resource "kubernetes_deployment" "crypto_bot" {
 }
 
 # Deploy Kubernetes Service for the Bot
-resource "kubernetes_service" "crypto_bot" {
+resource "kubernetes_service_v1" "crypto_bot" {
   metadata {
     name      = "crypto-bot"
     namespace = "default"

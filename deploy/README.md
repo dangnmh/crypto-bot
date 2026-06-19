@@ -143,5 +143,8 @@ make destroy-all
 ```
 
 ```
+kubectl port-forward svc/loki-stack-grafana 3000:80
 kubectl port-forward svc/crypto-bot 3100:3100
+kubectl port-forward svc/postgresql 5432:5432
+
 ```

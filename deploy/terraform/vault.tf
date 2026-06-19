@@ -3,7 +3,7 @@
 # ==============================================================================
 
 # Deploy ServiceAccount for the bot to authenticate against Vault
-resource "kubernetes_service_account" "crypto_bot" {
+resource "kubernetes_service_account_v1" "crypto_bot" {
   metadata {
     name      = "crypto-bot"
     namespace = "default"

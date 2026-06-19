@@ -23,7 +23,7 @@ provider "helm" {
 }
 
 # 7. Deploy Kubernetes Secret for Docker Registry Pull Credentials
-resource "kubernetes_secret" "registry_pull_secret" {
+resource "kubernetes_secret_v1" "registry_pull_secret" {
   count = var.registry_auth_enabled ? 1 : 0
 
   metadata {
