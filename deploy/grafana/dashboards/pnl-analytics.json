@@ -1862,7 +1862,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(hold_fee) AS funding_fee FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "rawSql": "SELECT exchange, ABS(SUM(hold_fee)) AS funding_fee FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
           "refId": "A"
         }
       ],
