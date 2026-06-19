@@ -7,11 +7,11 @@
     "takeProfitPct": 1,
     "stopLossPct": 2,
     "bufferTime": "-150ms",
-    "postSettleTimeout": "3s",
+    "postSettleTimeout": "2s",
     "leverage": 5,
     "marginUSD": 3,
-    "minVol24USD": 1000000,
-    "minFundingRate": 0.3
+    "minVol24USD": 10000000,
+    "minFundingRate": 0.8
   },
   "sync": {
     "time": "60s",
@@ -44,55 +44,57 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
-      "postSettleTimeout": "3s" // Force close if reversion lifecycle does not terminally close
+      "postSettleTimeout": "2s" // Force close if reversion lifecycle does not terminally close
     },
     "bybit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-200ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     },
     "binance": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-250ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     },
     "kucoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-400ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     },
     "okx": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "0ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3
     },
     "gate": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-100ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     },
     "hyperliquid": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     },
     "bitget": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     },
     "bingx": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
-      "postSettleTimeout": "3s"
+      "postSettleTimeout": "2s"
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
