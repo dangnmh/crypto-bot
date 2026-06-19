@@ -24,10 +24,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 4
       },
       "id": 1,
       "title": "Total Net Profit (USD)",
@@ -82,10 +82,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 4,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 4
       },
       "id": 2,
       "title": "Win Rate (%)",
@@ -144,10 +144,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 8,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 4
       },
       "id": 3,
       "title": "Completed Trades",
@@ -190,10 +190,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 12,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 4
       },
       "id": 4,
       "title": "Total Volume (USDT)",
@@ -236,10 +236,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 16,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 4
       },
       "id": 5,
       "title": "Funding Fee",
@@ -294,10 +294,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 4,
-        "w": 4,
         "x": 20,
-        "y": 0
+        "y": 0,
+        "w": 4,
+        "h": 4
       },
       "id": 6,
       "title": "Total Fees Paid",
@@ -340,10 +340,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 4
+        "y": 4,
+        "w": 12,
+        "h": 8
       },
       "id": 7,
       "title": "Hourly/Daily P&L Trend",
@@ -386,10 +386,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 12,
-        "y": 4
+        "y": 4,
+        "w": 12,
+        "h": 8
       },
       "id": 8,
       "title": "Equity Growth Curve",
@@ -432,10 +432,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 0,
-        "y": 12
+        "y": 12,
+        "w": 8,
+        "h": 8
       },
       "id": 9,
       "title": "Execution Latency (RTT)",
@@ -475,10 +475,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 8,
-        "y": 12
+        "y": 12,
+        "w": 8,
+        "h": 8
       },
       "id": 10,
       "title": "Average Actual Slippage (%)",
@@ -518,10 +518,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 16,
-        "y": 12
+        "y": 12,
+        "w": 8,
+        "h": 8
       },
       "id": 11,
       "title": "Target Buffer vs. Actual Fire Offset",
@@ -698,10 +698,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 20
+        "y": 20,
+        "w": 12,
+        "h": 8
       },
       "id": 12,
       "title": "Funding Fee Avoidance vs. Fire Offset",
@@ -878,10 +878,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 6,
         "x": 0,
-        "y": 28
+        "y": 28,
+        "w": 8,
+        "h": 8
       },
       "id": 14,
       "title": "IOC Order Fill Ratio",
@@ -904,7 +904,69 @@
           },
           "mappings": [],
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "filled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "partial_filled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "canceled_no_fill"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -919,10 +981,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 28
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 8
       },
       "id": 15,
       "title": "IOC Cancel Rate (%)",
@@ -981,10 +1043,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 28
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 8
       },
       "id": 27,
       "title": "IOC Cancel Rate by Exchange",
@@ -1158,10 +1220,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 28
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
       },
       "id": 16,
       "title": "Trade Hold Duration",
@@ -1201,10 +1263,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 8,
-        "y": 60
+        "y": 44,
+        "w": 8,
+        "h": 8
       },
       "id": 17,
       "title": "Position Exit Reason Breakdown",
@@ -1227,7 +1289,69 @@
           },
           "mappings": [],
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "target"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "stop_loss"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "timeout"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "force_close"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -1242,10 +1366,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 16,
-        "y": 60
+        "y": 44,
+        "w": 8,
+        "h": 8
       },
       "id": 18,
       "title": "Abort Reasons Breakdown",
@@ -1268,7 +1392,39 @@
           },
           "mappings": [],
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "ioc_canceled_no_position"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "ioc_outcome_unknown_no_position"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -1283,10 +1439,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 0,
-        "y": 52
+        "y": 36,
+        "w": 8,
+        "h": 8
       },
       "id": 23,
       "title": "Net Profit Breakdown by Exchange",
@@ -1460,10 +1616,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 8,
-        "y": 52
+        "y": 36,
+        "w": 8,
+        "h": 8
       },
       "id": 24,
       "title": "Total Fees Paid by Exchange",
@@ -1637,10 +1793,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 16,
-        "y": 52
+        "y": 36,
+        "w": 8,
+        "h": 8
       },
       "id": 25,
       "title": "Funding Fee by Exchange",
@@ -1814,10 +1970,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 0,
-        "y": 60
+        "y": 44,
+        "w": 8,
+        "h": 8
       },
       "id": 26,
       "title": "Win/Loss Ratio (Completed Trades)",
@@ -1840,7 +1996,39 @@
           },
           "mappings": [],
           "unit": "none"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Win"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Loss"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -1854,10 +2042,10 @@
     {
       "collapsed": false,
       "gridPos": {
-        "h": 10,
-        "w": 24,
         "x": 0,
-        "y": 68
+        "y": 52,
+        "w": 24,
+        "h": 10
       },
       "id": 19,
       "title": "Live Trade History Ledger Table",
