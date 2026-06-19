@@ -18,6 +18,7 @@ resource "helm_release" "vault" {
   name             = "vault"
   repository       = "https://helm.releases.hashicorp.com"
   chart            = "vault"
+  version          = "0.33.0"
   namespace        = "default"
   create_namespace = false
 
@@ -33,6 +34,7 @@ resource "helm_release" "vault_secrets_operator" {
   name             = "vault-secrets-operator"
   repository       = "https://helm.releases.hashicorp.com"
   chart            = "vault-secrets-operator"
+  version          = "1.4.0"
   namespace        = "default"
   create_namespace = false
   depends_on       = [helm_release.vault]

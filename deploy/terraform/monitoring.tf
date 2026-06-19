@@ -7,6 +7,7 @@ resource "helm_release" "loki_stack" {
   name             = "loki-stack"
   repository       = "https://grafana.github.io/helm-charts"
   chart            = "loki-stack"
+  version          = "2.10.3"
   namespace        = "default"
   create_namespace = false
 
@@ -73,6 +74,7 @@ resource "helm_release" "prometheus" {
   name             = "prometheus"
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "prometheus"
+  version          = "29.13.0"
   namespace        = "default"
   create_namespace = false
 
