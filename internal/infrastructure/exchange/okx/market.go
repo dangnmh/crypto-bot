@@ -285,17 +285,16 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		bid, _ := strconv.ParseFloat(t.BidPx, 64)
 		ask, _ := strconv.ParseFloat(t.AskPx, 64)
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
-		vol, _ := strconv.ParseFloat(t.Vol24h, 64)
 		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:    t.InstID,
-			LastPrice: last,
-			Bid1:      bid,
-			Ask1:      ask,
-			Volume24:  vol,
-			Amount24:  amt * last, // Standardized as USDT volume
-			Timestamp: ts,
+			Symbol:       t.InstID,
+			LastPrice:    last,
+			Bid1:         bid,
+			Ask1:         ask,
+			Volume24:     amt, // base coin volume
+			AmountUSDT24: amt * last,
+			Timestamp:    ts,
 		})
 	}
 	return exchangeTickers, nil

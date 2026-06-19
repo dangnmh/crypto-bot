@@ -107,7 +107,7 @@ func TestClient_GetTickers(t *testing.T) {
 	assert.Equal(t, "BTC", tickers[0].Symbol)
 	assert.Equal(t, 50000.2, tickers[0].LastPrice)
 	assert.Equal(t, 19.999920000319998, tickers[0].Volume24)
-	assert.Equal(t, 1000000.0, tickers[0].Amount24)
+	assert.Equal(t, 1000000.0, tickers[0].AmountUSDT24)
 }
 
 //nolint:dupl // standard mock setup contains high structural similarity

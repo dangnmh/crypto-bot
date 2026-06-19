@@ -324,14 +324,15 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	tickers := make([]exchange.Ticker, 0, len(res.List))
 	for i := range res.List {
 		raw := &res.List[i]
+		amt := decmath.ParseFloat(raw.Turnover24h)
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:    raw.Symbol,
-			LastPrice: decmath.ParseFloat(raw.LastPrice),
-			Bid1:      decmath.ParseFloat(raw.Bid1Price),
-			Ask1:      decmath.ParseFloat(raw.Ask1Price),
-			Volume24:  decmath.ParseFloat(raw.Volume24h),
-			Amount24:  decmath.ParseFloat(raw.Turnover24h),
-			Timestamp: time.Now().UnixMilli(),
+			Symbol:       raw.Symbol,
+			LastPrice:    decmath.ParseFloat(raw.LastPrice),
+			Bid1:         decmath.ParseFloat(raw.Bid1Price),
+			Ask1:         decmath.ParseFloat(raw.Ask1Price),
+			Volume24:     decmath.ParseFloat(raw.Volume24h),
+			AmountUSDT24: amt,
+			Timestamp:    time.Now().UnixMilli(),
 		})
 	}
 	return tickers, nil

@@ -18,9 +18,9 @@ func TestEvaluateSafety(t *testing.T) {
 		TradeIntent: domain.TradeIntent{FundingRate: 0.02}, // 2%
 		TradePlan:   domain.TradePlan{Volume: 50, Slippage: 0},
 		MarketData: domain.MarketData{
-			LastPrice: 100,
-			BestAsk:   101,
-			Amount24:  10000000000, // Large liquidity
+			LastPrice:    100,
+			BestAsk:      101,
+			AmountUSDT24: 10000000000, // Large liquidity
 		},
 		ContractSpec: domain.ContractSpec{
 			ContractSize: 0.01,
@@ -64,7 +64,7 @@ func TestEvaluateSafety(t *testing.T) {
 	t.Run("Failed Low 24h Volume", func(t *testing.T) {
 		t.Parallel()
 		c5 := c
-		c5.Amount24 = 999999
+		c5.AmountUSDT24 = 999999
 		res := c5.EvaluateSafety(domain.SafetyLimits{MinVol24USD: 1000000})
 		if res.Passed {
 			t.Error("expected safety to fail due to low 24h USD volume")
@@ -108,9 +108,9 @@ func TestApplySafetySizing_SizesDownHighImpactRatio(t *testing.T) {
 		TradeIntent: domain.TradeIntent{FundingRate: 0.02},
 		TradePlan:   domain.TradePlan{Volume: 50},
 		MarketData: domain.MarketData{
-			LastPrice: 100,
-			BestAsk:   101,
-			Amount24:  1000000, // max = 1000000 / 1440 * 5% = 34.7222
+			LastPrice:    100,
+			BestAsk:      101,
+			AmountUSDT24: 1000000, // max = 1000000 / 1440 * 5% = 34.7222
 		},
 		ContractSpec: domain.ContractSpec{
 			ContractSize: 0.01,
@@ -146,9 +146,9 @@ func TestApplySafetySizing_InvalidRefPrice(t *testing.T) {
 		TradeIntent: domain.TradeIntent{FundingRate: 0.02},
 		TradePlan:   domain.TradePlan{Volume: 50},
 		MarketData: domain.MarketData{
-			LastPrice: 0, // Invalid refPrice
-			BestAsk:   0,
-			Amount24:  1000000,
+			LastPrice:    0, // Invalid refPrice
+			BestAsk:      0,
+			AmountUSDT24: 1000000,
 		},
 		ContractSpec: domain.ContractSpec{
 			ContractSize: 0.01,

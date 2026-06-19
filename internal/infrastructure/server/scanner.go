@@ -270,7 +270,7 @@ func getPotentialFundingSymbols(
 		if blacklistMap[t.Symbol] {
 			continue
 		}
-		vol := t.Amount24
+		vol := t.AmountUSDT24
 		if vol < minVol24h {
 			continue
 		}

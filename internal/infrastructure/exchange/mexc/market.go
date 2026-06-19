@@ -356,13 +356,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	tickers := make([]exchange.Ticker, 0, len(rawList))
 	for _, raw := range rawList {
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:    raw.Symbol,
-			LastPrice: raw.LastPrice,
-			Bid1:      raw.Bid1,
-			Ask1:      raw.Ask1,
-			Volume24:  raw.Volume24,
-			Amount24:  raw.Amount24,
-			Timestamp: raw.Timestamp,
+			Symbol:       raw.Symbol,
+			LastPrice:    raw.LastPrice,
+			Bid1:         raw.Bid1,
+			Ask1:         raw.Ask1,
+			Volume24:     raw.Volume24,
+			AmountUSDT24: raw.Amount24,
+			Timestamp:    raw.Timestamp,
 		})
 	}
 	return tickers, nil

@@ -19,13 +19,13 @@ type PriceData struct {
 
 // TickerData holds ticker snapshot data (from REST sync).
 type TickerData struct {
-	Symbol    string
-	Volume24  float64
-	Amount24  float64
-	LastPrice float64
-	BestBid   float64
-	BestAsk   float64
-	UpdatedAt time.Time
+	Symbol       string
+	Volume24     float64
+	AmountUSDT24 float64
+	LastPrice    float64
+	BestBid      float64
+	BestAsk      float64
+	UpdatedAt    time.Time
 }
 
 // ContractData holds contract specification (from REST sync).
@@ -58,13 +58,13 @@ type FundingData struct {
 // TickerDataFromExchange converts an exchange.Ticker to TickerData.
 func TickerDataFromExchange(t *exchange.Ticker) *TickerData {
 	return &TickerData{
-		Symbol:    t.Symbol,
-		Volume24:  t.Volume24,
-		Amount24:  t.Amount24,
-		LastPrice: t.LastPrice,
-		BestBid:   t.Bid1,
-		BestAsk:   t.Ask1,
-		UpdatedAt: time.Now(),
+		Symbol:       t.Symbol,
+		Volume24:     t.Volume24,
+		AmountUSDT24: t.AmountUSDT24,
+		LastPrice:    t.LastPrice,
+		BestBid:      t.Bid1,
+		BestAsk:      t.Ask1,
+		UpdatedAt:    time.Now(),
 	}
 }
 

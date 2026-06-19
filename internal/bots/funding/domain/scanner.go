@@ -17,11 +17,11 @@ import (
 
 // MarketData holds live market prices from the store/WS.
 type MarketData struct {
-	LastPrice float64
-	BestBid   float64
-	BestAsk   float64
-	Volume24  float64
-	Amount24  float64
+	LastPrice    float64
+	BestBid      float64
+	BestAsk      float64
+	Volume24     float64
+	AmountUSDT24 float64
 }
 
 // ContractSpec holds exchange contract specifications.
@@ -101,13 +101,13 @@ type Candidate struct {
 
 // ScanResult holds a scanned ticker for domain processing.
 type ScanResult struct {
-	Symbol      string
-	FundingRate float64
-	LastPrice   float64
-	BestBid     float64
-	BestAsk     float64
-	Volume24    float64
-	Amount24    float64
+	Symbol       string
+	FundingRate  float64
+	LastPrice    float64
+	BestBid      float64
+	BestAsk      float64
+	Volume24     float64
+	AmountUSDT24 float64
 }
 
 // ScanConfig holds per-symbol scan parameters (extracted from config layer).
@@ -138,7 +138,7 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 		if absFR < sc.MinFundingRate {
 			continue
 		}
-		if sc.MinVol24USD > 0 && t.Amount24 < sc.MinVol24USD {
+		if sc.MinVol24USD > 0 && t.AmountUSDT24 < sc.MinVol24USD {
 			continue
 		}
 
@@ -148,11 +148,11 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 				FundingRate: t.FundingRate,
 			},
 			MarketData: MarketData{
-				LastPrice: t.LastPrice,
-				BestBid:   t.BestBid,
-				BestAsk:   t.BestAsk,
-				Volume24:  t.Volume24,
-				Amount24:  t.Amount24,
+				LastPrice:    t.LastPrice,
+				BestBid:      t.BestBid,
+				BestAsk:      t.BestAsk,
+				Volume24:     t.Volume24,
+				AmountUSDT24: t.AmountUSDT24,
 			},
 		}
 

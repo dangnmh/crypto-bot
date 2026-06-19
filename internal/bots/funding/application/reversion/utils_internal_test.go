@@ -576,8 +576,12 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 				BaseReversionEvent: BaseReversionEvent{ReqID: tt.reqID, Symbol: "BTC_USDT", OrderID: "ord-none"},
 				Candidate:          reversionTestCandidate(),
 			}
+			submitted.Candidate.FundingRate = 0.0055
+			submitted.Candidate.AmountUSDT24 = 120_000_000
 			outcome := runner.resolveIOCOutcome(context.Background(), submitted)
 			assert.Equal(t, tt.wantReason, outcome.Reason)
+			assert.Equal(t, submitted.Candidate.FundingRate, outcome.FundingRate)
+			assert.Equal(t, submitted.Candidate.AmountUSDT24, outcome.VolUSDT24h)
 			require.NoError(t, runner.handleIOCOutcomeChecked(context.Background(), outcome))
 
 			abort := timelineEvent[AbortEvent](t, bus, TopicReversionAbort)
@@ -980,11 +984,11 @@ func reversionTestCandidate() fundingdomain.Candidate {
 			ContractSize: 0.001,
 		},
 		MarketData: fundingdomain.MarketData{
-			LastPrice: 60000,
-			BestBid:   59990,
-			BestAsk:   60000,
-			Volume24:  1000,
-			Amount24:  60_000_000,
+			LastPrice:    60000,
+			BestBid:      59990,
+			BestAsk:      60000,
+			Volume24:     1000,
+			AmountUSDT24: 60_000_000,
 		},
 		TradePlan: fundingdomain.TradePlan{
 			Volume: 1,

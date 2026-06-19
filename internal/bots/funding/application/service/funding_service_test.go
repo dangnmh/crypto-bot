@@ -39,11 +39,11 @@ func TestFundingService_GetPotentialFundingSymbols(t *testing.T) {
 	t.Parallel()
 
 	tickers := []exchange.Ticker{
-		{Symbol: "BTC_USDT", Amount24: 1000000},
-		{Symbol: "ETH_USDT", Amount24: 500000},
-		{Symbol: "SOL_USDT", Amount24: 150000},
-		{Symbol: "ADA_USDT", Amount24: 50000},
-		{Symbol: "DOGE_USDT", Amount24: 10000},
+		{Symbol: "BTC_USDT", AmountUSDT24: 1000000},
+		{Symbol: "ETH_USDT", AmountUSDT24: 500000},
+		{Symbol: "SOL_USDT", AmountUSDT24: 150000},
+		{Symbol: "ADA_USDT", AmountUSDT24: 50000},
+		{Symbol: "DOGE_USDT", AmountUSDT24: 10000},
 	}
 
 	rates := []exchange.FundingRateResult{

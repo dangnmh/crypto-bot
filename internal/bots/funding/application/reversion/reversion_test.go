@@ -203,11 +203,11 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Amount24:  60000000,
+			LastPrice:    60000.0,
+			BestBid:      59990.0,
+			BestAsk:      60000.0,
+			Volume24:     1000,
+			AmountUSDT24: 60000000,
 		},
 	}
 
@@ -411,11 +411,11 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Amount24:  60000000,
+			LastPrice:    60000.0,
+			BestBid:      59990.0,
+			BestAsk:      60000.0,
+			Volume24:     1000,
+			AmountUSDT24: 60000000,
 		},
 	}
 
@@ -643,11 +643,11 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Amount24:  60000000,
+			LastPrice:    60000.0,
+			BestBid:      59990.0,
+			BestAsk:      60000.0,
+			Volume24:     1000,
+			AmountUSDT24: 60000000,
 		},
 	}
 

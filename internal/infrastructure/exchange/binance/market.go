@@ -327,14 +327,15 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	tickers := make([]exchange.Ticker, 0, len(mpList))
 	for i := range mpList {
 		sym := mpList[i].Symbol
+		amt := amountMap[sym]
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:    sym,
-			LastPrice: lastMap[sym],
-			Bid1:      bestBidMap[sym],
-			Ask1:      bestAskMap[sym],
-			Volume24:  volMap[sym],
-			Amount24:  amountMap[sym],
-			Timestamp: now,
+			Symbol:       sym,
+			LastPrice:    lastMap[sym],
+			Bid1:         bestBidMap[sym],
+			Ask1:         bestAskMap[sym],
+			Volume24:     volMap[sym],
+			AmountUSDT24: amt,
+			Timestamp:    now,
 		})
 	}
 	return tickers, nil

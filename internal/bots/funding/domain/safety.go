@@ -37,16 +37,16 @@ func (c *Candidate) EvaluateSafety(limits SafetyLimits) *SafetyResult {
 	result.DesiredNotionalUSDT = desiredNotional
 	result.ActualNotionalUSDT = desiredNotional
 
-	if limits.MinVol24USD > 0 && c.Amount24 < limits.MinVol24USD {
+	if limits.MinVol24USD > 0 && c.AmountUSDT24 < limits.MinVol24USD {
 		result.Passed = false
-		result.RejectReason = fmt.Sprintf("24h volume %.4f below minimum %.4f", c.Amount24, limits.MinVol24USD)
+		result.RejectReason = fmt.Sprintf("24h volume %.4f below minimum %.4f", c.AmountUSDT24, limits.MinVol24USD)
 		return result
 	}
 
 	// Impact ratio is measured against average one-minute turnover:
 	// maxNotional = amount24hUSD / 1440 * maxImpactRatio.
-	if c.Amount24 > 0 {
-		result.AvgMinuteVolumeUSDT = decmath.Div(c.Amount24, minutesPerDay)
+	if c.AmountUSDT24 > 0 {
+		result.AvgMinuteVolumeUSDT = decmath.Div(c.AmountUSDT24, minutesPerDay)
 		result.MaxSafeNotionalUSDT = decmath.Mul(result.AvgMinuteVolumeUSDT, limits.MaxImpactRatio)
 		if result.MaxSafeNotionalUSDT > 0 && desiredNotional > result.MaxSafeNotionalUSDT {
 			result.ActualNotionalUSDT = result.MaxSafeNotionalUSDT

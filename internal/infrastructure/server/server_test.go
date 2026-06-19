@@ -534,7 +534,7 @@ func TestAPIServer_FundingScanner(t *testing.T) {
 	t.Parallel()
 	clientMexc := &stubClient{
 		tickers: []exchange.Ticker{
-			{Symbol: "HIGH_USDT", Amount24: 2000000.0},
+			{Symbol: "HIGH_USDT", AmountUSDT24: 2000000.0},
 		},
 		rates: []exchange.FundingRateResult{
 			{Symbol: "HIGH_USDT", Rate: -0.003852},

@@ -55,7 +55,7 @@ func (s *FundingService) GetPotentialFundingSymbols(
 		if len(whitelistMap) > 0 && !whitelistMap[t.Symbol] {
 			continue
 		}
-		vol := t.Amount24
+		vol := t.AmountUSDT24
 		if vol < minVol24h {
 			continue
 		}

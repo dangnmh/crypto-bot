@@ -215,30 +215,51 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
+func (c *Client) getSingleTicker(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	raw, err := c.getRawTickerSingle(ctx, kucoinTickerSingleRequest{
+		Symbol: symbol,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	last := decmath.ParseFloat(raw.Price)
+	bid := decmath.ParseFloat(raw.BestBidPrice)
+	ask := decmath.ParseFloat(raw.BestAskPrice)
+	ts := decmath.ParseInt64(raw.Ts)
+
+	var vol, amt float64
+	cList, err := c.getRawContractDetails(ctx, kucoinContractsRequest{})
+	if err == nil {
+		for i := range cList {
+			if cList[i].Symbol == symbol {
+				vol = cList[i].VolumeOf24h
+				amt = cList[i].TurnoverOf24h
+				break
+			}
+		}
+	}
+	if amt == 0 && vol > 0 {
+		amt = vol * last
+	}
+
+	return []exchange.Ticker{
+		{
+			Symbol:       raw.Symbol,
+			LastPrice:    last,
+			Bid1:         bid,
+			Ask1:         ask,
+			Volume24:     vol,
+			AmountUSDT24: amt,
+			Timestamp:    ts,
+		},
+	}, nil
+}
+
 // GetTickers returns ticker data for all contracts.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	if symbol != "" {
-		raw, err := c.getRawTickerSingle(ctx, kucoinTickerSingleRequest{
-			Symbol: symbol,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		last := decmath.ParseFloat(raw.Price)
-		bid := decmath.ParseFloat(raw.BestBidPrice)
-		ask := decmath.ParseFloat(raw.BestAskPrice)
-		ts := decmath.ParseInt64(raw.Ts)
-
-		return []exchange.Ticker{
-			{
-				Symbol:    raw.Symbol,
-				LastPrice: last,
-				Bid1:      bid,
-				Ask1:      ask,
-				Timestamp: ts,
-			},
-		}, nil
+		return c.getSingleTicker(ctx, symbol)
 	}
 
 	tickers, err := c.getRawTickers(ctx, kucoinTickersRequest{})
@@ -281,13 +302,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		}
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:    t.Symbol,
-			LastPrice: last,
-			Bid1:      bid,
-			Ask1:      ask,
-			Volume24:  vol,
-			Amount24:  amt,
-			Timestamp: ts,
+			Symbol:       t.Symbol,
+			LastPrice:    last,
+			Bid1:         bid,
+			Ask1:         ask,
+			Volume24:     vol,
+			AmountUSDT24: amt,
+			Timestamp:    ts,
 		})
 	}
 

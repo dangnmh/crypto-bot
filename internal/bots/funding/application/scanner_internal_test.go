@@ -349,20 +349,20 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	// ETH_USDT has low volume: 500,000 USD
 	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
 		{
-			Symbol:    "BTC_USDT",
-			LastPrice: 50000,
-			Bid1:      49990,
-			Ask1:      50010,
-			Volume24:  40,
-			Amount24:  2000000, // 2M volume > 1M threshold
+			Symbol:       "BTC_USDT",
+			LastPrice:    50000,
+			Bid1:         49990,
+			Ask1:         50010,
+			Volume24:     40,
+			AmountUSDT24: 2000000,
 		},
 		{
-			Symbol:    "ETH_USDT",
-			LastPrice: 3000,
-			Bid1:      2999,
-			Ask1:      3001,
-			Volume24:  166,
-			Amount24:  500000, // 500k volume < 1M threshold
+			Symbol:       "ETH_USDT",
+			LastPrice:    3000,
+			Bid1:         2999,
+			Ask1:         3001,
+			Volume24:     166,
+			AmountUSDT24: 500000,
 		},
 	}, nil).Times(2) // Once inside FundingService, once inside ScheduleScanner.Scan
 
@@ -437,8 +437,8 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 		{
 			name: "highest absolute funding rate",
 			tickers: []exchange.Ticker{
-				{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50010, Volume24: 40, Amount24: 2000000},
-				{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 1000, Amount24: 3000000},
+				{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50010, Volume24: 40, AmountUSDT24: 2000000},
+				{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 1000, AmountUSDT24: 3000000},
 			},
 			rates: []exchange.FundingRateResult{
 				{Symbol: "BTC_USDT", Rate: 0.004, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
@@ -451,16 +451,18 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 		{
 			name: "same absolute funding rate - pick higher volume",
 			tickers: []exchange.Ticker{
-				{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50010, Volume24: 40, Amount24: 2000000},
-				{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 1333, Amount24: 4000000}, // chosen (4M > 2M)
+				{Symbol: "BTC_USDT", LastPrice: 50100, Bid1: 50090, Ask1: 50110, Volume24: 45, AmountUSDT24: 2200000},
+				{Symbol: "ETH_USDT", LastPrice: 3050, Bid1: 3049, Ask1: 3051, Volume24: 1500, AmountUSDT24: 4500000}, // chosen (4.5M > 2.2M)
+				{Symbol: "LTC_USDT", LastPrice: 150, Bid1: 149, Ask1: 151, Volume24: 100, AmountUSDT24: 15000},
 			},
 			rates: []exchange.FundingRateResult{
 				{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
 				{Symbol: "ETH_USDT", Rate: -0.005, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
+				{Symbol: "LTC_USDT", Rate: 0.001, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
 			},
 			expectedSymbol: "ETH_USDT",
 			expectedRate:   -0.005,
-			expectedVolume: 4000000.0,
+			expectedVolume: 4500000.0,
 		},
 	}
 
@@ -506,7 +508,7 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			opp := opportunities[0]
 			assert.Equal(t, tt.expectedSymbol, opp.Candidate.Symbol)
 			assert.Equal(t, tt.expectedRate, opp.Candidate.FundingRate)
-			assert.Equal(t, tt.expectedVolume, opp.Candidate.Amount24)
+			assert.Equal(t, tt.expectedVolume, opp.Candidate.AmountUSDT24)
 		})
 	}
 }
@@ -535,7 +537,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 			FundingRate: 0.005,
 		},
 		MarketData: domain.MarketData{
-			Amount24: 2000000,
+			AmountUSDT24: 2000000,
 		},
 	}
 	assert.True(t, job.shouldTrigger(candOk, time.Now().Add(10*time.Minute)))
@@ -547,7 +549,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 
 	// Candidate fails volume check
 	candLowVol := candOk
-	candLowVol.Amount24 = 500000
+	candLowVol.AmountUSDT24 = 500000
 	assert.False(t, job.shouldTrigger(candLowVol, time.Now().Add(10*time.Minute)))
 
 	// Candidate is blacklisted

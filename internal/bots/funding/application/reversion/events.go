@@ -87,6 +87,7 @@ const (
 	keyHoldVol     = "holdVol"
 	keyOutcome     = "outcome"
 	keyVolumeUSDT  = "volumeUSDT"
+	keyVolUSDT24h  = "volusdt24h"
 )
 
 type EventColor string
@@ -330,8 +331,10 @@ func (e IOCSubmittedEvent) GetMessage() string {
 }
 func (e IOCSubmittedEvent) GetDataMap() map[string]any {
 	m := map[string]any{
-		keyIOCPrice: e.IntendedPrice,
-		keyVolume:   e.Candidate.Volume,
+		keyIOCPrice:    e.IntendedPrice,
+		keyVolume:      e.Candidate.Volume,
+		keyFundingRate: e.Candidate.FundingRate,
+		keyVolUSDT24h:  e.Candidate.AmountUSDT24,
 	}
 	if e.OrderID != "" {
 		m[keyOrderID] = e.OrderID
@@ -356,6 +359,8 @@ type IOCOutcomeCheckedEvent struct {
 	Reason       ReversionReason   `json:"reason"`
 	CheckedAt    time.Time         `json:"checked_at"`
 	Timeout      time.Duration     `json:"timeout"`
+	FundingRate  float64           `json:"funding_rate"`
+	VolUSDT24h   float64           `json:"vol_usdt_24h"`
 }
 
 func (e IOCOutcomeCheckedEvent) GetMessage() string {
@@ -371,8 +376,10 @@ func (e IOCOutcomeCheckedEvent) GetMessage() string {
 
 func (e IOCOutcomeCheckedEvent) GetDataMap() map[string]any {
 	m := map[string]any{
-		keyOutcome: string(e.Outcome),
-		keyHoldVol: e.HoldVol,
+		keyOutcome:     string(e.Outcome),
+		keyHoldVol:     e.HoldVol,
+		keyFundingRate: e.FundingRate,
+		keyVolUSDT24h:  e.VolUSDT24h,
 	}
 	if e.OrderID != "" {
 		m[keyOrderID] = e.OrderID

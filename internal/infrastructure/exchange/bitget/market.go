@@ -334,13 +334,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		ts, _ := strconv.ParseInt(t.Ts, 10, 64)
 
 		exchangeTickers = append(exchangeTickers, exchange.Ticker{
-			Symbol:    t.Symbol,
-			LastPrice: last,
-			Bid1:      bid,
-			Ask1:      ask,
-			Volume24:  vol,
-			Amount24:  amt,
-			Timestamp: ts,
+			Symbol:       t.Symbol,
+			LastPrice:    last,
+			Bid1:         bid,
+			Ask1:         ask,
+			Volume24:     vol,
+			AmountUSDT24: amt,
+			Timestamp:    ts,
 		})
 	}
 

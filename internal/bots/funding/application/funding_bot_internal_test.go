@@ -112,11 +112,11 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 	now := time.Now()
 
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
-		Symbol:    "BTC_USDT",
-		LastPrice: 100,
-		BestBid:   99,
-		BestAsk:   101,
-		Amount24:  100000,
+		Symbol:       "BTC_USDT",
+		LastPrice:    100,
+		BestBid:      99,
+		BestAsk:      101,
+		AmountUSDT24: 100000,
 	}, nil).AnyTimes()
 
 	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{

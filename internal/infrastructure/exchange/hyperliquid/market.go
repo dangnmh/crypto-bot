@@ -170,13 +170,13 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		vol24h := decmath.ParseFloat(ctxVal.DayNtlVlm)
 
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:    asset.Name,
-			LastPrice: lastPx,
-			Bid1:      lastPx,
-			Ask1:      lastPx,
-			Volume24:  vol24h / lastPx,
-			Amount24:  vol24h,
-			Timestamp: time.Now().UnixMilli(),
+			Symbol:       asset.Name,
+			LastPrice:    lastPx,
+			Bid1:         lastPx,
+			Ask1:         lastPx,
+			Volume24:     vol24h / lastPx,
+			AmountUSDT24: vol24h,
+			Timestamp:    time.Now().UnixMilli(),
 		})
 	}
 	return tickers, nil

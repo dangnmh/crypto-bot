@@ -17,10 +17,10 @@ func TestScanFundingRates(t *testing.T) {
 	}
 
 	tickers := []domain.ScanResult{
-		{Symbol: "BTC_USDT", FundingRate: 0.006, LastPrice: 60000, BestBid: 59999, BestAsk: 60001, Volume24: 100, Amount24: 6000000}, // Meets criteria (0.6% > 0.5%), FR > 0 (LONG)
-		{Symbol: "ETH_USDT", FundingRate: -0.015, LastPrice: 3000, BestBid: 2999, BestAsk: 3001, Volume24: 200, Amount24: 600000},    // Meets criteria (|-1.5%| > 1%), FR < 0 (SHORT)
-		{Symbol: "XRP_USDT", FundingRate: 0.0005, LastPrice: 0.5, BestBid: 0.49, BestAsk: 0.51, Volume24: 10000, Amount24: 5000},     // Fails criteria (0.05% < 0.1%)
-		{Symbol: "DOGE_USDT", FundingRate: 0.02, LastPrice: 0.1, BestBid: 0.09, BestAsk: 0.11, Volume24: 100000, Amount24: 10000},    // Not in config
+		{Symbol: "BTC_USDT", FundingRate: 0.006, LastPrice: 60000, BestBid: 59999, BestAsk: 60001, Volume24: 100, AmountUSDT24: 6000000}, // Meets criteria (0.6% > 0.5%), FR > 0 (LONG)
+		{Symbol: "ETH_USDT", FundingRate: -0.015, LastPrice: 3000, BestBid: 2999, BestAsk: 3001, Volume24: 200, AmountUSDT24: 600000},    // Meets criteria (|-1.5%| > 1%), FR < 0 (SHORT)
+		{Symbol: "XRP_USDT", FundingRate: 0.0005, LastPrice: 0.5, BestBid: 0.49, BestAsk: 0.51, Volume24: 10000, AmountUSDT24: 5000},     // Fails criteria (0.05% < 0.1%)
+		{Symbol: "DOGE_USDT", FundingRate: 0.02, LastPrice: 0.1, BestBid: 0.09, BestAsk: 0.11, Volume24: 100000, AmountUSDT24: 10000},    // Not in config
 	}
 
 	candidates := domain.ScanFundingRates(tickers, configs)
@@ -113,8 +113,8 @@ func TestScanFundingRates_FiltersMinVol24USD(t *testing.T) {
 
 	candidates := domain.ScanFundingRates(
 		[]domain.ScanResult{
-			{Symbol: "BTC_USDT", FundingRate: 0.006, Amount24: 999999},
-			{Symbol: "ETH_USDT", FundingRate: 0.006, Amount24: 1000000},
+			{Symbol: "BTC_USDT", FundingRate: 0.006, AmountUSDT24: 999999},
+			{Symbol: "ETH_USDT", FundingRate: 0.006, AmountUSDT24: 1000000},
 		},
 		[]domain.ScanConfig{
 			{Symbol: "BTC_USDT", MinFundingRate: 0.001, MinVol24USD: 1000000},
