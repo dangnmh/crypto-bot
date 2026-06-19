@@ -41,7 +41,9 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 			"funding": "10s"
 		},
 		"safety": {
-			"maxImpactRatio": 5,
+			"maxImpactRatio": 5
+		},
+		"default": {
 			"minVol24USD": 1000000
 		}
 	}`
@@ -66,7 +68,7 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 
 	// Verify safety values are loaded and percentages normalized.
 	assert.Equal(t, 0.05, fullCfg.Reversion.Safety.MaxImpactRatio)
-	assert.Equal(t, 1000000.0, fullCfg.Reversion.Safety.MinVol24USD)
+	assert.Equal(t, 1000000.0, fullCfg.Reversion.Default.MinVol24USD)
 
 	// Verify sync overrides are applied.
 	assert.Equal(t, types.Duration(5*time.Second), fullCfg.Reversion.Sync.Ticker)

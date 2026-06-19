@@ -117,5 +117,5 @@ type RawRequest interface {
 	GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
 	GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error)
 	GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error)
-	GetRecentClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOrderPNL(ctx context.Context, params map[string]string) ([]byte, error)
 }

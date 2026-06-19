@@ -141,3 +141,7 @@ This uninstalls the Loki/Grafana stack, the bot, and permanently deletes all per
 ```bash
 make destroy-all
 ```
+
+```
+kubectl port-forward svc/crypto-bot 3100:3100
+```

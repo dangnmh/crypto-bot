@@ -52,7 +52,7 @@ resource "kubernetes_deployment" "crypto_bot" {
           "checksum/config"      = sha256(jsonencode(kubernetes_config_map.crypto_bot_configs.data))
           "prometheus.io/scrape" = "true"
           "prometheus.io/path"   = "/metrics"
-          "prometheus.io/port"   = "8080"
+          "prometheus.io/port"   = "3100"
         }
       }
 
@@ -138,8 +138,8 @@ resource "kubernetes_service" "crypto_bot" {
       app = "crypto-bot"
     }
     port {
-      port        = 8080
-      target_port = 8080
+      port        = 3100
+      target_port = 3100
     }
     type = "ClusterIP"
   }

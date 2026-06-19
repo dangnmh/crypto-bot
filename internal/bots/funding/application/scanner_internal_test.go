@@ -393,8 +393,10 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	// Setup minimal config
 	cfg := &config.Config{
 		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MinVol24USD: 1000000,
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD: 1000000,
+				},
 			},
 		},
 		Symbols: []config.SymbolConfig{
@@ -477,8 +479,10 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 
 			cfg := &config.Config{
 				Reversion: &config.ReversionConfig{
-					Safety: config.SafetyConfig{
-						MinVol24USD: 1000000,
+					RawFundingReversionConfig: config.RawFundingReversionConfig{
+						Default: config.ExchangeReversionConfig{
+							MinVol24USD: 1000000,
+						},
 					},
 				},
 				Symbols: []config.SymbolConfig{
@@ -511,11 +515,6 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MinVol24USD: 1000000,
-			},
-		},
 		Blacklist: &config.BlacklistConfig{
 			Mexc: []string{"XRP_USDT"},
 		},
@@ -529,6 +528,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 			Exchange:       "mexc",
 			Symbol:         "BTC_USDT",
 			MinFundingRate: 0.001,
+			MinVol24USD:    1000000,
 		},
 		TradeIntent: domain.TradeIntent{
 			Symbol:      "BTC_USDT",

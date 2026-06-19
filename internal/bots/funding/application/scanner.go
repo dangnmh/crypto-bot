@@ -382,6 +382,7 @@ func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 		ParsedOpenType:      sc.ParsedOpenType,
 		ParsedPositionMode:  sc.ParsedPositionMode,
 		MinFundingRate:      sc.MinFundingRate,
+		MinVol24USD:         sc.MinVol24USD,
 	}
 }
 
@@ -422,7 +423,12 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		blacklist = append(blacklist, s.cfg.Blacklist.GetExchangeBlacklist(s.exchange)...)
 	}
 
-	minVol := s.cfg.Reversion.Safety.MinVol24USD
+	minVol := s.cfg.Reversion.Default.MinVol24USD
+	if specific, exists := s.cfg.Reversion.Exchanges[s.exchange]; exists {
+		if specific.MinVol24USD > 0 {
+			minVol = specific.MinVol24USD
+		}
+	}
 	if minVol <= 0 {
 		minVol = 1000000
 	}
@@ -586,17 +592,14 @@ func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Tic
 }
 
 func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
-	// 24h volume check (safety limit)
-	if j.cfg != nil {
-		minVol := j.cfg.Reversion.Safety.MinVol24USD
-		if minVol > 0 && c.Amount24 < minVol {
-			j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
-				slog.String("symbol", c.Symbol),
-				slog.Float64("vol24h", c.Amount24),
-				slog.Float64("minVol", minVol),
-			)
-			return false
-		}
+	minVol := c.Config.MinVol24USD
+	if minVol > 0 && c.Amount24 < minVol {
+		j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
+			slog.String("symbol", c.Symbol),
+			slog.Float64("vol24h", c.Amount24),
+			slog.Float64("minVol", minVol),
+		)
+		return false
 	}
 
 	refPrice := c.ExecutionRefPrice()
@@ -626,7 +629,7 @@ func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 	}
 
 	// Max symbol USDT price safety limit check
-	if j.cfg != nil {
+	if j.cfg != nil && j.cfg.Reversion != nil {
 		maxPrice := j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
 		if maxPrice > 0 && refPrice > maxPrice {
 			j.log.Debug("Skipping trigger: price exceeds maxSymbolUSDTPrice safety limit",

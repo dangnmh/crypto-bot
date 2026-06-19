@@ -35,6 +35,7 @@ type SymbolConfig struct {
 	OpenType            OpenType     `json:"openType"`
 	PositionMode        PositionMode `json:"positionMode"`
 	MinFundingRate      float64      `json:"minFundingRate"`
+	MinVol24USD         float64      `json:"minVol24USD"`
 	// Reuses domain types directly — single source of truth.
 	FundingReversion domain.FundingReversionConfig `json:"fundingReversion"`
 
@@ -84,6 +85,8 @@ type ExchangeReversionConfig struct {
 	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
 	Leverage          int            `json:"leverage"`
 	MarginUSD         float64        `json:"marginUSD"`
+	MinVol24USD       float64        `json:"minVol24USD"`
+	MinFundingRate    float64        `json:"minFundingRate"`
 }
 
 type BlacklistConfig struct {

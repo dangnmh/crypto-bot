@@ -5,4 +5,4 @@ global:
 scrape_configs:
   - job_name: 'crypto-bot'
     static_configs:
-      - targets: ['bot:8080']
+      - targets: ['bot:3100']

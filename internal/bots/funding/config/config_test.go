@@ -242,14 +242,14 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 			},
 			Exchanges: map[string]config.ExchangeReversionConfig{
 				"mexc": {
-					TakeProfitPct: 15,
-					StopLossPct:   3,
-					BufferTime:    types.Duration(10 * time.Millisecond),
+					TakeProfitPct:  15,
+					StopLossPct:    3,
+					BufferTime:     types.Duration(10 * time.Millisecond),
+					MinFundingRate: 0.5,
 				},
 			},
 		},
 		Safety: config.SafetyConfig{
-			MinFundingRate:      0.5,
 			MaxPriceDiffPercent: 0.2,
 			MaxLatency:          types.Duration(200 * time.Millisecond),
 		},
@@ -276,12 +276,11 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 	sysCfg := sysWithDefaults(testDefaults{
 		RawFundingReversionConfig: config.RawFundingReversionConfig{
 			Default: config.ExchangeReversionConfig{
-				Leverage: 10,
+				Leverage:       10,
+				MinFundingRate: 0.5,
 			},
 		},
-		Safety: config.SafetyConfig{
-			MinFundingRate: 0.5,
-		},
+		Safety: config.SafetyConfig{},
 	})
 
 	cfg := loadWith(t, sysCfg,
@@ -376,11 +375,11 @@ func TestLoad_WithTradingDefaults(t *testing.T) {
 	sysCfg := sysWithDefaults(testDefaults{
 		RawFundingReversionConfig: config.RawFundingReversionConfig{
 			Default: config.ExchangeReversionConfig{
-				Leverage: 10,
+				Leverage:       10,
+				MinFundingRate: 0.3,
 			},
 		},
 		Safety: config.SafetyConfig{
-			MinFundingRate:      0.3,
 			MaxPriceDiffPercent: 0.1,
 		},
 	})

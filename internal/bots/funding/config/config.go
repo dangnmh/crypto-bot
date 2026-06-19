@@ -202,10 +202,17 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 		if specific.MarginUSD > 0 {
 			exchConfig.MarginUSD = specific.MarginUSD
 		}
+		if specific.MinVol24USD > 0 {
+			exchConfig.MinVol24USD = specific.MinVol24USD
+		}
+		if specific.MinFundingRate > 0 {
+			exchConfig.MinFundingRate = specific.MinFundingRate
+		}
 	}
 
 	defaultFloat(&sc.MaxPriceDiffPercent, c.Reversion.Safety.MaxPriceDiffPercent)
-	defaultFloat(&sc.MinFundingRate, c.Reversion.Safety.MinFundingRate)
+	defaultFloat(&sc.MinFundingRate, exchConfig.MinFundingRate)
+	defaultFloat(&sc.MinVol24USD, exchConfig.MinVol24USD)
 
 	// Apply leverage and margin (either exchange-specific, or default fallback)
 	defaultInt(&sc.Leverage, exchConfig.Leverage)

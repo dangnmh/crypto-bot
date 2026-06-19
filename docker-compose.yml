@@ -44,7 +44,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8080:8080"
+      - "3100:3100"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable}
       - BITWARDEN_ACCESS_TOKEN=${BITWARDEN_ACCESS_TOKEN}

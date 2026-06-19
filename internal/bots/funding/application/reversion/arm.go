@@ -84,7 +84,7 @@ func (r *StatelessRunner) handleArmPlanCalculated(ctx context.Context, evt ArmPl
 	safety := r.globalCfg.Reversion.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
-		MinVol24USD:    safety.MinVol24USD,
+		MinVol24USD:    c.Config.MinVol24USD,
 	})
 
 	rejectReason := ""

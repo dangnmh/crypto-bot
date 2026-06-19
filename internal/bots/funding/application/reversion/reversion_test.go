@@ -168,9 +168,13 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD: 10000,
+				},
+			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
-				MinVol24USD:    10000,
 			},
 		},
 		Symbols: []config.SymbolConfig{cfg},
@@ -178,8 +182,9 @@ func TestStrategy_Execute_Success(t *testing.T) {
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
-			Symbol:   "BTC_USDT",
-			Exchange: "mexc",
+			Symbol:      "BTC_USDT",
+			Exchange:    "mexc",
+			MinVol24USD: 10000,
 		},
 		TradeIntent: domain.TradeIntent{
 			Symbol:      "BTC_USDT",
@@ -371,9 +376,13 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD: 10000,
+				},
+			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
-				MinVol24USD:    10000,
 			},
 		},
 		Symbols: []config.SymbolConfig{cfg},
@@ -381,8 +390,9 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
-			Symbol:   "BTC_USDT",
-			Exchange: "mexc",
+			Symbol:      "BTC_USDT",
+			Exchange:    "mexc",
+			MinVol24USD: 10000,
 		},
 		TradeIntent: domain.TradeIntent{
 			Symbol:      "BTC_USDT",
@@ -597,9 +607,13 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD: 10000,
+				},
+			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
-				MinVol24USD:    10000,
 			},
 		},
 		Symbols: []config.SymbolConfig{cfg},
@@ -607,9 +621,10 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
-			Symbol:   "BTC_USDT",
-			Exchange: "bybit",
-			Leverage: 10,
+			Symbol:      "BTC_USDT",
+			Exchange:    "bybit",
+			MinVol24USD: 10000,
+			Leverage:    10,
 		},
 		TradeIntent: domain.TradeIntent{
 			Symbol:      "BTC_USDT",

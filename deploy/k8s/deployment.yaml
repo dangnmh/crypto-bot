@@ -19,7 +19,7 @@ spec:
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/metrics"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "3100"
     spec:
       securityContext:
         fsGroup: 10001
@@ -89,6 +89,6 @@ spec:
   selector:
     app: crypto-bot
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: 3100
+      targetPort: 3100
   type: ClusterIP

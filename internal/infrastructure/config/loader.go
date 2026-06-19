@@ -338,7 +338,7 @@ func applySystemDefaults(c *SystemConfig) {
 		c.Logging.Level = "info"
 	}
 	if c.APIServer.Port == 0 {
-		c.APIServer.Port = 8080
+		c.APIServer.Port = 3100
 	}
 	if c.APIServer.Host == "" {
 		c.APIServer.Host = "0.0.0.0"

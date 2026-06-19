@@ -9,7 +9,9 @@
     "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
     "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close
     "leverage": 5,
-    "marginUSD": 3
+    "marginUSD": 3,
+    "minVol24USD": 1000000,
+    "minFundingRate": 0.3
   },
   "sync": {
     "time": "60s",
@@ -18,10 +20,8 @@
     "funding": "30s"
   },
   "safety": {
-    "minVol24USD": 1000000,
     "maxImpactRatio": 5,
     "maxLatency": "400ms", // Abort if RTT > 400ms
-    "minFundingRate": 0.3,
     "maxPriceDiffPercent": 0.8,
     "maxSymbolUSDTPrice": 50
   },
@@ -39,7 +39,9 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
-      "postSettleTimeout": "3s" // Force close if reversion lifecycle does not terminally close,
+      "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close,
+      // "minVol24USD": 1000000,
+      // "minFundingRate": 0.3
     },
     "bybit": {
       "takeProfitPct": 1,

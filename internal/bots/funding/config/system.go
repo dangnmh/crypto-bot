@@ -25,10 +25,8 @@ type NotifierConfig struct {
 
 // SafetyConfig holds safety metrics specific to funding reversion.
 type SafetyConfig struct {
-	MinVol24USD         float64        `json:"minVol24USD"`
 	MaxImpactRatio      float64        `json:"maxImpactRatio"`
 	MaxLatency          types.Duration `json:"maxLatency"`
-	MinFundingRate      float64        `json:"minFundingRate"`
 	MaxPriceDiffPercent float64        `json:"maxPriceDiffPercent"`
 	MaxSymbolUSDTPrice  float64        `json:"maxSymbolUSDTPrice"`
 }

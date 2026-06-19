@@ -114,7 +114,7 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 	safety := r.globalCfg.Reversion.Safety
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
 		MaxImpactRatio: safety.MaxImpactRatio,
-		MinVol24USD:    safety.MinVol24USD,
+		MinVol24USD:    c.Config.MinVol24USD,
 	})
 	passed := c.SafetyResult != nil && c.SafetyResult.Passed
 	rejectReason := ""
