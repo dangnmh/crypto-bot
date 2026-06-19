@@ -61,7 +61,7 @@
     "kucoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-350ms",
+      "bufferTime": "-400ms",
       "postSettleTimeout": "3s"
     },
     "okx": {
@@ -73,7 +73,7 @@
     "gate": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-50ms",
+      "bufferTime": "-100ms",
       "postSettleTimeout": "3s"
     },
     "hyperliquid": {
