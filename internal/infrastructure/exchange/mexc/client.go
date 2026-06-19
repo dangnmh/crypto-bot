@@ -266,3 +266,22 @@ func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string)
 func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/position/list/history_positions", params, nil)
 }
+
+func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	orderID := params["order_id"]
+	if orderID == "" {
+		orderID = params["orderId"]
+	}
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required")
+	}
+	if orderID == "" {
+		return nil, fmt.Errorf("order_id is required")
+	}
+	info, err := c.GetOrderPNL(ctx, symbol, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(info)
+}

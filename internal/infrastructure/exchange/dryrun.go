@@ -131,6 +131,13 @@ func (d *DryRunClient) GetHistoryOrdersRaw(ctx context.Context, params map[strin
 	return nil, ErrNotSupported
 }
 
+func (d *DryRunClient) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	if r, ok := d.inner.(RawRequest); ok {
+		return r.GetOrderPNLRaw(ctx, params)
+	}
+	return nil, ErrNotSupported
+}
+
 // ── OrderExecutor (intercepted — no real orders) ─────────────────────.
 
 func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error) {
