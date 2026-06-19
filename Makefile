@@ -25,8 +25,8 @@ IMAGE_TAG       ?= latest
 FULL_IMAGE      := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 
 # Build version metadata
-VERSION         ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-COMMIT          ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+VERSION         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
+COMMIT          ?= $(VERSION)
 BUILD_TIME      ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "unknown")
 
 LDFLAGS         := -w -s \
