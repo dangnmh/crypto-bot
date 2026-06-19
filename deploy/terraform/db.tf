@@ -10,28 +10,26 @@ resource "helm_release" "postgresql" {
   namespace        = "default"
   create_namespace = false
 
-  set {
-    name  = "fullnameOverride"
-    value = "postgresql"
-  }
-
-  set {
-    name  = "auth.database"
-    value = "postgres"
-  }
-
-  set {
-    name  = "auth.postgresPassword"
-    value = var.postgres_password
-  }
-
-  set {
-    name  = "primary.persistence.enabled"
-    value = "true"
-  }
-
-  set {
-    name  = "primary.persistence.size"
-    value = "8Gi"
-  }
+  set = [
+    {
+      name  = "fullnameOverride"
+      value = "postgresql"
+    },
+    {
+      name  = "auth.database"
+      value = "postgres"
+    },
+    {
+      name  = "auth.postgresPassword"
+      value = var.postgres_password
+    },
+    {
+      name  = "primary.persistence.enabled"
+      value = "true"
+    },
+    {
+      name  = "primary.persistence.size"
+      value = "8Gi"
+    }
+  ]
 }

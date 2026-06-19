@@ -39,13 +39,14 @@ resource "helm_release" "vault_secrets_operator" {
   create_namespace = false
   depends_on       = [helm_release.vault]
 
-  set {
-    name  = "defaultVaultConnection.enabled"
-    value = "true"
-  }
-
-  set {
-    name  = "defaultVaultConnection.address"
-    value = "http://vault.default.svc.cluster.local:8200"
-  }
+  set = [
+    {
+      name  = "defaultVaultConnection.enabled"
+      value = "true"
+    },
+    {
+      name  = "defaultVaultConnection.address"
+      value = "http://vault.default.svc.cluster.local:8200"
+    }
+  ]
 }

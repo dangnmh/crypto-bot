@@ -16,10 +16,12 @@ resource "helm_release" "loki_stack" {
     file("${path.module}/../k8s/loki-values.yaml")
   ]
 
-  set {
-    name  = "grafana.adminPassword"
-    value = var.grafana_password
-  }
+  set = [
+    {
+      name  = "grafana.adminPassword"
+      value = var.grafana_password
+    }
+  ]
 }
 
 # 2. Deploy Kubernetes ConfigMap for Grafana Loki Datasource
