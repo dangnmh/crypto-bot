@@ -12,10 +12,6 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	return exchange.CreateOrderResult{}, fmt.Errorf("CreateOrder not supported on Deepcoin")
 }
 
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not supported on Deepcoin")
-}
-
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	return fmt.Errorf("CancelOrder not supported on Deepcoin")
 }
