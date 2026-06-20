@@ -883,7 +883,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 8,
-        "y": 44,
+        "y": 52,
         "w": 8,
         "h": 8
       },
@@ -940,7 +940,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 16,
-        "y": 44,
+        "y": 52,
         "w": 8,
         "h": 8
       },
@@ -1049,6 +1049,54 @@
         "w": 8,
         "h": 8
       },
+      "id": 29,
+      "title": "Gross Profit Breakdown by Exchange",
+      "type": "bargauge",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(gross_profit) AS total_gross_profit FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [],
+          "values": true
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 8,
+        "h": 8
+      },
       "id": 24,
       "title": "Total Fees Paid by Exchange",
       "type": "piechart",
@@ -1100,8 +1148,8 @@
     {
       "collapsed": false,
       "gridPos": {
-        "x": 16,
-        "y": 36,
+        "x": 8,
+        "y": 44,
         "w": 8,
         "h": 8
       },
@@ -1157,7 +1205,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 44,
+        "y": 52,
         "w": 8,
         "h": 8
       },
@@ -1213,7 +1261,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 52,
+        "y": 60,
         "w": 24,
         "h": 10
       },
