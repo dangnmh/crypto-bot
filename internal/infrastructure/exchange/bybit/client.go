@@ -217,15 +217,6 @@ func decodeListResponse[T any](body []byte, errPrefix string) ([]T, error) {
 	return resp.Result.List, nil
 }
 
-func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["accountType"] == "" {
-		p["accountType"] = c.accountType
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/account/wallet-balance", p, nil)
-}
-
 func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	p := make(map[string]string)
 	maps.Copy(p, params)

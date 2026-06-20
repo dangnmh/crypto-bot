@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -18,8 +17,6 @@ import (
 const exchangeName = "binance"
 
 // Explicit request/response structs for account endpoints.
-
-type binanceWalletBalanceRequest struct{}
 
 type binancePositionsRequest struct {
 	Symbol     string
@@ -40,15 +37,6 @@ type binanceIncomeHistoryRequest struct {
 }
 
 // Private raw methods invoking the Binance API directly.
-
-func (c *Client) getRawAssets(ctx context.Context, _ binanceWalletBalanceRequest) ([]accountBalanceItem, error) {
-	var resp []accountBalanceItem
-	err := c.request(ctx, http.MethodGet, "/fapi/v2/balance", nil, true, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("binance futures account balance: %w", err)
-	}
-	return resp, nil
-}
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req binancePositionsRequest) ([]positionRiskItem, error) {
 	params := make(map[string]any)
@@ -109,60 +97,6 @@ func (c *Client) getRawIncomeHistory(ctx context.Context, req binanceIncomeHisto
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
-
-// GetAssets returns all account assets and balances.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	resp, err := c.getRawAssets(ctx, binanceWalletBalanceRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	assets := make([]exchange.AssetInfo, 0, len(resp))
-
-	for i := range resp {
-		item := &resp[i]
-		asset := item.Asset
-		balance := decmath.ParseFloat(item.Balance)
-		crossUnPnl := decmath.ParseFloat(item.CrossUnPnl)
-		available := decmath.ParseFloat(item.AvailableBalance)
-
-		assets = append(assets, exchange.AssetInfo{
-			Currency:         asset,
-			PositionMargin:   0.0,
-			FrozenBalance:    0.0,
-			AvailableBalance: available,
-			CashBalance:      balance,
-			Equity:           balance + crossUnPnl,
-			Unrealized:       crossUnPnl,
-		})
-	}
-
-	if len(assets) == 0 {
-		assets = append(assets, exchange.AssetInfo{
-			Currency: "USDT",
-		})
-	}
-
-	return assets, nil
-}
-
-// GetAssetByCurrency queries asset information for a single currency.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	assets, err := c.GetAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range assets {
-		if strings.EqualFold(assets[i].Currency, currency) {
-			return &assets[i], nil
-		}
-	}
-
-	return &exchange.AssetInfo{
-		Currency: currency,
-	}, nil
-}
 
 // GetOpenPositions returns all open positions for a symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

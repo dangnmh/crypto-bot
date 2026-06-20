@@ -230,10 +230,6 @@ func (c *Client) SupportLeverageOnOrder() bool {
 	return true
 }
 
-func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	return c.RawRequest(ctx, http.MethodGet, "/api/v1/private/account/assets", params, nil)
-}
-
 func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	return c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/funding_rate", params, nil)
 }

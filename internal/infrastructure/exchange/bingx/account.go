@@ -2,7 +2,6 @@ package bingx
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -32,17 +31,8 @@ type bingxIncomeRow struct {
 	ID         string `json:"id"`
 }
 
-type bingxWalletBalanceRequest struct{}
-
 type bingxPositionsRequest struct {
 	Symbol string `json:"symbol,omitempty"`
-}
-
-type bingxBalance struct {
-	Asset           string `json:"asset"`
-	Balance         string `json:"balance"`
-	Equity          string `json:"equity"`
-	AvailableMargin string `json:"availableMargin"`
 }
 
 type bingxPosition struct {
@@ -56,33 +46,6 @@ type bingxPosition struct {
 }
 
 // Private raw methods invoking the BingX REST API.
-
-func (c *Client) getRawAssets(ctx context.Context, _ bingxWalletBalanceRequest) ([]bingxBalance, error) {
-	body, err := c.GetCtx(ctx, pathAccountBalance, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	type balanceData struct {
-		Balance bingxBalance `json:"balance"`
-	}
-
-	var res []bingxBalance
-	if err := json.Unmarshal(body, &res); err != nil {
-		parsed, err := ParseResponse[[]bingxBalance](body, "get_assets")
-		if err == nil {
-			res = parsed
-		} else {
-			single, err := ParseResponse[balanceData](body, "get_assets")
-			if err == nil {
-				res = []bingxBalance{single.Balance}
-			} else {
-				return nil, fmt.Errorf("parse assets response: %w", err)
-			}
-		}
-	}
-	return res, nil
-}
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req bingxPositionsRequest) ([]bingxPosition, error) {
 	params := map[string]string{}
@@ -125,49 +88,6 @@ func (c *Client) getRawUserIncome(ctx context.Context, req bingxUserIncomeReques
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
-
-// GetAssets fetches all active margin balances.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	res, err := c.getRawAssets(ctx, bingxWalletBalanceRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	assets := make([]exchange.AssetInfo, 0, len(res))
-	for i := range res {
-		b := &res[i]
-		bal := decmath.ParseFloat(b.Balance)
-		eq := decmath.ParseFloat(b.Equity)
-		avail := decmath.ParseFloat(b.AvailableMargin)
-
-		assets = append(assets, exchange.AssetInfo{
-			Currency:         b.Asset,
-			Equity:           eq,
-			AvailableBalance: avail,
-			CashBalance:      bal,
-		})
-	}
-
-	return assets, nil
-}
-
-// GetAssetByCurrency retrieves margin balance for a specific coin.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	assets, err := c.GetAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range assets {
-		if assets[i].Currency == currency {
-			return &assets[i], nil
-		}
-	}
-
-	return &exchange.AssetInfo{
-		Currency: currency,
-	}, nil
-}
 
 // GetOpenPositions retrieves currently active futures positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

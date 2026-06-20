@@ -17,40 +17,6 @@ import (
 
 // ── Account API error branches ──────────────────────────────────────.
 
-func TestClient_GetAssets_APIError(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]exchange.AssetInfo]{
-			Success: false,
-			Code:    1001,
-			Message: "invalid signature",
-		}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	_, err := client.GetAssets(context.Background())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid signature")
-}
-
-func TestClient_GetAssetByCurrency_APIError(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[exchange.AssetInfo]{
-			Success: false,
-			Code:    1002,
-			Message: "asset not found",
-		}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	_, err := client.GetAssetByCurrency(context.Background(), "BTC")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "asset not found")
-}
-
 func TestClient_GetOpenPositions_APIError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

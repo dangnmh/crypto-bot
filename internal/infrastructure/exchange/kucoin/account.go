@@ -15,15 +15,6 @@ import (
 
 const exchangeName = "kucoin"
 
-type kucoinAccountOverview struct {
-	Currency         string `json:"currency"`
-	AccountEquity    string `json:"accountEquity"`
-	AvailableBalance string `json:"availableBalance"`
-	PositionMargin   string `json:"positionMargin"`
-	OrderMargin      string `json:"orderMargin"`
-	UnrealisedPNL    string `json:"unrealisedPNL"`
-}
-
 type kucoinPosition struct {
 	Symbol           string      `json:"symbol"`
 	CurrentQty       json.Number `json:"currentQty"`
@@ -33,8 +24,6 @@ type kucoinPosition struct {
 	Leverage         json.Number `json:"leverage"`
 	LiquidationPrice json.Number `json:"liquidationPrice"`
 }
-
-type kucoinAssetsRequest struct{}
 
 type kucoinOpenPositionsRequest struct{}
 
@@ -75,19 +64,6 @@ type kucoinFillsData struct {
 }
 
 // Private raw methods invoking the KuCoin REST API.
-
-func (c *Client) getRawAssets(ctx context.Context, _ kucoinAssetsRequest) (*kucoinAccountOverview, error) {
-	body, err := c.GetAssetsRaw(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	overview, err := ParseResponse[kucoinAccountOverview](body, "account_balance")
-	if err != nil {
-		return nil, err
-	}
-	return &overview, nil
-}
 
 func (c *Client) getRawOpenPositions(ctx context.Context, _ kucoinOpenPositionsRequest) ([]kucoinPosition, error) {
 	body, err := c.GetOpenPositionsRaw(ctx, nil)
@@ -148,46 +124,6 @@ func (c *Client) getRawPositionsHistory(ctx context.Context, symbol string, star
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
-
-// GetAssets fetches account balance overview.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	overview, err := c.getRawAssets(ctx, kucoinAssetsRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	eq := decmath.ParseFloat(overview.AccountEquity)
-	avail := decmath.ParseFloat(overview.AvailableBalance)
-	upl := decmath.ParseFloat(overview.UnrealisedPNL)
-
-	return []exchange.AssetInfo{
-		{
-			Currency:         overview.Currency,
-			Equity:           eq,
-			AvailableBalance: avail,
-			CashBalance:      eq,
-			Unrealized:       upl,
-		},
-	}, nil
-}
-
-// GetAssetByCurrency retrieves margin balance for a specific coin.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	assets, err := c.GetAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range assets {
-		if assets[i].Currency == currency {
-			return &assets[i], nil
-		}
-	}
-
-	return &exchange.AssetInfo{
-		Currency: currency,
-	}, nil
-}
 
 // GetOpenPositions retrieves currently active futures positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

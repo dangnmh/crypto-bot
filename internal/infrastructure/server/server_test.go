@@ -90,10 +90,6 @@ func (s *stubClient) SwitchMarginMode(ctx context.Context, symbol, marginMode st
 func (s *stubClient) WarmUp(ctx context.Context, interval time.Duration) {}
 func (s *stubClient) SupportLeverageOnOrder() bool                       { return false }
 
-func (s *stubClient) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) { return nil, nil }
-func (s *stubClient) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	return nil, nil
-}
 func (s *stubClient) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
 	return nil, nil
 }
@@ -216,12 +212,6 @@ func (s *stubClientNoClosedPnL) SwitchMarginMode(ctx context.Context, symbol, ma
 func (s *stubClientNoClosedPnL) WarmUp(ctx context.Context, interval time.Duration) {}
 func (s *stubClientNoClosedPnL) SupportLeverageOnOrder() bool                       { return false }
 
-func (s *stubClientNoClosedPnL) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	return nil, nil
-}
-func (s *stubClientNoClosedPnL) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	return nil, nil
-}
 func (s *stubClientNoClosedPnL) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
 	return nil, nil
 }

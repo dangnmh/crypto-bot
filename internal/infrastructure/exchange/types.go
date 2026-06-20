@@ -161,18 +161,6 @@ type FundingRateResult struct {
 	SettleTime int64   `json:"settleTime"`
 }
 
-// AssetInfo holds account asset information.
-type AssetInfo struct {
-	Currency         string  `json:"currency"`
-	PositionMargin   float64 `json:"positionMargin"`
-	FrozenBalance    float64 `json:"frozenBalance"`
-	AvailableBalance float64 `json:"availableBalance"`
-	CashBalance      float64 `json:"cashBalance"`
-	Equity           float64 `json:"equity"`
-	Unrealized       float64 `json:"unrealized"`
-	Bonus            float64 `json:"bonus"`
-}
-
 // Position holds position information.
 type Position struct {
 	Symbol          string       `json:"symbol"`

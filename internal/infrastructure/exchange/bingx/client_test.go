@@ -339,43 +339,6 @@ func TestClient_GetOpenOrders(t *testing.T) {
 	assert.Equal(t, "123456", orders[0].OrderID)
 }
 
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/openApi/swap/v2/user/balance", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": 0,
-			"msg": "success",
-			"data": [
-				{
-					"asset": "USDT",
-					"balance": "1000.0",
-					"equity": "1050.0",
-					"availableMargin": "950.0"
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-	assets, err := client.GetAssets(context.Background())
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	assert.Equal(t, "USDT", assets[0].Currency)
-	assert.Equal(t, 1000.0, assets[0].CashBalance)
-	assert.Equal(t, 1050.0, assets[0].Equity)
-	assert.Equal(t, 950.0, assets[0].AvailableBalance)
-
-	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
-	require.NoError(t, err)
-	assert.Equal(t, "USDT", asset.Currency)
-}
-
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
 
@@ -540,17 +503,6 @@ func TestClient_ErrorPaths(t *testing.T) {
 
 	clientRateLimit := bingx.NewClient(serverRateLimit.Client(), serverRateLimit.URL, "key", "secret", config.LoggingConfig{})
 	_, err = clientRateLimit.GetServerTime(context.Background())
-	assert.Error(t, err)
-
-	// 5. GetAssets unmarshal fallback failure
-	serverInvalidJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{invalid-json`))
-	}))
-	defer serverInvalidJSON.Close()
-
-	clientInvalidJSON := bingx.NewClient(serverInvalidJSON.Client(), serverInvalidJSON.URL, "key", "secret", config.LoggingConfig{})
-	_, err = clientInvalidJSON.GetAssets(context.Background())
 	assert.Error(t, err)
 }
 

@@ -76,13 +76,7 @@ func TestDryRunClient_AccountProvider_Delegates(t *testing.T) {
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
 
-	_, err := dry.GetAssets(context.Background())
-	require.NoError(t, err)
-
-	_, err = dry.GetAssetByCurrency(context.Background(), "USDT")
-	require.NoError(t, err)
-
-	_, err = dry.GetOpenPositions(context.Background(), "BTC_USDT")
+	_, err := dry.GetOpenPositions(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
 }
 

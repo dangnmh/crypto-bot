@@ -67,19 +67,6 @@ func TestClient_MarketAndAccountEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, commits)
 
-	assets, err := client.GetAssets(ctx)
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	assert.Equal(t, "USDT", assets[0].Currency)
-	assert.Equal(t, 1000.0, assets[0].Equity)
-
-	asset, err := client.GetAssetByCurrency(ctx, "usdt")
-	require.NoError(t, err)
-	assert.Equal(t, "USDT", asset.Currency)
-	asset, err = client.GetAssetByCurrency(ctx, "BTC")
-	require.NoError(t, err)
-	assert.Equal(t, "BTC", asset.Currency)
-
 	positions, err := client.GetOpenPositions(ctx, "BTC_USDT")
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
@@ -187,8 +174,6 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 	_, err = errClient.GetKlines(context.Background(), "BTC_USDT", "Min1", 0, 60)
 	require.Error(t, err)
 	_, err = errClient.GetDepthSnapshot(context.Background(), "BTC_USDT", 20)
-	require.Error(t, err)
-	_, err = errClient.GetAssets(context.Background())
 	require.Error(t, err)
 	_, err = errClient.GetOpenPositions(context.Background(), "BTC_USDT")
 	require.Error(t, err)

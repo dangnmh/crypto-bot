@@ -617,53 +617,6 @@ func TestClient_ChangeLeverage(t *testing.T) {
 	}
 }
 
-// ── GetAssets ─────────────────────────────────────────────────────────.
-
-//nolint:dupl // test
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-	assets := []exchange.AssetInfo{
-		{Currency: "USDT", AvailableBalance: 1000},
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]exchange.AssetInfo]{Success: true, Code: 0, Data: assets}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	got, err := client.GetAssets(context.Background())
-	if err != nil {
-		t.Fatalf("GetAssets failed: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("want 1 asset, got %d", len(got))
-	}
-	if got[0].Currency != "USDT" {
-		t.Errorf("Currency: want USDT, got %s", got[0].Currency)
-	}
-}
-
-// ── GetAssetByCurrency ───────────────────────────────────────────────.
-
-//nolint:dupl // test
-func TestClient_GetAssetByCurrency(t *testing.T) {
-	t.Parallel()
-	asset := exchange.AssetInfo{Currency: "USDT", AvailableBalance: 500}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[exchange.AssetInfo]{Success: true, Code: 0, Data: asset}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	got, err := client.GetAssetByCurrency(context.Background(), "USDT")
-	if err != nil {
-		t.Fatalf("GetAssetByCurrency failed: %v", err)
-	}
-	if got.AvailableBalance != 500 {
-		t.Errorf("AvailableBalance: want 500, got %f", got.AvailableBalance)
-	}
-}
-
 // ── GetOpenPositions ─────────────────────────────────────────────────.
 
 //nolint:dupl // test

@@ -13,14 +13,6 @@ import (
 
 const exchangeName = "bitget"
 
-type bitgetAccountAsset struct {
-	MarginCoin    string `json:"marginCoin"`
-	Locked        string `json:"locked"`
-	Available     string `json:"available"`
-	AccountEquity string `json:"accountEquity"`
-	UnrealizedPL  string `json:"unrealizedPL"`
-}
-
 type bitgetPosition struct {
 	Symbol           string `json:"symbol"`
 	InstID           string `json:"instId"`
@@ -35,10 +27,6 @@ type bitgetPosition struct {
 	UnrealizedPL     string `json:"unrealizedPL"`
 	LiquidationPrice string `json:"liquidationPrice"`
 	AchievedProfits  string `json:"achievedProfits"`
-}
-
-type bitgetAssetsRequest struct {
-	ProductType string `json:"productType"`
 }
 
 type bitgetOpenPositionsRequest struct {
@@ -78,19 +66,6 @@ type bitgetHistoryPositionResponse struct {
 }
 
 // Private raw methods invoking the Bitget REST API.
-
-func (c *Client) getRawAssets(ctx context.Context, req bitgetAssetsRequest) ([]bitgetAccountAsset, error) {
-	params := map[string]string{
-		paramProductType: req.ProductType,
-	}
-
-	body, err := c.GetCtx(ctx, pathAccountBalance, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[[]bitgetAccountAsset](body, "assets")
-}
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req bitgetOpenPositionsRequest) ([]bitgetPosition, error) {
 	params := map[string]string{
@@ -138,52 +113,6 @@ func (c *Client) getRawHistoryPositions(ctx context.Context, req bitgetHistoryPo
 }
 
 // Public mapper methods implementing the exchange.AccountDataProvider interface.
-
-// GetAssets returns all account asset information.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	balances, err := c.getRawAssets(ctx, bitgetAssetsRequest{
-		ProductType: productTypeUsdtFutures,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	assets := make([]exchange.AssetInfo, 0, len(balances))
-	for i := range balances {
-		item := &balances[i]
-		eq, _ := strconv.ParseFloat(item.AccountEquity, 64)
-		avail, _ := strconv.ParseFloat(item.Available, 64)
-		locked, _ := strconv.ParseFloat(item.Locked, 64)
-		upl, _ := strconv.ParseFloat(item.UnrealizedPL, 64)
-
-		assets = append(assets, exchange.AssetInfo{
-			Currency:         item.MarginCoin,
-			Equity:           eq,
-			AvailableBalance: avail,
-			FrozenBalance:    locked,
-			CashBalance:      eq,
-			Unrealized:       upl,
-		})
-	}
-
-	return assets, nil
-}
-
-// GetAssetByCurrency returns asset info for a specific currency.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	assets, err := c.GetAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range assets {
-		if assets[i].Currency == currency {
-			return &assets[i], nil
-		}
-	}
-
-	return nil, fmt.Errorf("asset balance not found for currency: %s", currency)
-}
 
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

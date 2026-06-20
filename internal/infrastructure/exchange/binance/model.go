@@ -46,13 +46,6 @@ type markPriceInfo struct {
 	NextFundingTime int64  `json:"nextFundingTime"`
 }
 
-type accountBalanceItem struct {
-	Asset            string `json:"asset"`
-	Balance          string `json:"balance"`
-	CrossUnPnl       string `json:"crossUnPnl"`
-	AvailableBalance string `json:"availableBalance"`
-}
-
 type positionRiskItem struct {
 	Symbol       string `json:"symbol"`
 	PositionAmt  string `json:"positionAmt"`

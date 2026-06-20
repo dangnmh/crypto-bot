@@ -204,37 +204,6 @@ func TestClient_GetDepthSnapshot(t *testing.T) {
 }
 
 //nolint:dupl // standard mock setup contains high structural similarity
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "POST", r.Method)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"marginSummary": {
-				"accountValue": "1000.5",
-				"totalMarginUsed": "200.0"
-			},
-			"withdrawable": "800.5",
-			"assetPositions": []
-		}`))
-	}))
-	defer server.Close()
-
-	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
-	assets, err := client.GetAssets(context.Background())
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	assert.Equal(t, "USDC", assets[0].Currency)
-	assert.Equal(t, 1000.5, assets[0].Equity)
-	assert.Equal(t, 800.5, assets[0].AvailableBalance)
-	assert.Equal(t, 200.0, assets[0].FrozenBalance)
-
-	asset, err := client.GetAssetByCurrency(context.Background(), "USDC")
-	require.NoError(t, err)
-	assert.Equal(t, 1000.5, asset.Equity)
-}
-
 //nolint:dupl // standard mock setup contains high structural similarity
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()

@@ -235,42 +235,6 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType) // long
 }
 
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v2/mix/account/accounts", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "00000",
-			"msg": "success",
-			"data": [
-				{
-					"marginCoin": "USDT",
-					"locked": "10.0",
-					"available": "990.0",
-					"accountEquity": "1000.0",
-					"unrealizedPL": "50.0"
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	assets, err := client.GetAssets(context.Background())
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	assert.Equal(t, "USDT", assets[0].Currency)
-	assert.Equal(t, 1000.0, assets[0].CashBalance)
-
-	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
-	require.NoError(t, err)
-	assert.Equal(t, "USDT", asset.Currency)
-}
-
 func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {
 	t.Parallel()
 

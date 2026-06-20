@@ -33,10 +33,6 @@ func (s *stubClient) GetServerTime(_ context.Context) (int64, error) { return 0,
 func (s *stubClient) GetKlines(_ context.Context, _, _ string, _, _ int64) ([]exchange.Kline, error) {
 	return nil, nil
 }
-func (s *stubClient) GetAssets(_ context.Context) ([]exchange.AssetInfo, error) { return nil, nil }
-func (s *stubClient) GetAssetByCurrency(_ context.Context, _ string) (*exchange.AssetInfo, error) {
-	return nil, nil
-}
 func (s *stubClient) GetOpenPositions(_ context.Context, _ string) ([]exchange.Position, error) {
 	return nil, nil
 }
@@ -178,12 +174,6 @@ func TestDryRunClient_ReadOps_DelegateToReal(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = dry.GetDepthCommits(context.Background(), "BTC_USDT", 20)
-	require.NoError(t, err)
-
-	_, err = dry.GetAssets(context.Background())
-	require.NoError(t, err)
-
-	_, err = dry.GetAssetByCurrency(context.Background(), "USDT")
 	require.NoError(t, err)
 
 	_, err = dry.GetOpenPositions(context.Background(), "BTC_USDT")

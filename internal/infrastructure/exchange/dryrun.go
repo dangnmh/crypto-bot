@@ -61,14 +61,6 @@ func (d *DryRunClient) GetDepthCommits(ctx context.Context, symbol string, limit
 
 // ── AccountProvider (delegated to real client) ───────────────────────.
 
-func (d *DryRunClient) GetAssets(ctx context.Context) ([]AssetInfo, error) {
-	return d.inner.GetAssets(ctx)
-}
-
-func (d *DryRunClient) GetAssetByCurrency(ctx context.Context, currency string) (*AssetInfo, error) {
-	return d.inner.GetAssetByCurrency(ctx, currency)
-}
-
 func (d *DryRunClient) GetOpenPositions(ctx context.Context, symbol string) ([]Position, error) {
 	return d.inner.GetOpenPositions(ctx, symbol)
 }

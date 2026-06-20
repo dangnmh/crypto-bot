@@ -332,42 +332,6 @@ func TestClient_CancelOrder(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		assert.Contains(t, r.URL.Path, "/fapi/v2/balance")
-
-		_, _ = w.Write([]byte(`[
-			{
-				"asset": "USDT",
-				"balance": "1000.0",
-				"crossUnPnl": "50.0",
-				"availableBalance": "950.0"
-			}
-		]`))
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	assets, err := client.GetAssets(context.Background())
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-
-	assert.Equal(t, "USDT", assets[0].Currency)
-	assert.Equal(t, 1000.0, assets[0].CashBalance)
-	assert.Equal(t, 1050.0, assets[0].Equity)
-	assert.Equal(t, 50.0, assets[0].Unrealized)
-	assert.Equal(t, 950.0, assets[0].AvailableBalance)
-
-	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
-	require.NoError(t, err)
-	assert.Equal(t, "USDT", asset.Currency)
-	assert.Equal(t, 1000.0, asset.CashBalance)
-}
-
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
 

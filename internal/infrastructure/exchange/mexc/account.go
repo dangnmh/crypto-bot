@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
@@ -12,21 +11,6 @@ import (
 )
 
 const exchangeName = "mexc"
-
-type mexcAssetInfo struct {
-	Currency         string  `json:"currency"`
-	PositionMargin   float64 `json:"positionMargin"`
-	FrozenBalance    float64 `json:"frozenBalance"`
-	AvailableBalance float64 `json:"availableBalance"`
-	CashBalance      float64 `json:"cashBalance"`
-	Equity           float64 `json:"equity"`
-	Unrealized       float64 `json:"unrealized"`
-	Bonus            float64 `json:"bonus"`
-}
-
-type mexcAssetRequest struct {
-	Currency string `json:"currency,omitempty"`
-}
 
 type mexcPositionsRequest struct {
 	Symbol string `json:"symbol,omitempty"`
@@ -65,27 +49,6 @@ type mexcHistoryPositionsRequest struct {
 }
 
 // Private raw methods invoking the MEXC API.
-
-func (c *Client) getRawAssets(ctx context.Context) ([]mexcAssetInfo, error) {
-	body, err := c.GetAssetsRaw(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[[]mexcAssetInfo](body, "assets")
-}
-
-func (c *Client) getRawAssetByCurrency(ctx context.Context, req mexcAssetRequest) (*mexcAssetInfo, error) {
-	path := fmt.Sprintf("/api/v1/private/account/asset/%s", req.Currency)
-	body, err := c.RawRequest(ctx, http.MethodGet, path, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ParseResponse[mexcAssetInfo](body, "asset_by_currency")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
 
 func (c *Client) getRawOpenPositions(ctx context.Context, req mexcPositionsRequest) ([]mexcPosition, error) {
 	params := map[string]string{}
@@ -132,48 +95,6 @@ func (c *Client) getRawHistoryPositions(ctx context.Context, req mexcHistoryPosi
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
-
-// GetAssets returns all account asset information.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	rawList, err := c.getRawAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	assets := make([]exchange.AssetInfo, len(rawList))
-	for i, raw := range rawList {
-		assets[i] = exchange.AssetInfo{
-			Currency:         raw.Currency,
-			PositionMargin:   raw.PositionMargin,
-			FrozenBalance:    raw.FrozenBalance,
-			AvailableBalance: raw.AvailableBalance,
-			CashBalance:      raw.CashBalance,
-			Equity:           raw.Equity,
-			Unrealized:       raw.Unrealized,
-			Bonus:            raw.Bonus,
-		}
-	}
-	return assets, nil
-}
-
-// GetAssetByCurrency returns asset info for a specific currency.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	raw, err := c.getRawAssetByCurrency(ctx, mexcAssetRequest{Currency: currency})
-	if err != nil {
-		return nil, err
-	}
-
-	return &exchange.AssetInfo{
-		Currency:         raw.Currency,
-		PositionMargin:   raw.PositionMargin,
-		FrozenBalance:    raw.FrozenBalance,
-		AvailableBalance: raw.AvailableBalance,
-		CashBalance:      raw.CashBalance,
-		Equity:           raw.Equity,
-		Unrealized:       raw.Unrealized,
-		Bonus:            raw.Bonus,
-	}, nil
-}
 
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

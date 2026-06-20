@@ -57,8 +57,6 @@ type PositionModeSwitcher interface {
 // AccountProvider is the interface for reading account data.
 // Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
 type AccountProvider interface {
-	GetAssets(ctx context.Context) ([]AssetInfo, error)
-	GetAssetByCurrency(ctx context.Context, currency string) (*AssetInfo, error)
 	GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)
 }
 

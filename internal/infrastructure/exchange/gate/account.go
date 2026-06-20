@@ -18,31 +18,12 @@ const (
 	positionModeSingle = "single"
 )
 
-type gateAssetsRequest struct {
-	Settle string `json:"settle"`
-}
-
 type gatePositionsRequest struct {
 	Settle string `json:"settle"`
 	Symbol string `json:"symbol,omitempty"`
 }
 
 // Private raw methods invoking HTTP requests.
-
-func (c *Client) getRawAssets(ctx context.Context, req gateAssetsRequest) (*gateFuturesAccount, error) {
-	params := map[string]string{
-		paramSettle: req.Settle,
-	}
-	body, err := c.GetAssetsRaw(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	var result gateFuturesAccount
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
-	}
-	return &result, nil
-}
 
 func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
 	params := map[string]string{
@@ -123,44 +104,6 @@ func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, change
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
-
-// GetAssets returns the account assets.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	resp, err := c.getRawAssets(ctx, gateAssetsRequest{Settle: gateSettleUsdt})
-	if err != nil {
-		return nil, fmt.Errorf("gate.io list assets: %w", err)
-	}
-
-	equity := decmath.ParseFloat(resp.Total)
-	unrealized := decmath.ParseFloat(resp.UnrealisedPnl)
-	asset := exchange.AssetInfo{
-		Currency:         resp.Currency,
-		PositionMargin:   decmath.ParseFloat(resp.PositionMargin),
-		AvailableBalance: decmath.ParseFloat(resp.Available),
-		Equity:           equity,
-		Unrealized:       unrealized,
-		CashBalance:      equity - unrealized,
-	}
-	return []exchange.AssetInfo{asset}, nil
-}
-
-// GetAssetByCurrency returns the account asset for a specific currency.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	assets, err := c.GetAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, asset := range assets {
-		if strings.EqualFold(asset.Currency, currency) {
-			return &asset, nil
-		}
-	}
-
-	return &exchange.AssetInfo{
-		Currency: currency,
-	}, nil
-}
 
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

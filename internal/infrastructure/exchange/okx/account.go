@@ -11,22 +11,6 @@ import (
 
 const exchangeName = "okx"
 
-type okxBalanceDetail struct {
-	Ccy       string `json:"ccy"`
-	Eq        string `json:"eq"`
-	AvailBal  string `json:"availBal"`
-	FrozenBal string `json:"frozenBal"`
-	Upl       string `json:"upl"`
-}
-
-type okxBalance struct {
-	Details []okxBalanceDetail `json:"details"`
-}
-
-type okxBalanceRequest struct {
-	Ccy string `json:"ccy,omitempty"`
-}
-
 type okxPosition struct {
 	InstID      string `json:"instId"`
 	Pos         string `json:"pos"`
@@ -71,18 +55,6 @@ type okxClosedPositionsRequest struct {
 
 // Private raw methods invoking the OKX V5 REST API.
 
-func (c *Client) getRawBalance(ctx context.Context, req okxBalanceRequest) ([]okxBalance, error) {
-	params := map[string]string{}
-	if req.Ccy != "" {
-		params["ccy"] = req.Ccy
-	}
-	body, err := c.GetAssetsRaw(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[okxBalance](body, "account_balance")
-}
-
 func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsRequest) ([]okxPosition, error) {
 	params := map[string]string{
 		paramInstType: req.InstType,
@@ -118,66 +90,6 @@ func (c *Client) getRawClosedPositions(ctx context.Context, req okxClosedPositio
 }
 
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
-
-// GetAssets returns all account asset information.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	balances, err := c.getRawBalance(ctx, okxBalanceRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(balances) == 0 {
-		return nil, fmt.Errorf("empty balance response")
-	}
-
-	var assets []exchange.AssetInfo
-	detailsList := balances[0].Details
-	for i := range detailsList {
-		details := detailsList[i]
-		eq, _ := strconv.ParseFloat(details.Eq, 64)
-		avail, _ := strconv.ParseFloat(details.AvailBal, 64)
-		frozen, _ := strconv.ParseFloat(details.FrozenBal, 64)
-		upl, _ := strconv.ParseFloat(details.Upl, 64)
-
-		assets = append(assets, exchange.AssetInfo{
-			Currency:         details.Ccy,
-			Equity:           eq,
-			AvailableBalance: avail,
-			FrozenBalance:    frozen,
-			CashBalance:      eq,
-			Unrealized:       upl,
-		})
-	}
-
-	return assets, nil
-}
-
-// GetAssetByCurrency returns asset info for a specific currency.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	balances, err := c.getRawBalance(ctx, okxBalanceRequest{Ccy: currency})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(balances) == 0 || len(balances[0].Details) == 0 {
-		return nil, fmt.Errorf("asset balance not found for currency: %s", currency)
-	}
-
-	details := balances[0].Details[0]
-	eq, _ := strconv.ParseFloat(details.Eq, 64)
-	avail, _ := strconv.ParseFloat(details.AvailBal, 64)
-	frozen, _ := strconv.ParseFloat(details.FrozenBal, 64)
-	upl, _ := strconv.ParseFloat(details.Upl, 64)
-
-	return &exchange.AssetInfo{
-		Currency:         details.Ccy,
-		Equity:           eq,
-		AvailableBalance: avail,
-		FrozenBalance:    frozen,
-		CashBalance:      eq,
-		Unrealized:       upl,
-	}, nil
-}
 
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

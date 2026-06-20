@@ -305,14 +305,6 @@ type gateFuturesOrderBook struct {
 	Bids []gateOrderBookItem `json:"bids"`
 }
 
-type gateFuturesAccount struct {
-	Total          string `json:"total"`
-	UnrealisedPnl  string `json:"unrealised_pnl"`
-	PositionMargin string `json:"position_margin"`
-	Available      string `json:"available"`
-	Currency       string `json:"currency"`
-}
-
 type gatePosition struct {
 	Contract   string      `json:"contract"`
 	Size       json.Number `json:"size"`
@@ -374,15 +366,6 @@ type gateFuturesOrder struct {
 	TpslSlTriggerPrice string `json:"tpsl_sl_trigger_price,omitempty"`
 	TpslTpPriceType    string `json:"tpsl_tp_price_type,omitempty"`
 	TpslSlPriceType    string `json:"tpsl_sl_price_type,omitempty"`
-}
-
-func (c *Client) GetAssetsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	settle := params["settle"]
-	if settle == "" {
-		settle = gateSettleUsdt
-	}
-	path := fmt.Sprintf("/futures/%s/accounts", settle)
-	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
 }
 
 func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {

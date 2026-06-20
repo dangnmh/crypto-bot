@@ -286,43 +286,6 @@ func TestClient_CancelOrder(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/account/balance", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"details": [
-						{
-							"ccy": "USDT",
-							"eq": "1000.5",
-							"availBal": "800.0",
-							"frozenBal": "200.5",
-							"upl": "10.0"
-						}
-					]
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	assets, err := client.GetAssets(context.Background())
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	assert.Equal(t, "USDT", assets[0].Currency)
-	assert.Equal(t, 1000.5, assets[0].Equity)
-	assert.Equal(t, 800.0, assets[0].AvailableBalance)
-}
-
 //nolint:dupl // standard mock setup contains high structural similarity
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
@@ -673,40 +636,6 @@ func TestClient_SwitchMarginMode(t *testing.T) {
 	client := okx.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
 	err := client.SwitchMarginMode(context.Background(), "BTC-USDT-SWAP", "ISOLATED", 10, domain.SideOpenLong)
 	require.NoError(t, err)
-}
-
-func TestClient_GetAssetByCurrency(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/account/balance", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"details": [
-						{
-							"ccy": "USDT",
-							"eq": "1000.5",
-							"availBal": "800.0",
-							"frozenBal": "200.5",
-							"upl": "10.0"
-						}
-					]
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
-	require.NoError(t, err)
-	assert.Equal(t, "USDT", asset.Currency)
 }
 
 func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {

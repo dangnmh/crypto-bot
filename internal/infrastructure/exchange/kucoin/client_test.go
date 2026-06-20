@@ -367,39 +367,6 @@ func TestClient_GetOpenOrders(t *testing.T) {
 	assert.Equal(t, "123456", orders[0].OrderID)
 }
 
-func TestClient_GetAssets(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v1/account-overview", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "200000",
-			"msg": "success",
-			"data": {
-				"currency": "USDT",
-				"accountEquity": "1000.0",
-				"availableBalance": "950.0",
-				"unrealisedPNL": "50.0"
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	assets, err := client.GetAssets(context.Background())
-	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	assert.Equal(t, "USDT", assets[0].Currency)
-	assert.Equal(t, 1000.0, assets[0].CashBalance)
-
-	asset, err := client.GetAssetByCurrency(context.Background(), "USDT")
-	require.NoError(t, err)
-	assert.Equal(t, "USDT", asset.Currency)
-}
-
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
 

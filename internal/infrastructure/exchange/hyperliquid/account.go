@@ -48,50 +48,6 @@ func (c *Client) getRawUserFills(ctx context.Context, req hyperliquidUserFillsRe
 
 // Public mapper methods implementing the exchange.AccountDataProvider interface.
 
-// GetAssets retrieves account balances.
-func (c *Client) GetAssets(ctx context.Context) ([]exchange.AssetInfo, error) {
-	if c.userAddress == "" {
-		return nil, fmt.Errorf("user address is missing: L1 key is not configured")
-	}
-
-	state, err := c.getRawUserState(ctx, hyperliquidUserStateRequest{
-		UserAddress: c.userAddress,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	equity, _ := strconv.ParseFloat(state.MarginSummary.AccountValue, 64)
-	avail, _ := strconv.ParseFloat(state.Withdrawable, 64)
-	marginUsed, _ := strconv.ParseFloat(state.MarginSummary.TotalMarginUsed, 64)
-
-	assets := []exchange.AssetInfo{
-		{
-			Currency:         settleUsdc,
-			Equity:           equity,
-			AvailableBalance: avail,
-			FrozenBalance:    marginUsed,
-			CashBalance:      equity - marginUsed,
-			Unrealized:       equity - (avail + marginUsed),
-		},
-	}
-	return assets, nil
-}
-
-// GetAssetByCurrency retrieves balance details for a specific currency.
-func (c *Client) GetAssetByCurrency(ctx context.Context, currency string) (*exchange.AssetInfo, error) {
-	assets, err := c.GetAssets(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range assets {
-		if assets[i].Currency == currency {
-			return &assets[i], nil
-		}
-	}
-	return nil, fmt.Errorf("asset not found: %s", currency)
-}
-
 // GetOpenPositions returns all currently open perp positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
 	if c.userAddress == "" {
