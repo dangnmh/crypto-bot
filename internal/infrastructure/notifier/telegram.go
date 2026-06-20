@@ -13,7 +13,10 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-const keyVolUSDT24h = "volusdt24h"
+const (
+	keyVolUSDT24h  = "volusdt24h"
+	keyFundingRate = "fundingRate"
+)
 
 type TelegramProvider struct {
 	bot    *tgbotapi.BotAPI
@@ -111,27 +114,26 @@ func (p *TelegramProvider) sendTelegram(evt Event) {
 	}
 }
 
+func getEmoji(color string) string {
+	switch color {
+	case ColorGreen:
+		return "🟢"
+	case ColorRed:
+		return "🔴"
+	case ColorBlue:
+		return "🔵"
+	default:
+		return "🟡"
+	}
+}
+
 func (p *TelegramProvider) formatMessage(evt Event) string {
 	color := evt.Color
 	if color == "" {
 		color = ColorYellow
 	}
 
-	var emoji string
-	switch color {
-	case ColorGreen:
-		emoji = "🟢"
-	case ColorRed:
-		emoji = "🔴"
-	case ColorBlue:
-		emoji = "🔵"
-	case ColorYellow:
-		emoji = "🟡"
-	default:
-		emoji = "🟡"
-	}
-
-	prefix := fmt.Sprintf("%s [%s]", emoji, evt.Level)
+	prefix := fmt.Sprintf("%s [%s]", getEmoji(color), evt.Level)
 
 	contextLabel := ""
 	if evt.Exchange != "" {
@@ -146,15 +148,21 @@ func (p *TelegramProvider) formatMessage(evt Event) string {
 		valStr := fmt.Sprintf("%v", v)
 		switch val := v.(type) {
 		case float64:
-			if k == keyVolUSDT24h {
+			switch k {
+			case keyVolUSDT24h:
 				valStr = formatutil.FormatCompactUSD(val)
-			} else {
+			case keyFundingRate:
+				valStr = formatutil.FormatFloatMax4(val*100) + "%"
+			default:
 				valStr = formatutil.FormatFloatMax4(val)
 			}
 		case float32:
-			if k == keyVolUSDT24h {
+			switch k {
+			case keyVolUSDT24h:
 				valStr = formatutil.FormatCompactUSD(float64(val))
-			} else {
+			case keyFundingRate:
+				valStr = formatutil.FormatFloatMax4(float64(val)*100) + "%"
+			default:
 				valStr = formatutil.FormatFloatMax4(float64(val))
 			}
 		}
