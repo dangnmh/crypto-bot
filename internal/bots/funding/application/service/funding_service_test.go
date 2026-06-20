@@ -12,7 +12,6 @@ import (
 )
 
 type fakeProvider struct {
-	exchange.Client
 	tickers []exchange.Ticker
 	rates   []exchange.FundingRateResult
 }

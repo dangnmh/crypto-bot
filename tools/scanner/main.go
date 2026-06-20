@@ -14,7 +14,6 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/service"
 	sysconfig "crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
@@ -22,6 +21,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
+	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -83,12 +83,13 @@ func main() {
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
+	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
 	defer cancel()
 
-	allClients := map[string]exchange.Client{
+	allClients := map[string]service.ScannerClient{
 		"mexc":  mexcClient,
 		"gate":  gateClient,
 		"bybit": bybitClient,
@@ -99,10 +100,11 @@ func main() {
 		"kucoin":   kucoinClient,
 		"binance":  binanceClient,
 		"deepcoin": deepcoinClient,
+		"toobit":   toobitClient,
 	}
 
 	// Filter clients based on user flag
-	clients := make(map[string]exchange.Client)
+	clients := make(map[string]service.ScannerClient)
 	var scanList []string
 	for name, client := range allClients {
 		if targetExchanges == nil || targetExchanges[name] {
@@ -130,6 +132,8 @@ func main() {
 				displayName = "Binance"
 			case "deepcoin":
 				displayName = "Deepcoin"
+			case "toobit":
+				displayName = "Toobit"
 			}
 			scanList = append(scanList, displayName)
 		}
@@ -170,7 +174,7 @@ func main() {
 	}
 	for name, client := range clients {
 		wg.Add(1)
-		go func(exchangeName string, c exchange.Client) {
+		go func(exchangeName string, c service.ScannerClient) {
 			defer wg.Done()
 			fs := service.NewFundingService(c)
 			results, err := fs.GetPotentialFundingSymbols(ctx, 1000000, 0, nil, blackList)

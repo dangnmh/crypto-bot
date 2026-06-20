@@ -41,6 +41,7 @@ const (
 	ExchangeBingx       = "bingx"
 	ExchangeKucoin      = "kucoin"
 	ExchangeDeepcoin    = "deepcoin"
+	ExchangeToobit      = "toobit"
 )
 
 // Side constants — delegate to domain.

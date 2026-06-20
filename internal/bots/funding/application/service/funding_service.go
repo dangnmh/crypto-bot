@@ -13,11 +13,16 @@ type PotentialFundingResult struct {
 	Volume24h  float64 `json:"volume24h"`
 }
 
-type FundingService struct {
-	client exchange.Client
+type ScannerClient interface {
+	GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error)
+	GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error)
 }
 
-func NewFundingService(client exchange.Client) *FundingService {
+type FundingService struct {
+	client ScannerClient
+}
+
+func NewFundingService(client ScannerClient) *FundingService {
 	return &FundingService{client: client}
 }
 

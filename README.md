@@ -8,7 +8,6 @@ hyperliquid hasnt finish implement
 
 Next to do:
 https://github.com/CoinUpGlobal/api-docs
-https://api-docs.toobit.com/api/basic-information.html
 https://fameexdocs.github.io/docs-v1/en/index.html#documentation
 https://www.ju.com/en/api-doc/common/intro
 
@@ -18,3 +17,4 @@ https://www.astralx.com/en-us
 https://www.tapbit.com/en
 https://www.eeee.com/
 https://www.btcc.com/en-US
+https://www.ktx.com/en
