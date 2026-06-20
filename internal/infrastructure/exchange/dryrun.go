@@ -47,18 +47,6 @@ func (d *DryRunClient) GetServerTime(ctx context.Context) (int64, error) {
 	return d.inner.GetServerTime(ctx)
 }
 
-func (d *DryRunClient) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]Kline, error) {
-	return d.inner.GetKlines(ctx, symbol, interval, start, end)
-}
-
-func (d *DryRunClient) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*OrderBook, error) {
-	return d.inner.GetDepthSnapshot(ctx, symbol, limit)
-}
-
-func (d *DryRunClient) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]DepthCommit, error) {
-	return d.inner.GetDepthCommits(ctx, symbol, limit)
-}
-
 // ── AccountProvider (delegated to real client) ───────────────────────.
 
 func (d *DryRunClient) GetOpenPositions(ctx context.Context, symbol string) ([]Position, error) {
@@ -151,20 +139,6 @@ func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) 
 		OrderID:       fakeID,
 		TPSLSubmitted: false,
 	}, nil
-}
-
-func (d *DryRunClient) CreateTrackOrder(ctx context.Context, req SubmitTrackOrderRequest) (string, error) {
-	seq := d.orderSeq.Add(1)
-	fakeID := fmt.Sprintf("dry_trk_%d_%d", time.Now().UnixMilli(), seq)
-
-	d.log.WarnContext(ctx, "🧪 DRY-RUN CreateTrackOrder",
-		slog.String("orderID", fakeID),
-		slog.String("symbol", req.Symbol),
-		slog.Int("side", int(req.Side)),
-		slog.Float64("activePrice", req.ActivePrice),
-	)
-
-	return fakeID, nil
 }
 
 func (d *DryRunClient) CancelOrder(ctx context.Context, symbol, orderID string) error {

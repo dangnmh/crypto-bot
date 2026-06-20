@@ -392,65 +392,6 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	assert.Equal(t, exchange.PositionTypeShort, positions[4].PositionType)
 }
 
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/market/candles", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				["1597026300000", "50000.0", "50001.0", "49999.0", "50000.5", "10", "500000"]
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	klines, err := client.GetKlines(context.Background(), "BTC-USDT-SWAP", "1m", 0, 0)
-	require.NoError(t, err)
-	require.Len(t, klines, 1)
-	assert.Equal(t, int64(1597026300000), klines[0].Timestamp)
-	assert.Equal(t, 50000.0, klines[0].Open)
-	assert.Equal(t, 50000.5, klines[0].Close)
-}
-
-func TestClient_GetDepthSnapshot(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v5/market/books", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "0",
-			"msg": "",
-			"data": [
-				{
-					"asks": [["50001.0", "1.5"]],
-					"bids": [["50000.0", "2.0"]],
-					"ts": "1597026383085"
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	ob, err := client.GetDepthSnapshot(context.Background(), "BTC-USDT-SWAP", 5)
-	require.NoError(t, err)
-	assert.Equal(t, "BTC-USDT-SWAP", ob.Symbol)
-	require.Len(t, ob.Asks, 1)
-	require.Len(t, ob.Bids, 1)
-	assert.Equal(t, 50001.0, ob.Asks[0].Price)
-	assert.Equal(t, 1.5, ob.Asks[0].Volume)
-}
-
 func TestClient_ClosePosition(t *testing.T) {
 	t.Parallel()
 
@@ -799,13 +740,10 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 func TestClient_ErrorPaths(t *testing.T) {
 	t.Parallel()
 
-	// 1. CreateTrackOrder unimplemented
 	client := okx.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
-	_, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
-	assert.ErrorContains(t, err, "CreateTrackOrder not implemented")
 
 	// 2. CancelOrders unimplemented
-	err = client.CancelOrders(context.Background(), []string{"1"})
+	err := client.CancelOrders(context.Background(), []string{"1"})
 	assert.ErrorContains(t, err, "batch cancel not supported on OKX without symbols")
 }
 

@@ -140,70 +140,6 @@ func TestClient_GetFundingRate(t *testing.T) {
 }
 
 //nolint:dupl // standard mock setup contains high structural similarity
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "POST", r.Method)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[
-			{
-				"t": 1672531200000,
-				"T": 1672531259999,
-				"i": "1m",
-				"n": 10,
-				"o": "50000.0",
-				"h": "50100.0",
-				"l": "49900.0",
-				"c": "50050.0",
-				"s": "BTC",
-				"v": "5.0"
-			}
-		]`))
-	}))
-	defer server.Close()
-
-	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
-	klines, err := client.GetKlines(context.Background(), "BTC", "1m", 0, 0)
-	require.NoError(t, err)
-	require.Len(t, klines, 1)
-	assert.Equal(t, int64(1672531200000), klines[0].Timestamp)
-	assert.Equal(t, 50000.0, klines[0].Open)
-	assert.Equal(t, 50050.0, klines[0].Close)
-	assert.Equal(t, 5.0, klines[0].Volume)
-}
-
-//nolint:dupl // standard mock setup contains high structural similarity
-func TestClient_GetDepthSnapshot(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "POST", r.Method)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"coin": "BTC",
-			"levels": [
-				[{"px": "49999.0", "sz": "1.5", "n": 2}],
-				[{"px": "50001.0", "sz": "2.5", "n": 3}]
-			],
-			"time": 1672531200000
-		}`))
-	}))
-	defer server.Close()
-
-	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "", config.LoggingConfig{})
-	ob, err := client.GetDepthSnapshot(context.Background(), "BTC", 5)
-	require.NoError(t, err)
-	assert.Equal(t, "BTC", ob.Symbol)
-	require.Len(t, ob.Bids, 1)
-	require.Len(t, ob.Asks, 1)
-	assert.Equal(t, 49999.0, ob.Bids[0].Price)
-	assert.Equal(t, 1.5, ob.Bids[0].Volume)
-	assert.Equal(t, 50001.0, ob.Asks[0].Price)
-	assert.Equal(t, 2.5, ob.Asks[0].Volume)
-}
-
-//nolint:dupl // standard mock setup contains high structural similarity
 //nolint:dupl // standard mock setup contains high structural similarity
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
@@ -396,9 +332,6 @@ func TestClient_ErrorPaths(t *testing.T) {
 
 	err = client.CancelOrders(context.Background(), []string{"1"})
 	assert.ErrorContains(t, err, "batch cancel not supported")
-
-	_, err = client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
-	assert.ErrorContains(t, err, "track orders not supported")
 
 	err = client.CloseAllPositions(context.Background(), "BTC")
 	require.NoError(t, err)

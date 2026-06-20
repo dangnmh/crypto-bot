@@ -32,17 +32,6 @@ func TestWsOrderDeal_GetOrderID(t *testing.T) {
 	}
 }
 
-func TestDryRunClient_CreateTrackOrder(t *testing.T) {
-	t.Parallel()
-
-	stub := &stubClient{}
-	dry := exchange.NewDryRunClient(stub)
-
-	id, err := dry.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{Symbol: "BTC"})
-	require.NoError(t, err)
-	assert.NotEmpty(t, id)
-}
-
 func TestDryRunClient_CancelOrders_NoRealCall(t *testing.T) {
 	t.Parallel()
 
@@ -111,14 +100,6 @@ func TestDryRunClient_GetFundingRates_Delegates(t *testing.T) {
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
 	_, err := dry.GetFundingRates(context.Background(), []string{"BTC_USDT"})
-	require.NoError(t, err)
-}
-
-func TestDryRunClient_GetKlines_Delegates(t *testing.T) {
-	t.Parallel()
-	stub := &stubClient{}
-	dry := exchange.NewDryRunClient(stub)
-	_, err := dry.GetKlines(context.Background(), "BTC_USDT", "1m", 0, 0)
 	require.NoError(t, err)
 }
 

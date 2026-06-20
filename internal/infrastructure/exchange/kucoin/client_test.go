@@ -472,13 +472,10 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 func TestClient_ErrorPaths(t *testing.T) {
 	t.Parallel()
 
-	// 1. CreateTrackOrder unimplemented
 	client := kucoin.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
-	_, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
-	assert.ErrorContains(t, err, "CreateTrackOrder not implemented")
 
 	// 2. CancelOrders unimplemented
-	err = client.CancelOrders(context.Background(), []string{"1"})
+	err := client.CancelOrders(context.Background(), []string{"1"})
 	assert.ErrorContains(t, err, "batch CancelOrders not implemented")
 }
 
@@ -510,69 +507,6 @@ func TestClient_GetFundingRates(t *testing.T) {
 	assert.Equal(t, "XBTUSDTM", frs[0].Symbol)
 	assert.Equal(t, 0.0001, frs[0].Rate)
 	assert.Equal(t, int64(1672531200000), frs[0].SettleTime)
-}
-
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Contains(t, r.URL.Path, "/api/v1/kline/query")
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "200000",
-			"data": [
-				[1672531200000, 50000.0, 50001.0, 49999.0, 50000.5, 10.5]
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	klines, err := client.GetKlines(context.Background(), "XBTUSDTM", "1m", 0, 0)
-	require.NoError(t, err)
-	require.Len(t, klines, 1)
-	assert.Equal(t, int64(1672531200000), klines[0].Timestamp)
-	assert.Equal(t, 50000.0, klines[0].Open)
-	assert.Equal(t, 50000.5, klines[0].Close)
-}
-
-func TestClient_GetDepthSnapshot(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Contains(t, r.URL.Path, "/api/v1/level2/snapshot")
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": "200000",
-			"data": {
-				"asks": [[50001.0, 1.5]],
-				"bids": [[50000.0, 2.0]],
-				"ts": 1672531200000
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	ob, err := client.GetDepthSnapshot(context.Background(), "XBTUSDTM", 5)
-	require.NoError(t, err)
-	assert.Equal(t, "XBTUSDTM", ob.Symbol)
-	require.Len(t, ob.Asks, 1)
-	require.Len(t, ob.Bids, 1)
-	assert.Equal(t, 50001.0, ob.Asks[0].Price)
-	assert.Equal(t, 1.5, ob.Asks[0].Volume)
-}
-
-func TestClient_GetDepthCommits(t *testing.T) {
-	t.Parallel()
-
-	client := kucoin.NewClient(nil, "", "key", "secret", "pass", config.LoggingConfig{})
-	_, err := client.GetDepthCommits(context.Background(), "XBTUSDTM", 5)
-	assert.ErrorContains(t, err, "GetDepthCommits not supported")
 }
 
 func TestClient_PlaceTPSL(t *testing.T) {

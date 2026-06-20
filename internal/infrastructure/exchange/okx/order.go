@@ -315,11 +315,6 @@ func mapOKXOrderSide(s domain.Side, isHedge bool) (string, string) {
 	return side, posSide
 }
 
-// CreateTrackOrder submits a trailing stop order (stubbed/not implemented).
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented for OKX")
-}
-
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	if symbol == "" {

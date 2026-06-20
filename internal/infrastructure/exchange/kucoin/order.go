@@ -302,11 +302,6 @@ func mapOrderType(t domain.OrderType) (string, string, bool) {
 	return ordType, timeInForce, postOnly
 }
 
-// CreateTrackOrder is a placeholder.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented on KuCoin")
-}
-
 // CancelOrder cancels an existing order by ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	_, err := c.cancelRawOrder(ctx, kucoinCancelOrderRequest{

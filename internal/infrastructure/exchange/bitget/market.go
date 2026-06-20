@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -28,21 +27,6 @@ type bitgetFundingRateRequest struct {
 type bitgetTickersRequest struct {
 	ProductType string `json:"productType"`
 	Symbol      string `json:"symbol,omitempty"`
-}
-
-type bitgetKlinesRequest struct {
-	Symbol      string `json:"symbol"`
-	ProductType string `json:"productType"`
-	Granularity string `json:"granularity"`
-	Limit       string `json:"limit,omitempty"`
-	StartTime   string `json:"startTime,omitempty"`
-	EndTime     string `json:"endTime,omitempty"`
-}
-
-type bitgetDepthRequest struct {
-	Symbol      string `json:"symbol"`
-	ProductType string `json:"productType"`
-	Limit       string `json:"limit,omitempty"`
 }
 
 type bitgetInstrument struct {
@@ -72,14 +56,6 @@ type rawBitgetFunding struct {
 	Symbol      string `json:"symbol"`
 	FundingRate string `json:"fundingRate"`
 	NextUpdate  string `json:"nextUpdate"`
-}
-
-type bitgetDepthLevel []float64
-
-type bitgetDepth struct {
-	Asks []bitgetDepthLevel `json:"asks"`
-	Bids []bitgetDepthLevel `json:"bids"`
-	Ts   string             `json:"ts"`
 }
 
 // Private raw methods invoking the Bitget REST API.
@@ -147,57 +123,6 @@ func (c *Client) getRawTickers(ctx context.Context, req bitgetTickersRequest) ([
 	}
 
 	return ParseResponse[[]rawTicker](body, "tickers")
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req bitgetKlinesRequest) ([][]string, error) {
-	params := map[string]string{
-		paramSymbol:      req.Symbol,
-		paramProductType: req.ProductType,
-		"granularity":    req.Granularity,
-		paramLimit:       req.Limit,
-	}
-
-	if req.StartTime != "" {
-		params["startTime"] = req.StartTime
-	}
-	if req.EndTime != "" {
-		params["endTime"] = req.EndTime
-	}
-
-	body, err := c.GetCtx(ctx, pathKlines, params)
-	if err != nil {
-		return nil, err
-	}
-
-	var resp APIResponse[[][]string]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse klines response: %w", err)
-	}
-	if resp.Code != "00000" {
-		codeVal := 0
-		_, _ = fmt.Sscanf(resp.Code, "%d", &codeVal)
-		return nil, toAPIError(codeVal, resp.Msg, "klines")
-	}
-	return resp.Data, nil
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req bitgetDepthRequest) (*bitgetDepth, error) {
-	params := map[string]string{
-		paramSymbol:      req.Symbol,
-		paramProductType: req.ProductType,
-		paramLimit:       req.Limit,
-	}
-
-	body, err := c.GetCtx(ctx, pathDepth, params)
-	if err != nil {
-		return nil, err
-	}
-
-	book, err := ParseResponse[bitgetDepth](body, "depth_snapshot")
-	if err != nil {
-		return nil, err
-	}
-	return &book, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -345,114 +270,4 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	return exchangeTickers, nil
-}
-
-// GetKlines returns candlestick data for a symbol.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetKlines")
-	}
-
-	gran := "1m"
-	if interval == "Min1" || interval == "1m" {
-		gran = "1m"
-	}
-
-	req := bitgetKlinesRequest{
-		Symbol:      symbol,
-		ProductType: productTypeUsdtFutures,
-		Granularity: gran,
-		Limit:       "100",
-	}
-
-	if start > 0 {
-		req.StartTime = fmt.Sprintf("%d", start)
-	}
-	if end > 0 {
-		req.EndTime = fmt.Sprintf("%d", end)
-	}
-
-	rawData, err := c.getRawKlines(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	klines := make([]exchange.Kline, 0, len(rawData))
-	for _, row := range slices.Backward(rawData) { // Bitget returns newest first, reverse to ascending.
-		if len(row) < 6 {
-			continue
-		}
-
-		ts, _ := strconv.ParseInt(row[0], 10, 64)
-		o, _ := strconv.ParseFloat(row[1], 64)
-		h, _ := strconv.ParseFloat(row[2], 64)
-		l, _ := strconv.ParseFloat(row[3], 64)
-		cVal, _ := strconv.ParseFloat(row[4], 64)
-		v, _ := strconv.ParseFloat(row[5], 64)
-		a, _ := strconv.ParseFloat(row[6], 64)
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: ts,
-			Open:      o,
-			High:      h,
-			Low:       l,
-			Close:     cVal,
-			Volume:    v,
-			Amount:    a,
-		})
-	}
-
-	return klines, nil
-}
-
-// GetDepthSnapshot returns orderbook snapshot for a symbol.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
-	}
-
-	limitStr := "100"
-	if limit > 0 {
-		limitStr = strconv.Itoa(limit)
-	}
-
-	book, err := c.getRawDepthSnapshot(ctx, bitgetDepthRequest{
-		Symbol:      symbol,
-		ProductType: productTypeUsdtFutures,
-		Limit:       limitStr,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	ob := &exchange.OrderBook{
-		Symbol: symbol,
-		Asks:   make([]exchange.OrderBookEntry, 0, len(book.Asks)),
-		Bids:   make([]exchange.OrderBookEntry, 0, len(book.Bids)),
-	}
-
-	for _, level := range book.Asks {
-		if len(level) < 2 {
-			continue
-		}
-		p := level[0]
-		v := level[1]
-		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-	}
-
-	for _, level := range book.Bids {
-		if len(level) < 2 {
-			continue
-		}
-		p := level[0]
-		v := level[1]
-		ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-	}
-
-	return ob, nil
-}
-
-// GetDepthCommits is not supported on Bitget REST.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, fmt.Errorf("GetDepthCommits not supported on Bitget REST")
 }

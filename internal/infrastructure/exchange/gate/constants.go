@@ -1,9 +1,6 @@
 package gate
 
 const (
-	gateInterval15m = "15m"
-	gateInterval30m = "30m"
-
 	gateTifIOC = "ioc"
 
 	gateOrderStatusFinished = "finished"

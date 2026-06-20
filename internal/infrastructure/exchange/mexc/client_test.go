@@ -95,117 +95,6 @@ func TestClient_GetContractDetails(t *testing.T) {
 	}
 }
 
-func TestClient_GetDepthSnapshot(t *testing.T) {
-	t.Parallel()
-
-	body := map[string]any{
-		"asks":    [][]string{{"101.5", "2"}, {"0", "9"}, {"101.7"}},
-		"bids":    [][]string{{"100.5", "3"}},
-		"version": int64(42),
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/contract/depth/BTC_USDT" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		if got := r.URL.Query().Get("limit"); got != "20" {
-			t.Fatalf("unexpected limit: %s", got)
-		}
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[map[string]any]{Success: true, Code: 0, Data: body}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	got, err := client.GetDepthSnapshot(context.Background(), "BTC_USDT", 20)
-	if err != nil {
-		t.Fatalf("GetDepthSnapshot failed: %v", err)
-	}
-	if got.Symbol != "BTC_USDT" || got.Version != 42 || len(got.Asks) != 1 || len(got.Bids) != 1 {
-		t.Fatalf("unexpected orderbook: %+v", got)
-	}
-}
-
-func TestClient_GetDepthCommits(t *testing.T) {
-	t.Parallel()
-
-	commits := []map[string]any{
-		{
-			"version": int64(7),
-			"asks":    [][]string{{"101.5", "2"}},
-			"bids":    [][]string{{"100.5", "3"}},
-		},
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/contract/depth_commits/BTC_USDT/1000" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]map[string]any]{Success: true, Code: 0, Data: commits}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	got, err := client.GetDepthCommits(context.Background(), "BTC_USDT", 0)
-	if err != nil {
-		t.Fatalf("GetDepthCommits failed: %v", err)
-	}
-	if len(got) != 1 || got[0].Version != 7 || len(got[0].Asks) != 1 || len(got[0].Bids) != 1 {
-		t.Fatalf("unexpected commits: %+v", got)
-	}
-}
-
-func TestClient_DepthInputValidationAndMalformedLevels(t *testing.T) {
-	t.Parallel()
-
-	emptySrv := httptest.NewServer(http.NotFoundHandler())
-	defer emptySrv.Close()
-	client := newTestClient(emptySrv)
-	_, err := client.GetDepthSnapshot(context.Background(), "", 20)
-	if err == nil {
-		t.Fatal("expected empty symbol error for depth snapshot")
-	}
-	_, err = client.GetDepthCommits(context.Background(), "", 20)
-	if err == nil {
-		t.Fatal("expected empty symbol error for depth commits")
-	}
-
-	body := map[string]any{
-		"asks":    [][]string{{"0", "2"}, {"101.5", "2"}, {"101.7"}},
-		"bids":    [][]string{{"0", "3"}, {"100.5", "3"}, {"100.1"}},
-		"version": int64(9),
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[map[string]any]{Success: true, Code: 0, Data: body}))
-	}))
-	defer srv.Close()
-
-	client = newTestClient(srv)
-	ob, err := client.GetDepthSnapshot(context.Background(), "BTC_USDT", 0)
-	if err != nil {
-		t.Fatalf("GetDepthSnapshot failed: %v", err)
-	}
-	if len(ob.Asks) != 1 || len(ob.Bids) != 1 {
-		t.Fatalf("unexpected malformed-level filtering: %+v", ob)
-	}
-
-	commits := []map[string]any{{
-		"version": int64(10),
-		"asks":    [][]string{{"101.5"}, {"101.6", "1"}},
-		"bids":    [][]string{{"100.5"}, {"100.4", "1"}},
-	}}
-	commitSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]map[string]any]{Success: true, Code: 0, Data: commits}))
-	}))
-	defer commitSrv.Close()
-
-	client = newTestClient(commitSrv)
-	got, err := client.GetDepthCommits(context.Background(), "BTC_USDT", 5)
-	if err != nil {
-		t.Fatalf("GetDepthCommits failed: %v", err)
-	}
-	if len(got) != 1 || len(got[0].Asks) != 1 || len(got[0].Bids) != 1 {
-		t.Fatalf("unexpected malformed commit filtering: %+v", got)
-	}
-}
-
 // ── GetTickers (array) ───────────────────────────────────────────────.
 
 //nolint:dupl // test
@@ -322,59 +211,6 @@ func TestClient_GetFundingRateHistory(t *testing.T) {
 	}
 }
 
-// ── GetKlines ────────────────────────────────────────────────────────.
-
-//nolint:dupl // test
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-	type klineData struct {
-		Time   []int64   `json:"time"`
-		Open   []float64 `json:"open"`
-		Close  []float64 `json:"close"`
-		High   []float64 `json:"high"`
-		Low    []float64 `json:"low"`
-		Vol    []float64 `json:"vol"`
-		Amount []float64 `json:"amount"`
-	}
-	data := klineData{
-		Time:   []int64{1609459200, 1609459260},
-		Open:   []float64{100, 101},
-		Close:  []float64{101, 102},
-		High:   []float64{102, 103},
-		Low:    []float64{99, 100},
-		Vol:    []float64{1000, 2000},
-		Amount: []float64{100000, 200000},
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[klineData]{Success: true, Code: 0, Data: data}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	got, err := client.GetKlines(context.Background(), "BTC_USDT", "Min1", 0, 0)
-	if err != nil {
-		t.Fatalf("GetKlines failed: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("want 2 klines, got %d", len(got))
-	}
-	// Verify timestamp conversion (seconds × 1000).
-	if got[0].Timestamp != 1609459200000 {
-		t.Errorf("Timestamp: want 1609459200000, got %d", got[0].Timestamp)
-	}
-}
-
-//nolint:dupl // test
-func TestClient_GetKlines_EmptySymbol(t *testing.T) {
-	t.Parallel()
-	client := mexc.NewClient(&http.Client{}, "http://localhost", "k", "s", config.LoggingConfig{})
-	_, err := client.GetKlines(context.Background(), "", "Min1", 0, 0)
-	if err == nil {
-		t.Fatal("expected error for empty symbol")
-	}
-}
-
 // ── CreateOrder ──────────────────────────────────────────────────────.
 
 //nolint:dupl // test
@@ -398,26 +234,6 @@ func TestClient_CreateOrder(t *testing.T) {
 	}
 	if res.OrderID != "order123" {
 		t.Errorf("OrderID: want 'order123', got %q", res.OrderID)
-	}
-}
-
-// ── CreateTrackOrder ─────────────────────────────────────────────────.
-
-//nolint:dupl // test
-func TestClient_CreateTrackOrder(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[string]{Success: true, Code: 0, Data: "track123"}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	trackID, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{Symbol: "BTC_USDT"})
-	if err != nil {
-		t.Fatalf("CreateTrackOrder failed: %v", err)
-	}
-	if trackID != "track123" {
-		t.Errorf("TrackID: want 'track123', got %q", trackID)
 	}
 }
 

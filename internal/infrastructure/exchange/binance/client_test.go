@@ -146,68 +146,6 @@ func TestClient_GetTickers_And_FundingRates(t *testing.T) {
 	assert.Equal(t, int64(1672531200000), rates[0].SettleTime)
 }
 
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		assert.Contains(t, r.URL.Path, "/fapi/v1/klines")
-
-		_, _ = w.Write([]byte(`[
-			[1672531200000, "50000", "50100", "49900", "50050", "10", 1672531259999, "500000", 100, "5", "250000", "0"]
-		]`))
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	klines, err := client.GetKlines(context.Background(), "BTCUSDT", "Min1", 0, 0)
-	require.NoError(t, err)
-	require.Len(t, klines, 1)
-
-	k := klines[0]
-	assert.Equal(t, int64(1672531200000), k.Timestamp)
-	assert.Equal(t, 50000.0, k.Open)
-	assert.Equal(t, 50050.0, k.Close)
-	assert.Equal(t, 50100.0, k.High)
-	assert.Equal(t, 49900.0, k.Low)
-	assert.Equal(t, 10.0, k.Volume)
-	assert.Equal(t, 500000.0, k.Amount)
-}
-
-func TestClient_GetDepthSnapshot(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		assert.Contains(t, r.URL.Path, "/fapi/v1/depth")
-
-		_, _ = w.Write([]byte(`{
-			"lastUpdateId": 987654321,
-			"bids": [["49999", "1.5"]],
-			"asks": [["50001", "2.5"]]
-		}`))
-	}))
-	defer server.Close()
-
-	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
-
-	book, err := client.GetDepthSnapshot(context.Background(), "BTCUSDT", 20)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", book.Symbol)
-	assert.Equal(t, int64(987654321), book.Version)
-	require.Len(t, book.Bids, 1)
-	require.Len(t, book.Asks, 1)
-	assert.Equal(t, 49999.0, book.Bids[0].Price)
-	assert.Equal(t, 1.5, book.Bids[0].Volume)
-	assert.Equal(t, 50001.0, book.Asks[0].Price)
-	assert.Equal(t, 2.5, book.Asks[0].Volume)
-
-	commits, err := client.GetDepthCommits(context.Background(), "BTCUSDT", 20)
-	require.NoError(t, err)
-	assert.Nil(t, commits)
-}
-
 func TestClient_CreateOrder(t *testing.T) {
 	t.Parallel()
 
@@ -492,10 +430,6 @@ func TestClient_ExtendedPrivateMethods(t *testing.T) {
 	// 7. CancelOrders
 	err = client.CancelOrders(context.Background(), []string{"1234567"})
 	assert.NoError(t, err)
-
-	// 8. CreateTrackOrder (stub, should fail)
-	_, err = client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
-	assert.Error(t, err)
 }
 
 func TestClient_WarmUp_And_Latency(t *testing.T) {

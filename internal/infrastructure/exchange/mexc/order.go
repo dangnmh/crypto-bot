@@ -34,20 +34,6 @@ type mexcCreateOrderResponse struct {
 	Ts      int64  `json:"ts"`
 }
 
-type mexcSubmitTrackOrderRequest struct {
-	Symbol       string  `json:"symbol"`
-	Leverage     int     `json:"leverage"`
-	Side         int     `json:"side"`
-	Vol          float64 `json:"vol"`
-	OpenType     int     `json:"openType"`
-	Trend        int     `json:"trend"`
-	ActivePrice  float64 `json:"activePrice,omitempty"`
-	BackType     int     `json:"backType"`
-	BackValue    float64 `json:"backValue"`
-	PositionMode int     `json:"positionMode,omitempty"`
-	ReduceOnly   bool    `json:"reduceOnly,omitempty"`
-}
-
 type mexcCancelOrdersRequest []string
 
 type mexcCancelOrderResult struct {
@@ -96,14 +82,6 @@ func (c *Client) createRawOrder(ctx context.Context, req mexcCreateOrderRequest)
 		return nil, err
 	}
 	return &res, nil
-}
-
-func (c *Client) createRawTrackOrder(ctx context.Context, req mexcSubmitTrackOrderRequest) (string, error) {
-	body, err := c.PostCtx(ctx, "/api/v1/private/trackorder/place", req)
-	if err != nil {
-		return "", err
-	}
-	return ParseResponse[string](body, "create_track_order")
 }
 
 func (c *Client) cancelRawOrders(ctx context.Context, req mexcCancelOrdersRequest) ([]mexcCancelOrderResult, error) {
@@ -221,25 +199,6 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
 	return exchange.CreateOrderResult{OrderID: data.OrderID, TPSLSubmitted: tpslSubmitted}, nil
-}
-
-// CreateTrackOrder submits a new native trailing stop order and returns the order ID.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	mexcReq := mexcSubmitTrackOrderRequest{
-		Symbol:       req.Symbol,
-		Leverage:     req.Leverage,
-		Side:         int(req.Side),
-		Vol:          req.Vol,
-		OpenType:     int(req.OpenType),
-		Trend:        req.Trend,
-		ActivePrice:  req.ActivePrice,
-		BackType:     req.BackType,
-		BackValue:    req.BackValue,
-		PositionMode: int(req.PositionMode),
-		ReduceOnly:   req.ReduceOnly,
-	}
-
-	return c.createRawTrackOrder(ctx, mexcReq)
 }
 
 // CancelOrders cancels one or more orders by their IDs.

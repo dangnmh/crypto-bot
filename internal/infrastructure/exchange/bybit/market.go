@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
@@ -26,20 +24,6 @@ type bybitInstrumentInfoRequest struct {
 type bybitMarketTickersRequest struct {
 	Category string `json:"category"`
 	Symbol   string `json:"symbol,omitempty"`
-}
-
-type bybitKlinesRequest struct {
-	Category string `json:"category"`
-	Symbol   string `json:"symbol"`
-	Interval string `json:"interval"`
-	Start    int64  `json:"start,omitempty"`
-	End      int64  `json:"end,omitempty"`
-}
-
-type bybitOrderbookRequest struct {
-	Category string `json:"category"`
-	Symbol   string `json:"symbol"`
-	Limit    int    `json:"limit,omitempty"`
 }
 
 type bybitLotSizeFilter struct {
@@ -89,20 +73,6 @@ type bybitTicker struct {
 type bybitTickerList struct {
 	Category string        `json:"category"`
 	List     []bybitTicker `json:"list"`
-}
-
-type bybitKlineResult struct {
-	Category string     `json:"category"`
-	Symbol   string     `json:"symbol"`
-	List     [][]string `json:"list"`
-}
-
-type bybitOrderbookResult struct {
-	Symbol string     `json:"s"`
-	Bids   [][]string `json:"b"`
-	Asks   [][]string `json:"a"`
-	Ts     int64      `json:"ts"`
-	U      int64      `json:"u"`
 }
 
 // Private raw methods invoking the Bybit SDK.
@@ -176,56 +146,6 @@ func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*bybitTi
 		return nil, fmt.Errorf("bybit ticker not found for symbol: %s", symbol)
 	}
 	return &res.List[0], nil
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req bybitKlinesRequest) (*bybitKlineResult, error) {
-	params := map[string]string{}
-	if req.Category != "" {
-		params["category"] = req.Category
-	}
-	if req.Symbol != "" {
-		params["symbol"] = req.Symbol
-	}
-	if req.Interval != "" {
-		params["interval"] = req.Interval
-	}
-	if req.Start > 0 {
-		params["start"] = fmt.Sprintf("%d", req.Start)
-	}
-	if req.End > 0 {
-		params["end"] = fmt.Sprintf("%d", req.End)
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/kline", params, nil)
-	if err != nil {
-		return nil, fmt.Errorf("bybit get klines: %w", err)
-	}
-	res, err := parseResponse[bybitKlineResult](body, "bybit get klines")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req bybitOrderbookRequest) (*bybitOrderbookResult, error) {
-	params := map[string]string{}
-	if req.Category != "" {
-		params["category"] = req.Category
-	}
-	if req.Symbol != "" {
-		params["symbol"] = req.Symbol
-	}
-	if req.Limit > 0 {
-		params["limit"] = fmt.Sprintf("%d", req.Limit)
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/orderbook", params, nil)
-	if err != nil {
-		return nil, fmt.Errorf("bybit order book: %w", err)
-	}
-	res, err := parseResponse[bybitOrderbookResult](body, "bybit order book")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -336,116 +256,4 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		})
 	}
 	return tickers, nil
-}
-
-// GetKlines returns candlestick data for a symbol.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetKlines")
-	}
-
-	bybitInterval := mapInterval(interval)
-	res, err := c.getRawKlines(ctx, bybitKlinesRequest{
-		Category: categoryLinear,
-		Symbol:   symbol,
-		Interval: bybitInterval,
-		Start:    start,
-		End:      end,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	klines := make([]exchange.Kline, 0, len(res.List))
-	// Bybit returns klines in reverse chronological order (newest first). We reverse them
-	// to standardize oldest first.
-	for _, candle := range slices.Backward(res.List) {
-		if len(candle) < 7 {
-			continue
-		}
-		ts, _ := strconv.ParseInt(candle[0], 10, 64)
-		klines = append(klines, exchange.Kline{
-			Timestamp: ts,
-			Open:      decmath.ParseFloat(candle[1]),
-			High:      decmath.ParseFloat(candle[2]),
-			Low:       decmath.ParseFloat(candle[3]),
-			Close:     decmath.ParseFloat(candle[4]),
-			Volume:    decmath.ParseFloat(candle[5]),
-			Amount:    decmath.ParseFloat(candle[6]),
-		})
-	}
-	return klines, nil
-}
-
-// GetDepthSnapshot returns full orderbook snapshot via REST.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
-	}
-
-	ob, err := c.getRawDepthSnapshot(ctx, bybitOrderbookRequest{
-		Category: categoryLinear,
-		Symbol:   symbol,
-		Limit:    limit,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	book := &domain.OrderBook{
-		Symbol:  symbol,
-		Version: ob.U,
-		Asks:    make([]exchange.OrderBookEntry, 0, len(ob.Asks)),
-		Bids:    make([]exchange.OrderBookEntry, 0, len(ob.Bids)),
-	}
-
-	for _, item := range ob.Asks {
-		if len(item) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(item[0])
-		v := decmath.ParseFloat(item[1])
-		if p > 0 {
-			book.Asks = append(book.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-
-	for _, item := range ob.Bids {
-		if len(item) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(item[0])
-		v := decmath.ParseFloat(item[1])
-		if p > 0 {
-			book.Bids = append(book.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-
-	return book, nil
-}
-
-// GetDepthCommits returns incremental commits. Unused in application logic.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, nil
-}
-
-func mapInterval(interval string) string {
-	switch interval {
-	case "Min1", "1m":
-		return "1"
-	case "Min5", "5m":
-		return "5"
-	case "Min15", "15m":
-		return "15"
-	case "Min30", "30m":
-		return "30"
-	case "Hour1", "1h":
-		return "60"
-	case "Hour4", "4h":
-		return "240"
-	case "Day1", "1d":
-		return "D"
-	default:
-		return "1"
-	}
 }

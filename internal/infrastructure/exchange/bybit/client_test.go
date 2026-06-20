@@ -500,79 +500,6 @@ func TestClient_GetTickers_And_GetFundingRate(t *testing.T) {
 	assert.Equal(t, int64(1672531200000), rates[0].SettleTime)
 }
 
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "/v5/market/kline")
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"retCode": 0,
-			"retMsg": "OK",
-			"result": {
-				"category": "linear",
-				"symbol": "BTCUSDT",
-				"list": [
-					["1672531260000", "50050", "50150", "50000", "50100", "15", "750000"],
-					["1672531200000", "50000", "50100", "49900", "50050", "10", "500000"]
-				]
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
-
-	klines, err := client.GetKlines(context.Background(), "BTCUSDT", "Min1", 1672531100000, 1672531300000)
-	require.NoError(t, err)
-	// Klines must be reversed: oldest first
-	require.Len(t, klines, 2)
-	assert.Equal(t, int64(1672531200000), klines[0].Timestamp)
-	assert.Equal(t, 50000.0, klines[0].Open)
-	assert.Equal(t, int64(1672531260000), klines[1].Timestamp)
-	assert.Equal(t, 50050.0, klines[1].Open)
-}
-
-func TestClient_GetDepthSnapshot(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "/v5/market/orderbook")
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"retCode": 0,
-			"retMsg": "OK",
-			"result": {
-				"s": "BTCUSDT",
-				"b": [["49999", "1.5"]],
-				"a": [["50001", "2.5"]],
-				"ts": 1672531200000,
-				"u": 12345
-			}
-		}`))
-	}))
-	defer server.Close()
-
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
-
-	book, err := client.GetDepthSnapshot(context.Background(), "BTCUSDT", 50)
-	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", book.Symbol)
-	assert.Equal(t, int64(12345), book.Version)
-	require.Len(t, book.Bids, 1)
-	require.Len(t, book.Asks, 1)
-	assert.Equal(t, 49999.0, book.Bids[0].Price)
-	assert.Equal(t, 1.5, book.Bids[0].Volume)
-	assert.Equal(t, 50001.0, book.Asks[0].Price)
-	assert.Equal(t, 2.5, book.Asks[0].Volume)
-
-	commits, err := client.GetDepthCommits(context.Background(), "BTCUSDT", 50)
-	require.NoError(t, err)
-	assert.Nil(t, commits)
-}
-
 func TestClient_ClosePosition_And_ChangeLeverage(t *testing.T) {
 	t.Parallel()
 
@@ -750,16 +677,6 @@ func TestClient_GetServerTime_WarmUp_OtherCases(t *testing.T) {
 	cancel()
 	client.WarmUp(ctx, 10*time.Millisecond)
 
-	// Test CreateTrackOrder returns error
-	_, err = client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
-	assert.Error(t, err)
-
-	// Test mapInterval fallbacks in GetKlines
-	intervals := []string{"Min5", "Min15", "Min30", "Hour1", "Hour4", "Day1", "Unknown"}
-	for _, iv := range intervals {
-		_, _ = client.GetKlines(context.Background(), "BTCUSDT", iv, 0, 0)
-	}
-
 	// Test other positionIdx / Side mappings in GetOpenPositions
 	positions, err := client.GetOpenPositions(context.Background(), "BTCUSDT")
 	require.NoError(t, err)
@@ -801,22 +718,6 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 
 	// Test GetFundingRates error
 	_, err = client.GetFundingRates(ctx, []string{"BTCUSDT"})
-	assert.Error(t, err)
-
-	// Test GetKlines symbol empty
-	_, err = client.GetKlines(ctx, "", "Min1", 0, 0)
-	assert.Error(t, err)
-
-	// Test GetKlines server error
-	_, err = client.GetKlines(ctx, "BTCUSDT", "Min1", 0, 0)
-	assert.Error(t, err)
-
-	// Test GetDepthSnapshot symbol empty
-	_, err = client.GetDepthSnapshot(ctx, "", 50)
-	assert.Error(t, err)
-
-	// Test GetDepthSnapshot server error
-	_, err = client.GetDepthSnapshot(ctx, "BTCUSDT", 50)
 	assert.Error(t, err)
 
 	// Test CreateOrder server error

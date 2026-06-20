@@ -284,27 +284,6 @@ type gateFuturesTicker struct {
 	Volume24hQuote string `json:"volume_24h_quote"`
 }
 
-type gateFuturesCandlestick struct {
-	T   int64  `json:"t"`
-	V   int64  `json:"v"`
-	O   string `json:"o"`
-	C   string `json:"c"`
-	H   string `json:"h"`
-	L   string `json:"l"`
-	Sum string `json:"sum"`
-}
-
-type gateOrderBookItem struct {
-	P string  `json:"p"`
-	S float64 `json:"s"`
-}
-
-type gateFuturesOrderBook struct {
-	Id   int64               `json:"id"`
-	Asks []gateOrderBookItem `json:"asks"`
-	Bids []gateOrderBookItem `json:"bids"`
-}
-
 type gatePosition struct {
 	Contract   string      `json:"contract"`
 	Size       json.Number `json:"size"`

@@ -83,31 +83,6 @@ func TestClient_GetTickers_InvalidDataFormat(t *testing.T) {
 	assert.Contains(t, err.Error(), "parse ticker data")
 }
 
-func TestClient_GetKlines_WithStartEnd(t *testing.T) {
-	t.Parallel()
-	type klineData struct {
-		Time   []int64   `json:"time"`
-		Open   []float64 `json:"open"`
-		Close  []float64 `json:"close"`
-		High   []float64 `json:"high"`
-		Low    []float64 `json:"low"`
-		Vol    []float64 `json:"vol"`
-		Amount []float64 `json:"amount"`
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.NotEmpty(t, r.URL.Query().Get("start"))
-		assert.NotEmpty(t, r.URL.Query().Get("end"))
-		data := klineData{Time: []int64{1000}, Open: []float64{1}, Close: []float64{2}, High: []float64{3}, Low: []float64{0.5}, Vol: []float64{100}, Amount: []float64{200}}
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[klineData]{Success: true, Code: 0, Data: data}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	klines, err := client.GetKlines(context.Background(), "BTC_USDT", "Min1", 1000, 2000)
-	require.NoError(t, err)
-	assert.Len(t, klines, 1)
-}
-
 // ── Order API error branches ────────────────────────────────────────.
 
 func TestClient_CreateOrder_APIError(t *testing.T) {
@@ -123,22 +98,6 @@ func TestClient_CreateOrder_APIError(t *testing.T) {
 
 	client := newTestClient(srv)
 	_, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{Symbol: "BTC_USDT"})
-	assert.Error(t, err)
-}
-
-func TestClient_CreateTrackOrder_APIError(t *testing.T) {
-	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(mustJSON(t, mexc.APIResponse[string]{
-			Success: false,
-			Code:    3002,
-			Message: "track order rejected",
-		}))
-	}))
-	defer srv.Close()
-
-	client := newTestClient(srv)
-	_, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{Symbol: "BTC_USDT"})
 	assert.Error(t, err)
 }
 

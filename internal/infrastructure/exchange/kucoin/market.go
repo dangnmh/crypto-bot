@@ -3,10 +3,8 @@ package kucoin
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -37,17 +35,6 @@ type kucoinTickerSingleRequest struct {
 	Symbol string `json:"symbol"`
 }
 
-type kucoinKlinesRequest struct {
-	Symbol      string `json:"symbol"`
-	Granularity string `json:"granularity"`
-	From        string `json:"from,omitempty"`
-	To          string `json:"to,omitempty"`
-}
-
-type kucoinDepthRequest struct {
-	Symbol string `json:"symbol"`
-}
-
 type kucoinSingleTicker struct {
 	Symbol       string `json:"symbol"`
 	BestBidPrice string `json:"bestBidPrice"`
@@ -66,12 +53,6 @@ type kucoinTicker struct {
 	Volume       string `json:"volume"`
 	Vol          string `json:"vol"`
 	Ts           int64  `json:"ts"`
-}
-
-type kucoinDepth struct {
-	Asks [][]float64 `json:"asks"`
-	Bids [][]float64 `json:"bids"`
-	Ts   int64       `json:"ts"`
 }
 
 // Private raw methods invoking the KuCoin REST API.
@@ -113,39 +94,6 @@ func (c *Client) getRawTickers(ctx context.Context, _ kucoinTickersRequest) ([]k
 		return nil, err
 	}
 	return ParseResponse[[]kucoinTicker](body, "tickers")
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req kucoinKlinesRequest) ([][]float64, error) {
-	params := map[string]string{
-		paramSymbol:   req.Symbol,
-		"granularity": req.Granularity,
-	}
-	if req.From != "" {
-		params["from"] = req.From
-	}
-	if req.To != "" {
-		params["to"] = req.To
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, pathKlines, params, nil)
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[[][]float64](body, "klines")
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req kucoinDepthRequest) (*kucoinDepth, error) {
-	params := map[string]string{
-		paramSymbol: req.Symbol,
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, pathDepth, params, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ParseResponse[kucoinDepth](body, "depth_snapshot")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -346,104 +294,4 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	return rates, nil
-}
-
-// GetKlines returns candlestick data for a symbol.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetKlines")
-	}
-
-	gran := "1"
-	if interval == "Min1" || interval == "1m" {
-		gran = "1"
-	}
-
-	req := kucoinKlinesRequest{
-		Symbol:      symbol,
-		Granularity: gran,
-	}
-
-	if start > 0 {
-		req.From = fmt.Sprintf("%d", start)
-	}
-	if end > 0 {
-		req.To = fmt.Sprintf("%d", end)
-	}
-
-	rawRows, err := c.getRawKlines(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	klines := make([]exchange.Kline, 0, len(rawRows))
-	// KuCoin returns newest first. Let's reverse to ascending.
-	for _, row := range slices.Backward(rawRows) {
-		if len(row) < 6 {
-			continue
-		}
-
-		ts := int64(row[0])
-		o := (row[1])
-		h := (row[2])
-		l := (row[3])
-		cVal := (row[4])
-		v := (row[5])
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: ts,
-			Open:      o,
-			High:      h,
-			Low:       l,
-			Close:     cVal,
-			Volume:    v,
-		})
-	}
-
-	return klines, nil
-}
-
-// GetDepthSnapshot returns orderbook snapshot for a symbol.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
-	}
-
-	book, err := c.getRawDepthSnapshot(ctx, kucoinDepthRequest{
-		Symbol: symbol,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	ob := &exchange.OrderBook{
-		Symbol: symbol,
-		Asks:   make([]exchange.OrderBookEntry, 0, len(book.Asks)),
-		Bids:   make([]exchange.OrderBookEntry, 0, len(book.Bids)),
-	}
-
-	for _, level := range book.Asks {
-		if len(level) < 2 {
-			continue
-		}
-		p := (level[0])
-		v := (level[1])
-		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-	}
-
-	for _, level := range book.Bids {
-		if len(level) < 2 {
-			continue
-		}
-		p := (level[0])
-		v := (level[1])
-		ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-	}
-
-	return ob, nil
-}
-
-// GetDepthCommits is not supported on KuCoin REST.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, fmt.Errorf("GetDepthCommits not supported on KuCoin REST")
 }

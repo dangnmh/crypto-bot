@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -22,19 +21,6 @@ type bingxFundingRateRequest struct {
 
 type bingxTickersRequest struct {
 	Symbol string `json:"symbol,omitempty"`
-}
-
-type bingxKlinesRequest struct {
-	Symbol    string `json:"symbol"`
-	Interval  string `json:"interval"`
-	Limit     string `json:"limit,omitempty"`
-	StartTime string `json:"startTime,omitempty"`
-	EndTime   string `json:"endTime,omitempty"`
-}
-
-type bingxDepthRequest struct {
-	Symbol string `json:"symbol"`
-	Limit  string `json:"limit,omitempty"`
 }
 
 type bingxTimeData struct {
@@ -68,21 +54,6 @@ type rawBingxTicker struct {
 	Volume      string `json:"volume"`
 	QuoteVolume string `json:"quoteVolume"`
 	Time        string `json:"time"`
-}
-
-type bingxKlineV3 struct {
-	Open   string `json:"open"`
-	Close  string `json:"close"`
-	High   string `json:"high"`
-	Low    string `json:"low"`
-	Volume string `json:"volume"`
-	Time   int64  `json:"time"`
-}
-
-type bingxDepth struct {
-	Asks [][]string `json:"asks"`
-	Bids [][]string `json:"bids"`
-	Ts   string     `json:"ts"`
 }
 
 // Private raw methods invoking the BingX REST API.
@@ -160,49 +131,6 @@ func (c *Client) getRawTickers(ctx context.Context, req bingxTickersRequest) ([]
 		rawTickers = tickersParsed
 	}
 	return rawTickers, nil
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req bingxKlinesRequest) ([]bingxKlineV3, error) {
-	params := map[string]string{
-		paramSymbol: req.Symbol,
-		"interval":  req.Interval,
-	}
-	if req.Limit != "" {
-		params[paramLimit] = req.Limit
-	}
-	if req.StartTime != "" {
-		params["startTime"] = req.StartTime
-	}
-	if req.EndTime != "" {
-		params["endTime"] = req.EndTime
-	}
-
-	body, err := c.GetCtx(ctx, pathKlines, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return ParseResponse[[]bingxKlineV3](body, "klines")
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req bingxDepthRequest) (*bingxDepth, error) {
-	params := map[string]string{
-		paramSymbol: req.Symbol,
-	}
-	if req.Limit != "" {
-		params[paramLimit] = req.Limit
-	}
-
-	body, err := c.GetCtx(ctx, pathDepth, params)
-	if err != nil {
-		return nil, err
-	}
-
-	book, err := ParseResponse[bingxDepth](body, "depth_snapshot")
-	if err != nil {
-		return nil, err
-	}
-	return &book, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -333,107 +261,4 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		SettleTime: raw.NextFundingTime,
 	})
 	return rates, nil
-}
-
-// GetKlines returns candlestick data for a symbol.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetKlines")
-	}
-
-	gran := "1m"
-	if interval == "Min1" || interval == "1m" {
-		gran = "1m"
-	}
-
-	req := bingxKlinesRequest{
-		Symbol:   symbol,
-		Interval: gran,
-		Limit:    "100",
-	}
-
-	if start > 0 {
-		req.StartTime = fmt.Sprintf("%d", start)
-	}
-	if end > 0 {
-		req.EndTime = fmt.Sprintf("%d", end)
-	}
-
-	klinesParsed, err := c.getRawKlines(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	klines := make([]exchange.Kline, 0, len(klinesParsed))
-	for i := range klinesParsed {
-		row := &klinesParsed[i]
-		o := decmath.ParseFloat(row.Open)
-		cVal := decmath.ParseFloat(row.Close)
-		h := decmath.ParseFloat(row.High)
-		l := decmath.ParseFloat(row.Low)
-		v := decmath.ParseFloat(row.Volume)
-		ts := row.Time
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: ts,
-			Open:      o,
-			High:      h,
-			Low:       l,
-			Close:     cVal,
-			Volume:    v,
-		})
-	}
-
-	return klines, nil
-}
-
-// GetDepthSnapshot returns orderbook snapshot for a symbol.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
-	}
-
-	limitStr := "100"
-	if limit > 0 {
-		limitStr = strconv.Itoa(limit)
-	}
-
-	book, err := c.getRawDepthSnapshot(ctx, bingxDepthRequest{
-		Symbol: symbol,
-		Limit:  limitStr,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	ob := &exchange.OrderBook{
-		Symbol: symbol,
-		Asks:   make([]exchange.OrderBookEntry, 0, len(book.Asks)),
-		Bids:   make([]exchange.OrderBookEntry, 0, len(book.Bids)),
-	}
-
-	for _, level := range book.Asks {
-		if len(level) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(level[0])
-		v := decmath.ParseFloat(level[1])
-		ob.Asks = append(ob.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-	}
-
-	for _, level := range book.Bids {
-		if len(level) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(level[0])
-		v := decmath.ParseFloat(level[1])
-		ob.Bids = append(ob.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-	}
-
-	return ob, nil
-}
-
-// GetDepthCommits is not supported on BingX REST.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, fmt.Errorf("GetDepthCommits not supported on BingX REST")
 }

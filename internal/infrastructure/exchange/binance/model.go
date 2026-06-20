@@ -73,12 +73,6 @@ type incomeHistoryItem struct {
 	Time       int64   `json:"time"`
 }
 
-type depthResponse struct {
-	LastUpdateId int64      `json:"lastUpdateId"`
-	Bids         [][]string `json:"bids"`
-	Asks         [][]string `json:"asks"`
-}
-
 type binanceOrder struct {
 	OrderId       int64  `json:"orderId"`
 	Symbol        string `json:"symbol"`

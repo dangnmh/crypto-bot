@@ -51,26 +51,10 @@ type OrderRequest struct {
 	TakeProfitPrice float64
 }
 
-// TrackOrderRequest represents a trailing stop order request.
-type TrackOrderRequest struct {
-	Symbol       string
-	Leverage     int
-	Side         Side
-	Vol          float64
-	OpenType     int
-	Trend        int
-	ActivePrice  float64
-	BackType     int
-	BackValue    float64
-	PositionMode int
-	ReduceOnly   bool
-}
-
 // OrderPlacer provides order execution capabilities.
 // This is a narrow interface following the Interface Segregation Principle.
 type OrderPlacer interface {
 	CreateOrder(ctx context.Context, req OrderRequest) (orderID string, err error)
-	CreateTrackOrder(ctx context.Context, req TrackOrderRequest) (orderID string, err error)
 	CancelOrder(ctx context.Context, symbol, orderID string) error
 	CancelAllOpenOrders(ctx context.Context, symbol string) error
 	CloseAllPositions(ctx context.Context, symbol string) error
@@ -82,6 +66,5 @@ type OrderPlacer interface {
 
 // MarketReader provides read-only access to market data.
 type MarketReader interface {
-	GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]Kline, error)
 	GetServerTime(ctx context.Context) (int64, error)
 }

@@ -153,11 +153,6 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	return exchange.CreateOrderResult{OrderID: strconv.FormatInt(resp.Id, 10), TPSLSubmitted: tpslSubmitted}, nil
 }
 
-// CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented for Gate.io")
-}
-
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	err := c.cancelRawOrder(ctx, gateSettleUsdt, orderID)

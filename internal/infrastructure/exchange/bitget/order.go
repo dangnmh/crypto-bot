@@ -269,11 +269,6 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}, nil
 }
 
-// CreateTrackOrder submits a trailing stop order (stubbed/not implemented).
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented for Bitget")
-}
-
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	if symbol == "" {

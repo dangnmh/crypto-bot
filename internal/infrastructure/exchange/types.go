@@ -214,21 +214,6 @@ type SubmitOrderRequest struct {
 	TakeProfitPrice float64             `json:"takeProfitPrice,omitempty"` // Server-side take profit trigger price
 }
 
-// SubmitTrackOrderRequest is the request body for creating a track (trailing stop) order.
-type SubmitTrackOrderRequest struct {
-	Symbol       string              `json:"symbol"`
-	Leverage     int                 `json:"leverage"`
-	Side         domain.Side         `json:"side"` // 1=OpenLong, 2=CloseShort, 3=OpenShort, 4=CloseLong
-	Vol          float64             `json:"vol"`
-	OpenType     domain.OpenType     `json:"openType"` // 1=Isolated, 2=Cross
-	Trend        int                 `json:"trend"`    // 1=Latest, 2=Fair, 3=Index
-	ActivePrice  float64             `json:"activePrice,omitempty"`
-	BackType     int                 `json:"backType"` // 1=Percentage, 2=Absolute
-	BackValue    float64             `json:"backValue"`
-	PositionMode domain.PositionMode `json:"positionMode,omitempty"`
-	ReduceOnly   bool                `json:"reduceOnly,omitempty"`
-}
-
 // PositionType represents a position side (1=Long, 2=Short, etc.).
 type PositionType int
 

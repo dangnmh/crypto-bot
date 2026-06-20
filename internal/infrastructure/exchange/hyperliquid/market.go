@@ -73,17 +73,6 @@ type hyperliquidMetaRequest struct{}
 
 type hyperliquidPredictedFundingsRequest struct{}
 
-type hyperliquidKlinesRequest struct {
-	Symbol   string `json:"symbol"`
-	Interval string `json:"interval"`
-	Start    int64  `json:"start"`
-	End      int64  `json:"end"`
-}
-
-type hyperliquidDepthRequest struct {
-	Symbol string `json:"symbol"`
-}
-
 // Private raw methods invoking the Hyperliquid API or SDK.
 
 func (c *Client) getRawMetaAndAssetCtxs(ctx context.Context, _ hyperliquidMetaAndAssetCtxsRequest) (*hl.MetaAndAssetCtxs, error) {
@@ -130,14 +119,6 @@ func (c *Client) getRawPredictedFundings(ctx context.Context, _ hyperliquidPredi
 		return nil, err
 	}
 	return rawAssets, nil
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req hyperliquidKlinesRequest) ([]hl.Candle, error) {
-	return c.info.CandlesSnapshot(ctx, req.Symbol, req.Interval, req.Start, req.End)
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req hyperliquidDepthRequest) (*hl.L2Book, error) {
-	return c.info.L2Snapshot(ctx, req.Symbol)
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -277,95 +258,4 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 // GetServerTime returns local synced timestamp.
 func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	return time.Now().UnixMilli(), nil
-}
-
-// GetKlines returns candlestick data.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	hlInterval := "1m"
-	switch interval {
-	case "Min1", "1m":
-		hlInterval = "1m"
-	case "Min5", "5m":
-		hlInterval = "5m"
-	case "Min15", interval15m:
-		hlInterval = interval15m
-	case "Min30", interval30m:
-		hlInterval = interval30m
-	case "Hour1", "1h":
-		hlInterval = "1h"
-	case "Hour4", "4h":
-		hlInterval = "4h"
-	case "Day1", "1d":
-		hlInterval = "1d"
-	}
-
-	candles, err := c.getRawKlines(ctx, hyperliquidKlinesRequest{
-		Symbol:   symbol,
-		Interval: hlInterval,
-		Start:    start,
-		End:      end,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	klines := make([]exchange.Kline, 0, len(candles))
-	for i := range candles {
-		cand := &candles[i]
-		open, _ := strconv.ParseFloat(cand.Open, 64)
-		high, _ := strconv.ParseFloat(cand.High, 64)
-		low, _ := strconv.ParseFloat(cand.Low, 64)
-		closeVal, _ := strconv.ParseFloat(cand.Close, 64)
-		vol, _ := strconv.ParseFloat(cand.Volume, 64)
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: cand.TimeOpen,
-			Open:      open,
-			High:      high,
-			Low:       low,
-			Close:     closeVal,
-			Volume:    vol,
-			Amount:    vol * closeVal,
-		})
-	}
-	return klines, nil
-}
-
-// GetDepthSnapshot returns standard exchange orderbook.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	snap, err := c.getRawDepthSnapshot(ctx, hyperliquidDepthRequest{
-		Symbol: symbol,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	bids := make([]exchange.OrderBookEntry, 0, len(snap.Levels[0]))
-	for i := range snap.Levels[0] {
-		level := &snap.Levels[0][i]
-		bids = append(bids, exchange.OrderBookEntry{
-			Price:  level.Px,
-			Volume: level.Sz,
-		})
-	}
-
-	asks := make([]exchange.OrderBookEntry, 0, len(snap.Levels[1]))
-	for i := range snap.Levels[1] {
-		level := &snap.Levels[1][i]
-		asks = append(asks, exchange.OrderBookEntry{
-			Price:  level.Px,
-			Volume: level.Sz,
-		})
-	}
-
-	return &exchange.OrderBook{
-		Symbol: symbol,
-		Bids:   bids,
-		Asks:   asks,
-	}, nil
-}
-
-// GetDepthCommits is a stub.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, nil
 }

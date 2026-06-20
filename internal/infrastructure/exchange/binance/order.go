@@ -325,11 +325,6 @@ func (c *Client) placeAlgoOrder(ctx context.Context, symbol, side, algoType stri
 	return err
 }
 
-// CreateTrackOrder submits a trailing stop order. Stubbed.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented for Binance")
-}
-
 // CancelOrder cancels an open order.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	id, err := strconv.ParseInt(orderID, 10, 64)

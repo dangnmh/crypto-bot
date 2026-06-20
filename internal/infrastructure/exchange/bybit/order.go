@@ -304,11 +304,6 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	return c.placeRawTPSL(ctx, rawReq)
 }
 
-// CreateTrackOrder submits a trailing stop order. Stubbed since track orders are not used in Core reversion.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented for Bybit")
-}
-
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	return c.cancelRawOrder(ctx, bybitCancelOrderRequest{

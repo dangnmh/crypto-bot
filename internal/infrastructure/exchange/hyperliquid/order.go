@@ -358,11 +358,6 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 	return err
 }
 
-// CreateTrackOrder is a stub.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("track orders not supported on Hyperliquid")
-}
-
 // CancelAllOpenOrders is a stub.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	orders, err := c.GetOpenOrders(ctx, symbol)

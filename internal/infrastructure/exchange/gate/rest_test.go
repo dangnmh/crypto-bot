@@ -51,22 +51,6 @@ func TestClient_MarketAndAccountEndpoints(t *testing.T) {
 	assert.Equal(t, "BTC_USDT", fundingRates[0].Symbol)
 	assert.Equal(t, 0.001, fundingRates[0].Rate)
 
-	klines, err := client.GetKlines(ctx, "BTC_USDT", "Min15", 1000, 2000)
-	require.NoError(t, err)
-	require.Len(t, klines, 1)
-	assert.Equal(t, int64(1700000000000), klines[0].Timestamp)
-	assert.Equal(t, 99.0, klines[0].Open)
-
-	depth, err := client.GetDepthSnapshot(ctx, "BTC_USDT", 20)
-	require.NoError(t, err)
-	assert.Equal(t, int64(123), depth.Version)
-	require.Len(t, depth.Asks, 1)
-	require.Len(t, depth.Bids, 1)
-
-	commits, err := client.GetDepthCommits(ctx, "BTC_USDT", 20)
-	require.NoError(t, err)
-	assert.Nil(t, commits)
-
 	positions, err := client.GetOpenPositions(ctx, "BTC_USDT")
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
@@ -126,21 +110,6 @@ func TestClient_OrderEndpoints(t *testing.T) {
 	require.NoError(t, client.ClosePosition(ctx, "BTC_USDT", domain.SideCloseLong, 2, 1))
 	require.NoError(t, client.CloseAllPositions(ctx, "BTC_USDT"))
 	require.NoError(t, client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{Symbol: "BTC_USDT", Leverage: 20}))
-
-	_, err = client.CreateTrackOrder(ctx, exchange.SubmitTrackOrderRequest{Symbol: "BTC_USDT"})
-	require.ErrorContains(t, err, "not implemented")
-}
-
-func TestClient_InputValidation(t *testing.T) {
-	t.Parallel()
-
-	server := newGateServer(t)
-	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-
-	_, err := client.GetKlines(context.Background(), "", "1m", 0, 0)
-	require.Error(t, err)
-	_, err = client.GetDepthSnapshot(context.Background(), "", 0)
-	require.Error(t, err)
 }
 
 func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
@@ -171,10 +140,7 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 	require.Error(t, err)
 	_, err = errClient.GetFundingRates(context.Background(), []string{"BTC_USDT"})
 	require.Error(t, err)
-	_, err = errClient.GetKlines(context.Background(), "BTC_USDT", "Min1", 0, 60)
-	require.Error(t, err)
-	_, err = errClient.GetDepthSnapshot(context.Background(), "BTC_USDT", 20)
-	require.Error(t, err)
+
 	_, err = errClient.GetOpenPositions(context.Background(), "BTC_USDT")
 	require.Error(t, err)
 	_, err = errClient.CreateOrder(context.Background(), exchange.SubmitOrderRequest{Symbol: "BTC_USDT", Vol: 1})

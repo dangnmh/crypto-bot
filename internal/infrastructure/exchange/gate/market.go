@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
@@ -22,20 +20,6 @@ type gateContractsRequest struct {
 type gateTickersRequest struct {
 	Settle   string `json:"settle"`
 	Contract string `json:"contract,omitempty"`
-}
-
-type gateKlinesRequest struct {
-	Settle   string `json:"settle"`
-	Contract string `json:"contract"`
-	Interval string `json:"interval"`
-	From     int64  `json:"from,omitempty"`
-	To       int64  `json:"to,omitempty"`
-}
-
-type gateDepthRequest struct {
-	Settle   string `json:"settle"`
-	Contract string `json:"contract"`
-	Limit    int    `json:"limit,omitempty"`
 }
 
 // Private raw methods using raw HTTP requests.
@@ -81,48 +65,6 @@ func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]g
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req gateKlinesRequest) ([]gateFuturesCandlestick, error) {
-	params := map[string]string{
-		paramContract: req.Contract,
-		"interval":    req.Interval,
-	}
-	if req.From > 0 {
-		params["from"] = strconv.FormatInt(req.From, 10)
-	}
-	if req.To > 0 {
-		params["to"] = strconv.FormatInt(req.To, 10)
-	}
-	path := fmt.Sprintf("/futures/%s/candlesticks", req.Settle)
-	body, err := c.RawRequest(ctx, "GET", path, params, nil)
-	if err != nil {
-		return nil, err
-	}
-	var result []gateFuturesCandlestick
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
-	}
-	return result, nil
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req gateDepthRequest) (*gateFuturesOrderBook, error) {
-	params := map[string]string{
-		paramContract: req.Contract,
-	}
-	if req.Limit > 0 {
-		params["limit"] = strconv.Itoa(req.Limit)
-	}
-	path := fmt.Sprintf("/futures/%s/order_book", req.Settle)
-	body, err := c.RawRequest(ctx, "GET", path, params, nil)
-	if err != nil {
-		return nil, err
-	}
-	var result gateFuturesOrderBook
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
-	}
-	return &result, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -268,106 +210,4 @@ func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap 
 		contractMap[contracts[i].Name] = &contracts[i]
 	}
 	return nil
-}
-
-// GetKlines returns candlestick data for a symbol.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetKlines")
-	}
-
-	gateInterval := "1m"
-	switch interval {
-	case "Min1", "1m":
-		gateInterval = "1m"
-	case "Min5", "5m":
-		gateInterval = "5m"
-	case "Min15", gateInterval15m:
-		gateInterval = gateInterval15m
-	case "Min30", gateInterval30m:
-		gateInterval = gateInterval30m
-	case "Hour1", "1h":
-		gateInterval = "1h"
-	case "Hour4", "4h":
-		gateInterval = "4h"
-	case "Day1", "1d":
-		gateInterval = "1d"
-	}
-
-	req := gateKlinesRequest{
-		Settle:   gateSettleUsdt,
-		Contract: symbol,
-		Interval: gateInterval,
-	}
-	if start > 0 {
-		req.From = start / 1000 // ms to seconds
-	}
-	if end > 0 {
-		req.To = end / 1000 // ms to seconds
-	}
-
-	candles, err := c.getRawKlines(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("gate.io list klines: %w", err)
-	}
-
-	klines := make([]exchange.Kline, 0, len(candles))
-	for _, candle := range candles {
-		klines = append(klines, exchange.Kline{
-			Timestamp: candle.T * 1000, // convert to ms
-			Open:      decmath.ParseFloat(candle.O),
-			Close:     decmath.ParseFloat(candle.C),
-			High:      decmath.ParseFloat(candle.H),
-			Low:       decmath.ParseFloat(candle.L),
-			Volume:    float64(candle.V),
-			Amount:    decmath.ParseFloat(candle.Sum),
-		})
-	}
-	return klines, nil
-}
-
-// GetDepthSnapshot returns full orderbook snapshot via REST.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
-	}
-
-	ob, err := c.getRawDepthSnapshot(ctx, gateDepthRequest{
-		Settle:   gateSettleUsdt,
-		Contract: symbol,
-		Limit:    limit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gate.io order book: %w", err)
-	}
-
-	book := &domain.OrderBook{
-		Symbol:  symbol,
-		Version: ob.Id,
-		Asks:    make([]exchange.OrderBookEntry, 0, len(ob.Asks)),
-		Bids:    make([]exchange.OrderBookEntry, 0, len(ob.Bids)),
-	}
-
-	for _, item := range ob.Asks {
-		p := decmath.ParseFloat(item.P)
-		v := item.S
-		if p > 0 {
-			book.Asks = append(book.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-
-	for _, item := range ob.Bids {
-		p := decmath.ParseFloat(item.P)
-		v := item.S
-		if p > 0 {
-			book.Bids = append(book.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-
-	return book, nil
-}
-
-// GetDepthCommits returns incremental commits. Unused in application logic.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, nil
 }

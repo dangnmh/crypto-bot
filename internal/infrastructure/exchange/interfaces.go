@@ -14,9 +14,6 @@ type MarketDataProvider interface {
 	GetContractDetails(ctx context.Context) ([]ContractDetail, error)
 	GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error)
 	GetServerTime(ctx context.Context) (int64, error)
-	GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]Kline, error)
-	GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error)
-	GetDepthCommits(ctx context.Context, symbol string, limit int) ([]DepthCommit, error)
 }
 
 // CreateOrderResult is the result returned from the CreateOrder method.
@@ -29,13 +26,13 @@ type CreateOrderResult struct {
 // Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
 type OrderExecutor interface {
 	CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error)
-	CreateTrackOrder(ctx context.Context, req SubmitTrackOrderRequest) (string, error)
 	CancelOrder(ctx context.Context, symbol, orderID string) error
 	CancelOrders(ctx context.Context, orderIDs []string) error
 	CancelAllOpenOrders(ctx context.Context, symbol string) error
 	GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)
 	GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
+	GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)
 	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
@@ -52,12 +49,6 @@ type TPSLProvider interface {
 // to support switching position mode (Hedge vs One-Way).
 type PositionModeSwitcher interface {
 	SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error
-}
-
-// AccountProvider is the interface for reading account data.
-// Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
-type AccountProvider interface {
-	GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)
 }
 
 // ClosedPnLInfo represents the standardized historical ledger of a closed trade.
@@ -84,7 +75,6 @@ type ClosedPnLProvider interface {
 type Client interface {
 	MarketDataProvider
 	OrderExecutor
-	AccountProvider
 	WarmUp(ctx context.Context, interval time.Duration)
 	SupportLeverageOnOrder() bool
 }

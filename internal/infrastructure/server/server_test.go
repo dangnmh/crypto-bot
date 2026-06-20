@@ -49,22 +49,11 @@ func (s *stubClient) GetFundingRates(ctx context.Context, symbols []string) ([]e
 	return nil, nil
 }
 func (s *stubClient) GetServerTime(ctx context.Context) (int64, error) { return 0, nil }
-func (s *stubClient) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	return nil, nil
-}
-func (s *stubClient) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	return nil, nil
-}
-func (s *stubClient) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, nil
-}
 
 func (s *stubClient) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	return exchange.CreateOrderResult{}, nil
 }
-func (s *stubClient) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", nil
-}
+
 func (s *stubClient) CancelOrder(ctx context.Context, symbol, orderID string) error { return nil }
 func (s *stubClient) CancelOrders(ctx context.Context, orderIDs []string) error     { return nil }
 func (s *stubClient) CancelAllOpenOrders(ctx context.Context, symbol string) error  { return nil }
@@ -163,22 +152,11 @@ func (s *stubClientNoClosedPnL) GetFundingRates(ctx context.Context, symbols []s
 	return nil, nil
 }
 func (s *stubClientNoClosedPnL) GetServerTime(ctx context.Context) (int64, error) { return 0, nil }
-func (s *stubClientNoClosedPnL) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	return nil, nil
-}
-func (s *stubClientNoClosedPnL) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	return nil, nil
-}
-func (s *stubClientNoClosedPnL) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, nil
-}
 
 func (s *stubClientNoClosedPnL) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	return exchange.CreateOrderResult{}, nil
 }
-func (s *stubClientNoClosedPnL) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", nil
-}
+
 func (s *stubClientNoClosedPnL) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	return nil
 }

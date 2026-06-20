@@ -275,11 +275,6 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 	}, nil
 }
 
-// CreateTrackOrder is a placeholder.
-func (c *Client) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	return "", fmt.Errorf("CreateTrackOrder not implemented on BingX")
-}
-
 // CancelOrder cancels an existing order by ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
 	return c.cancelRawOrder(ctx, bingxCancelOrderRequest{

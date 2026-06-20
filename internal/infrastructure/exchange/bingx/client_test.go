@@ -128,40 +128,6 @@ func TestClient_GetTickers(t *testing.T) {
 	assert.Equal(t, 50001.0, tickers[0].Ask1)
 }
 
-func TestClient_GetKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/openApi/swap/v3/quote/klines", r.URL.Path)
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"code": 0,
-			"msg": "success",
-			"data": [
-				{
-					"open": "50000.0",
-					"close": "50000.5",
-					"high": "50001.0",
-					"low": "49999.0",
-					"volume": "10",
-					"time": 1695812285000
-				}
-			]
-		}`))
-	}))
-	defer server.Close()
-
-	client := bingx.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-	klines, err := client.GetKlines(context.Background(), "BTC-USDT", "1m", 0, 0)
-	require.NoError(t, err)
-	require.Len(t, klines, 1)
-	assert.Equal(t, int64(1695812285000), klines[0].Timestamp)
-	assert.Equal(t, 50000.0, klines[0].Open)
-	assert.Equal(t, 50000.5, klines[0].Close)
-}
-
 func TestClient_CreateOrder(t *testing.T) {
 	t.Parallel()
 
@@ -474,13 +440,10 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 func TestClient_ErrorPaths(t *testing.T) {
 	t.Parallel()
 
-	// 1. CreateTrackOrder unimplemented
 	client := bingx.NewClient(nil, "", "key", "secret", config.LoggingConfig{})
-	_, err := client.CreateTrackOrder(context.Background(), exchange.SubmitTrackOrderRequest{})
-	assert.ErrorContains(t, err, "CreateTrackOrder not implemented")
 
 	// 2. CancelOrders unimplemented
-	err = client.CancelOrders(context.Background(), []string{"1"})
+	err := client.CancelOrders(context.Background(), []string{"1"})
 	assert.ErrorContains(t, err, "batch CancelOrders not implemented")
 
 	// 3. HTTP Server Non-200 Status

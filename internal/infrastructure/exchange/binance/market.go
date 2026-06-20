@@ -7,10 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
-	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
@@ -30,18 +28,6 @@ type binanceBookTickersRequest struct {
 
 type binanceMarkPricesRequest struct {
 	Symbol string
-}
-
-type binanceKlinesRequest struct {
-	Symbol    string
-	Interval  string
-	StartTime int64
-	EndTime   int64
-}
-
-type binanceDepthRequest struct {
-	Symbol string
-	Limit  int
 }
 
 // Private raw methods invoking the Binance API directly.
@@ -131,40 +117,6 @@ func (c *Client) getRawBookTickers(ctx context.Context, req binanceBookTickersRe
 
 func (c *Client) getRawMarkPrices(ctx context.Context, req binanceMarkPricesRequest) ([]markPriceInfo, error) {
 	return getRawList[markPriceInfo](c, ctx, "/fapi/v1/premiumIndex", req.Symbol, "premium index")
-}
-
-func (c *Client) getRawKlines(ctx context.Context, req binanceKlinesRequest) ([][]any, error) {
-	params := make(map[string]any)
-	params["symbol"] = req.Symbol
-	params["interval"] = req.Interval
-	if req.StartTime > 0 {
-		params["startTime"] = req.StartTime
-	}
-	if req.EndTime > 0 {
-		params["endTime"] = req.EndTime
-	}
-
-	var resp [][]any
-	err := c.request(ctx, http.MethodGet, "/fapi/v1/klines", params, false, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("binance klines: %w", err)
-	}
-	return resp, nil
-}
-
-func (c *Client) getRawDepthSnapshot(ctx context.Context, req binanceDepthRequest) (*depthResponse, error) {
-	params := make(map[string]any)
-	params["symbol"] = req.Symbol
-	if req.Limit > 0 {
-		params["limit"] = req.Limit
-	}
-
-	var resp depthResponse
-	err := c.request(ctx, http.MethodGet, "/fapi/v1/depth", params, false, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("binance orderbook snapshot: %w", err)
-	}
-	return &resp, nil
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
@@ -339,141 +291,4 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		})
 	}
 	return tickers, nil
-}
-
-// GetKlines returns candlestick data.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetKlines")
-	}
-
-	binanceInterval := "1m"
-	switch interval {
-	case "Min1", "1m":
-		binanceInterval = "1m"
-	case "Min5", "5m":
-		binanceInterval = "5m"
-	case "Min15", interval15m:
-		binanceInterval = interval15m
-	case "Min30", interval30m:
-		binanceInterval = interval30m
-	case "Hour1", "1h":
-		binanceInterval = "1h"
-	case "Hour4", "4h":
-		binanceInterval = "4h"
-	case "Day1", "1d":
-		binanceInterval = "1d"
-	}
-
-	resp, err := c.getRawKlines(ctx, binanceKlinesRequest{
-		Symbol:    symbol,
-		Interval:  binanceInterval,
-		StartTime: start,
-		EndTime:   end,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	klines := make([]exchange.Kline, 0, len(resp))
-
-	for _, item := range resp {
-		if len(item) < 8 {
-			continue
-		}
-
-		openTime := getAnyInt64(item[0])
-		openPrice := getAnyString(item[1])
-		highPrice := getAnyString(item[2])
-		lowPrice := getAnyString(item[3])
-		closePrice := getAnyString(item[4])
-		volume := getAnyString(item[5])
-		quoteVolume := getAnyString(item[7])
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: openTime,
-			Open:      decmath.ParseFloat(openPrice),
-			Close:     decmath.ParseFloat(closePrice),
-			High:      decmath.ParseFloat(highPrice),
-			Low:       decmath.ParseFloat(lowPrice),
-			Volume:    decmath.ParseFloat(volume),
-			Amount:    decmath.ParseFloat(quoteVolume),
-		})
-	}
-
-	return klines, nil
-}
-
-func getAnyInt64(val any) int64 {
-	switch v := val.(type) {
-	case float64:
-		return int64(v)
-	case string:
-		res, _ := strconv.ParseInt(v, 10, 64)
-		return res
-	default:
-		return 0
-	}
-}
-
-func getAnyString(val any) string {
-	switch v := val.(type) {
-	case string:
-		return v
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64)
-	default:
-		return ""
-	}
-}
-
-// GetDepthSnapshot returns full orderbook snapshot.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error) {
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required for GetDepthSnapshot")
-	}
-
-	resp, err := c.getRawDepthSnapshot(ctx, binanceDepthRequest{
-		Symbol: symbol,
-		Limit:  limit,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	book := &domain.OrderBook{
-		Symbol:  symbol,
-		Version: resp.LastUpdateId,
-		Asks:    make([]exchange.OrderBookEntry, 0, len(resp.Asks)),
-		Bids:    make([]exchange.OrderBookEntry, 0, len(resp.Bids)),
-	}
-
-	for _, ask := range resp.Asks {
-		if len(ask) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(ask[0])
-		v := decmath.ParseFloat(ask[1])
-		if p > 0 {
-			book.Asks = append(book.Asks, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-
-	for _, bid := range resp.Bids {
-		if len(bid) < 2 {
-			continue
-		}
-		p := decmath.ParseFloat(bid[0])
-		v := decmath.ParseFloat(bid[1])
-		if p > 0 {
-			book.Bids = append(book.Bids, exchange.OrderBookEntry{Price: p, Volume: v})
-		}
-	}
-
-	return book, nil
-}
-
-// GetDepthCommits incremental depth updates. Unused.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, nil
 }

@@ -310,45 +310,6 @@ func (c *MockClientCreateOrderCall) DoAndReturn(f func(context.Context, exchange
 	return c
 }
 
-// CreateTrackOrder mocks base method.
-func (m *MockClient) CreateTrackOrder(ctx context.Context, req exchange.SubmitTrackOrderRequest) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTrackOrder", ctx, req)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateTrackOrder indicates an expected call of CreateTrackOrder.
-func (mr *MockClientMockRecorder) CreateTrackOrder(ctx, req any) *MockClientCreateTrackOrderCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTrackOrder", reflect.TypeOf((*MockClient)(nil).CreateTrackOrder), ctx, req)
-	return &MockClientCreateTrackOrderCall{Call: call}
-}
-
-// MockClientCreateTrackOrderCall wrap *gomock.Call
-type MockClientCreateTrackOrderCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockClientCreateTrackOrderCall) Return(arg0 string, arg1 error) *MockClientCreateTrackOrderCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockClientCreateTrackOrderCall) Do(f func(context.Context, exchange.SubmitTrackOrderRequest) (string, error)) *MockClientCreateTrackOrderCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientCreateTrackOrderCall) DoAndReturn(f func(context.Context, exchange.SubmitTrackOrderRequest) (string, error)) *MockClientCreateTrackOrderCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetContractDetails mocks base method.
 func (m *MockClient) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
 	m.ctrl.T.Helper()
@@ -388,84 +349,6 @@ func (c *MockClientGetContractDetailsCall) DoAndReturn(f func(context.Context) (
 	return c
 }
 
-// GetDepthCommits mocks base method.
-func (m *MockClient) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDepthCommits", ctx, symbol, limit)
-	ret0, _ := ret[0].([]exchange.DepthCommit)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetDepthCommits indicates an expected call of GetDepthCommits.
-func (mr *MockClientMockRecorder) GetDepthCommits(ctx, symbol, limit any) *MockClientGetDepthCommitsCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDepthCommits", reflect.TypeOf((*MockClient)(nil).GetDepthCommits), ctx, symbol, limit)
-	return &MockClientGetDepthCommitsCall{Call: call}
-}
-
-// MockClientGetDepthCommitsCall wrap *gomock.Call
-type MockClientGetDepthCommitsCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockClientGetDepthCommitsCall) Return(arg0 []exchange.DepthCommit, arg1 error) *MockClientGetDepthCommitsCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockClientGetDepthCommitsCall) Do(f func(context.Context, string, int) ([]exchange.DepthCommit, error)) *MockClientGetDepthCommitsCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientGetDepthCommitsCall) DoAndReturn(f func(context.Context, string, int) ([]exchange.DepthCommit, error)) *MockClientGetDepthCommitsCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetDepthSnapshot mocks base method.
-func (m *MockClient) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*domain.OrderBook, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDepthSnapshot", ctx, symbol, limit)
-	ret0, _ := ret[0].(*domain.OrderBook)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetDepthSnapshot indicates an expected call of GetDepthSnapshot.
-func (mr *MockClientMockRecorder) GetDepthSnapshot(ctx, symbol, limit any) *MockClientGetDepthSnapshotCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDepthSnapshot", reflect.TypeOf((*MockClient)(nil).GetDepthSnapshot), ctx, symbol, limit)
-	return &MockClientGetDepthSnapshotCall{Call: call}
-}
-
-// MockClientGetDepthSnapshotCall wrap *gomock.Call
-type MockClientGetDepthSnapshotCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockClientGetDepthSnapshotCall) Return(arg0 *domain.OrderBook, arg1 error) *MockClientGetDepthSnapshotCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockClientGetDepthSnapshotCall) Do(f func(context.Context, string, int) (*domain.OrderBook, error)) *MockClientGetDepthSnapshotCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientGetDepthSnapshotCall) DoAndReturn(f func(context.Context, string, int) (*domain.OrderBook, error)) *MockClientGetDepthSnapshotCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetFundingRates mocks base method.
 func (m *MockClient) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	m.ctrl.T.Helper()
@@ -501,45 +384,6 @@ func (c *MockClientGetFundingRatesCall) Do(f func(context.Context, []string) ([]
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockClientGetFundingRatesCall) DoAndReturn(f func(context.Context, []string) ([]exchange.FundingRateResult, error)) *MockClientGetFundingRatesCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetKlines mocks base method.
-func (m *MockClient) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKlines", ctx, symbol, interval, start, end)
-	ret0, _ := ret[0].([]exchange.Kline)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetKlines indicates an expected call of GetKlines.
-func (mr *MockClientMockRecorder) GetKlines(ctx, symbol, interval, start, end any) *MockClientGetKlinesCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKlines", reflect.TypeOf((*MockClient)(nil).GetKlines), ctx, symbol, interval, start, end)
-	return &MockClientGetKlinesCall{Call: call}
-}
-
-// MockClientGetKlinesCall wrap *gomock.Call
-type MockClientGetKlinesCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockClientGetKlinesCall) Return(arg0 []exchange.Kline, arg1 error) *MockClientGetKlinesCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockClientGetKlinesCall) Do(f func(context.Context, string, string, int64, int64) ([]exchange.Kline, error)) *MockClientGetKlinesCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientGetKlinesCall) DoAndReturn(f func(context.Context, string, string, int64, int64) ([]exchange.Kline, error)) *MockClientGetKlinesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
