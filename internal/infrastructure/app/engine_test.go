@@ -41,13 +41,9 @@ func (m *mockAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) 
 func (m *mockAdapter) SetPool(p *pkgws.Pool) { m.pool = p }
 
 // Subscriber methods.
-func (m *mockAdapter) SubscribeTicker(context.Context, string) error          { return nil }
-func (m *mockAdapter) UnsubscribeTicker(context.Context, string) error        { return nil }
-func (m *mockAdapter) SubscribeKline(context.Context, string) error           { return nil }
-func (m *mockAdapter) UnsubscribeKline(context.Context, string) error         { return nil }
-func (m *mockAdapter) SubscribeDepth(context.Context, string, string) error   { return nil }
-func (m *mockAdapter) UnsubscribeDepth(context.Context, string, string) error { return nil }
-func (m *mockAdapter) SubscribePersonal(context.Context) error                { return nil }
+func (m *mockAdapter) SubscribeTicker(context.Context, string) error   { return nil }
+func (m *mockAdapter) UnsubscribeTicker(context.Context, string) error { return nil }
+func (m *mockAdapter) SubscribePersonal(context.Context) error         { return nil }
 
 // Parser methods.
 func (m *mockAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) { return "", nil, nil }

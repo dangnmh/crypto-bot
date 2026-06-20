@@ -15,12 +15,6 @@ type Subscriber interface {
 	SubscribeTicker(ctx context.Context, symbol string) error
 	UnsubscribeTicker(ctx context.Context, symbol string) error
 
-	SubscribeKline(ctx context.Context, symbol string) error
-	UnsubscribeKline(ctx context.Context, symbol string) error
-
-	SubscribeDepth(ctx context.Context, symbol, step string) error
-	UnsubscribeDepth(ctx context.Context, symbol, step string) error
-
 	SubscribePersonal(ctx context.Context) error
 }
 

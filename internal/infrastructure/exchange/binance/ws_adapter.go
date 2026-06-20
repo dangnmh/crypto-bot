@@ -124,58 +124,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return err2
 }
 
-// SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		paramMethod: opSubscribe,
-		paramParams: []string{strings.ToLower(symbol) + "@kline_1m"},
-		"id":        time.Now().UnixMilli(),
-	}
-	topic := symbol + ":kline"
-	mktURL := a.marketURL
-	if mktURL == "" {
-		mktURL = defaultMarketURL
-	}
-	return a.pool.SubscribePublicWithURL(ctx, mktURL, topic, msg)
-}
-
-// UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		paramMethod: opUnsubscribe,
-		paramParams: []string{strings.ToLower(symbol) + "@kline_1m"},
-		"id":        time.Now().UnixMilli(),
-	}
-	topic := symbol + ":kline"
-	return a.pool.UnsubscribePublicWithURL(ctx, topic, msg)
-}
-
-// SubscribeDepth subscribes to orderbook depth.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]any{
-		paramMethod: opSubscribe,
-		paramParams: []string{strings.ToLower(symbol) + "@depth20@100ms"},
-		"id":        time.Now().UnixMilli(),
-	}
-	topic := symbol + ":depth:" + step
-	mktURL := a.marketURL
-	if mktURL == "" {
-		mktURL = defaultMarketURL
-	}
-	return a.pool.SubscribePublicWithURL(ctx, mktURL, topic, msg)
-}
-
-// UnsubscribeDepth unsubscribes from orderbook depth.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]any{
-		paramMethod: opUnsubscribe,
-		paramParams: []string{strings.ToLower(symbol) + "@depth20@100ms"},
-		"id":        time.Now().UnixMilli(),
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.UnsubscribePublicWithURL(ctx, topic, msg)
-}
-
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	// For Binance User Data stream, we listen directly to the stream established by listenKey.

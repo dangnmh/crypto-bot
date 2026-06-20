@@ -188,10 +188,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	_ = adapter.SubscribeTicker(ctx, "BTC-USDT")
 	_ = adapter.UnsubscribeTicker(ctx, "BTC-USDT")
-	_ = adapter.SubscribeKline(ctx, "BTC-USDT")
-	_ = adapter.UnsubscribeKline(ctx, "BTC-USDT")
-	_ = adapter.SubscribeDepth(ctx, "BTC-USDT", "1")
-	_ = adapter.UnsubscribeDepth(ctx, "BTC-USDT", "1")
 	_ = adapter.SubscribePersonal(ctx)
 }
 

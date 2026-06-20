@@ -202,10 +202,6 @@ func TestWsAdapter_SubscriptionAndErrors(t *testing.T) {
 
 	_ = adapter.SubscribeTicker(ctx, "BTC-USDT-SWAP")
 	_ = adapter.UnsubscribeTicker(ctx, "BTC-USDT-SWAP")
-	_ = adapter.SubscribeKline(ctx, "BTC-USDT-SWAP")
-	_ = adapter.UnsubscribeKline(ctx, "BTC-USDT-SWAP")
-	_ = adapter.SubscribeDepth(ctx, "BTC-USDT-SWAP", "5")
-	_ = adapter.UnsubscribeDepth(ctx, "BTC-USDT-SWAP", "5")
 	_ = adapter.SubscribePersonal(ctx)
 
 	// 6. Error parsing cases

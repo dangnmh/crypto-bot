@@ -134,10 +134,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	_ = adapter.SubscribeTicker(ctx, "BTCUSDT")
 	_ = adapter.UnsubscribeTicker(ctx, "BTCUSDT")
-	_ = adapter.SubscribeKline(ctx, "BTCUSDT")
-	_ = adapter.UnsubscribeKline(ctx, "BTCUSDT")
-	_ = adapter.SubscribeDepth(ctx, "BTCUSDT", "1")
-	_ = adapter.UnsubscribeDepth(ctx, "BTCUSDT", "1")
 	_ = adapter.SubscribePersonal(ctx)
 
 	hook := adapter.GetAuthHook("apiKey", "apiSecret")

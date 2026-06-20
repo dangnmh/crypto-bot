@@ -68,47 +68,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
-// SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		"op":      wsOpSubscribe,
-		wsArgsKey: []string{"kline.1." + symbol},
-	}
-	topic := symbol + ":kline"
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		"op":      wsOpUnsubscribe,
-		wsArgsKey: []string{"kline.1." + symbol},
-	}
-	topic := symbol + ":kline"
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
-// SubscribeDepth subscribes to orderbook depth.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	// Standard limit size for Bybit orderbook WS is 50 or 20
-	msg := map[string]any{
-		"op":      wsOpSubscribe,
-		wsArgsKey: []string{"orderbook.50." + symbol},
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeDepth unsubscribes from orderbook depth.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]any{
-		"op":      wsOpUnsubscribe,
-		wsArgsKey: []string{"orderbook.50." + symbol},
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	a.authMu.Lock()

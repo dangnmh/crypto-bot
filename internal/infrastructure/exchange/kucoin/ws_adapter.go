@@ -115,58 +115,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return a.pool.UnsubscribePublic(ctx, symbol+":tickers", msg)
 }
 
-// SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	topic := "/contractMarket/kline:" + symbol
-	msg := map[string]any{
-		"id":                "sub-" + symbol + "-kline",
-		paramType:           opSubscribe,
-		paramTopic:          topic,
-		paramPrivateChannel: false,
-		paramResponse:       true,
-	}
-	return a.pool.SubscribePublic(ctx, symbol+":kline", msg)
-}
-
-// UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	topic := "/contractMarket/kline:" + symbol
-	msg := map[string]any{
-		"id":                "unsub-" + symbol + "-kline",
-		paramType:           opUnsubscribe,
-		paramTopic:          topic,
-		paramPrivateChannel: false,
-		paramResponse:       true,
-	}
-	return a.pool.UnsubscribePublic(ctx, symbol+":kline", msg)
-}
-
-// SubscribeDepth subscribes to depth.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	topic := "/contractMarket/level2:" + symbol
-	msg := map[string]any{
-		"id":                "sub-" + symbol + "-depth",
-		paramType:           opSubscribe,
-		paramTopic:          topic,
-		paramPrivateChannel: false,
-		paramResponse:       true,
-	}
-	return a.pool.SubscribePublic(ctx, symbol+":depth", msg)
-}
-
-// UnsubscribeDepth unsubscribes from depth.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	topic := "/contractMarket/level2:" + symbol
-	msg := map[string]any{
-		"id":                "unsub-" + symbol + "-depth",
-		paramType:           opUnsubscribe,
-		paramTopic:          topic,
-		paramPrivateChannel: false,
-		paramResponse:       true,
-	}
-	return a.pool.UnsubscribePublic(ctx, symbol+":depth", msg)
-}
-
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	topic := pathPositionAll

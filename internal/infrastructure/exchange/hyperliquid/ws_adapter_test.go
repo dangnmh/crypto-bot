@@ -70,13 +70,8 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	// Should not return the initialization error anymore
 	_ = adapter.SubscribePersonal(ctx)
 
-	// 3. Test other subscriptions
 	_ = adapter.SubscribeTicker(ctx, "BTC")
 	_ = adapter.UnsubscribeTicker(ctx, "BTC")
-	_ = adapter.SubscribeKline(ctx, "BTC")
-	_ = adapter.UnsubscribeKline(ctx, "BTC")
-	_ = adapter.SubscribeDepth(ctx, "BTC", "1")
-	_ = adapter.UnsubscribeDepth(ctx, "BTC", "1")
 
 	// 4. Test stubs
 	_, _, err = adapter.ParseDepthCommit([]byte{})

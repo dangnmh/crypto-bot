@@ -57,26 +57,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
-// SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		paramMethod: "sub.kline",
-		paramParam:  map[string]string{paramSymbol: symbol, paramInterval: "Min1"},
-	}
-	topic := symbol + ":" + channelKline
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		paramMethod: "unsub.kline",
-		paramParam:  map[string]string{paramSymbol: symbol},
-	}
-	topic := symbol + ":" + channelKline
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
 // SubscribePersonal subscribes to all private futures channels used by funding flows.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	a.authMu.Lock()
@@ -101,44 +81,6 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 		},
 	}
 	return a.pool.SendPrivate(ctx, msg)
-}
-
-// SubscribeDepth subscribes to orderbook depth.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	method := "sub.depth.full"
-	param := map[string]any{
-		paramSymbol: symbol,
-		paramLimit:  20,
-	}
-	if step != "" {
-		method = "sub.depth.step"
-		param["step"] = step
-	}
-	msg := map[string]any{
-		paramMethod: method,
-		paramParam:  param,
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeDepth unsubscribes from orderbook depth.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	method := "unsub.depth.full"
-	param := map[string]any{
-		paramSymbol: symbol,
-		paramLimit:  20,
-	}
-	if step != "" {
-		method = "unsub.depth.step"
-		param["step"] = step
-	}
-	msg := map[string]any{
-		paramMethod: method,
-		paramParam:  param,
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
 // GetPingConfig returns the ping payload and interval for MEXC.

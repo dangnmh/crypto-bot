@@ -2,7 +2,6 @@ package gate_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -59,12 +58,6 @@ func TestWsAdapterSubscriptionsReturnContextErrors(t *testing.T) {
 
 	require.ErrorIs(t, a.SubscribeTicker(ctx, "BTC_USDT"), context.Canceled)
 	require.NoError(t, a.UnsubscribeTicker(ctx, "BTC_USDT"))
-	require.ErrorIs(t, a.SubscribeKline(ctx, "BTC_USDT"), context.Canceled)
-	err := a.UnsubscribeKline(ctx, "BTC_USDT")
-	assert.True(t, err == nil || errors.Is(err, context.Canceled))
-	require.ErrorIs(t, a.SubscribeDepth(ctx, "BTC_USDT", "0"), context.Canceled)
-	err = a.UnsubscribeDepth(ctx, "BTC_USDT", "0")
-	assert.True(t, err == nil || errors.Is(err, context.Canceled))
 }
 
 func TestWsAdapterSubscribePersonalWithoutPrivateClient(t *testing.T) {

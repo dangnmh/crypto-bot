@@ -66,58 +66,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
-// SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	unixSec := time.Now().Unix()
-	msg := map[string]any{
-		gateJSONTime:    unixSec,
-		gateJSONChannel: gateChannelCandlesticks,
-		gateJSONEvent:   gateEventSubscribe,
-		gateJSONPayload: []string{"1m", symbol},
-	}
-	topic := symbol + ":kline"
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	unixSec := time.Now().Unix()
-	msg := map[string]any{
-		gateJSONTime:    unixSec,
-		gateJSONChannel: gateChannelCandlesticks,
-		gateJSONEvent:   gateEventUnsubscribe,
-		gateJSONPayload: []string{"1m", symbol},
-	}
-	topic := symbol + ":kline"
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
-// SubscribeDepth subscribes to orderbook depth.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	unixSec := time.Now().Unix()
-	msg := map[string]any{
-		gateJSONTime:    unixSec,
-		gateJSONChannel: gateChannelOrderBook,
-		gateJSONEvent:   gateEventSubscribe,
-		gateJSONPayload: []string{symbol, "20", "0"}, // symbol, depth, interval in ms ("0" for real-time)
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeDepth unsubscribes from orderbook depth.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	unixSec := time.Now().Unix()
-	msg := map[string]any{
-		gateJSONTime:    unixSec,
-		gateJSONChannel: gateChannelOrderBook,
-		gateJSONEvent:   gateEventUnsubscribe,
-		gateJSONPayload: []string{symbol, "20", "0"},
-	}
-	topic := symbol + ":depth:" + step
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
 // SubscribePersonal subscribes to all private futures channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	unixSec := time.Now().Unix()

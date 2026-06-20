@@ -168,10 +168,6 @@ func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 
 	_ = adapter.SubscribeTicker(subCtx, "BTC-USDT")
 	_ = adapter.UnsubscribeTicker(subCtx, "BTC-USDT")
-	_ = adapter.SubscribeKline(subCtx, "BTC-USDT")
-	_ = adapter.UnsubscribeKline(subCtx, "BTC-USDT")
-	_ = adapter.SubscribeDepth(subCtx, "BTC-USDT", "1")
-	_ = adapter.UnsubscribeDepth(subCtx, "BTC-USDT", "1")
 }
 
 func TestWsAdapter_ParsePosition(t *testing.T) {

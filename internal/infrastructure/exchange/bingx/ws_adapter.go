@@ -102,50 +102,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return err2
 }
 
-// SubscribeKline subscribes to 1-minute klines.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	topic := symbol + "@" + channelKline + "_1m"
-	msg := map[string]any{
-		"id":          "sub-" + symbol + "-kline",
-		paramReqType:  opSub,
-		paramDataType: topic,
-	}
-	return a.pool.SubscribePublic(ctx, symbol+":kline", msg)
-}
-
-// UnsubscribeKline unsubscribes from klines.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	topic := symbol + "@" + channelKline + "_1m"
-	msg := map[string]any{
-		"id":          "unsub-" + symbol + "-kline",
-		paramReqType:  opUnsub,
-		paramDataType: topic,
-	}
-	return a.pool.UnsubscribePublic(ctx, symbol+":kline", msg)
-}
-
-// SubscribeDepth subscribes to depth.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	topic := symbol + "@" + channelDepth + "20"
-	msg := map[string]any{
-		"id":          "sub-" + symbol + "-depth",
-		paramReqType:  opSub,
-		paramDataType: topic,
-	}
-	return a.pool.SubscribePublic(ctx, symbol+":depth", msg)
-}
-
-// UnsubscribeDepth unsubscribes from depth.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	topic := symbol + "@" + channelDepth + "20"
-	msg := map[string]any{
-		"id":          "unsub-" + symbol + "-depth",
-		paramReqType:  opUnsub,
-		paramDataType: topic,
-	}
-	return a.pool.UnsubscribePublic(ctx, symbol+":depth", msg)
-}
-
 // SubscribePersonal is a placeholder since we only scan public channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	return nil

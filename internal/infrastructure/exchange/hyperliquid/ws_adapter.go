@@ -55,60 +55,6 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
-// SubscribeKline subscribes to candlesticks.
-func (a *WsAdapter) SubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		paramMethod: opSubscribe,
-		fieldSubscription: map[string]any{
-			fieldType:     channelCandle,
-			fieldCoin:     symbol,
-			fieldInterval: "1m",
-		},
-	}
-	topic := symbol + ":kline"
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeKline unsubscribes from candlesticks.
-func (a *WsAdapter) UnsubscribeKline(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		paramMethod: opUnsubscribe,
-		fieldSubscription: map[string]any{
-			fieldType:     channelCandle,
-			fieldCoin:     symbol,
-			fieldInterval: "1m",
-		},
-	}
-	topic := symbol + ":kline"
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
-// SubscribeDepth subscribes to L2 orderbook book.
-func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]any{
-		paramMethod: opSubscribe,
-		fieldSubscription: map[string]any{
-			fieldType: channelL2Book,
-			fieldCoin: symbol,
-		},
-	}
-	topic := symbol + ":depth"
-	return a.pool.SubscribePublic(ctx, topic, msg)
-}
-
-// UnsubscribeDepth unsubscribes from L2 orderbook.
-func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol, step string) error {
-	msg := map[string]any{
-		paramMethod: opUnsubscribe,
-		fieldSubscription: map[string]any{
-			fieldType: channelL2Book,
-			fieldCoin: symbol,
-		},
-	}
-	topic := symbol + ":depth"
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
-}
-
 // SubscribePersonal subscribes to user events (fills, orders).
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	if a.userAddress == "" {
