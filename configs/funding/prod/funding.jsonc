@@ -38,4 +38,10 @@
     "exchange": "gate"
     // "simulateSettle": "2026-06-14T15:10:00.000+07:00"
   }
+  // {
+  //   "symbol": "BTC-USDT-SWAP",
+  //   "marginUSDT": 3,
+  //   "exchange": "deepcoin",
+  //   "simulateSettle": "2026-06-18T22:10:00.000+07:00"
+  // },
 ]

@@ -95,6 +95,12 @@
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "1s"
+    },
+    "deepcoin": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-200ms",
+      "postSettleTimeout": "1s"
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

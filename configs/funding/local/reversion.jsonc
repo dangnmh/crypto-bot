@@ -11,7 +11,7 @@
     "leverage": 5,
     "marginUSD": 3,
     "minVol24USD": 1000000,
-    "minFundingRate": 0.3
+    "minFundingRate": 0
   },
   "sync": {
     "time": "60s",
@@ -73,6 +73,12 @@
       "bufferTime": "-50ms",
       "postSettleTimeout": "300s"
     },
+    "deepcoin": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-200ms",
+      "postSettleTimeout": "3s"
+    },
     "hyperliquid": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
@@ -90,7 +96,7 @@
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
-    }
+    },
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
   // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.

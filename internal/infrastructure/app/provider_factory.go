@@ -469,6 +469,9 @@ func (DeepcoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryCon
 		sysCfg.Logging,
 	))
 
-	adapter := deepcoin.NewWsAdapter()
+	adapter := deepcoin.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+	if concreteClient, ok := client.(*deepcoin.Client); ok {
+		adapter.SetClient(concreteClient)
+	}
 	return buildProvider(ctx, exchange.ExchangeDeepcoin, exchange.ExchangeDeepcoin, cfg, apiCfg, client, adapter), nil
 }

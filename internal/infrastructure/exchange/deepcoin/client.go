@@ -224,6 +224,36 @@ func (c *Client) SupportLeverageOnOrder() bool {
 	return false
 }
 
+type deepcoinListenKeyData struct {
+	ListenKey string `json:"listenkey"`
+}
+
+// CreateListenKey acquires a new user stream listenKey from Deepcoin.
+func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
+	body, err := c.GetCtx(ctx, "/deepcoin/listenkey/acquire", nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := ParseResponseFirst[deepcoinListenKeyData](body, "acquire_listenkey")
+	if err != nil {
+		return "", err
+	}
+	return res.ListenKey, nil
+}
+
+// KeepAliveListenKey extends the lifetime of a listenKey.
+func (c *Client) KeepAliveListenKey(ctx context.Context, listenKey string) error {
+	params := map[string]string{
+		"listenkey": listenKey,
+	}
+	body, err := c.GetCtx(ctx, "/deepcoin/listenkey/extend", params)
+	if err != nil {
+		return err
+	}
+	_, err = ParseResponseFirst[deepcoinListenKeyData](body, "extend_listenkey")
+	return err
+}
+
 func buildDeepcoinQueryString(q url.Values) string {
 	if len(q) == 0 {
 		return ""

@@ -3,7 +3,65 @@ package deepcoin
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 )
+
+const (
+	posSideLong  = "long"
+	posSideShort = "short"
+
+	sideBuy  = "buy"
+	sideSell = "sell"
+
+	stateLive = "live"
+
+	ordTypeMarket = "market"
+	ordTypeLimit  = "limit"
+
+	mgnModeCross    = "cross"
+	mgnModeIsolated = "isolated"
+
+	mrgPositionMerge = "merge"
+
+	paramInstId      = "instId"
+	paramOrdId       = "ordId"
+	paramLever       = "lever"
+	paramMgnMode     = "mgnMode"
+	paramMrgPosition = "mrgPosition"
+
+	wsAction   = "Action"
+	wsSymbol   = "Symbol"
+	wsTopic    = "Topic"
+	wsLocalNo  = "LocalNo"
+	wsResumeNo = "ResumeNo"
+
+	wsTopicMarket = "market"
+
+	wsTablePosition = "Position"
+)
+
+// flexString allows relaxed unmarshaling of numbers, strings, and booleans into string fields.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(data []byte) error {
+	var val any
+	if err := json.Unmarshal(data, &val); err != nil {
+		return err
+	}
+	switch v := val.(type) {
+	case float64:
+		*f = flexString(strconv.FormatFloat(v, 'f', -1, 64))
+	case int64:
+		*f = flexString(strconv.FormatInt(v, 10))
+	case string:
+		*f = flexString(v)
+	case bool:
+		*f = flexString(strconv.FormatBool(v))
+	default:
+		*f = ""
+	}
+	return nil
+}
 
 // APIResponse represents the standard Deepcoin API response wrapper.
 type APIResponse[T any] struct {

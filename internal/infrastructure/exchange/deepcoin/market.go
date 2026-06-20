@@ -20,7 +20,7 @@ const (
 // Raw request/response models for market endpoints.
 
 type deepcoinServerTimeResponse struct {
-	Ts string `json:"ts"`
+	Ts flexString `json:"ts"`
 }
 
 type deepcoinInstrument struct {
@@ -132,7 +132,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	val, err := strconv.ParseInt(res.Ts, 10, 64)
+	val, err := strconv.ParseInt(string(res.Ts), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("parse server time: %w", err)
 	}
@@ -153,7 +153,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		priceUnit, _ := strconv.ParseFloat(inst.TickSz, 64)
 
 		stateVal := 0
-		if inst.State == "live" {
+		if inst.State == stateLive {
 			stateVal = 1
 		}
 
@@ -262,23 +262,4 @@ func normalizeSymbol(s string) string {
 	upper = strings.ReplaceAll(upper, "_", "")
 	upper = strings.TrimSuffix(upper, "SWAP")
 	return upper
-}
-
-// GetKlines stub implementation.
-func (c *Client) GetKlines(ctx context.Context, symbol, interval string, start, end int64) ([]exchange.Kline, error) {
-	return nil, fmt.Errorf("GetKlines not supported on Deepcoin")
-}
-
-// GetDepthSnapshot stub implementation.
-func (c *Client) GetDepthSnapshot(ctx context.Context, symbol string, limit int) (*exchange.OrderBook, error) {
-	return &exchange.OrderBook{
-		Symbol: symbol,
-		Asks:   []exchange.OrderBookEntry{},
-		Bids:   []exchange.OrderBookEntry{},
-	}, nil
-}
-
-// GetDepthCommits stub implementation.
-func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
-	return nil, fmt.Errorf("GetDepthCommits not supported on Deepcoin")
 }
