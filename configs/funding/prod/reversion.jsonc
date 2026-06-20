@@ -8,8 +8,8 @@
     "stopLossPct": 2,
     "bufferTime": "-150ms",
     "postSettleTimeout": "1s",
-    "leverage": 5,
-    "marginUSD": 3,
+    "leverage": 6,
+    "marginUSD": 5,
     "minVol24USD": 10000000,
     "minFundingRate": 0.8
   },
