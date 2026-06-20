@@ -22,6 +22,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
+	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -84,6 +85,7 @@ func main() {
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
 	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", logCfg)
+	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -101,6 +103,7 @@ func main() {
 		"binance":  binanceClient,
 		"deepcoin": deepcoinClient,
 		"toobit":   toobitClient,
+		"weex":     weexClient,
 	}
 
 	// Filter clients based on user flag
@@ -134,6 +137,8 @@ func main() {
 				displayName = "Deepcoin"
 			case "toobit":
 				displayName = "Toobit"
+			case "weex":
+				displayName = "WEEX"
 			}
 			scanList = append(scanList, displayName)
 		}
