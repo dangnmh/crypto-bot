@@ -13,6 +13,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
@@ -58,6 +59,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		BitgetProviderFactory{},
 		BingxProviderFactory{},
 		KucoinProviderFactory{},
+		DeepcoinProviderFactory{},
 	}
 }
 
@@ -444,4 +446,29 @@ func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfi
 	adapter.SetClient(kucoinClient)
 
 	return buildProvider(ctx, exchange.ExchangeKucoin, exchange.ExchangeKucoin, cfg, apiCfg, client, adapter), nil
+}
+
+// DeepcoinProviderFactory builds Deepcoin infrastructure.
+type DeepcoinProviderFactory struct{}
+
+func (DeepcoinProviderFactory) Name() string { return exchange.ExchangeDeepcoin }
+
+func (DeepcoinProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Deepcoin.Enable
+}
+
+func (DeepcoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Deepcoin
+	client := exchange.Client(deepcoin.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		apiCfg.APIPassphrase,
+		sysCfg.Logging,
+	))
+
+	adapter := deepcoin.NewWsAdapter()
+	return buildProvider(ctx, exchange.ExchangeDeepcoin, exchange.ExchangeDeepcoin, cfg, apiCfg, client, adapter), nil
 }

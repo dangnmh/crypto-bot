@@ -117,6 +117,7 @@ type ExchangeConfig struct {
 	Bitget      APIConfig `json:"bitget" validate:"api_config"`
 	Kucoin      APIConfig `json:"kucoin" validate:"api_config"`
 	Bingx       APIConfig `json:"bingx" validate:"api_config"`
+	Deepcoin    APIConfig `json:"deepcoin" validate:"api_config"`
 }
 
 type NotiConfig struct {

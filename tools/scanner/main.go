@@ -17,6 +17,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
@@ -81,6 +82,7 @@ func main() {
 	// bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
+	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -94,8 +96,9 @@ func main() {
 		// "hyperliquid": hlClient,
 		// "bitget":      bitgetClient,
 		// "bingx":   bingxClient,
-		"kucoin":  kucoinClient,
-		"binance": binanceClient,
+		"kucoin":   kucoinClient,
+		"binance":  binanceClient,
+		"deepcoin": deepcoinClient,
 	}
 
 	// Filter clients based on user flag
@@ -125,6 +128,8 @@ func main() {
 				displayName = "KuCoin"
 			case "binance":
 				displayName = "Binance"
+			case "deepcoin":
+				displayName = "Deepcoin"
 			}
 			scanList = append(scanList, displayName)
 		}
