@@ -10,8 +10,8 @@
     "postSettleTimeout": "1s",
     "leverage": 6,
     "marginUSD": 5,
-    "minVol24USD": 10000000,
-    "minFundingRate": 0.8
+    "minVol24USD": 5000000,
+    "minFundingRate": 0.7
   },
   "sync": {
     "time": "60s",
