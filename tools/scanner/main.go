@@ -24,6 +24,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
+	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -88,6 +89,7 @@ func main() {
 	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", logCfg)
 	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
+	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -107,6 +109,7 @@ func main() {
 		"toobit":   toobitClient,
 		"weex":     weexClient,
 		"batonex":  batonexClient,
+		"zoomex":   zoomexClient,
 	}
 
 	// Filter clients based on user flag
@@ -144,6 +147,8 @@ func main() {
 				displayName = "WEEX"
 			case "batonex":
 				displayName = "Batonex"
+			case "zoomex":
+				displayName = "Zoomex"
 			}
 			scanList = append(scanList, displayName)
 		}

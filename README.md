@@ -19,8 +19,6 @@ https://docs.koinbay.com/api/contract#id-3-get-index-marked-price
 https://sunx.gitbook.io/sunx/developer/rest/market-data/get-a-batch-of-trade-records-of-a-contract
 https://www.pionex.com/docs/api-docs/trade-api/market
 https://docs.woox.io/#restful-api
-https://github.com/batonex/openapi/blob/master/apidocs/07-user-data-stream.md
-https://zoomexglobal.github.io/docs/v3/intro
 https://github.com/BiconomyOfficial/APIDocs/blob/master/v3/example_v3.js
 https://doc.xt.com/docs/futures/Access%20Description/BasicInformationOfTheInterface
 https://developer-pro.bitmart.com/en/futuresv2/#update-plan
