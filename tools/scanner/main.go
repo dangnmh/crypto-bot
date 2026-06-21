@@ -16,6 +16,7 @@ import (
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
@@ -90,6 +91,7 @@ func main() {
 	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
+	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -110,6 +112,7 @@ func main() {
 		"weex":     weexClient,
 		"batonex":  batonexClient,
 		"zoomex":   zoomexClient,
+		"bitmart":  bitmartClient,
 	}
 
 	// Filter clients based on user flag
@@ -149,6 +152,8 @@ func main() {
 				displayName = "Batonex"
 			case "zoomex":
 				displayName = "Zoomex"
+			case "bitmart":
+				displayName = "Bitmart"
 			}
 			scanList = append(scanList, displayName)
 		}
