@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,11 +36,17 @@ func (m *mockBot) Stop(_ context.Context) error {
 	return m.stopErr
 }
 
+//nolint:paralleltest // signalNotify is package-level and shared, so do not run in parallel.
 func TestRunBot_Lifecycle(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping signal test on Windows — process.Signal() not supported")
+	// signalNotify is package-level and shared, so do not run in parallel.
+	oldNotify := *app.SignalNotify
+	defer func() { *app.SignalNotify = oldNotify }()
+
+	sigChan := make(chan chan<- os.Signal, 1)
+	*app.SignalNotify = func(c chan<- os.Signal, sigs ...os.Signal) {
+		sigChan <- c
 	}
-	t.Parallel()
+
 	bot := &mockBot{}
 	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
 
@@ -52,21 +57,21 @@ func TestRunBot_Lifecycle(t *testing.T) {
 		close(done)
 	}()
 
-	// Allow app.RunBot to start Run()
-	time.Sleep(50 * time.Millisecond)
+	var c chan<- os.Signal
+	select {
+	case c = <-sigChan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("app.RunBot did not call signalNotify")
+	}
 
-	pid := os.Getpid()
-	process, err := os.FindProcess(pid)
-	assert.NoError(t, err)
-	err = process.Signal(os.Interrupt)
-	assert.NoError(t, err)
+	c <- os.Interrupt
 
 	select {
 	case <-done:
 		assert.True(t, bot.runStarted.Load())
 		assert.True(t, bot.runStopped.Load())
 	case <-time.After(2 * time.Second):
-		t.Fatal("app.RunBot did not exit after signal")
+		t.Fatal("app.RunBot did not exit after simulated signal")
 	}
 }
 
@@ -83,11 +88,17 @@ func TestRunBot_BackgroundFail(t *testing.T) {
 	assert.False(t, bot.runStarted.Load())
 }
 
+//nolint:paralleltest // signalNotify is package-level and shared, so do not run in parallel.
 func TestRunBot_StopError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping signal test on Windows — process.Signal() not supported")
+	// signalNotify is package-level and shared, so do not run in parallel.
+	oldNotify := *app.SignalNotify
+	defer func() { *app.SignalNotify = oldNotify }()
+
+	sigChan := make(chan chan<- os.Signal, 1)
+	*app.SignalNotify = func(c chan<- os.Signal, sigs ...os.Signal) {
+		sigChan <- c
 	}
-	t.Parallel()
+
 	bot := &mockBot{
 		stopErr: fmt.Errorf("stop failed"),
 	}
@@ -99,16 +110,19 @@ func TestRunBot_StopError(t *testing.T) {
 		close(done)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	var c chan<- os.Signal
+	select {
+	case c = <-sigChan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("app.RunBot did not call signalNotify")
+	}
 
-	pid := os.Getpid()
-	process, _ := os.FindProcess(pid)
-	_ = process.Signal(os.Interrupt)
+	c <- os.Interrupt
 
 	select {
 	case <-done:
 		assert.True(t, bot.runStarted.Load())
 	case <-time.After(2 * time.Second):
-		t.Fatal("app.RunBot did not exit")
+		t.Fatal("app.RunBot did not exit after simulated signal")
 	}
 }

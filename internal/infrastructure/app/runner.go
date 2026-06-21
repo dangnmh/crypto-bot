@@ -12,6 +12,8 @@ import (
 
 const shutdownTimeout = 5 * time.Second
 
+var signalNotify = signal.Notify
+
 // RunBot takes an initialized Bot and its parent Engine, and manages the full
 // application lifecycle including background services, main execution, and graceful shutdown.
 func RunBot(engine *Engine, bot Bot) error {
@@ -31,7 +33,7 @@ func RunBot(engine *Engine, bot Bot) error {
 
 	// Wait for interrupt signal to gracefully shutdown.
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	signalNotify(quit, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(quit)
 	<-quit
 

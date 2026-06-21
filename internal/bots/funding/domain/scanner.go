@@ -34,6 +34,7 @@ type ContractSpec struct {
 	ContractSize float64
 	TakerFeeRate float64
 	MakerFeeRate float64
+	MaxLeverage  int
 }
 
 // TradeConfig holds the trading parameters passed from the config layer.

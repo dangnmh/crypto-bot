@@ -23,6 +23,7 @@ type kucoinContract struct {
 	VolumeOf24h             float64 `json:"volumeOf24h"`
 	FundingFeeRate          float64 `json:"fundingFeeRate"`
 	NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
+	MaxLeverage             float64 `json:"maxLeverage"`
 }
 
 type kucoinServerTimeRequest struct{}
@@ -141,6 +142,11 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			priceScale = 2
 		}
 
+		maxLeverage := int(inst.MaxLeverage)
+		if maxLeverage <= 0 {
+			maxLeverage = 100
+		}
+
 		details = append(details, exchange.ContractDetail{
 			Symbol:           inst.Symbol,
 			DisplayName:      inst.Symbol,
@@ -151,7 +157,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			SettleCoin:       inst.SettleCurrency,
 			ContractSize:     inst.Multiplier,
 			MinLeverage:      1,
-			MaxLeverage:      100,
+			MaxLeverage:      maxLeverage,
 			PriceScale:       priceScale,
 			VolScale:         0, // Defaults to 0 (unit contracts).
 			PriceUnit:        tickSize,

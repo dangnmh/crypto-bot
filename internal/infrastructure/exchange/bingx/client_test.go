@@ -75,6 +75,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, "BTC", details[0].BaseCoin)
 	assert.Equal(t, 1, details[0].PriceScale)
 	assert.Equal(t, 3, details[0].VolScale)
+	assert.Equal(t, 100, details[0].MaxLeverage)
 }
 
 func TestClient_GetTickers(t *testing.T) {

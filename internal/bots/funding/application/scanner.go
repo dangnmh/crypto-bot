@@ -557,6 +557,7 @@ func (s *ScheduleScanner) processResult(
 		ContractSize: cd.ContractSize,
 		TakerFeeRate: cd.TakerFeeRate,
 		MakerFeeRate: cd.MakerFeeRate,
+		MaxLeverage:  cd.MaxLeverage,
 	}
 
 	return ScanOpportunity{

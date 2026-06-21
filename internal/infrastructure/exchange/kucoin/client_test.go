@@ -57,7 +57,8 @@ func TestClient_GetContractDetails(t *testing.T) {
 					"lotSize": 1,
 					"tickSize": 0.1,
 					"multiplier": 1,
-					"status": "Open"
+					"status": "Open",
+					"maxLeverage": 20
 				},
 				{
 					"symbol": "BABYUSDTM",
@@ -82,11 +83,13 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, "XBT", details[0].BaseCoin)
 	assert.Equal(t, 1, details[0].PriceScale)
 	assert.Equal(t, 0.1, details[0].PriceUnit)
+	assert.Equal(t, 20, details[0].MaxLeverage)
 
 	assert.Equal(t, "BABYUSDTM", details[1].Symbol)
 	assert.Equal(t, "BABY", details[1].BaseCoin)
 	assert.Equal(t, 5, details[1].PriceScale)
 	assert.Equal(t, 0.00001, details[1].PriceUnit)
+	assert.Equal(t, 100, details[1].MaxLeverage) // Fallback default
 }
 
 func TestClient_GetTickers(t *testing.T) {

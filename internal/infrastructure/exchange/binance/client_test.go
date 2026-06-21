@@ -93,6 +93,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, 0.1, d.PriceUnit)
 	assert.Equal(t, 2, d.PriceScale)
 	assert.Equal(t, 3, d.VolScale)
+	assert.Equal(t, 125, d.MaxLeverage)
 }
 
 func TestClient_GetTickers_And_FundingRates(t *testing.T) {
