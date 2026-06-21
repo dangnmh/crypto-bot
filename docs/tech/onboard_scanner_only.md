@@ -20,7 +20,20 @@ graph TD
 
 ## Step-by-Step Onboarding Workflow
 
-### Step 1: Define the Exchange Type Constant
+### Step 1: Verify Public REST Endpoints via curl
+Before writing any code, verify that the exchange's public REST endpoints (tickers and funding rates data) are accessible and retrieve the expected JSON structure using `curl`. This helps confirm the base URL, path names, and JSON fields (e.g. strings vs floats) upfront.
+
+```bash
+# Example: Fetch 24hr tickers list from the exchange API
+curl -s "https://api.<your_exchange_domain>/path/to/ticker/endpoint" | head -n 30
+
+# Example: Fetch funding rates / contract details
+curl -s "https://api.<your_exchange_domain>/path/to/funding/rate/endpoint" | head -n 30
+```
+
+---
+
+### Step 2: Define the Exchange Type Constant
 Open [internal/infrastructure/exchange/types.go](file:///home/four/projects/crypto-bot/internal/infrastructure/exchange/types.go) and add the exchange name constant:
 ```go
 const (
@@ -29,13 +42,13 @@ const (
 )
 ```
 
-### Step 2: Create the Exchange Client Package
+### Step 3: Create the Exchange Client Package
 Create a new directory: `internal/infrastructure/exchange/<your_exchange_name_lowercase>/`.
 
 Inside this folder, implement the minimal REST API client. The client only needs to satisfy the `service.ScannerClient` interface (containing `GetTickers` and `GetFundingRates`).
 
 #### 1. Define the Client Struct (`client.go`)
-Your client must wrap `httpclient.Pool` and logger details:
+Your client wraps `*http.Client` and provides slog logger and configuration details:
 ```go
 package <your_exchange_name_lowercase>
 
@@ -69,17 +82,21 @@ Implement the two methods required by `service.ScannerClient`:
 
 ---
 
-### Step 3: Register in the Scanner Tool
+### Step 4: Register in the Scanner Tool
 Open [tools/scanner/main.go](file:///home/four/projects/crypto-bot/tools/scanner/main.go) and:
 1. Import your new exchange client package.
 2. Change the `allClients` map type from `map[string]exchange.Client` to `map[string]service.ScannerClient`.
 3. Instantiate the client using the public REST API base URL.
 4. Register the client instance in the `allClients` map.
 
+### Step 5: Verify the Scanner Integration
+To verify that the newly added exchange client works correctly and fetches active market data, run the scanner tool specifically targeting your exchange and setting the minimum funding rate threshold to `0`:
+
+```bash
+make scan/funding exchanges=<your_exchange_name_lowercase> minFundingRate=0
+```
+
+Verify that the output is displayed as a formatted table containing standardized symbols, real-time funding rates, settlement countdowns, and 24-hour volume statistics.
+
 ---
 
-### Step 4: Write Unit Tests
-Implement unit tests in `internal/infrastructure/exchange/<your_exchange_name_lowercase>/client_test.go`:
-* Use `net/http/httptest` to mock the exchange API responses.
-* Test `GetTickers` and `GetFundingRates` with mock HTTP response bodies.
-* Ensure code coverage meets the project threshold (minimum **>= 90%** for new code).

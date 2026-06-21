@@ -10,6 +10,22 @@ Next to do:
 https://github.com/CoinUpGlobal/api-docs
 https://fameexdocs.github.io/docs-v1/en/index.html#documentation
 https://www.ju.com/en/api-doc/common/intro
+https://www.coinw.com/api-doc/en/futures-trading/market/get-historical-public-trades
+https://openapi-docs.orangex.com/#get-ticker
+https://www.echobit.com/apiApply
+https://docs-api.trubit.com/trubit-pro/contract/contract-api#openpositioninexchange
+https://docs.digifinex.com/en-ww/spot/v3/rest.html#currencies-which-support-margin-trading
+https://docs.koinbay.com/api/contract#id-3-get-index-marked-price
+https://sunx.gitbook.io/sunx/developer/rest/market-data/get-a-batch-of-trade-records-of-a-contract
+https://www.pionex.com/docs/api-docs/trade-api/market
+https://docs.woox.io/#restful-api
+https://github.com/batonex/openapi/blob/master/apidocs/07-user-data-stream.md
+https://zoomexglobal.github.io/docs/v3/intro
+https://github.com/BiconomyOfficial/APIDocs/blob/master/v3/example_v3.js
+https://doc.xt.com/docs/futures/Access%20Description/BasicInformationOfTheInterface
+https://developer-pro.bitmart.com/en/futuresv2/#update-plan
+https://apidocs.cofinex.io/
+https://docs.cdp.coinbase.com/api-reference/international-exchange-api/rest-api/instruments/get-instrument-details
 
 Dont have API : 
 https://www.bikingex.com/
@@ -18,3 +34,8 @@ https://www.tapbit.com/en
 https://www.eeee.com/
 https://www.btcc.com/en-US
 https://www.ktx.com/en
+https://www.ourbit.com/support
+https://www.bvox.com/other/noaccess
+https://www.kcex.com/support/categories/25312976074265
+https://www.ceex.com/en-us/
+https://www.ekbit.com/
