@@ -16,14 +16,13 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
-	"crypto-bot/internal/infrastructure/exchange/bingx"
-	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
+	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
@@ -92,8 +91,8 @@ func main() {
 	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", logCfg)
 	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
 	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
-	bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
-	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
+	// bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
+	// bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
@@ -103,6 +102,7 @@ func main() {
 	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
+	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -114,17 +114,18 @@ func main() {
 		"bybit":       bybitClient,
 		"okx":         okxClient,
 		"hyperliquid": hlClient,
-		"bitget":      bitgetClient,
-		"bingx":       bingxClient,
-		"kucoin":      kucoinClient,
-		"binance":     binanceClient,
-		"deepcoin":    deepcoinClient,
-		"toobit":      toobitClient,
-		"weex":        weexClient,
-		"batonex":     batonexClient,
-		"zoomex":      zoomexClient,
-		"bitmart":     bitmartClient,
-		"coinw":       coinwClient,
+		// "bitget":      bitgetClient,
+		// "bingx":       bingxClient,
+		"kucoin":        kucoinClient,
+		"binance":       binanceClient,
+		"deepcoin":      deepcoinClient,
+		"toobit":        toobitClient,
+		"weex":          weexClient,
+		"batonex":       batonexClient,
+		"zoomex":        zoomexClient,
+		"bitmart":       bitmartClient,
+		"coinw":         coinwClient,
+		"krakenfutures": kfClient,
 	}
 
 	// Filter clients based on user flag
@@ -168,6 +169,8 @@ func main() {
 				displayName = "Bitmart"
 			case "coinw":
 				displayName = "CoinW"
+			case "krakenfutures":
+				displayName = "Kraken Futures"
 			}
 			scanList = append(scanList, displayName)
 		}
