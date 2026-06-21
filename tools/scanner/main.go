@@ -18,6 +18,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
@@ -55,6 +56,8 @@ func main() {
 	flag.StringVar(&exchangesFlag, "exchanges", "", "Comma-separated list of exchanges to scan (e.g. binance,bybit,okx). If empty, scans all.")
 	var minFundingRate float64
 	flag.Float64Var(&minFundingRate, "minFundingRate", 0.3, "Minimum absolute funding rate (in percent) to filter. E.g. 0.1 for 0.1%")
+	var minVol float64
+	flag.Float64Var(&minVol, "minVol", 1000000.0, "Minimum 24h volume (in USDT) to filter pairs. E.g. 1000000 for 1M USDT")
 	flag.Parse()
 
 	// Parse targeted exchanges if provided
@@ -92,6 +95,7 @@ func main() {
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg)
+	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -113,6 +117,7 @@ func main() {
 		"batonex":  batonexClient,
 		"zoomex":   zoomexClient,
 		"bitmart":  bitmartClient,
+		"coinw":    coinwClient,
 	}
 
 	// Filter clients based on user flag
@@ -154,6 +159,8 @@ func main() {
 				displayName = "Zoomex"
 			case "bitmart":
 				displayName = "Bitmart"
+			case "coinw":
+				displayName = "CoinW"
 			}
 			scanList = append(scanList, displayName)
 		}
@@ -197,7 +204,7 @@ func main() {
 		go func(exchangeName string, c service.ScannerClient) {
 			defer wg.Done()
 			fs := service.NewFundingService(c)
-			results, err := fs.GetPotentialFundingSymbols(ctx, 1000000, 0, nil, blackList)
+			results, err := fs.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blackList)
 			if err != nil {
 				fmt.Printf("🔴 Failed to fetch %s potential funding symbols: %v\n", strings.ToUpper(exchangeName), err)
 				return

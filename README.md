@@ -7,9 +7,6 @@ bitget kyc comlicated
 hyperliquid hasnt finish implement
 
 Next to do:
-https://github.com/CoinUpGlobal/api-docs
-https://fameexdocs.github.io/docs-v1/en/index.html#documentation
-https://www.ju.com/en/api-doc/common/intro
 https://www.coinw.com/api-doc/en/futures-trading/market/get-historical-public-trades
 https://openapi-docs.orangex.com/#get-ticker
 https://www.echobit.com/apiApply
@@ -23,6 +20,13 @@ https://github.com/BiconomyOfficial/APIDocs/blob/master/v3/example_v3.js
 https://doc.xt.com/docs/futures/Access%20Description/BasicInformationOfTheInterface
 https://apidocs.cofinex.io/
 https://docs.cdp.coinbase.com/api-reference/international-exchange-api/rest-api/instruments/get-instrument-details
+
+
+Dont have enough API:
+https://github.com/CoinUpGlobal/api-docs
+https://fameexdocs.github.io/docs-v1/en/index.html#documentation
+https://www.ju.com/en/api-doc/common/intro
+
 
 Dont have API : 
 https://www.bikingex.com/

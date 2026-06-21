@@ -65,8 +65,8 @@ run/funding: ## Run the funding bot
 	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -bot $(FUNDING_BOT)
 
 .PHONY: scan/funding
-scan/funding: ## Scan funding rates across supported futures exchanges. Usage: make scan/funding [exchanges=binance,bybit] [minFundingRate=0.1]
-	$(GO) run ./tools/scanner $(if $(exchanges),-exchanges $(exchanges),) $(if $(minFundingRate),-minFundingRate $(minFundingRate),)
+scan/funding: ## Scan funding rates across supported futures exchanges. Usage: make scan/funding [exchanges=binance,bybit] [minFundingRate=0.1] [minVol=1000000]
+	$(GO) run ./tools/scanner $(if $(exchanges),-exchanges $(exchanges),) $(if $(minFundingRate),-minFundingRate $(minFundingRate),) $(if $(minVol),-minVol $(minVol),)
 
 # ── Test ─────────────────────────────────────────────────────────────
 .PHONY: test
