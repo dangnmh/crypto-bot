@@ -196,3 +196,70 @@ func toStandardSymbol(s string) string {
 	upper = strings.ReplaceAll(upper, "_", "")
 	return upper
 }
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	query := map[string]string{
+		paramCategory: categoryLinear,
+	}
+
+	body, err := c.request(ctx, http.MethodGet, "/cloud/trade/v3/market/tickers", query)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp zoomexResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal zoomex response: %w", err)
+	}
+
+	if resp.RetCode != 0 {
+		return nil, fmt.Errorf("zoomex API error: %d - %s", resp.RetCode, resp.RetMsg)
+	}
+
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[toStandardSymbol(sym)] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[toStandardSymbol(sym)] = true
+	}
+
+	var results []exchange.PotentialFundingResult
+	for i := range resp.Result.List {
+		item := &resp.Result.List[i]
+		stdSym := toStandardSymbol(item.Symbol)
+		if blacklistMap[stdSym] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[stdSym] {
+			continue
+		}
+
+		amt, _ := strconv.ParseFloat(item.Turnover24h, 64)
+		if amt < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && amt > maxVol24h {
+			continue
+		}
+
+		rate, _ := strconv.ParseFloat(item.FundingRate, 64)
+		settleTime, _ := strconv.ParseInt(item.NextFundingTime, 10, 64)
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     toStandardSymbol(item.Symbol),
+			Rate:       rate,
+			SettleTime: settleTime,
+			Volume24h:  amt,
+		})
+	}
+
+	return results, nil
+}

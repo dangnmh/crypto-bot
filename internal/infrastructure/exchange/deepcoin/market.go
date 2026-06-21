@@ -263,3 +263,102 @@ func normalizeSymbol(s string) string {
 	upper = strings.TrimSuffix(upper, "SWAP")
 	return upper
 }
+
+func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]deepcoinTicker, map[string]float64) {
+	var filteredTickers []deepcoinTicker
+	volMap := make(map[string]float64)
+
+	for i := range tickers {
+		t := &tickers[i]
+		norm := normalizeSymbol(t.InstID)
+		if blacklistMap[norm] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[norm] {
+			continue
+		}
+
+		vol, _ := strconv.ParseFloat(t.VolCcy24h, 64)
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		filteredTickers = append(filteredTickers, *t)
+		volMap[norm] = vol
+	}
+	return filteredTickers, volMap
+}
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch all tickers
+	tickers, err := c.getRawTickers(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("deepcoin list tickers: %w", err)
+	}
+
+	// 2. Build maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[normalizeSymbol(sym)] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[normalizeSymbol(sym)] = true
+	}
+
+	// 3. Filter symbols by whitelist, blacklist, and 24h volume
+	filteredTickers, volMap := filterTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	if len(filteredTickers) == 0 {
+		return nil, nil
+	}
+
+	// 4. Fetch settlement cycles
+	cycles, err := c.getRawFundingRateCycles(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("deepcoin get funding rate cycles: %w", err)
+	}
+
+	// 5. Fetch current funding rates
+	ratesData, err := c.getRawCurrentFundingRates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("deepcoin get current funding rates: %w", err)
+	}
+
+	cycleMap := make(map[string]int64)
+	for _, cycle := range cycles {
+		norm := normalizeSymbol(cycle.InstrumentID)
+		cycleMap[norm] = cycle.NextSettleTime * 1000
+	}
+
+	rateMap := make(map[string]float64)
+	for _, rate := range ratesData.CurrentFundRates {
+		norm := normalizeSymbol(rate.InstrumentID)
+		rateMap[norm] = rate.FundingRate
+	}
+
+	// 6. Combine results
+	var results []exchange.PotentialFundingResult
+	for _, t := range filteredTickers {
+		norm := normalizeSymbol(t.InstID)
+		settleTime := cycleMap[norm]
+		rate := rateMap[norm]
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     t.InstID,
+			Rate:       rate,
+			SettleTime: settleTime,
+			Volume24h:  volMap[norm],
+		})
+	}
+
+	return results, nil
+}

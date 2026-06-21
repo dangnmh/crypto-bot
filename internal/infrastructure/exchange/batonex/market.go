@@ -189,3 +189,69 @@ func toBatonexSymbol(s string) string {
 	}
 	return upper
 }
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	tickers, err := c.GetTickers(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[toStandardSymbol(sym)] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[toStandardSymbol(sym)] = true
+	}
+
+	var filteredSymbols []string
+	volMap := make(map[string]float64)
+
+	for _, t := range tickers {
+		stdSym := toStandardSymbol(t.Symbol)
+		if blacklistMap[stdSym] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[stdSym] {
+			continue
+		}
+		if t.AmountUSDT24 < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && t.AmountUSDT24 > maxVol24h {
+			continue
+		}
+
+		filteredSymbols = append(filteredSymbols, t.Symbol)
+		volMap[stdSym] = t.AmountUSDT24
+	}
+
+	if len(filteredSymbols) == 0 {
+		return nil, nil
+	}
+
+	rates, err := c.GetFundingRates(ctx, filteredSymbols)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []exchange.PotentialFundingResult
+	for _, r := range rates {
+		stdSym := toStandardSymbol(r.Symbol)
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     r.Symbol,
+			Rate:       r.Rate,
+			SettleTime: r.SettleTime,
+			Volume24h:  volMap[stdSym],
+		})
+	}
+
+	return results, nil
+}

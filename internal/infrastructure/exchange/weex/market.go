@@ -165,3 +165,69 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 	return results, nil
 }
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	tickers, err := c.GetTickers(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("weex list tickers: %w", err)
+	}
+
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[strings.ToUpper(sym)] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[strings.ToUpper(sym)] = true
+	}
+
+	var filteredSymbols []string
+	volMap := make(map[string]float64)
+
+	for _, t := range tickers {
+		stdSym := strings.ToUpper(t.Symbol)
+		if blacklistMap[stdSym] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[stdSym] {
+			continue
+		}
+		if t.AmountUSDT24 < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && t.AmountUSDT24 > maxVol24h {
+			continue
+		}
+
+		filteredSymbols = append(filteredSymbols, t.Symbol)
+		volMap[stdSym] = t.AmountUSDT24
+	}
+
+	if len(filteredSymbols) == 0 {
+		return nil, nil
+	}
+
+	rates, err := c.GetFundingRates(ctx, filteredSymbols)
+	if err != nil {
+		return nil, fmt.Errorf("weex list funding rates: %w", err)
+	}
+
+	var results []exchange.PotentialFundingResult
+	for _, r := range rates {
+		stdSym := strings.ToUpper(r.Symbol)
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     r.Symbol,
+			Rate:       r.Rate,
+			SettleTime: r.SettleTime,
+			Volume24h:  volMap[stdSym],
+		})
+	}
+
+	return results, nil
+}

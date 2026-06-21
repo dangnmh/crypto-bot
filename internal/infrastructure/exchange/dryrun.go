@@ -47,6 +47,15 @@ func (d *DryRunClient) GetServerTime(ctx context.Context) (int64, error) {
 	return d.inner.GetServerTime(ctx)
 }
 
+func (d *DryRunClient) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]PotentialFundingResult, error) {
+	return d.inner.GetPotentialFundingSymbols(ctx, minVol24h, maxVol24h, whitelist, blacklist)
+}
+
 // ── AccountProvider (delegated to real client) ───────────────────────.
 
 func (d *DryRunClient) GetOpenPositions(ctx context.Context, symbol string) ([]Position, error) {

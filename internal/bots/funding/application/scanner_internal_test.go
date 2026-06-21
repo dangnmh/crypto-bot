@@ -344,9 +344,19 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockClient(ctrl)
 
-	// Mock GetTickers: returns tickers for BTC_USDT and ETH_USDT
-	// BTC_USDT has large volume: 2,000,000 USD
-	// ETH_USDT has low volume: 500,000 USD
+	settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
+
+	// Mock GetPotentialFundingSymbols
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 1000000.0, 0.0, nil, gomock.Any()).Return([]exchange.PotentialFundingResult{
+		{
+			Symbol:     "BTC_USDT",
+			Rate:       0.004,
+			SettleTime: settleTime,
+			Volume24h:  2000000,
+		},
+	}, nil)
+
+	// Mock GetTickers: returns tickers for BTC_USDT
 	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
 		{
 			Symbol:       "BTC_USDT",
@@ -355,23 +365,6 @@ func TestScheduleScanner_Scan(t *testing.T) {
 			Ask1:         50010,
 			Volume24:     40,
 			AmountUSDT24: 2000000,
-		},
-		{
-			Symbol:       "ETH_USDT",
-			LastPrice:    3000,
-			Bid1:         2999,
-			Ask1:         3001,
-			Volume24:     166,
-			AmountUSDT24: 500000,
-		},
-	}, nil).Times(2) // Once inside FundingService, once inside ScheduleScanner.Scan
-
-	// Mock GetFundingRates: called only for BTC_USDT because ETH_USDT is filtered by volume
-	client.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
-		{
-			Symbol:     "BTC_USDT",
-			Rate:       0.004, // 0.4% > 0.3% threshold
-			SettleTime: time.Now().Add(4 * time.Hour).UnixMilli(),
 		},
 	}, nil)
 
@@ -472,8 +465,25 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			client := mocks.NewMockClient(ctrl)
 
-			client.EXPECT().GetTickers(gomock.Any(), "").Return(tt.tickers, nil).Times(2)
-			client.EXPECT().GetFundingRates(gomock.Any(), gomock.Any()).Return(tt.rates, nil)
+			var potentialResults []exchange.PotentialFundingResult
+			tickerMap := make(map[string]exchange.Ticker)
+			for _, tk := range tt.tickers {
+				tickerMap[tk.Symbol] = tk
+			}
+			for _, rt := range tt.rates {
+				tk := tickerMap[rt.Symbol]
+				if tk.AmountUSDT24 >= 1000000 {
+					potentialResults = append(potentialResults, exchange.PotentialFundingResult{
+						Symbol:     rt.Symbol,
+						Rate:       rt.Rate,
+						SettleTime: rt.SettleTime,
+						Volume24h:  tk.AmountUSDT24,
+					})
+				}
+			}
+
+			client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 1000000.0, 0.0, nil, gomock.Any()).Return(potentialResults, nil)
+			client.EXPECT().GetTickers(gomock.Any(), "").Return(tt.tickers, nil)
 			client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
 				{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, PriceScale: 1, VolScale: 0, ContractSize: 0.001},
 				{Symbol: "ETH_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.01},

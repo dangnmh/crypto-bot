@@ -14,6 +14,7 @@ type MarketDataProvider interface {
 	GetContractDetails(ctx context.Context) ([]ContractDetail, error)
 	GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error)
 	GetServerTime(ctx context.Context) (int64, error)
+	GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist []string, blacklist []string) ([]PotentialFundingResult, error)
 }
 
 // CreateOrderResult is the result returned from the CreateOrder method.
@@ -106,4 +107,12 @@ type RawRequest interface {
 	GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error)
 	GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error)
 	GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error)
+}
+
+// PotentialFundingResult holds combined information for active query results in scanner.
+type PotentialFundingResult struct {
+	Symbol     string  `json:"symbol"`
+	Rate       float64 `json:"rate"`
+	SettleTime int64   `json:"settleTime"`
+	Volume24h  float64 `json:"volume24h"`
 }

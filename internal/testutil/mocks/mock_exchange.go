@@ -544,6 +544,45 @@ func (c *MockClientGetOrderByExternalIDCall) DoAndReturn(f func(context.Context,
 	return c
 }
 
+// GetPotentialFundingSymbols mocks base method.
+func (m *MockClient) GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPotentialFundingSymbols", ctx, minVol24h, maxVol24h, whitelist, blacklist)
+	ret0, _ := ret[0].([]exchange.PotentialFundingResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPotentialFundingSymbols indicates an expected call of GetPotentialFundingSymbols.
+func (mr *MockClientMockRecorder) GetPotentialFundingSymbols(ctx, minVol24h, maxVol24h, whitelist, blacklist any) *MockClientGetPotentialFundingSymbolsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPotentialFundingSymbols", reflect.TypeOf((*MockClient)(nil).GetPotentialFundingSymbols), ctx, minVol24h, maxVol24h, whitelist, blacklist)
+	return &MockClientGetPotentialFundingSymbolsCall{Call: call}
+}
+
+// MockClientGetPotentialFundingSymbolsCall wrap *gomock.Call
+type MockClientGetPotentialFundingSymbolsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientGetPotentialFundingSymbolsCall) Return(arg0 []exchange.PotentialFundingResult, arg1 error) *MockClientGetPotentialFundingSymbolsCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientGetPotentialFundingSymbolsCall) Do(f func(context.Context, float64, float64, []string, []string) ([]exchange.PotentialFundingResult, error)) *MockClientGetPotentialFundingSymbolsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientGetPotentialFundingSymbolsCall) DoAndReturn(f func(context.Context, float64, float64, []string, []string) ([]exchange.PotentialFundingResult, error)) *MockClientGetPotentialFundingSymbolsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetServerTime mocks base method.
 func (m *MockClient) GetServerTime(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()

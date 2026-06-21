@@ -226,3 +226,81 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 	return exchangeTickers, nil
 }
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch tickers
+	tickers, err := c.getRawTickers(ctx, okxTickersRequest{InstType: instTypeSwap})
+	if err != nil {
+		return nil, fmt.Errorf("okx list tickers: %w", err)
+	}
+
+	// 2. Build maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	// 3. Filter symbols by whitelist, blacklist, and 24h volume
+	var filteredTickers []okxTicker
+	for i := range tickers {
+		t := &tickers[i]
+		if blacklistMap[t.InstID] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[t.InstID] {
+			continue
+		}
+
+		last, _ := strconv.ParseFloat(t.Last, 64)
+		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
+		vol := amt * last
+
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		filteredTickers = append(filteredTickers, *t)
+	}
+
+	if len(filteredTickers) == 0 {
+		return nil, nil
+	}
+
+	// 4. Query funding rate for each filtered symbol (1 + N query style)
+	results := make([]exchange.PotentialFundingResult, 0, len(filteredTickers))
+	for i := range filteredTickers {
+		t := &filteredTickers[i]
+		rawRate, err := c.getRawFundingRate(ctx, okxFundingRateRequest{InstID: t.InstID})
+		if err != nil {
+			return nil, fmt.Errorf("okx get funding rate for %s: %w", t.InstID, err)
+		}
+
+		fr, _ := strconv.ParseFloat(rawRate.FundingRate, 64)
+		ns, _ := strconv.ParseInt(rawRate.NextFundingTime, 10, 64)
+		last, _ := strconv.ParseFloat(t.Last, 64)
+		amt, _ := strconv.ParseFloat(t.VolCcy24h, 64)
+		vol := amt * last
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     t.InstID,
+			Rate:       fr,
+			SettleTime: ns,
+			Volume24h:  vol,
+		})
+	}
+
+	return results, nil
+}

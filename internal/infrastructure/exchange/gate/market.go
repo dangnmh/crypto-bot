@@ -211,3 +211,89 @@ func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap 
 	}
 	return nil
 }
+
+func filterGateTickers(tickers []gateFuturesTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+	var filteredSymbols []string
+	volMap := make(map[string]float64)
+
+	for i := range tickers {
+		t := &tickers[i]
+		if blacklistMap[t.Contract] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[t.Contract] {
+			continue
+		}
+
+		vol := decmath.ParseFloat(t.Volume24hQuote)
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		filteredSymbols = append(filteredSymbols, t.Contract)
+		volMap[t.Contract] = vol
+	}
+	return filteredSymbols, volMap
+}
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch tickers for usdt settle coin
+	tickers, err := c.getRawTickers(ctx, gateTickersRequest{Settle: gateSettleUsdt})
+	if err != nil {
+		return nil, fmt.Errorf("gate.io list tickers: %w", err)
+	}
+
+	// 2. Build maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	// 3. Filter symbols by whitelist, blacklist, and 24h volume
+	filteredSymbols, volMap := filterGateTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	if len(filteredSymbols) == 0 {
+		return nil, nil
+	}
+
+	// 4. Fetch contracts for usdt settle coin
+	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: gateSettleUsdt})
+	if err != nil {
+		return nil, fmt.Errorf("gate.io list contracts: %w", err)
+	}
+
+	contractMap := make(map[string]*gateContract)
+	for i := range contracts {
+		contractMap[contracts[i].Name] = &contracts[i]
+	}
+
+	// 5. Build results
+	var results []exchange.PotentialFundingResult
+	for _, sym := range filteredSymbols {
+		contract, exists := contractMap[sym]
+		if !exists {
+			continue
+		}
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     sym,
+			Rate:       decmath.ParseFloat(contract.FundingRate),
+			SettleTime: int64(contract.FundingNextApply * 1000),
+			Volume24h:  volMap[sym],
+		})
+	}
+
+	return results, nil
+}

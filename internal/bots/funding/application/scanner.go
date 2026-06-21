@@ -11,7 +11,6 @@ import (
 
 	"crypto-bot/internal/bots/funding/application/orders"
 	"crypto-bot/internal/bots/funding/application/reversion"
-	"crypto-bot/internal/bots/funding/application/service"
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
@@ -433,9 +432,8 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		minVol = 1000000
 	}
 
-	// 2. Fetch potential funding symbols using FundingService
-	fs := service.NewFundingService(s.client)
-	results, err := fs.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blacklist)
+	// 2. Fetch potential funding symbols using native exchange client
+	results, err := s.client.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blacklist)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get potential funding symbols: %w", err)
 	}
@@ -501,7 +499,7 @@ func selectBestOpportunity(opportunities []ScanOpportunity) []ScanOpportunity {
 
 func (s *ScheduleScanner) processResult(
 	ctx context.Context,
-	r service.PotentialFundingResult,
+	r exchange.PotentialFundingResult,
 	tickerMap map[string]exchange.Ticker,
 	contracts map[string]*exchange.ContractDetail,
 ) (ScanOpportunity, bool, error) {

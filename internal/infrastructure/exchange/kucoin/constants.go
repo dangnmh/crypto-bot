@@ -60,4 +60,5 @@ const (
 	paramStatus              = "status"
 	pathPositionAll          = "/contract/positionAll"
 	constantPersonalPosition = "personal.position"
+	statusOpen               = "Open"
 )

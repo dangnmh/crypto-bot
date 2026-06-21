@@ -184,3 +184,64 @@ func toBitmartSymbol(s string) string {
 	upper = strings.ReplaceAll(upper, "_", "")
 	return upper
 }
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp bitmartResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal bitmart response: %w", err)
+	}
+
+	if resp.Code != 1000 {
+		return nil, fmt.Errorf("bitmart API error: %d - %s", resp.Code, resp.Message)
+	}
+
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[toStandardSymbol(sym)] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[toStandardSymbol(sym)] = true
+	}
+
+	var results []exchange.PotentialFundingResult
+	for i := range resp.Data.Symbols {
+		item := &resp.Data.Symbols[i]
+		stdSym := toStandardSymbol(item.Symbol)
+		if blacklistMap[stdSym] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[stdSym] {
+			continue
+		}
+
+		amt, _ := strconv.ParseFloat(item.Turnover24h, 64)
+		if amt < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && amt > maxVol24h {
+			continue
+		}
+
+		rate, _ := strconv.ParseFloat(item.FundingRate, 64)
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     toStandardSymbol(item.Symbol),
+			Rate:       rate,
+			SettleTime: item.FundingTime,
+			Volume24h:  amt,
+		})
+	}
+
+	return results, nil
+}

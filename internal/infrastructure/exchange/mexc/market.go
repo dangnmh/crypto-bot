@@ -302,3 +302,94 @@ func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageN
 	}
 	return history, nil
 }
+
+func filterMexcTickers(tickers []mexcTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+	var filteredSymbols []string
+	volMap := make(map[string]float64)
+
+	for i := range tickers {
+		t := &tickers[i]
+		if blacklistMap[t.Symbol] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[t.Symbol] {
+			continue
+		}
+
+		vol := t.Amount24
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		filteredSymbols = append(filteredSymbols, t.Symbol)
+		volMap[t.Symbol] = vol
+	}
+	return filteredSymbols, volMap
+}
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch all tickers
+	tickers, err := c.getRawTickers(ctx, mexcTickersRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("mexc list tickers: %w", err)
+	}
+
+	// 2. Build maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	// 3. Filter symbols by whitelist, blacklist, and 24h volume
+	filteredSymbols, volMap := filterMexcTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	if len(filteredSymbols) == 0 {
+		return nil, nil
+	}
+
+	// 4. Fetch all funding rates in bulk
+	body, err := c.GetFundingRateRaw(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("mexc list funding rates raw: %w", err)
+	}
+
+	rawRates, err := ParseResponse[[]mexcFundingRate](body, "funding_rates")
+	if err != nil {
+		return nil, fmt.Errorf("mexc parse funding rates: %w", err)
+	}
+
+	fundingMap := make(map[string]*mexcFundingRate)
+	for i := range rawRates {
+		fundingMap[rawRates[i].Symbol] = &rawRates[i]
+	}
+
+	// 5. Combine results
+	var results []exchange.PotentialFundingResult
+	for _, sym := range filteredSymbols {
+		rateInfo, exists := fundingMap[sym]
+		if !exists {
+			continue
+		}
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     sym,
+			Rate:       rateInfo.FundingRate,
+			SettleTime: rateInfo.NextSettleTime,
+			Volume24h:  volMap[sym],
+		})
+	}
+
+	return results, nil
+}

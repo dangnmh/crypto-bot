@@ -49,6 +49,9 @@ func (s *stubClient) GetFundingRates(ctx context.Context, symbols []string) ([]e
 	return nil, nil
 }
 func (s *stubClient) GetServerTime(ctx context.Context) (int64, error) { return 0, nil }
+func (s *stubClient) GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error) {
+	return nil, nil
+}
 
 func (s *stubClient) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	return exchange.CreateOrderResult{}, nil
@@ -152,6 +155,9 @@ func (s *stubClientNoClosedPnL) GetFundingRates(ctx context.Context, symbols []s
 	return nil, nil
 }
 func (s *stubClientNoClosedPnL) GetServerTime(ctx context.Context) (int64, error) { return 0, nil }
+func (s *stubClientNoClosedPnL) GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error) {
+	return nil, nil
+}
 
 func (s *stubClientNoClosedPnL) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	return exchange.CreateOrderResult{}, nil

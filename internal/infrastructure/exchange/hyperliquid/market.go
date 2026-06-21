@@ -18,6 +18,8 @@ import (
 	hl "github.com/sonirico/go-hyperliquid"
 )
 
+const venueHlPerp = "HlPerp"
+
 type RawVenueFunding struct {
 	FundingRate     string `json:"fundingRate"`
 	NextFundingTime int64  `json:"nextFundingTime"`
@@ -233,7 +235,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 		var hlFunding *RawVenueFunding
 		for i := range assetFunding.Venues {
-			if assetFunding.Venues[i].Venue == "HlPerp" {
+			if assetFunding.Venues[i].Venue == venueHlPerp {
 				hlFunding = &assetFunding.Venues[i].Info
 				break
 			}
@@ -258,4 +260,105 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 // GetServerTime returns local synced timestamp.
 func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	return time.Now().UnixMilli(), nil
+}
+
+func filterUniverse(data *hl.MetaAndAssetCtxs, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+	var filteredSymbols []string
+	volMap := make(map[string]float64)
+
+	for i := range data.Universe {
+		asset := &data.Universe[i]
+		if asset.IsDelisted {
+			continue
+		}
+		if blacklistMap[asset.Name] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[asset.Name] {
+			continue
+		}
+
+		ctxVal := &data.Ctxs[i]
+		vol := decmath.ParseFloat(ctxVal.DayNtlVlm)
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		filteredSymbols = append(filteredSymbols, asset.Name)
+		volMap[asset.Name] = vol
+	}
+	return filteredSymbols, volMap
+}
+
+func buildFundingMap(rawAssets []RawAssetFunding) map[string]*RawVenueFunding {
+	fundingMap := make(map[string]*RawVenueFunding)
+	for _, a := range rawAssets {
+		for i := range a.Venues {
+			if a.Venues[i].Venue == venueHlPerp {
+				fundingMap[a.Asset] = &a.Venues[i].Info
+				break
+			}
+		}
+	}
+	return fundingMap
+}
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch meta and asset ctxs
+	data, err := c.getRawMetaAndAssetCtxs(ctx, hyperliquidMetaAndAssetCtxsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid get meta and asset ctxs: %w", err)
+	}
+
+	// 2. Build maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	// 3. Filter symbols by whitelist, blacklist, and 24h volume
+	filteredSymbols, volMap := filterUniverse(data, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	if len(filteredSymbols) == 0 {
+		return nil, nil
+	}
+
+	// 4. Fetch predicted fundings
+	rawAssets, err := c.getRawPredictedFundings(ctx, hyperliquidPredictedFundingsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid get predicted fundings: %w", err)
+	}
+
+	fundingMap := buildFundingMap(rawAssets)
+
+	// 5. Build results
+	var results []exchange.PotentialFundingResult
+	for _, sym := range filteredSymbols {
+		hlFunding, exists := fundingMap[sym]
+		if !exists {
+			continue
+		}
+
+		fr, _ := strconv.ParseFloat(hlFunding.FundingRate, 64)
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     sym,
+			Rate:       fr,
+			SettleTime: hlFunding.NextFundingTime,
+			Volume24h:  volMap[sym],
+		})
+	}
+
+	return results, nil
 }

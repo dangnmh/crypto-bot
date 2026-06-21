@@ -7,9 +7,6 @@ bitget kyc comlicated
 hyperliquid hasnt finish implement
 
 Next to do:
-https://www.coinw.com/api-doc/en/futures-trading/market/get-historical-public-trades
-https://openapi-docs.orangex.com/#get-ticker
-https://www.echobit.com/apiApply
 https://docs-api.trubit.com/trubit-pro/contract/contract-api#openpositioninexchange
 https://docs.digifinex.com/en-ww/spot/v3/rest.html#currencies-which-support-margin-trading
 https://docs.koinbay.com/api/contract#id-3-get-index-marked-price
@@ -26,6 +23,8 @@ Dont have enough API:
 https://github.com/CoinUpGlobal/api-docs
 https://fameexdocs.github.io/docs-v1/en/index.html#documentation
 https://www.ju.com/en/api-doc/common/intro
+https://openapi-docs.orangex.com/#get-ticker
+https://www.echobit.com/apiApply
 
 
 Dont have API : 

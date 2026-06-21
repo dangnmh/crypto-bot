@@ -130,7 +130,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		inst := &instruments[i]
 
 		stateVal := 0
-		if inst.Status == "Open" {
+		if inst.Status == statusOpen {
 			stateVal = 1
 		}
 
@@ -294,4 +294,57 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	return rates, nil
+}
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	contracts, err := c.getRawContractDetails(ctx, kucoinContractsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	var results []exchange.PotentialFundingResult
+	for i := range contracts {
+		inst := &contracts[i]
+		if blacklistMap[inst.Symbol] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[inst.Symbol] {
+			continue
+		}
+		if inst.Status != statusOpen {
+			continue
+		}
+
+		vol := inst.TurnoverOf24h
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     inst.Symbol,
+			Rate:       inst.FundingFeeRate,
+			SettleTime: inst.NextFundingRateDateTime,
+			Volume24h:  vol,
+		})
+	}
+
+	return results, nil
 }

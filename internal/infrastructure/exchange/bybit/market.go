@@ -257,3 +257,65 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 	return tickers, nil
 }
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch all tickers (which already includes funding rates)
+	res, err := c.getRawMarketTickers(ctx, bybitMarketTickersRequest{
+		Category: categoryLinear,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Build whitelist and blacklist lookup maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	// 3. Filter and map symbols
+	var results []exchange.PotentialFundingResult
+	for i := range res.List {
+		raw := &res.List[i]
+		if blacklistMap[raw.Symbol] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[raw.Symbol] {
+			continue
+		}
+
+		vol := decmath.ParseFloat(raw.Turnover24h)
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		nextSettle := int64(0)
+		if raw.NextFundingTime != "" {
+			if parsed, err := strconv.ParseInt(raw.NextFundingTime, 10, 64); err == nil {
+				nextSettle = parsed
+			}
+		}
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     raw.Symbol,
+			Rate:       decmath.ParseFloat(raw.FundingRate),
+			SettleTime: nextSettle,
+			Volume24h:  vol,
+		})
+	}
+
+	return results, nil
+}

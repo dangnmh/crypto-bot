@@ -12,15 +12,18 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application/service"
 	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/bingx"
+	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
@@ -48,6 +51,10 @@ type Opportunity struct {
 	FundingRate    float64
 	NextSettleTime int64
 	Volume24h      float64
+}
+
+type ScannerClient interface {
+	GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist []string, blacklist []string) ([]exchange.PotentialFundingResult, error)
 }
 
 //nolint:gocognit,cyclop // Scanner tool main entrypoint is naturally complex
@@ -84,9 +91,9 @@ func main() {
 	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", logCfg)
 	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", logCfg)
 	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
-	// hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
-	// bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
-	// bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
+	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
+	bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
+	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
@@ -101,27 +108,27 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
 	defer cancel()
 
-	allClients := map[string]service.ScannerClient{
-		"mexc":  mexcClient,
-		"gate":  gateClient,
-		"bybit": bybitClient,
-		"okx":   okxClient,
-		// "hyperliquid": hlClient,
-		// "bitget":      bitgetClient,
-		// "bingx":   bingxClient,
-		"kucoin":   kucoinClient,
-		"binance":  binanceClient,
-		"deepcoin": deepcoinClient,
-		"toobit":   toobitClient,
-		"weex":     weexClient,
-		"batonex":  batonexClient,
-		"zoomex":   zoomexClient,
-		"bitmart":  bitmartClient,
-		"coinw":    coinwClient,
+	allClients := map[string]ScannerClient{
+		"mexc":        mexcClient,
+		"gate":        gateClient,
+		"bybit":       bybitClient,
+		"okx":         okxClient,
+		"hyperliquid": hlClient,
+		"bitget":      bitgetClient,
+		"bingx":       bingxClient,
+		"kucoin":      kucoinClient,
+		"binance":     binanceClient,
+		"deepcoin":    deepcoinClient,
+		"toobit":      toobitClient,
+		"weex":        weexClient,
+		"batonex":     batonexClient,
+		"zoomex":      zoomexClient,
+		"bitmart":     bitmartClient,
+		"coinw":       coinwClient,
 	}
 
 	// Filter clients based on user flag
-	clients := make(map[string]service.ScannerClient)
+	clients := make(map[string]ScannerClient)
 	var scanList []string
 	for name, client := range allClients {
 		if targetExchanges == nil || targetExchanges[name] {
@@ -201,10 +208,9 @@ func main() {
 	}
 	for name, client := range clients {
 		wg.Add(1)
-		go func(exchangeName string, c service.ScannerClient) {
+		go func(exchangeName string, c ScannerClient) {
 			defer wg.Done()
-			fs := service.NewFundingService(c)
-			results, err := fs.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blackList)
+			results, err := c.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blackList)
 			if err != nil {
 				fmt.Printf("🔴 Failed to fetch %s potential funding symbols: %v\n", strings.ToUpper(exchangeName), err)
 				return

@@ -30,6 +30,9 @@ func (s *stubClient) GetFundingRates(_ context.Context, _ []string) ([]exchange.
 	return nil, nil
 }
 func (s *stubClient) GetServerTime(_ context.Context) (int64, error) { return 0, nil }
+func (s *stubClient) GetPotentialFundingSymbols(_ context.Context, _, _ float64, _, _ []string) ([]exchange.PotentialFundingResult, error) {
+	return nil, nil
+}
 func (s *stubClient) GetOpenPositions(_ context.Context, _ string) ([]exchange.Position, error) {
 	return nil, nil
 }

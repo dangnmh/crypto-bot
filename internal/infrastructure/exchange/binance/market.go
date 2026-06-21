@@ -292,3 +292,86 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 	return tickers, nil
 }
+
+func filterStats(stats []ticker24hStats, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+	var filteredSymbols []string
+	volMap := make(map[string]float64)
+
+	for i := range stats {
+		t := &stats[i]
+		if blacklistMap[t.Symbol] {
+			continue
+		}
+		if len(whitelistMap) > 0 && !whitelistMap[t.Symbol] {
+			continue
+		}
+		vol := decmath.ParseFloat(t.QuoteVolume)
+		if vol < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && vol > maxVol24h {
+			continue
+		}
+
+		filteredSymbols = append(filteredSymbols, t.Symbol)
+		volMap[t.Symbol] = vol
+	}
+	return filteredSymbols, volMap
+}
+
+func (c *Client) GetPotentialFundingSymbols(
+	ctx context.Context,
+	minVol24h, maxVol24h float64,
+	whitelist []string,
+	blacklist []string,
+) ([]exchange.PotentialFundingResult, error) {
+	// 1. Fetch 24h stats
+	stats, err := c.getRawVolumes24h(ctx, binanceVolumes24hRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Build whitelist and blacklist lookup maps
+	whitelistMap := make(map[string]bool)
+	for _, sym := range whitelist {
+		whitelistMap[sym] = true
+	}
+
+	blacklistMap := make(map[string]bool)
+	for _, sym := range blacklist {
+		blacklistMap[sym] = true
+	}
+
+	// 3. Filter symbols by whitelist, blacklist, and 24h volume
+	filteredSymbols, volMap := filterStats(stats, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	if len(filteredSymbols) == 0 {
+		return nil, nil
+	}
+
+	// 4. Fetch mark prices (funding rates) in bulk
+	mpList, err := c.getBinanceMarkPrices(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	filteredMap := make(map[string]bool)
+	for _, sym := range filteredSymbols {
+		filteredMap[sym] = true
+	}
+
+	// 5. Combine results
+	var results []exchange.PotentialFundingResult
+	for i := range mpList {
+		item := &mpList[i]
+		if filteredMap[item.Symbol] {
+			results = append(results, exchange.PotentialFundingResult{
+				Symbol:     item.Symbol,
+				Rate:       decmath.ParseFloat(item.LastFundingRate),
+				SettleTime: item.NextFundingTime,
+				Volume24h:  volMap[item.Symbol],
+			})
+		}
+	}
+
+	return results, nil
+}
