@@ -21,7 +21,6 @@ https://www.pionex.com/docs/api-docs/trade-api/market
 https://docs.woox.io/#restful-api
 https://github.com/BiconomyOfficial/APIDocs/blob/master/v3/example_v3.js
 https://doc.xt.com/docs/futures/Access%20Description/BasicInformationOfTheInterface
-https://developer-pro.bitmart.com/en/futuresv2/#update-plan
 https://apidocs.cofinex.io/
 https://docs.cdp.coinbase.com/api-reference/international-exchange-api/rest-api/instruments/get-instrument-details
 
