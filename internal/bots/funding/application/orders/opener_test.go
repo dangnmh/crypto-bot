@@ -25,15 +25,15 @@ func TestExternalOrderID(t *testing.T) {
 
 	settleTime := time.Date(2026, 6, 9, 11, 4, 1, 0, time.UTC)
 	id := orders.ExternalOrderID("BTC_USDT", settleTime, "bybit")
-	assert.Equal(t, "BTCUSDT09062026180401BYBIT", id)
+	assert.Equal(t, "09062026180401BYBITBTCUSDT", id)
 	assert.LessOrEqual(t, len(id), 32)
 
 	idLong := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "bybit")
-	assert.Equal(t, "ALONGANDVERYCOMPLEXSYMBOLNAMEHER", idLong)
+	assert.Equal(t, "09062026180401BYBITALONGANDVERYC", idLong)
 	assert.Equal(t, 32, len(idLong))
 
 	idGate := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "gate")
-	assert.Equal(t, "ALONGANDVERYCOMPLEXSYMBOLNAM", idGate)
+	assert.Equal(t, "09062026180401GATEALONGANDVE", idGate)
 	assert.Equal(t, 28, len(idGate))
 }
 
@@ -53,8 +53,10 @@ func TestFireIOC(t *testing.T) {
 	clock := mocks.NewMockClock(ctrl)
 	candidate := testCandidate(shared.SideOpenLong)
 
-	clock.EXPECT().GetServerTime().Return(time.Unix(100, 0).UnixMilli())
-	clock.EXPECT().Offset().Return(int64(7))
+	expectedTime := time.Date(2026, 6, 9, 11, 4, 1, 0, time.UTC)
+	clock.EXPECT().GetServerTime().Return(time.Unix(100, 0).UnixMilli()).AnyTimes()
+	clock.EXPECT().Offset().Return(int64(7)).AnyTimes()
+	clock.EXPECT().Now().Return(expectedTime).AnyTimes()
 	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 			assert.Equal(t, "BTC_USDT", req.Symbol)
@@ -73,6 +75,8 @@ func TestFireIOC(t *testing.T) {
 	assert.True(t, got.IsSuccess())
 	assert.Equal(t, "order-1", got.OrderID)
 	assert.Equal(t, 2.0, got.Volume)
+	assert.Equal(t, expectedTime, got.FireIOCTime)
+	assert.WithinDuration(t, time.Now(), got.LocalFireIOCTime, 5*time.Second)
 }
 
 func TestFireIOCValidationAndSubmitError(t *testing.T) {
@@ -90,6 +94,7 @@ func TestFireIOCValidationAndSubmitError(t *testing.T) {
 	valid := testCandidate(shared.SideOpenShort)
 	clock.EXPECT().GetServerTime().Return(time.Unix(100, 0).UnixMilli())
 	clock.EXPECT().Offset().Return(int64(0))
+	clock.EXPECT().Now().Return(time.Unix(100, 0)).AnyTimes()
 	wantErr := errors.New("exchange down")
 	client.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).Return(exchange.CreateOrderResult{}, wantErr)
 

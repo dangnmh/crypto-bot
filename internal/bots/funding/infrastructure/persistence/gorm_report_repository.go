@@ -40,9 +40,11 @@ type ReversionTradeReport struct {
 	FireOffsetMs   int64   `gorm:"column:fire_offset_ms"`
 
 	// Order Tracking Fields
-	IOCOrderID string `gorm:"column:ioc_order_id;size:64"`
-	IOCOutcome string `gorm:"column:ioc_outcome;size:32"`
-	IOCReason  string `gorm:"column:ioc_reason;size:255"`
+	IOCOrderID       string    `gorm:"column:ioc_order_id;size:64"`
+	IOCOutcome       string    `gorm:"column:ioc_outcome;size:32"`
+	IOCReason        string    `gorm:"column:ioc_reason;size:255"`
+	FireIOCTime      time.Time `gorm:"column:fire_ioc_time"`
+	LocalFireIOCTime time.Time `gorm:"column:local_fire_ioc_time"`
 
 	// Position & Financial Performance Fields
 	OrderFilled    bool    `gorm:"column:order_filled;not null"`
@@ -125,6 +127,8 @@ func ToGormModel(report *domain.TradeReport) *ReversionTradeReport {
 		IOCOrderID:          report.IOCOrderID,
 		IOCOutcome:          report.IOCOutcome,
 		IOCReason:           report.IOCReason,
+		FireIOCTime:         report.FireIOCTime,
+		LocalFireIOCTime:    report.LocalFireIOCTime,
 		OrderFilled:         report.OrderFilled,
 		FillPrice:           report.FillPrice,
 		ClosePrice:          report.ClosePrice,

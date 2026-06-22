@@ -25,6 +25,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	gocache "github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -284,7 +285,9 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	ch, err := bus.Subscribe(subCtx, reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
+	repo := &fakeTradeReportRepository{}
+	c := gocache.New(5*time.Minute, 10*time.Minute)
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{
@@ -302,6 +305,16 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	assert.NoError(t, err)
 
 	waitCompleted(t, ch, createOrderCalled, watcherDone, 15*time.Second)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Len(t, repo.savedReports, 1)
+	saved := repo.savedReports[0]
+	assert.Equal(t, "req_success_1", saved.ReqID)
+	assert.False(t, saved.FireIOCTime.IsZero())
+	assert.True(t, saved.FireIOCTime.After(now))
+	assert.False(t, saved.LocalFireIOCTime.IsZero())
+	assert.WithinDuration(t, time.Now(), saved.LocalFireIOCTime, 5*time.Second)
 }
 
 func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
@@ -782,4 +795,16 @@ func waitCompleted(t *testing.T, ch <-chan *message.Message, createOrderCalled, 
 			t.Fatal("Timeout waiting for TopicReversionCompleted")
 		}
 	}
+}
+
+type fakeTradeReportRepository struct {
+	savedReports []*domain.TradeReport
+	mu           sync.Mutex
+}
+
+func (f *fakeTradeReportRepository) Save(ctx context.Context, report *domain.TradeReport) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.savedReports = append(f.savedReports, report)
+	return nil
 }

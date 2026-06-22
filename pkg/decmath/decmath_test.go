@@ -323,3 +323,25 @@ func TestFromString_Error(t *testing.T) {
 		decmath.MustFromString("invalid")
 	})
 }
+
+func TestTakeDecimalPlaces(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		v             float64
+		decimalPlaces int
+		want          float64
+	}{
+		{"round to 3 decimal places (ratio for 1dp percent)", 0.00125, 3, 0.001},
+		{"round to 3 decimal places (ratio for 1dp percent) half-up/even", 0.00175, 3, 0.002},
+		{"round to 1 decimal place", 12.3456, 1, 12.3},
+		{"round to 1 decimal place half-up/even", 12.35, 1, 12.4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := decmath.TakeDecimalPlaces(tt.v, tt.decimalPlaces)
+			assert.InDelta(t, tt.want, got, 1e-10)
+		})
+	}
+}

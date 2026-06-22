@@ -31,9 +31,11 @@ type TradeReport struct {
 	FireOffsetMs   int64   `json:"fire_offset_ms"`
 
 	// Order Tracking Fields
-	IOCOrderID string `json:"ioc_order_id"`
-	IOCOutcome string `json:"ioc_outcome"`
-	IOCReason  string `json:"ioc_reason"`
+	IOCOrderID       string    `json:"ioc_order_id"`
+	IOCOutcome       string    `json:"ioc_outcome"`
+	IOCReason        string    `json:"ioc_reason"`
+	FireIOCTime      time.Time `json:"fire_ioc_time"`
+	LocalFireIOCTime time.Time `json:"local_fire_ioc_time"`
 
 	// Position & Financial Performance Fields
 	OrderFilled    bool    `json:"order_filled"`

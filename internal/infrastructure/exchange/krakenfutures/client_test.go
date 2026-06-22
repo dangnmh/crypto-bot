@@ -33,7 +33,7 @@ func TestClient_GetPotentialFundingSymbols(t *testing.T) {
 						"markPrice": 30209.9,
 						"vol24h": 15304,
 						"volumeQuote": 7305.2,
-						"fundingRate": 0.000125
+						"fundingRate": 0.0125
 					},
 					{
 						"tag": "perpetual",
@@ -42,7 +42,7 @@ func TestClient_GetPotentialFundingSymbols(t *testing.T) {
 						"markPrice": 1800.0,
 						"vol24h": 200,
 						"volumeQuote": 360000.0,
-						"fundingRate": -0.00005
+						"fundingRate": -0.005
 					},
 					{
 						"tag": "month",

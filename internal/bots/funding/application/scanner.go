@@ -18,6 +18,7 @@ import (
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/pkg/decmath"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/robfig/cron/v3"
@@ -206,18 +207,19 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 
 	startEvt := reversion.CandidateFoundEvent{
 		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:       reversion.FlowReversion,
-			ReqID:      orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowReversion),
-			Symbol:     candidate.Symbol,
-			Exchange:   candidate.Config.Exchange,
-			SendNotify: false,
-			Timestamp:  eventTimestamp,
-			EventID:    watermill.NewUUID(),
-			Seq:        1,
-			Topic:      reversion.TopicReversionCandidate,
-			ExternalID: externalID,
-			SettleTime: settle,
-			Side:       candidate.Side,
+			Flow:        reversion.FlowReversion,
+			ReqID:       orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowReversion),
+			Symbol:      candidate.Symbol,
+			Exchange:    candidate.Config.Exchange,
+			SendNotify:  false,
+			Timestamp:   eventTimestamp,
+			EventID:     watermill.NewUUID(),
+			Seq:         1,
+			Topic:       reversion.TopicReversionCandidate,
+			ExternalID:  externalID,
+			SettleTime:  settle,
+			Side:        candidate.Side,
+			FundingRate: candidate.FundingRate,
 		},
 		Candidate: candidate,
 	}
@@ -325,7 +327,7 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.TickerData, fundingRate float64) domain.Candidate {
 	intent := domain.TradeIntent{
 		Symbol:      td.Symbol,
-		FundingRate: fundingRate,
+		FundingRate: decmath.TakeDecimalPlaces(fundingRate, 3),
 	}
 	if fundingRate > 0 {
 		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenLong, shared.SideCloseLong, refPriceBestAsk
@@ -569,7 +571,7 @@ func (s *ScheduleScanner) processResult(
 func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Ticker, fundingRate float64) domain.Candidate {
 	intent := domain.TradeIntent{
 		Symbol:      td.Symbol,
-		FundingRate: fundingRate,
+		FundingRate: decmath.TakeDecimalPlaces(fundingRate, 3),
 	}
 	if fundingRate > 0 {
 		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenLong, shared.SideCloseLong, refPriceBestAsk

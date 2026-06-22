@@ -36,6 +36,8 @@ func TestToGormModel(t *testing.T) {
 		IOCOrderID:          "ioc_order_789",
 		IOCOutcome:          "filled",
 		IOCReason:           "success",
+		FireIOCTime:         now.Add(time.Second),
+		LocalFireIOCTime:    now.Add(2 * time.Second),
 		OrderFilled:         true,
 		FillPrice:           60000.0,
 		ClosePrice:          60100.0,
@@ -75,6 +77,8 @@ func TestToGormModel(t *testing.T) {
 	assert.Equal(t, "ioc_order_789", model.IOCOrderID)
 	assert.Equal(t, "filled", model.IOCOutcome)
 	assert.Equal(t, "success", model.IOCReason)
+	assert.Equal(t, now.Add(time.Second), model.FireIOCTime)
+	assert.Equal(t, now.Add(2*time.Second), model.LocalFireIOCTime)
 	assert.True(t, model.OrderFilled)
 	assert.Equal(t, 60000.0, model.FillPrice)
 	assert.Equal(t, 60100.0, model.ClosePrice)

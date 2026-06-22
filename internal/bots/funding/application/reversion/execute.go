@@ -144,6 +144,8 @@ func (r *StatelessRunner) handleReportPersistence(ctx context.Context, msg *mess
 		IOCOrderID:          evt.IOCOrderID,
 		IOCOutcome:          evt.IOCOutcome,
 		IOCReason:           evt.IOCReason,
+		FireIOCTime:         evt.FireIOCTime,
+		LocalFireIOCTime:    evt.LocalFireIOCTime,
 		OrderFilled:         evt.OrderFilled,
 		FillPrice:           evt.FillPrice,
 		ClosePrice:          evt.ClosePrice,

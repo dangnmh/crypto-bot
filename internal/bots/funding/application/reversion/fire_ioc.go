@@ -236,6 +236,8 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 				if state, ok := cachedVal.(*CycleState); ok {
 					state.mu.Lock()
 					state.IOCOrderID = res.OrderID
+					state.FireIOCTime = res.FireIOCTime
+					state.LocalFireIOCTime = res.LocalFireIOCTime
 					state.mu.Unlock()
 				}
 			}
@@ -253,6 +255,8 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 			SLPrice:            res.StopLossPrice,
 			TPSLSubmitted:      res.TPSLSubmitted,
 			FireTimestamp:      evt.FireTimestamp,
+			FireIOCTime:        res.FireIOCTime,
+			LocalFireIOCTime:   res.LocalFireIOCTime,
 			LatencyRTTMs:       evt.LatencyRTTMs,
 		}
 
@@ -282,6 +286,8 @@ func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt Posi
 		Candidate:          c,
 		IntendedPrice:      res.Price,
 		FireTimestamp:      evt.FireTimestamp,
+		FireIOCTime:        res.FireIOCTime,
+		LocalFireIOCTime:   res.LocalFireIOCTime,
 		LatencyRTTMs:       evt.LatencyRTTMs,
 		Error:              errText,
 	}

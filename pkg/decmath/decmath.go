@@ -297,3 +297,8 @@ func ParseInt64(s string) int64 {
 	}
 	return i
 }
+
+// TakeDecimalPlaces rounds a float64 to the specified number of decimal places using banker's rounding.
+func TakeDecimalPlaces(v float64, scale int) float64 {
+	return RoundToScale(v, scale)
+}

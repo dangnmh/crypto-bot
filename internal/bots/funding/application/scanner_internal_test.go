@@ -568,3 +568,33 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	candBlacklisted.Config.Symbol = "XRP_USDT"
 	assert.False(t, job.shouldTrigger(candBlacklisted, time.Now().Add(10*time.Minute)))
 }
+
+func TestConfiguredScanner_BuildCandidate_FundingRateRounding(t *testing.T) {
+	t.Parallel()
+	scanner := &ConfiguredScanner{}
+	sc := config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"}
+	td := &store.TickerData{Symbol: "BTC_USDT", LastPrice: 50000}
+
+	// Test positive funding rate: e.g. 0.00125 (0.125%) -> 0.001 (0.1%)
+	cand1 := scanner.buildCandidate(sc, td, 0.00125)
+	assert.Equal(t, 0.001, cand1.FundingRate)
+
+	// Test negative funding rate: e.g. -0.00175 (-0.175%) -> -0.002 (-0.2%)
+	cand2 := scanner.buildCandidate(sc, td, -0.00175)
+	assert.Equal(t, -0.002, cand2.FundingRate)
+}
+
+func TestScheduleScanner_BuildCandidate_FundingRateRounding(t *testing.T) {
+	t.Parallel()
+	scanner := &ScheduleScanner{}
+	sc := config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"}
+	td := exchange.Ticker{Symbol: "BTC_USDT", LastPrice: 50000}
+
+	// Test positive funding rate: e.g. 0.00125 (0.125%) -> 0.001 (0.1%)
+	cand1 := scanner.buildCandidate(sc, td, 0.00125)
+	assert.Equal(t, 0.001, cand1.FundingRate)
+
+	// Test negative funding rate: e.g. -0.00175 (-0.175%) -> -0.002 (-0.2%)
+	cand2 := scanner.buildCandidate(sc, td, -0.00175)
+	assert.Equal(t, -0.002, cand2.FundingRate)
+}

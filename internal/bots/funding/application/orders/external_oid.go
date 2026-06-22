@@ -22,8 +22,8 @@ func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) stri
 	settleLocal := settleTime.In(loc)
 	settleStr := settleLocal.Format("02012006150405")
 
-	// 3. Concatenate: symbol + settletime_ + exchange (note the trailing underscore for settletime)
-	rawID := symFiltered + settleStr + exchange
+	// 3. Concatenate: settleStr + exchange + symFiltered
+	rawID := settleStr + exchange + symFiltered
 
 	// 4. Upper case the whole string
 	return strings.ToUpper(rawID)

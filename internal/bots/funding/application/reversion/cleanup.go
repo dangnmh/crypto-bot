@@ -131,6 +131,8 @@ func (r *StatelessRunner) compileAndPublishReport(ctx context.Context, reqID, to
 		IOCOrderID:          state.IOCOrderID,
 		IOCOutcome:          state.IOCOutcome,
 		IOCReason:           state.IOCReason,
+		FireIOCTime:         state.FireIOCTime,
+		LocalFireIOCTime:    state.LocalFireIOCTime,
 		OrderFilled:         state.OrderFilled,
 		FillPrice:           state.FillPrice,
 		ClosePrice:          state.ClosePrice,
@@ -151,7 +153,4 @@ func (r *StatelessRunner) compileAndPublishReport(ctx context.Context, reqID, to
 
 	// Publish the report event
 	_ = r.publishEvent(ctx, TopicReversionTradeReport, reportEvt)
-
-	// Delete the key from the cache
-	r.cache.Delete(reqID)
 }

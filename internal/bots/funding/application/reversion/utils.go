@@ -295,6 +295,7 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		PreviousTopic: prev.Topic,
 		SettleTime:    prev.SettleTime,
 		Side:          prev.Side,
+		FundingRate:   prev.FundingRate,
 	}
 }
 
@@ -390,6 +391,13 @@ func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEven
 }
 
 func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
+	if r.cache != nil {
+		if _, found := r.cache.Get(prev.ReqID); !found {
+			r.log.DebugContext(ctx, "Ignoring position update; cycle already cleaned up or inactive", slog.String("req_id", prev.ReqID))
+			return
+		}
+	}
+
 	r.log.Debug("Position update received", slog.Any("pos", pos))
 
 	contractSize := 1.0

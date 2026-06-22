@@ -126,6 +126,7 @@ type BaseReversionEvent struct {
 	PreviousTopic string      `json:"previous_topic,omitempty"`
 	SettleTime    time.Time   `json:"settle_time"`
 	Side          shared.Side `json:"side,omitempty"`
+	FundingRate   float64     `json:"funding_rate,omitempty"`
 }
 
 func (b BaseReversionEvent) GetFlow() string     { return b.Flow }
@@ -313,14 +314,16 @@ func (e PositionWatchReadyEvent) GetDataMap() map[string]any {
 
 type IOCSubmittedEvent struct {
 	BaseReversionEvent
-	Candidate     fundingdomain.Candidate `json:"candidate"`
-	IntendedPrice float64                 `json:"intended_price"`
-	TPPrice       float64                 `json:"tp_price,omitempty"`
-	SLPrice       float64                 `json:"sl_price,omitempty"`
-	TPSLSubmitted bool                    `json:"tpsl_submitted"`
-	FireTimestamp time.Time               `json:"fire_timestamp"`
-	LatencyRTTMs  int64                   `json:"latency_rtt_ms,omitempty"`
-	Error         string                  `json:"error,omitempty"`
+	Candidate        fundingdomain.Candidate `json:"candidate"`
+	IntendedPrice    float64                 `json:"intended_price"`
+	TPPrice          float64                 `json:"tp_price,omitempty"`
+	SLPrice          float64                 `json:"sl_price,omitempty"`
+	TPSLSubmitted    bool                    `json:"tpsl_submitted"`
+	FireTimestamp    time.Time               `json:"fire_timestamp"`
+	FireIOCTime      time.Time               `json:"fire_ioc_time"`
+	LocalFireIOCTime time.Time               `json:"local_fire_ioc_time"`
+	LatencyRTTMs     int64                   `json:"latency_rtt_ms,omitempty"`
+	Error            string                  `json:"error,omitempty"`
 }
 
 func (e IOCSubmittedEvent) GetMessage() string {
@@ -677,13 +680,22 @@ func (e FinalPnLEvent) GetMessage() string {
 	feesStr := fmt.Sprintf("Exec: $%s | Funding: %s", formatutil.FormatUSDWithCommasAndDecimals(math.Abs(e.Fees), 4), formatutil.FormatFundingFee(e.HoldFee))
 	netPnLStr := formatutil.FormatNetPnL(e.NetPnL, e.PnLPct)
 
-	return fmt.Sprintf("PnL: %s [%s] | Side: %s\n• Price: %s | Size: %s\n• Fees: %s",
+	frSign := ""
+	if e.FundingRate > 0 {
+		frSign = "+"
+	}
+	frStr := fmt.Sprintf("%s%.1f%%", frSign, e.FundingRate*100)
+
+	return fmt.Sprintf("PnL: %s [%s] | Side: %s | FR: %s\n• Price: %s | Size: %s\n• Fees: %s\n• Order ID: %s | Client ID: %s",
 		netPnLStr,
 		formatutil.FormatDuration(e.HoldDurationMs),
 		sideStr,
+		frStr,
 		priceStr,
 		sizeStr,
 		feesStr,
+		e.OrderID,
+		e.ExternalID,
 	)
 }
 

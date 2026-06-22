@@ -358,9 +358,12 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 	t.Parallel()
 
 	base := reversion.BaseReversionEvent{
-		Symbol: "BTCUSDT",
-		Flow:   "F_12345",
-		Side:   shared.SideOpenShort,
+		Symbol:      "BTCUSDT",
+		Flow:        "F_12345",
+		Side:        shared.SideOpenShort,
+		OrderID:     "ord-12345",
+		ExternalID:  "client-abc",
+		FundingRate: -0.002,
 	}
 
 	evt := reversion.FinalPnLEvent{
@@ -380,4 +383,7 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 	assert.Contains(t, msg, "PnL: +$12.5000 (+0.18%)")
 	assert.Contains(t, msg, "Side: Short")
 	assert.Contains(t, msg, "Price: 60,200.500000 ➔ 60,310.200000")
+	assert.Contains(t, msg, "FR: -0.2%")
+	assert.Contains(t, msg, "Order ID: ord-12345")
+	assert.Contains(t, msg, "Client ID: client-abc")
 }

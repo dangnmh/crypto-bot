@@ -14,17 +14,19 @@ import (
 
 // OrderResult holds the result of an order attempt.
 type OrderResult struct {
-	Candidate       domain.Candidate
-	Order           *exchange.OrderInfo
-	OrderID         string
-	TPSLSubmitted   bool
-	ExternalID      string
-	Price           float64
-	TakeProfitPrice float64
-	StopLossPrice   float64
-	Volume          float64
-	Filled          bool
-	Error           error
+	Candidate        domain.Candidate
+	Order            *exchange.OrderInfo
+	OrderID          string
+	TPSLSubmitted    bool
+	ExternalID       string
+	Price            float64
+	TakeProfitPrice  float64
+	StopLossPrice    float64
+	Volume           float64
+	FireIOCTime      time.Time
+	LocalFireIOCTime time.Time
+	Filled           bool
+	Error            error
 }
 
 func (r *OrderResult) IsSuccess() bool {
@@ -103,17 +105,21 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 		slog.Int64("offset_ms", ts.Offset()),
 	)
 
+	fireIOCTime := ts.Now()
+	localFireIOCTime := time.Now()
 	res, err := client.CreateOrder(ctx, req)
 	result := OrderResult{
-		Candidate:       *candidate,
-		OrderID:         res.OrderID,
-		TPSLSubmitted:   res.TPSLSubmitted,
-		ExternalID:      extOID,
-		Price:           iocPrice,
-		TakeProfitPrice: tpPrice,
-		StopLossPrice:   slPrice,
-		Volume:          candidate.Volume,
-		Error:           err,
+		Candidate:        *candidate,
+		OrderID:          res.OrderID,
+		TPSLSubmitted:    res.TPSLSubmitted,
+		ExternalID:       extOID,
+		Price:            iocPrice,
+		TakeProfitPrice:  tpPrice,
+		StopLossPrice:    slPrice,
+		Volume:           candidate.Volume,
+		FireIOCTime:      fireIOCTime,
+		LocalFireIOCTime: localFireIOCTime,
+		Error:            err,
 	}
 	if err != nil {
 		log.ErrorContext(ctx, "🔴 IOC order failed", slog.Any("error", err), slog.String("symbol", candidate.Symbol))
