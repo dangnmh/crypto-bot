@@ -26,7 +26,6 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
-	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
@@ -96,7 +95,7 @@ func main() {
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
-	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", logCfg)
+	// toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", logCfg)
 	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
