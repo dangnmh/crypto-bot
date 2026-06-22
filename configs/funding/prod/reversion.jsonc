@@ -11,7 +11,7 @@
     "leverage": 6,
     "marginUSD": 5,
     "minVol24USD": 5000000,
-    "minFundingRate": 0.7
+    "minFundingRate": 0.8
   },
   "sync": {
     "time": "60s",
@@ -43,25 +43,25 @@
     "mexc": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "bufferTime": "-100ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "0.5s" // Force close if reversion lifecycle does not terminally close
     },
     "bybit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms",
+      "bufferTime": "-150ms",
       "postSettleTimeout": "0.5s"
     },
     "binance": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-250ms",
+      "bufferTime": "-200ms",
       "postSettleTimeout": "0.5s"
     },
     "kucoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-400ms",
+      "bufferTime": "-200s",
       "postSettleTimeout": "0.5s"
     },
     "okx": {
@@ -101,7 +101,7 @@
       "stopLossPct": 2,
       "bufferTime": "-200ms",
       "postSettleTimeout": "0.5s"
-    }
+    },
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
   // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.
