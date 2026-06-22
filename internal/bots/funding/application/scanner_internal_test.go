@@ -598,3 +598,122 @@ func TestScheduleScanner_BuildCandidate_FundingRateRounding(t *testing.T) {
 	cand2 := scanner.buildCandidate(sc, td, -0.00175)
 	assert.Equal(t, -0.002, cand2.FundingRate)
 }
+
+func TestScanner_TradeSideFilter(t *testing.T) {
+	t.Parallel()
+
+	// 1. Test ConfiguredScanner filtering
+	t.Run("ConfiguredScanner filtering", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		tickers := mocks.NewMockTickerReader(ctrl)
+		fundings := mocks.NewMockFundingReader(ctrl)
+		contracts := mocks.NewMockContractReader(ctrl)
+
+		// Mock settle time
+		fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
+
+		// Mock ticker data
+		tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{
+			Symbol: "BTC_USDT",
+		}, nil).AnyTimes()
+
+		// Mock negative funding rate: -0.01 (means candidate.Side is SHORT)
+		fundings.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{
+			Symbol:      "BTC_USDT",
+			FundingRate: -0.01,
+		}, nil).AnyTimes()
+
+		contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{
+			Symbol: "BTC_USDT",
+		}, nil).AnyTimes()
+
+		// Config with tradeSide set to "long" (so SHORT candidate should be skipped)
+		cfg := &config.Config{
+			Reversion: &config.ReversionConfig{
+				RawFundingReversionConfig: config.RawFundingReversionConfig{
+					TradeSide: "long",
+				},
+			},
+			Symbols: []config.SymbolConfig{
+				{Symbol: "BTC_USDT", Exchange: "mexc"},
+			},
+		}
+
+		scanner := NewConfiguredScanner(
+			cfg,
+			nil,
+			map[string]strategy.FundingStoreSet{
+				"mexc": fakeFundingStoreSet{
+					funding:  fundings,
+					ticker:   tickers,
+					contract: contracts,
+				},
+			},
+			sniperTestLogger(),
+			func(string) (string, bool) { return "", false },
+		)
+
+		opportunities, err := scanner.Scan(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, opportunities) // Skipped because it's a SHORT candidate and we only want LONG
+	})
+
+	// 2. Test ScheduleScanner filtering
+	t.Run("ScheduleScanner filtering", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		client := mocks.NewMockClient(ctrl)
+
+		settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
+
+		// Mock GetPotentialFundingSymbols with negative rate (SHORT side candidate)
+		client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 1000000.0, 0.0, nil, gomock.Any()).Return([]exchange.PotentialFundingResult{
+			{
+				Symbol:     "BTC_USDT",
+				Rate:       -0.004,
+				SettleTime: settleTime,
+				Volume24h:  2000000,
+			},
+		}, nil)
+
+		client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
+			{
+				Symbol:       "BTC_USDT",
+				LastPrice:    50000,
+				Bid1:         49990,
+				Ask1:         50010,
+				Volume24:     40,
+				AmountUSDT24: 2000000,
+			},
+		}, nil)
+
+		client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+			{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, PriceScale: 1, VolScale: 0, ContractSize: 0.001},
+		}, nil)
+
+		// Config with tradeSide = "long"
+		cfg := &config.Config{
+			Reversion: &config.ReversionConfig{
+				RawFundingReversionConfig: config.RawFundingReversionConfig{
+					TradeSide: "long",
+					Default: config.ExchangeReversionConfig{
+						MinVol24USD: 1000000,
+					},
+				},
+			},
+		}
+
+		scanner := NewScheduleScanner(
+			"mexc",
+			cfg,
+			client,
+			sniperTestLogger(),
+			func(string) (string, bool) { return "", false },
+		)
+
+		opportunities, err := scanner.Scan(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, opportunities) // Skipped because it's a SHORT candidate and config is LONG
+	})
+}

@@ -94,6 +94,11 @@ func loadReversionConfig(configDir string) (*ReversionConfig, error) {
 		reversionCfg.Sync.Contract = types.Duration(300 * time.Second)
 	}
 
+	reversionCfg.TradeSide = strings.ToLower(strings.TrimSpace(reversionCfg.TradeSide))
+	if reversionCfg.TradeSide == "" {
+		reversionCfg.TradeSide = "both"
+	}
+
 	return reversionCfg, nil
 }
 

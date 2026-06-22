@@ -309,6 +309,18 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 
 		// Build and enrich candidate opportunity
 		candidate := s.buildCandidate(symCfg, td, fd.FundingRate)
+
+		if s.cfg != nil && s.cfg.Reversion != nil {
+			if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
+				s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
+					slog.String("symbol", candidate.Symbol),
+					slog.String("side", candidate.Side.String()),
+					slog.String("configSide", s.cfg.Reversion.TradeSide),
+				)
+				continue
+			}
+		}
+
 		candidate.SettleTime = settle
 		if !s.enrich(ctx, storeSet.Contract(), &candidate) {
 			s.log.DebugContext(ctx, "Contract enrichment failed for candidate", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol))
@@ -548,6 +560,18 @@ func (s *ScheduleScanner) processResult(
 	}
 
 	candidate := s.buildCandidate(symCfg, td, r.Rate)
+
+	if s.cfg != nil && s.cfg.Reversion != nil {
+		if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
+			s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
+				slog.String("symbol", candidate.Symbol),
+				slog.String("side", candidate.Side.String()),
+				slog.String("configSide", s.cfg.Reversion.TradeSide),
+			)
+			return ScanOpportunity{}, false, nil
+		}
+	}
+
 	settleTime := time.UnixMilli(r.SettleTime)
 	candidate.SettleTime = settleTime
 	candidate.ContractSpec = domain.ContractSpec{
@@ -643,4 +667,13 @@ func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 	}
 
 	return true
+}
+
+func matchTradeSide(cfgSide string, candidateSide shared.Side) bool {
+	tradeSide := strings.ToLower(strings.TrimSpace(cfgSide))
+	if tradeSide == "" || tradeSide == "both" {
+		return true
+	}
+	cSide := strings.ToLower(candidateSide.String()) // "long" or "short"
+	return cSide == tradeSide
 }

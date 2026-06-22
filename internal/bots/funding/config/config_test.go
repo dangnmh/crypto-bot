@@ -291,6 +291,18 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 	assert.InDelta(t, 0.01, sc.MinFundingRate, 1e-9, "per-symbol 1.0% -> 0.01")
 }
 
+func TestLoad_ValidTradeSide(t *testing.T) {
+	t.Parallel()
+	sysCfg := sysWithDefaults(testDefaults{
+		RawFundingReversionConfig: config.RawFundingReversionConfig{
+			Enabled:   true,
+			TradeSide: " LONG ",
+		},
+	})
+	cfg := loadWith(t, sysCfg, `[]`)
+	assert.Equal(t, "long", cfg.Reversion.TradeSide)
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Normalization — percentages to ratios, defaults for zero values
 // ──────────────────────────────────────────────────────────────────────.

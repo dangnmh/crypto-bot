@@ -299,3 +299,45 @@ func TestLoadSystemConfig_WithExplicitExchange(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, cfg.ExchangeConfig.Mexc.Enable)
 }
+
+func TestLoadSystemConfig_InvalidTradeSide(t *testing.T) {
+	t.Setenv("MEXC_API_KEY", "test-key")
+	t.Setenv("MEXC_API_SECRET", "test-secret")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "system.json")
+	exchPath := filepath.Join(dir, "exchange.jsonc")
+	require.NoError(t, os.WriteFile(path, []byte(`{}`), 0o600))
+	exchContent := `{
+		"exchange": {
+			"mexc": {
+				"enable": true,
+				"future": {
+					"baseURL": "https://test.api.com"
+				},
+				"websocket": {
+					"wsURL": "wss://test.example.com",
+					"maxPairsPerWSConn": 25
+				}
+			}
+		}
+	}`
+	require.NoError(t, os.WriteFile(exchPath, []byte(exchContent), 0o600))
+
+	// tradeSide is "invalid_value"
+	reversionContent := `{
+		"enabled": true,
+		"tradeSide": "invalid_value"
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
+
+	sysCfg, err := config.LoadSystemConfig(path, exchPath)
+	require.NoError(t, err)
+
+	fundingPath := filepath.Join(dir, "funding.json")
+	require.NoError(t, os.WriteFile(fundingPath, []byte(`[]`), 0o600))
+
+	_, err = config.Load(sysCfg, fundingPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tradeSide")
+}
