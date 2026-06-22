@@ -99,6 +99,6 @@
         "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
         "privateURL": "wss://stream.deepcoin.com/v1/private"
       }
-    }
+    },
   }
 }
