@@ -211,6 +211,7 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for _, t := range tickers {
 		stdSym := toStandardSymbol(t.Symbol)
@@ -229,6 +230,7 @@ func (c *Client) GetPotentialFundingSymbols(
 
 		filteredSymbols = append(filteredSymbols, t.Symbol)
 		volMap[stdSym] = t.AmountUSDT24
+		priceMap[stdSym] = t.LastPrice
 	}
 
 	if len(filteredSymbols) == 0 {
@@ -248,6 +250,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       r.Rate,
 			SettleTime: r.SettleTime,
 			Volume24h:  volMap[stdSym],
+			Price:      priceMap[stdSym],
 		})
 	}
 

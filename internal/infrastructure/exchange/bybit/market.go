@@ -314,6 +314,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       decmath.ParseFloat(raw.FundingRate),
 			SettleTime: nextSettle,
 			Volume24h:  vol,
+			Price:      decmath.ParseFloat(raw.LastPrice),
 		})
 	}
 

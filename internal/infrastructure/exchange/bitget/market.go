@@ -295,6 +295,7 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for _, t := range tickers {
 		if blacklistMap[t.Symbol] {
@@ -312,6 +313,7 @@ func (c *Client) GetPotentialFundingSymbols(
 
 		filteredSymbols = append(filteredSymbols, t.Symbol)
 		volMap[t.Symbol] = t.AmountUSDT24
+		priceMap[t.Symbol] = t.LastPrice
 	}
 
 	if len(filteredSymbols) == 0 {
@@ -330,6 +332,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       r.Rate,
 			SettleTime: r.SettleTime,
 			Volume24h:  volMap[r.Symbol],
+			Price:      priceMap[r.Symbol],
 		})
 	}
 

@@ -115,4 +115,6 @@ type PotentialFundingResult struct {
 	Rate       float64 `json:"rate"`
 	SettleTime int64   `json:"settleTime"`
 	Volume24h  float64 `json:"volume24h"`
+	Price      float64 `json:"price"`
 }
+

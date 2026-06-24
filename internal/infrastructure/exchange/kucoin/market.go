@@ -313,6 +313,21 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, err
 	}
 
+	tickers, err := c.getRawTickers(ctx, kucoinTickersRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	priceMap := make(map[string]float64)
+	for i := range tickers {
+		t := &tickers[i]
+		last := decmath.ParseFloat(t.LastPrice)
+		if last == 0 {
+			last = decmath.ParseFloat(t.Price)
+		}
+		priceMap[t.Symbol] = last
+	}
+
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[sym] = true
@@ -349,6 +364,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       inst.FundingFeeRate,
 			SettleTime: inst.NextFundingRateDateTime,
 			Volume24h:  vol,
+			Price:      priceMap[inst.Symbol],
 		})
 	}
 

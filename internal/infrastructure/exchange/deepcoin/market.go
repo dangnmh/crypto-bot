@@ -264,9 +264,10 @@ func normalizeSymbol(s string) string {
 	return upper
 }
 
-func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]deepcoinTicker, map[string]float64) {
+func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]deepcoinTicker, map[string]float64, map[string]float64) {
 	var filteredTickers []deepcoinTicker
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for i := range tickers {
 		t := &tickers[i]
@@ -288,8 +289,10 @@ func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, white
 
 		filteredTickers = append(filteredTickers, *t)
 		volMap[norm] = vol
+		price, _ := strconv.ParseFloat(t.Last, 64)
+		priceMap[norm] = price
 	}
-	return filteredTickers, volMap
+	return filteredTickers, volMap, priceMap
 }
 
 func (c *Client) GetPotentialFundingSymbols(
@@ -316,7 +319,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	// 3. Filter symbols by whitelist, blacklist, and 24h volume
-	filteredTickers, volMap := filterTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	filteredTickers, volMap, priceMap := filterTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
 	if len(filteredTickers) == 0 {
 		return nil, nil
 	}
@@ -357,6 +360,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       rate,
 			SettleTime: settleTime,
 			Volume24h:  volMap[norm],
+			Price:      priceMap[norm],
 		})
 	}
 

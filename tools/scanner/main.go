@@ -21,14 +21,12 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
-	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
-	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -50,6 +48,7 @@ type Opportunity struct {
 	FundingRate    float64
 	NextSettleTime int64
 	Volume24h      float64
+	Price          float64
 }
 
 type ScannerClient interface {
@@ -90,16 +89,16 @@ func main() {
 	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", logCfg)
 	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", logCfg)
 	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
-	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
+	// hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
 	// bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
 	// bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
-	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", logCfg)
+	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", "", "", logCfg)
 	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
-	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
+	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
 	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
@@ -109,20 +108,20 @@ func main() {
 	defer cancel()
 
 	allClients := map[string]ScannerClient{
-		"mexc":        mexcClient,
-		"gate":        gateClient,
-		"bybit":       bybitClient,
-		"okx":         okxClient,
-		"hyperliquid": hlClient,
+		"mexc":    mexcClient,
+		"gate":    gateClient,
+		"bybit":   bybitClient,
+		"okx":     okxClient,
+		"kucoin":  kucoinClient,
+		"binance": binanceClient,
+		// "hyperliquid": hlClient,
 		// "bitget":      bitgetClient,
 		// "bingx":       bingxClient,
-		"kucoin":        kucoinClient,
-		"binance":       binanceClient,
+		// "zoomex":        zoomexClient,
 		"deepcoin":      deepcoinClient,
 		"toobit":        toobitClient,
 		"weex":          weexClient,
 		"batonex":       batonexClient,
-		"zoomex":        zoomexClient,
 		"bitmart":       bitmartClient,
 		"coinw":         coinwClient,
 		"krakenfutures": kfClient,
@@ -240,6 +239,7 @@ func main() {
 					FundingRate:    r.Rate,
 					NextSettleTime: nextSettle,
 					Volume24h:      r.Volume24h,
+					Price:          r.Price,
 				})
 			}
 
@@ -338,8 +338,8 @@ func printOpportunities(opportunities []Opportunity) {
 
 		// Print a formatted table for opportunities within the group
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', tabwriter.AlignRight|tabwriter.Debug)
-		_, _ = fmt.Fprintln(w, "   EXCHANGE\t SYMBOL\t FUNDING RATE (%)\t NEXT SETTLE IN\t TRADE DIRECTION\t 24H VOL (USDT)\t")
-		_, _ = fmt.Fprintln(w, "   --------\t ------\t ----------------\t --------------\t ---------------\t --------------\t")
+		_, _ = fmt.Fprintln(w, "   EXCHANGE\t SYMBOL\t PRICE\t FUNDING RATE (%)\t NEXT SETTLE IN\t TRADE DIRECTION\t 24H VOL (USDT)\t")
+		_, _ = fmt.Fprintln(w, "   --------\t ------\t -----\t ----------------\t --------------\t ---------------\t --------------\t")
 
 		for _, r := range g.Opportunities {
 			// 1. Calculate Countdown
@@ -362,9 +362,13 @@ func printOpportunities(opportunities []Opportunity) {
 			// 4. Volume formatted
 			volStr := formatVolume(r.Volume24h)
 
-			_, _ = fmt.Fprintf(w, "   %s\t %s\t %s\t %s\t %s\t %s\t\n",
+			// 5. Price formatted
+			priceStr := formatPrice(r.Price)
+
+			_, _ = fmt.Fprintf(w, "   %s\t %s\t %s\t %s\t %s\t %s\t %s\t\n",
 				strings.ToUpper(r.Exchange),
 				r.Symbol,
+				priceStr,
 				frStr,
 				countdown.String(),
 				direction,
@@ -376,6 +380,22 @@ func printOpportunities(opportunities []Opportunity) {
 	}
 
 	fmt.Println("💡 Tip: Direction indicates what to open to ride the post-settlement reversion pump/dump.")
+}
+
+func formatPrice(price float64) string {
+	if price == 0 {
+		return "0.00"
+	}
+	if price < 0.001 {
+		return fmt.Sprintf("%.8f", price)
+	}
+	if price < 1 {
+		return fmt.Sprintf("%.6f", price)
+	}
+	if price < 10 {
+		return fmt.Sprintf("%.4f", price)
+	}
+	return fmt.Sprintf("%.2f", price)
 }
 
 func getGateNextSettleTime() time.Time {

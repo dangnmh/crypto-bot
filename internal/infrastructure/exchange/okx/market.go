@@ -299,6 +299,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       fr,
 			SettleTime: ns,
 			Volume24h:  vol,
+			Price:      last,
 		})
 	}
 

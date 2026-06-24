@@ -303,9 +303,10 @@ func (c *Client) GetFundingRateHistory(ctx context.Context, symbol string, pageN
 	return history, nil
 }
 
-func filterMexcTickers(tickers []mexcTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+func filterMexcTickers(tickers []mexcTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64, map[string]float64) {
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for i := range tickers {
 		t := &tickers[i]
@@ -326,8 +327,9 @@ func filterMexcTickers(tickers []mexcTicker, minVol24h, maxVol24h float64, white
 
 		filteredSymbols = append(filteredSymbols, t.Symbol)
 		volMap[t.Symbol] = vol
+		priceMap[t.Symbol] = t.LastPrice
 	}
-	return filteredSymbols, volMap
+	return filteredSymbols, volMap, priceMap
 }
 
 func (c *Client) GetPotentialFundingSymbols(
@@ -354,7 +356,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	// 3. Filter symbols by whitelist, blacklist, and 24h volume
-	filteredSymbols, volMap := filterMexcTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	filteredSymbols, volMap, priceMap := filterMexcTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
 	if len(filteredSymbols) == 0 {
 		return nil, nil
 	}
@@ -388,6 +390,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       rateInfo.FundingRate,
 			SettleTime: rateInfo.NextSettleTime,
 			Volume24h:  volMap[sym],
+			Price:      priceMap[sym],
 		})
 	}
 

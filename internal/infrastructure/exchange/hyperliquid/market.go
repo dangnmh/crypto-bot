@@ -262,9 +262,10 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	return time.Now().UnixMilli(), nil
 }
 
-func filterUniverse(data *hl.MetaAndAssetCtxs, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+func filterUniverse(data *hl.MetaAndAssetCtxs, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64, map[string]float64) {
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for i := range data.Universe {
 		asset := &data.Universe[i]
@@ -287,10 +288,18 @@ func filterUniverse(data *hl.MetaAndAssetCtxs, minVol24h, maxVol24h float64, whi
 			continue
 		}
 
+		lastPx := 0.0
+		if ctxVal.MidPx != "" {
+			lastPx = decmath.ParseFloat(ctxVal.MidPx)
+		} else if ctxVal.MarkPx != "" {
+			lastPx = decmath.ParseFloat(ctxVal.MarkPx)
+		}
+
 		filteredSymbols = append(filteredSymbols, asset.Name)
 		volMap[asset.Name] = vol
+		priceMap[asset.Name] = lastPx
 	}
-	return filteredSymbols, volMap
+	return filteredSymbols, volMap, priceMap
 }
 
 func buildFundingMap(rawAssets []RawAssetFunding) map[string]*RawVenueFunding {
@@ -330,7 +339,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	// 3. Filter symbols by whitelist, blacklist, and 24h volume
-	filteredSymbols, volMap := filterUniverse(data, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	filteredSymbols, volMap, priceMap := filterUniverse(data, minVol24h, maxVol24h, whitelistMap, blacklistMap)
 	if len(filteredSymbols) == 0 {
 		return nil, nil
 	}
@@ -357,6 +366,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       fr,
 			SettleTime: hlFunding.NextFundingTime,
 			Volume24h:  volMap[sym],
+			Price:      priceMap[sym],
 		})
 	}
 

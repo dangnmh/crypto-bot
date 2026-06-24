@@ -151,6 +151,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       item.FundingRate / 100,
 			SettleTime: settleTime,
 			Volume24h:  vol,
+			Price:      item.MarkPrice,
 		})
 	}
 

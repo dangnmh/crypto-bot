@@ -212,9 +212,10 @@ func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap 
 	return nil
 }
 
-func filterGateTickers(tickers []gateFuturesTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64) {
+func filterGateTickers(tickers []gateFuturesTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]string, map[string]float64, map[string]float64) {
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for i := range tickers {
 		t := &tickers[i]
@@ -235,8 +236,9 @@ func filterGateTickers(tickers []gateFuturesTicker, minVol24h, maxVol24h float64
 
 		filteredSymbols = append(filteredSymbols, t.Contract)
 		volMap[t.Contract] = vol
+		priceMap[t.Contract] = decmath.ParseFloat(t.Last)
 	}
-	return filteredSymbols, volMap
+	return filteredSymbols, volMap, priceMap
 }
 
 func (c *Client) GetPotentialFundingSymbols(
@@ -263,7 +265,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	// 3. Filter symbols by whitelist, blacklist, and 24h volume
-	filteredSymbols, volMap := filterGateTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
+	filteredSymbols, volMap, priceMap := filterGateTickers(tickers, minVol24h, maxVol24h, whitelistMap, blacklistMap)
 	if len(filteredSymbols) == 0 {
 		return nil, nil
 	}
@@ -292,6 +294,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Rate:       decmath.ParseFloat(contract.FundingRate),
 			SettleTime: int64(contract.FundingNextApply * 1000),
 			Volume24h:  volMap[sym],
+			Price:      priceMap[sym],
 		})
 	}
 

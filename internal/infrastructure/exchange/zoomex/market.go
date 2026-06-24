@@ -252,12 +252,14 @@ func (c *Client) GetPotentialFundingSymbols(
 
 		rate, _ := strconv.ParseFloat(item.FundingRate, 64)
 		settleTime, _ := strconv.ParseInt(item.NextFundingTime, 10, 64)
+		price, _ := strconv.ParseFloat(item.LastPrice, 64)
 
 		results = append(results, exchange.PotentialFundingResult{
 			Symbol:     toStandardSymbol(item.Symbol),
 			Rate:       rate,
 			SettleTime: settleTime,
 			Volume24h:  amt,
+			Price:      price,
 		})
 	}
 
