@@ -91,14 +91,14 @@ func TestNewEngine_Success(t *testing.T) {
 
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			Mexc: sysconfig.APIConfig{
+			"mexc": sysconfig.APIConfig{
 				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.mexc.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
 				APIKey:    "mexc-key",
 				APISecret: "mexc-secret",
 			},
-			Gate: sysconfig.APIConfig{
+			"gate": sysconfig.APIConfig{
 				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.gate.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
@@ -244,7 +244,7 @@ func TestNewEngine_OnlyMexc(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeMexc, sysconfig.ExchangeConfig{
-		Mexc: sysconfig.APIConfig{
+		"mexc": sysconfig.APIConfig{
 			Enable:    true,
 			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
@@ -256,7 +256,7 @@ func TestNewEngine_OnlyGate(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeGate, sysconfig.ExchangeConfig{
-		Gate: sysconfig.APIConfig{
+		"gate": sysconfig.APIConfig{
 			Enable:    true,
 			Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
 			WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
@@ -268,7 +268,7 @@ func TestNewEngine_BybitAccountTypeNormalization(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeBybit, sysconfig.ExchangeConfig{
-		Bybit: sysconfig.APIConfig{
+		"bybit": sysconfig.APIConfig{
 			Enable:      true,
 			AccountType: " STANDARD ",
 			Future:      sysconfig.RESTConfig{BaseURL: "https://api.bybit.com"},
@@ -313,12 +313,12 @@ func TestNewEngine_FilterByActiveExchanges(t *testing.T) {
 
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			Mexc: sysconfig.APIConfig{
+			"mexc": sysconfig.APIConfig{
 				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.mexc.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
 			},
-			Gate: sysconfig.APIConfig{
+			"gate": sysconfig.APIConfig{
 				Enable:    true,
 				Future:    sysconfig.RESTConfig{BaseURL: "https://api.gate.com"},
 				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},

@@ -16,7 +16,7 @@ func TestInitializeBase_Success(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
@@ -27,8 +27,8 @@ func TestInitializeBase_Success(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "test-key", cfg.ExchangeConfig.Mexc.APIKey)
-	assert.Equal(t, "test-secret", cfg.ExchangeConfig.Mexc.APISecret)
+	assert.Equal(t, "test-key", cfg.ExchangeConfig["mexc"].APIKey)
+	assert.Equal(t, "test-secret", cfg.ExchangeConfig["mexc"].APISecret)
 }
 
 func TestInitializeBase_Defaults(t *testing.T) {
@@ -37,7 +37,7 @@ func TestInitializeBase_Defaults(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
@@ -49,7 +49,7 @@ func TestInitializeBase_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify defaults are applied.
-	assert.Equal(t, 30, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig["mexc"].WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
@@ -59,7 +59,7 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 50},
@@ -71,7 +71,7 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, 50, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 50, cfg.ExchangeConfig["mexc"].WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "debug", cfg.Logging.Level)
 }
 
@@ -81,7 +81,7 @@ func TestInitializeBase_MissingAPIKey(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
@@ -99,7 +99,7 @@ func TestInitializeBase_MissingAPISecret(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
@@ -117,7 +117,7 @@ func TestInitializeBase_MissingBaseURL(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: ""},
 				WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
@@ -135,7 +135,7 @@ func TestInitializeBase_MissingWSURL(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Mexc: config.APIConfig{
+			"mexc": config.APIConfig{
 				Enable:    true,
 				Future:    config.RESTConfig{BaseURL: "https://api.example.com"},
 				WebSocket: config.WebSocketConfig{WSURL: ""},
@@ -153,7 +153,7 @@ func TestInitializeBase_SeparatePublicPrivateWSURLs(t *testing.T) {
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			Bybit: config.APIConfig{
+			"bybit": config.APIConfig{
 				Enable: true,
 				Future: config.RESTConfig{BaseURL: "https://api.bybit.com"},
 				WebSocket: config.WebSocketConfig{
@@ -167,7 +167,7 @@ func TestInitializeBase_SeparatePublicPrivateWSURLs(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "wss://stream.bybit.com/v5/public/linear", cfg.ExchangeConfig.Bybit.WebSocket.PublicEndpoint())
-	assert.Equal(t, "wss://stream.bybit.com/v5/private", cfg.ExchangeConfig.Bybit.WebSocket.PrivateEndpoint())
-	assert.Equal(t, 30, cfg.ExchangeConfig.Bybit.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, "wss://stream.bybit.com/v5/public/linear", cfg.ExchangeConfig["bybit"].WebSocket.PublicEndpoint())
+	assert.Equal(t, "wss://stream.bybit.com/v5/private", cfg.ExchangeConfig["bybit"].WebSocket.PrivateEndpoint())
+	assert.Equal(t, 30, cfg.ExchangeConfig["bybit"].WebSocket.MaxPairsPerWSConn)
 }

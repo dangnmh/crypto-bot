@@ -2,48 +2,97 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
-	"crypto-bot/internal/infrastructure/exchange"
 	pkgconfig "crypto-bot/pkg/config"
 	"crypto-bot/pkg/types"
 
 	"github.com/go-playground/validator/v10"
 )
 
-// Load reads funding.json and returns the Config.
-func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
+// LoadAndValidate reads a config file and validates it, supporting both structs and slices.
+func LoadAndValidate[T any](path string) (*T, error) {
+	cfg, err := pkgconfig.Load[T](path)
+	if err != nil {
+		return nil, err
+	}
+
+	validate := newValidator()
+
+	val := reflect.ValueOf(cfg)
+	if val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+
+	typeName := reflect.TypeFor[T]().Name()
+	if typeName != "SystemConfig" && typeName != "FundingConfig" && typeName != "ReversionConfig" {
+		if val.Kind() == reflect.Struct {
+			if err := validate.Struct(cfg); err != nil {
+				return nil, fmt.Errorf("validation failed: %w", err)
+			}
+		} else if val.Kind() == reflect.Slice {
+			for i := 0; i < val.Len(); i++ {
+				item := val.Index(i).Interface()
+				if err := validate.Struct(item); err != nil {
+					return nil, fmt.Errorf("validation failed at index %d: %w", i, err)
+				}
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+// Load reads configuration files using specific paths and returns the Config.
+func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath string) (*Config, error) {
 	cfg := &Config{
 		System:    sysCfg,
 		Symbols:   nil,
 		Blacklist: &BlacklistConfig{},
 	}
 
-	configDir := filepath.Dir(fundingPath)
-	blacklistPath := filepath.Join(configDir, "blacklist.jsonc")
-	if blk, err := LoadBlacklist(blacklistPath); err == nil {
-		cfg.Blacklist = blk
-	}
-
-	reversionCfg, err := loadReversionConfig(configDir)
+	blk, err := LoadAndValidate[BlacklistConfig](blacklistPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse blacklist config: %w", err)
+	}
+	cfg.Blacklist = blk
+
+	reversionCfg, err := LoadAndValidate[ReversionConfig](reversionPath)
+	if err != nil {
+		return nil, fmt.Errorf("parse reversion config: %w", err)
 	}
 	cfg.Reversion = reversionCfg
+
+	if cfg.Reversion.Sync.FundingSync <= 0 {
+		cfg.Reversion.Sync.FundingSync = types.Duration(30 * time.Second)
+	}
+	if cfg.Reversion.Sync.Time <= 0 {
+		cfg.Reversion.Sync.Time = types.Duration(30 * time.Second)
+	}
+	if cfg.Reversion.Sync.Ticker <= 0 {
+		cfg.Reversion.Sync.Ticker = types.Duration(30 * time.Second)
+	}
+	if cfg.Reversion.Sync.Contract <= 0 {
+		cfg.Reversion.Sync.Contract = types.Duration(300 * time.Second)
+	}
+
+	cfg.Reversion.TradeSide = strings.ToLower(strings.TrimSpace(cfg.Reversion.TradeSide))
+	if cfg.Reversion.TradeSide == "" {
+		cfg.Reversion.TradeSide = "both"
+	}
 
 	// Normalize Safety limit percentage
 	cfg.Reversion.Safety.MaxImpactRatio /= 100
 
 	if cfg.Reversion.Scanners.Configured {
-		symCfgs, err := loadSymbolsConfig(fundingPath)
+		symCfgs, err := LoadAndValidate[FundingConfig](fundingPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse funding config: %w", err)
 		}
-		cfg.Symbols = symCfgs
+		cfg.Symbols = []SymbolConfig(*symCfgs)
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -51,52 +100,6 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	}
 
 	return cfg, nil
-}
-
-func loadSymbolsConfig(fundingPath string) ([]SymbolConfig, error) {
-	symCfgs, err := pkgconfig.Load[[]SymbolConfig](fundingPath)
-	if err != nil {
-		if strings.Contains(err.Error(), "read config") {
-			return nil, fmt.Errorf("read funding config %s: %w", fundingPath, err)
-		}
-		return nil, fmt.Errorf("parse funding config: %w", err)
-	}
-	return *symCfgs, nil
-}
-
-func loadReversionConfig(configDir string) (*ReversionConfig, error) {
-	reversionPath := filepath.Join(configDir, "reversion.jsonc")
-	reversionCfg, err := pkgconfig.Load[ReversionConfig](reversionPath)
-	if err != nil {
-		if strings.Contains(err.Error(), "read config") {
-			return nil, fmt.Errorf("read reversion config %s: %w", reversionPath, err)
-		}
-		return nil, fmt.Errorf("parse reversion config: %w", err)
-	}
-
-	if reversionCfg.Sync.FundingSync <= 0 {
-		reversionCfg.Sync.FundingSync = types.Duration(30 * time.Second)
-	}
-	if reversionCfg.Sync.Time <= 0 {
-		reversionCfg.Sync.Time = types.Duration(30 * time.Second)
-	}
-	if reversionCfg.Sync.Ticker <= 0 {
-		reversionCfg.Sync.Ticker = types.Duration(30 * time.Second)
-	}
-	if reversionCfg.Sync.Contract <= 0 {
-		reversionCfg.Sync.Contract = types.Duration(300 * time.Second)
-	}
-
-	reversionCfg.TradeSide = strings.ToLower(strings.TrimSpace(reversionCfg.TradeSide))
-	if reversionCfg.TradeSide == "" {
-		reversionCfg.TradeSide = "both"
-	}
-
-	return reversionCfg, nil
-}
-
-func LoadBlacklist(path string) (*BlacklistConfig, error) {
-	return pkgconfig.Load[BlacklistConfig](path)
 }
 
 func (c *Config) parseTradingDefaults() (RawFundingReversionConfig, error) {
@@ -132,16 +135,7 @@ func (c *Config) validate() error {
 		return err
 	}
 
-	validate := validator.New()
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name, _, _ := strings.Cut(fld.Tag.Get("json"), ",")
-		if name == "-" {
-			return ""
-		}
-		return name
-	})
-
-	_ = validate.RegisterValidation("api_config", sysconfig.ValidateAPIConfigField)
+	validate := newValidator()
 
 	if err := validate.Struct(c); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
@@ -151,29 +145,49 @@ func (c *Config) validate() error {
 }
 
 func (c *Config) exchangeConfigured(name string) bool {
-	switch name {
-	case exchange.ExchangeMexc:
-		return c.System.ExchangeConfig.Mexc.Enable
-	case exchange.ExchangeGate:
-		return c.System.ExchangeConfig.Gate.Enable
-	case exchange.ExchangeBybit:
-		return c.System.ExchangeConfig.Bybit.Enable
-	case exchange.ExchangeBinance:
-		return c.System.ExchangeConfig.Binance.Enable
-	case exchange.ExchangeOkx:
-		return c.System.ExchangeConfig.Okx.Enable
-	case exchange.ExchangeHyperliquid:
-		return c.System.ExchangeConfig.Hyperliquid.Enable
-	case exchange.ExchangeBitget:
-		return c.System.ExchangeConfig.Bitget.Enable
-	case exchange.ExchangeKucoin:
-		return c.System.ExchangeConfig.Kucoin.Enable
-	case exchange.ExchangeBingx:
-		return c.System.ExchangeConfig.Bingx.Enable
-	case exchange.ExchangeToobit:
-		return c.System.ExchangeConfig.Toobit.Enable
-	default:
-		return false
+	return c.System.ExchangeConfig[name].Enable
+}
+
+func newValidator() *validator.Validate {
+	validate := validator.New()
+	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name, _, _ := strings.Cut(fld.Tag.Get("json"), ",")
+		if name == "-" {
+			return ""
+		}
+		return name
+	})
+	_ = validate.RegisterValidation("api_config", sysconfig.ValidateAPIConfigField)
+	_ = validate.RegisterValidation("supported_exchange", func(fl validator.FieldLevel) bool {
+		return sysconfig.IsSupportedExchange(fl.Field().String())
+	})
+	return validate
+}
+
+func mergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
+	if src.TakeProfitPct > 0 {
+		dest.TakeProfitPct = src.TakeProfitPct
+	}
+	if src.StopLossPct > 0 {
+		dest.StopLossPct = src.StopLossPct
+	}
+	if src.BufferTime != 0 {
+		dest.BufferTime = src.BufferTime
+	}
+	if src.PostSettleTimeout != 0 {
+		dest.PostSettleTimeout = src.PostSettleTimeout
+	}
+	if src.Leverage > 0 {
+		dest.Leverage = src.Leverage
+	}
+	if src.MarginUSD > 0 {
+		dest.MarginUSD = src.MarginUSD
+	}
+	if src.MinVol24USD > 0 {
+		dest.MinVol24USD = src.MinVol24USD
+	}
+	if src.MinFundingRate > 0 {
+		dest.MinFundingRate = src.MinFundingRate
 	}
 }
 
@@ -184,43 +198,38 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 
 	// Override with exchange-specific settings if present
 	if specific, exists := d.Exchanges[exchName]; exists {
-		if specific.TakeProfitPct > 0 {
-			exchConfig.TakeProfitPct = specific.TakeProfitPct
-		}
-		if specific.StopLossPct > 0 {
-			exchConfig.StopLossPct = specific.StopLossPct
-		}
-		if specific.BufferTime != 0 {
-			exchConfig.BufferTime = specific.BufferTime
-		}
-		if specific.PostSettleTimeout != 0 {
-			exchConfig.PostSettleTimeout = specific.PostSettleTimeout
-		}
-		if specific.Leverage > 0 {
-			exchConfig.Leverage = specific.Leverage
-		}
-		if specific.MarginUSD > 0 {
-			exchConfig.MarginUSD = specific.MarginUSD
-		}
-		if specific.MinVol24USD > 0 {
-			exchConfig.MinVol24USD = specific.MinVol24USD
-		}
-		if specific.MinFundingRate > 0 {
-			exchConfig.MinFundingRate = specific.MinFundingRate
-		}
+		mergeExchangeReversionConfig(&exchConfig, specific)
 	}
 
-	defaultFloat(&sc.MaxPriceDiffPercent, c.Reversion.Safety.MaxPriceDiffPercent)
-	defaultFloat(&sc.MinFundingRate, exchConfig.MinFundingRate)
-	defaultFloat(&sc.MinVol24USD, exchConfig.MinVol24USD)
+	if sc.MaxPriceDiffPercent == 0 {
+		sc.MaxPriceDiffPercent = c.Reversion.Safety.MaxPriceDiffPercent
+	}
+	if sc.MinFundingRate == 0 {
+		sc.MinFundingRate = exchConfig.MinFundingRate
+	}
+	if sc.MinVol24USD == 0 {
+		sc.MinVol24USD = exchConfig.MinVol24USD
+	}
 
 	// Apply leverage and margin (either exchange-specific, or default fallback)
-	defaultInt(&sc.Leverage, exchConfig.Leverage)
-	defaultFloat(&sc.MarginUSDT, exchConfig.MarginUSD)
+	if sc.Leverage == 0 {
+		sc.Leverage = exchConfig.Leverage
+	}
+	if sc.MarginUSDT == 0 {
+		sc.MarginUSDT = exchConfig.MarginUSD
+	}
 
-	defaultStr((*string)(&sc.OpenType), d.OpenType)
-	defaultStr((*string)(&sc.PositionMode), d.PositionMode)
+	if sc.OpenType == "" {
+		sc.OpenType = OpenType(d.OpenType)
+	}
+	if sc.PositionMode == "" {
+		sc.PositionMode = PositionMode(d.PositionMode)
+	}
 
+	c.mergeFundingReversion(sc, d, &exchConfig)
+}
+
+func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionConfig, exchConfig *ExchangeReversionConfig) {
 	if !sc.FundingReversion.Enabled && d.Enabled {
 		sc.FundingReversion.Enabled = true
 		sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
@@ -229,10 +238,18 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 		sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
 	} else if sc.FundingReversion.Enabled {
-		defaultDuration(&sc.FundingReversion.MaxLatency, c.Reversion.Safety.MaxLatency)
-		defaultFloat(&sc.FundingReversion.TakeProfitPct, exchConfig.TakeProfitPct)
-		defaultFloat(&sc.FundingReversion.StopLossPct, exchConfig.StopLossPct)
-		defaultDuration(&sc.FundingReversion.BufferTime, exchConfig.BufferTime)
+		if sc.FundingReversion.MaxLatency == 0 {
+			sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
+		}
+		if sc.FundingReversion.TakeProfitPct == 0 {
+			sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
+		}
+		if sc.FundingReversion.StopLossPct == 0 {
+			sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
+		}
+		if sc.FundingReversion.BufferTime == 0 {
+			sc.FundingReversion.BufferTime = exchConfig.BufferTime
+		}
 	}
 }
 
@@ -240,9 +257,15 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 	sc.MinFundingRate = normalizeFundingRateThreshold(sc.MinFundingRate)
 
 	if sc.FundingReversion.Enabled {
-		defaultDuration(&sc.FundingReversion.MaxLatency, types.Duration(200*time.Millisecond))
-		defaultDuration(&sc.FundingReversion.BufferTime, types.Duration(10*time.Millisecond))
-		defaultDuration(&sc.FundingReversion.PostSettleTimeout, types.Duration(60*time.Second))
+		if sc.FundingReversion.MaxLatency == 0 {
+			sc.FundingReversion.MaxLatency = types.Duration(200 * time.Millisecond)
+		}
+		if sc.FundingReversion.BufferTime == 0 {
+			sc.FundingReversion.BufferTime = types.Duration(10 * time.Millisecond)
+		}
+		if sc.FundingReversion.PostSettleTimeout == 0 {
+			sc.FundingReversion.PostSettleTimeout = types.Duration(60 * time.Second)
+		}
 
 		if sc.FundingReversion.TakeProfitPct <= 0 {
 			sc.FundingReversion.TakeProfitPct = 20
@@ -272,30 +295,6 @@ func (c *Config) defaultSymbolModes(sc *SymbolConfig) {
 		sc.ParsedPositionMode = 2
 	default:
 		sc.ParsedPositionMode = 1
-	}
-}
-
-func defaultFloat(target *float64, fallback float64) {
-	if *target == 0 {
-		*target = fallback
-	}
-}
-
-func defaultInt(target *int, fallback int) {
-	if *target == 0 {
-		*target = fallback
-	}
-}
-
-func defaultDuration(target *types.Duration, fallback types.Duration) {
-	if *target == 0 {
-		*target = fallback
-	}
-}
-
-func defaultStr(target *string, fallback string) {
-	if *target == "" {
-		*target = fallback
 	}
 }
 

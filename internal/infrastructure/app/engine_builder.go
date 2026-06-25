@@ -66,17 +66,7 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 
 // validateConfig checks if at least one exchange is enabled.
 func (b *EngineBuilder) validateConfig() {
-	mexcEnabled := b.cfg.ExchangeConfig.Mexc.Enable
-	gateEnabled := b.cfg.ExchangeConfig.Gate.Enable
-	bybitEnabled := b.cfg.ExchangeConfig.Bybit.Enable
-	binanceEnabled := b.cfg.ExchangeConfig.Binance.Enable
-	okxEnabled := b.cfg.ExchangeConfig.Okx.Enable
-	hyperliquidEnabled := b.cfg.ExchangeConfig.Hyperliquid.Enable
-	bitgetEnabled := b.cfg.ExchangeConfig.Bitget.Enable
-	kucoinEnabled := b.cfg.ExchangeConfig.Kucoin.Enable
-	bingxEnabled := b.cfg.ExchangeConfig.Bingx.Enable
-
-	if !mexcEnabled && !gateEnabled && !bybitEnabled && !binanceEnabled && !okxEnabled && !hyperliquidEnabled && !bitgetEnabled && !kucoinEnabled && !bingxEnabled {
+	if !b.cfg.HasEnabledExchange() {
 		b.errors = append(b.errors, "at least one exchange must be enabled")
 	}
 }

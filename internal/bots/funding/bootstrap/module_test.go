@@ -21,9 +21,11 @@ func TestModuleDependencyGraph(t *testing.T) {
 	t.Parallel()
 
 	err := fx.ValidateApp(bootstrap.Module(bootstrap.ConfigPaths{
-		System:   "system.jsonc",
-		Exchange: "exchange.jsonc",
-		Bot:      "funding.jsonc",
+		System:    "system.jsonc",
+		Exchange:  "exchange.jsonc",
+		Bot:       "funding.jsonc",
+		Blacklist: "blacklist.jsonc",
+		Reversion: "reversion.jsonc",
 	}))
 	require.NoError(t, err)
 }
@@ -52,7 +54,10 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[
 		{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 10, "leverage": 5}
 	]`), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
+	blacklistPath := filepath.Join(dir, "blacklist.jsonc")
+	reversionPath := filepath.Join(dir, "reversion.jsonc")
+	require.NoError(t, os.WriteFile(blacklistPath, []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 
 	var (
 		log        *slog.Logger
@@ -66,7 +71,13 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 
 	app := fxtest.New(
 		t,
-		bootstrap.Module(bootstrap.ConfigPaths{System: systemPath, Exchange: exchangePath, Bot: fundingPath}),
+		bootstrap.Module(bootstrap.ConfigPaths{
+			System:    systemPath,
+			Exchange:  exchangePath,
+			Bot:       fundingPath,
+			Blacklist: blacklistPath,
+			Reversion: reversionPath,
+		}),
 		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
 	)
 	require.NotNil(t, app)

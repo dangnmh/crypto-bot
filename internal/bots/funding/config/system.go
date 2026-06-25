@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
-	pkgconfig "crypto-bot/pkg/config"
 	"crypto-bot/pkg/types"
 )
 
@@ -33,21 +32,23 @@ type SafetyConfig struct {
 
 // LoadSystemConfig loads the system configuration from the given path.
 func LoadSystemConfig(systemPath, exchangePath string) (*SystemConfig, error) {
-	sysCfg, err := pkgconfig.Load[SystemConfig](systemPath)
+	sysRaw, err := LoadAndValidate[sysconfig.SystemConfig](systemPath)
 	if err != nil {
-		return nil, fmt.Errorf("load funding reversion system config: %w", err)
+		return nil, fmt.Errorf("load system config: %w", err)
 	}
 
-	exchCfg, err := pkgconfig.Load[sysconfig.SystemConfig](exchangePath)
+	exchRaw, err := LoadAndValidate[sysconfig.SystemConfig](exchangePath)
 	if err != nil {
-		return nil, fmt.Errorf("load exchange config from %s: %w", exchangePath, err)
+		return nil, fmt.Errorf("load exchange config: %w", err)
 	}
-	sysCfg.ExchangeConfig = exchCfg.ExchangeConfig
 
-	if err := sysconfig.InitializeBase(&sysCfg.SystemConfig); err != nil {
+	sysRaw.ExchangeConfig = exchRaw.ExchangeConfig
+
+	if err := sysconfig.InitializeBase(sysRaw); err != nil {
 		return nil, fmt.Errorf("initialize base config: %w", err)
 	}
 
+	sysCfg := &SystemConfig{*sysRaw}
 	if err := sysCfg.validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}

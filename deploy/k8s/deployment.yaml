@@ -37,6 +37,10 @@ spec:
             - "/app/configs/funding/prod/exchange.jsonc"
             - "-bot"
             - "/app/configs/funding/prod/funding.jsonc"
+            - "-blacklist"
+            - "/app/configs/funding/prod/blacklist.jsonc"
+            - "-reversion"
+            - "/app/configs/funding/prod/reversion.jsonc"
           env:
             - name: BITWARDEN_ACCESS_TOKEN
               valueFrom:

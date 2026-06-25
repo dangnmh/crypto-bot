@@ -47,173 +47,160 @@ type ProviderFactoryConfig struct {
 	TimeSyncInterval time.Duration
 }
 
+// SimpleProviderFactory is a closure-based implementation of ProviderFactory.
+type SimpleProviderFactory struct {
+	name        string
+	enabledFunc func(cfg *sysconfig.SystemConfig) bool
+	buildFunc   func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error)
+}
+
+func (s SimpleProviderFactory) Name() string {
+	return s.name
+}
+
+func (s SimpleProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	if s.enabledFunc != nil {
+		return s.enabledFunc(cfg)
+	}
+	return cfg.ExchangeConfig[s.name].Enable
+}
+
+func (s SimpleProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	return s.buildFunc(ctx, cfg)
+}
+
 // DefaultProviderFactories returns the exchange factories supported by the app layer.
 func DefaultProviderFactories() []ProviderFactory {
 	return []ProviderFactory{
-		MexcProviderFactory{},
-		GateProviderFactory{},
-		BybitStandardProviderFactory{},
-		BybitUnifiedProviderFactory{},
-		BinanceProviderFactory{},
-		OkxProviderFactory{},
-		HyperliquidProviderFactory{},
-		BitgetProviderFactory{},
-		BingxProviderFactory{},
-		KucoinProviderFactory{},
-		DeepcoinProviderFactory{},
-		ToobitProviderFactory{},
+		SimpleProviderFactory{
+			name: exchange.ExchangeMexc,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeMexc]
+				client := exchange.Client(mexc.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				return buildProvider(ctx, exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, mexc.NewWsAdapter()), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeGate,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeGate]
+				client := exchange.Client(gate.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				return buildProvider(ctx, exchange.ExchangeGate, exchange.ExchangeGate, cfg, apiCfg, client, gate.NewWsAdapter()), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeBybit,
+			enabledFunc: func(cfg *sysconfig.SystemConfig) bool {
+				bybitCfg := cfg.ExchangeConfig["bybit"]
+				return bybitCfg.Enable && sysconfig.NormalizeBybitAccountType(bybitCfg.AccountType) != sysconfig.BybitAccountTypeUnified
+			},
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig["bybit"]
+				accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
+				client := exchange.Client(bybit.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, accountType, cfg.SystemConfig.Logging))
+				return buildProvider(ctx, exchange.ExchangeBybit, exchange.ExchangeBybit, cfg, apiCfg, client, bybit.NewWsAdapter()), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: bybitUnifiedName,
+			enabledFunc: func(cfg *sysconfig.SystemConfig) bool {
+				bybitCfg := cfg.ExchangeConfig["bybit"]
+				return bybitCfg.Enable && sysconfig.NormalizeBybitAccountType(bybitCfg.AccountType) == sysconfig.BybitAccountTypeUnified
+			},
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig["bybit"]
+				client := exchange.Client(bybit.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, sysconfig.BybitAccountTypeUnified, cfg.SystemConfig.Logging))
+				return buildProvider(ctx, bybitUnifiedName, exchange.ExchangeBybit, cfg, apiCfg, client, bybit.NewWsAdapter()), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeBinance,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBinance]
+				client := exchange.Client(binance.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				adapter := binance.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+				adapter.SetURLs(apiCfg.WebSocket.PublicEndpoint(), apiCfg.WebSocket.MarketEndpoint())
+				if concreteClient, ok := client.(*binance.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeBinance, exchange.ExchangeBinance, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeOkx,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeOkx]
+				client := exchange.Client(okx.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+				adapter := okx.NewWsAdapter(apiCfg.APIPassphrase)
+				return buildProvider(ctx, exchange.ExchangeOkx, exchange.ExchangeOkx, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeHyperliquid,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeHyperliquid]
+				client := exchange.Client(hyperliquid.NewClient(ctx, cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				adapter := hyperliquid.NewWsAdapter()
+				return buildProvider(ctx, exchange.ExchangeHyperliquid, exchange.ExchangeHyperliquid, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeBitget,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBitget]
+				client := exchange.Client(bitget.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, "", cfg.SystemConfig.Logging))
+				adapter := bitget.NewWsAdapter()
+				return buildProvider(ctx, exchange.ExchangeBitget, exchange.ExchangeBitget, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeBingx,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBingx]
+				client := exchange.Client(bingx.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				adapter := bingx.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+				if concreteClient, ok := client.(*bingx.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeBingx, exchange.ExchangeBingx, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeKucoin,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeKucoin]
+				kucoinClient := kucoin.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging)
+				client := exchange.Client(kucoinClient)
+				adapter := kucoin.NewWsAdapter()
+				adapter.SetClient(kucoinClient)
+				return buildProvider(ctx, exchange.ExchangeKucoin, exchange.ExchangeKucoin, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeDeepcoin,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeDeepcoin]
+				client := exchange.Client(deepcoin.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+				adapter := deepcoin.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+				if concreteClient, ok := client.(*deepcoin.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeDeepcoin, exchange.ExchangeDeepcoin, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeToobit,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeToobit]
+				client := exchange.Client(toobit.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				adapter := toobit.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+				if concreteClient, ok := client.(*toobit.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeToobit, exchange.ExchangeToobit, cfg, apiCfg, client, adapter), nil
+			},
+		},
 	}
-}
-
-// MexcProviderFactory builds MEXC infrastructure.
-type MexcProviderFactory struct{}
-
-func (MexcProviderFactory) Name() string { return exchange.ExchangeMexc }
-
-func (MexcProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Mexc.Enable
-}
-
-func (MexcProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Mexc
-	client := exchange.Client(mexc.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysCfg.Logging,
-	))
-
-	adapter := mexc.NewWsAdapter()
-	return buildProvider(ctx, exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, adapter), nil
-}
-
-// GateProviderFactory builds Gate.io infrastructure.
-type GateProviderFactory struct{}
-
-func (GateProviderFactory) Name() string { return exchange.ExchangeGate }
-
-func (GateProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Gate.Enable
-}
-
-func (GateProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Gate
-	client := exchange.Client(gate.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysCfg.Logging,
-	))
-
-	adapter := gate.NewWsAdapter()
-	return buildProvider(ctx, exchange.ExchangeGate, exchange.ExchangeGate, cfg, apiCfg, client, adapter), nil
-}
-
-// BinanceProviderFactory builds Binance infrastructure.
-type BinanceProviderFactory struct{}
-
-func (BinanceProviderFactory) Name() string { return exchange.ExchangeBinance }
-
-func (BinanceProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Binance.Enable
-}
-
-func (BinanceProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Binance
-	client := exchange.Client(binance.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysCfg.Logging,
-	))
-
-	adapter := binance.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
-	adapter.SetURLs(apiCfg.WebSocket.PublicEndpoint(), apiCfg.WebSocket.MarketEndpoint())
-	if concreteClient, ok := client.(*binance.Client); ok {
-		adapter.SetClient(concreteClient)
-	}
-	return buildProvider(ctx, exchange.ExchangeBinance, exchange.ExchangeBinance, cfg, apiCfg, client, adapter), nil
-}
-
-// OkxProviderFactory builds OKX infrastructure.
-type OkxProviderFactory struct{}
-
-func (OkxProviderFactory) Name() string { return exchange.ExchangeOkx }
-
-func (OkxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Okx.Enable
-}
-
-func (OkxProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Okx
-	client := exchange.Client(okx.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		apiCfg.APIPassphrase,
-		sysCfg.Logging,
-	))
-
-	adapter := okx.NewWsAdapter(apiCfg.APIPassphrase)
-	return buildProvider(ctx, exchange.ExchangeOkx, exchange.ExchangeOkx, cfg, apiCfg, client, adapter), nil
-}
-
-// BitgetProviderFactory builds Bitget infrastructure.
-type BitgetProviderFactory struct{}
-
-func (BitgetProviderFactory) Name() string { return exchange.ExchangeBitget }
-
-func (BitgetProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bitget.Enable
-}
-
-func (BitgetProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Bitget
-	client := exchange.Client(bitget.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		"", // Passphrase from environment variables or config
-		sysCfg.Logging,
-	))
-
-	adapter := bitget.NewWsAdapter()
-	return buildProvider(ctx, exchange.ExchangeBitget, exchange.ExchangeBitget, cfg, apiCfg, client, adapter), nil
-}
-
-// HyperliquidProviderFactory builds Hyperliquid infrastructure.
-type HyperliquidProviderFactory struct{}
-
-func (HyperliquidProviderFactory) Name() string { return exchange.ExchangeHyperliquid }
-
-func (HyperliquidProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Hyperliquid.Enable
-}
-
-func (HyperliquidProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Hyperliquid
-	client := exchange.Client(hyperliquid.NewClient(
-		ctx,
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysCfg.Logging,
-	))
-
-	adapter := hyperliquid.NewWsAdapter()
-	return buildProvider(ctx, exchange.ExchangeHyperliquid, exchange.ExchangeHyperliquid, cfg, apiCfg, client, adapter), nil
 }
 
 func buildProvider(
@@ -342,165 +329,4 @@ func validateProviderFactoryConfig(cfg ProviderFactoryConfig) error {
 		return fmt.Errorf("event bus is required")
 	}
 	return nil
-}
-
-// BybitStandardProviderFactory builds Standard Classic Bybit infrastructure.
-type BybitStandardProviderFactory struct{}
-
-func (BybitStandardProviderFactory) Name() string { return exchange.ExchangeBybit }
-
-func (BybitStandardProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bybit.Enable && sysconfig.NormalizeBybitAccountType(cfg.ExchangeConfig.Bybit.AccountType) != sysconfig.BybitAccountTypeUnified
-}
-
-func (BybitStandardProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Bybit
-	accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
-	client := exchange.Client(bybit.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		accountType,
-		sysCfg.Logging,
-	))
-
-	adapter := bybit.NewWsAdapter()
-	return buildProvider(ctx, exchange.ExchangeBybit, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
-}
-
-// BybitUnifiedProviderFactory builds Unified Bybit infrastructure (UTA).
-type BybitUnifiedProviderFactory struct{}
-
-func (BybitUnifiedProviderFactory) Name() string { return bybitUnifiedName }
-
-func (BybitUnifiedProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bybit.Enable && sysconfig.NormalizeBybitAccountType(cfg.ExchangeConfig.Bybit.AccountType) == sysconfig.BybitAccountTypeUnified
-}
-
-func (BybitUnifiedProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Bybit
-	client := exchange.Client(bybit.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysconfig.BybitAccountTypeUnified,
-		sysCfg.Logging,
-	))
-
-	adapter := bybit.NewWsAdapter()
-	return buildProvider(ctx, bybitUnifiedName, exchange.ExchangeBybit, cfg, apiCfg, client, adapter), nil
-}
-
-// BingxProviderFactory builds BingX infrastructure.
-type BingxProviderFactory struct{}
-
-func (BingxProviderFactory) Name() string { return exchange.ExchangeBingx }
-
-func (BingxProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Bingx.Enable
-}
-
-func (BingxProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Bingx
-	client := exchange.Client(bingx.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysCfg.Logging,
-	))
-
-	adapter := bingx.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
-	if concreteClient, ok := client.(*bingx.Client); ok {
-		adapter.SetClient(concreteClient)
-	}
-	return buildProvider(ctx, exchange.ExchangeBingx, exchange.ExchangeBingx, cfg, apiCfg, client, adapter), nil
-}
-
-// KucoinProviderFactory builds KuCoin infrastructure.
-type KucoinProviderFactory struct{}
-
-func (KucoinProviderFactory) Name() string { return exchange.ExchangeKucoin }
-
-func (KucoinProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Kucoin.Enable
-}
-
-func (KucoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Kucoin
-	kucoinClient := kucoin.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		apiCfg.APIPassphrase,
-		sysCfg.Logging,
-	)
-	client := exchange.Client(kucoinClient)
-
-	adapter := kucoin.NewWsAdapter()
-	adapter.SetClient(kucoinClient)
-
-	return buildProvider(ctx, exchange.ExchangeKucoin, exchange.ExchangeKucoin, cfg, apiCfg, client, adapter), nil
-}
-
-// DeepcoinProviderFactory builds Deepcoin infrastructure.
-type DeepcoinProviderFactory struct{}
-
-func (DeepcoinProviderFactory) Name() string { return exchange.ExchangeDeepcoin }
-
-func (DeepcoinProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Deepcoin.Enable
-}
-
-func (DeepcoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Deepcoin
-	client := exchange.Client(deepcoin.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		apiCfg.APIPassphrase,
-		sysCfg.Logging,
-	))
-
-	adapter := deepcoin.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
-	if concreteClient, ok := client.(*deepcoin.Client); ok {
-		adapter.SetClient(concreteClient)
-	}
-	return buildProvider(ctx, exchange.ExchangeDeepcoin, exchange.ExchangeDeepcoin, cfg, apiCfg, client, adapter), nil
-}
-
-// ToobitProviderFactory builds Toobit infrastructure.
-type ToobitProviderFactory struct{}
-
-func (ToobitProviderFactory) Name() string { return exchange.ExchangeToobit }
-
-func (ToobitProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.Toobit.Enable
-}
-
-func (ToobitProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.Toobit
-	client := exchange.Client(toobit.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		sysCfg.Logging,
-	))
-
-	adapter := toobit.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
-	if concreteClient, ok := client.(*toobit.Client); ok {
-		adapter.SetClient(concreteClient)
-	}
-	return buildProvider(ctx, exchange.ExchangeToobit, exchange.ExchangeToobit, cfg, apiCfg, client, adapter), nil
 }

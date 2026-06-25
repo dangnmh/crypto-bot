@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,12 +51,12 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 		APISecret: "secret",
 	}
 
-	assert.True(t, exchangeCredentialsComplete("Mexc", disabled))
-	assert.True(t, exchangeCredentialsComplete("Mexc", complete))
-	assert.False(t, exchangeCredentialsComplete("Mexc", missingKey))
-	assert.True(t, exchangeCredentialsComplete("Bingx", completeBingx))
-	assert.True(t, exchangeCredentialsComplete("Kucoin", completeKucoin))
-	assert.False(t, exchangeCredentialsComplete("Kucoin", complete))
+	assert.True(t, exchangeCredentialsComplete("mexc", disabled))
+	assert.True(t, exchangeCredentialsComplete("mexc", complete))
+	assert.False(t, exchangeCredentialsComplete("mexc", missingKey))
+	assert.True(t, exchangeCredentialsComplete("bingx", completeBingx))
+	assert.True(t, exchangeCredentialsComplete("kucoin", completeKucoin))
+	assert.False(t, exchangeCredentialsComplete("kucoin", complete))
 	completeOkx := APIConfig{
 		Enable:        true,
 		Future:        RESTConfig{BaseURL: "https://api.example.com"},
@@ -65,15 +64,15 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 		APISecret:     "secret",
 		APIPassphrase: "pass",
 	}
-	assert.True(t, exchangeCredentialsComplete("Okx", completeOkx))
-	assert.False(t, exchangeCredentialsComplete("Okx", complete))
+	assert.True(t, exchangeCredentialsComplete("okx", completeOkx))
+	assert.False(t, exchangeCredentialsComplete("okx", complete))
 	assert.True(t, notificationCredentialsComplete(NotiConfig{
 		TelegramChatID:   "123",
 		TelegramBotToken: "token",
 	}))
 	assert.False(t, notificationCredentialsComplete(NotiConfig{TelegramChatID: "123"}))
 	assert.True(t, bitwardenFallbackNotNeeded(&SystemConfig{
-		ExchangeConfig: ExchangeConfig{Mexc: complete, Gate: disabled, Bybit: disabled, Kucoin: completeKucoin},
+		ExchangeConfig: ExchangeConfig{"mexc": complete, "gate": disabled, "bybit": disabled, "kucoin": completeKucoin},
 		NotiConfig:     NotiConfig{TelegramChatID: "123", TelegramBotToken: "token"},
 	}))
 }
@@ -93,86 +92,86 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		},
 		{
 			name: "mexc missing key",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Mexc: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"mexc": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://mexc.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
 				APISecret: "secret",
 			}}},
-			wantErr: "api_config",
+			wantErr: "mexc: API key and secret are required",
 		},
 		{
 			name: "mexc missing secret",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Mexc: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"mexc": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://mexc.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
 				APIKey:    "key",
 			}}},
-			wantErr: "api_config",
+			wantErr: "mexc: API key and secret are required",
 		},
 		{
 			name: "gate missing key",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Gate: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
 				APISecret: "secret",
 			}}},
-			wantErr: "api_config",
+			wantErr: "gate: API key and secret are required",
 		},
 		{
 			name: "gate missing secret",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Gate: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
 				APIKey:    "key",
 			}}},
-			wantErr: "api_config",
+			wantErr: "gate: API key and secret are required",
 		},
 		{
 			name: "gate missing websocket url",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Gate: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
-			wantErr: "api_config",
+			wantErr: "gate: invalid websocket endpoint URL",
 		},
 		{
 			name: "kucoin missing passphrase",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Kucoin: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"kucoin": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://kucoin.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
-			wantErr: "api_config",
+			wantErr: "kucoin: API passphrase is required",
 		},
 		{
 			name: "okx missing passphrase",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Okx: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"okx": APIConfig{
 				Enable:    true,
 				Future:    RESTConfig{BaseURL: "https://okx.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://okx.example"},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
-			wantErr: "api_config",
+			wantErr: "okx: API passphrase is required",
 		},
 		{
 			name: "kucoin missing key",
-			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{Kucoin: APIConfig{
+			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"kucoin": APIConfig{
 				Enable:        true,
 				Future:        RESTConfig{BaseURL: "https://kucoin.example"},
 				WebSocket:     WebSocketConfig{WSURL: "wss://kucoin.example"},
 				APISecret:     "secret",
 				APIPassphrase: "pass",
 			}}},
-			wantErr: "api_config",
+			wantErr: "kucoin: API key and secret are required",
 		},
 	}
 
@@ -181,24 +180,20 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 			t.Parallel()
 
 			// Check missing all active exchanges logic
-			if !tt.cfg.ExchangeConfig.Mexc.Enable && !tt.cfg.ExchangeConfig.Gate.Enable && !tt.cfg.ExchangeConfig.Okx.Enable && !tt.cfg.ExchangeConfig.Binance.Enable && !tt.cfg.ExchangeConfig.Bitget.Enable && !tt.cfg.ExchangeConfig.Kucoin.Enable {
+			if tt.cfg.ExchangeConfig == nil || (!tt.cfg.ExchangeConfig["mexc"].Enable && !tt.cfg.ExchangeConfig["gate"].Enable && !tt.cfg.ExchangeConfig["okx"].Enable && !tt.cfg.ExchangeConfig["binance"].Enable && !tt.cfg.ExchangeConfig["bitget"].Enable && !tt.cfg.ExchangeConfig["kucoin"].Enable) {
 				err := fmt.Errorf("at least one active exchange must be enabled")
 				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
 
-			// Validate using register validation tag flow
-			validate := validator.New()
-			_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
-
-			err := validate.Struct(tt.cfg)
+			err := InitializeBase(tt.cfg)
 			require.Error(t, err)
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
 
-func TestValidateAPIConfigField_AccountType(t *testing.T) {
+func TestValidateExchangeConfig_AccountType(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -217,22 +212,21 @@ func TestValidateAPIConfigField_AccountType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			validate := validator.New()
-			_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
+			cfg := ExchangeConfig{
+				"bybit": APIConfig{
+					Enable:      true,
+					Future:      RESTConfig{BaseURL: "https://bybit.example"},
+					WebSocket:   WebSocketConfig{PublicURL: "wss://bybit-public.example", PrivateURL: "wss://bybit-private.example"},
+					APIKey:      "key",
+					APISecret:   "secret",
+					AccountType: tt.accountType,
+				},
+			}
 
-			cfg := &SystemConfig{ExchangeConfig: ExchangeConfig{Bybit: APIConfig{
-				Enable:      true,
-				Future:      RESTConfig{BaseURL: "https://bybit.example"},
-				WebSocket:   WebSocketConfig{PublicURL: "wss://bybit-public.example", PrivateURL: "wss://bybit-private.example"},
-				APIKey:      "key",
-				APISecret:   "secret",
-				AccountType: tt.accountType,
-			}}}
-
-			err := validate.Struct(cfg)
+			err := ValidateExchangeConfig(cfg)
 			if tt.wantErr {
 				require.Error(t, err)
-				require.ErrorContains(t, err, "api_config")
+				assert.Contains(t, err.Error(), "unsupported account type")
 				return
 			}
 			require.NoError(t, err)
@@ -240,22 +234,21 @@ func TestValidateAPIConfigField_AccountType(t *testing.T) {
 	}
 }
 
-func TestValidateAPIConfigField_AccountTypeOnlyAppliesToBybit(t *testing.T) {
+func TestValidateExchangeConfig_AccountTypeOnlyAppliesToBybit(t *testing.T) {
 	t.Parallel()
 
-	validate := validator.New()
-	_ = validate.RegisterValidation("api_config", ValidateAPIConfigField)
+	cfg := ExchangeConfig{
+		"mexc": APIConfig{
+			Enable:      true,
+			Future:      RESTConfig{BaseURL: "https://mexc.example"},
+			WebSocket:   WebSocketConfig{WSURL: "wss://mexc.example"},
+			APIKey:      "key",
+			APISecret:   "secret",
+			AccountType: "ignored",
+		},
+	}
 
-	cfg := &SystemConfig{ExchangeConfig: ExchangeConfig{Mexc: APIConfig{
-		Enable:      true,
-		Future:      RESTConfig{BaseURL: "https://mexc.example"},
-		WebSocket:   WebSocketConfig{WSURL: "wss://mexc.example"},
-		APIKey:      "key",
-		APISecret:   "secret",
-		AccountType: "ignored",
-	}}}
-
-	require.NoError(t, validate.Struct(cfg))
+	require.NoError(t, ValidateExchangeConfig(cfg))
 }
 
 func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
@@ -263,11 +256,11 @@ func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
 
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			Mexc: APIConfig{
+			"mexc": APIConfig{
 				Future:    RESTConfig{BaseURL: "https://mexc.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
 			},
-			Gate: APIConfig{
+			"gate": APIConfig{
 				Future:    RESTConfig{BaseURL: "https://gate.example"},
 				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
 			},
@@ -276,22 +269,27 @@ func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
 
 	applySystemDefaults(cfg)
 
-	assert.Equal(t, 30, cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn)
-	assert.Equal(t, 30, cfg.ExchangeConfig.Gate.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig["mexc"].WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig["gate"].WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
-func TestInternalLoadFromBitwardenRequiresConfig(t *testing.T) {
+func TestInternalApplyBitwardenFallbackRequiresConfig(t *testing.T) {
 	t.Setenv("BITWARDEN_ACCESS_TOKEN", "")
 	t.Setenv("BITWARDEN_ORGANIZATION_ID", "")
 	t.Setenv("BITWARDEN_PROJECT_NAME", "")
 
 	assert.False(t, hasBitwardenConfig())
-	_, err := LoadFromBitwarden()
-	require.ErrorContains(t, err, "bitwarden configuration not found")
+	cfg := &SystemConfig{
+		ExchangeConfig: ExchangeConfig{
+			"mexc": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+		},
+	}
+	err := applyBitwardenFallback(cfg)
+	require.NoError(t, err) // Non-fatal when not configured
 }
 
-func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T) {
+func TestInternalApplyBitwardenFallbackTrimsAndToleratesOptionalSecrets(t *testing.T) {
 	t.Setenv("BITWARDEN_ACCESS_TOKEN", "token")
 	t.Setenv("BITWARDEN_ORGANIZATION_ID", "org")
 	t.Setenv("BITWARDEN_PROJECT_NAME", "project")
@@ -323,38 +321,46 @@ func TestInternalLoadFromBitwardenTrimsAndToleratesOptionalSecrets(t *testing.T)
 		}, nil
 	}
 
-	creds, err := LoadFromBitwarden()
+	cfg := &SystemConfig{
+		ExchangeConfig: ExchangeConfig{
+			"mexc":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+			"gate":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
+			"bybit":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
+			"bitget": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
+			"kucoin": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
+			"bingx":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
+			"okx":    APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://okx.example"}},
+		},
+	}
+
+	err := applyBitwardenFallback(cfg)
 	require.NoError(t, err)
-	assert.Equal(t, "mexc-key", creds.MEXCAPIKey)
-	assert.Equal(t, "mexc-secret", creds.MEXCAPISecret)
-	assert.Equal(t, "gate-key", creds.GateAPIKey)
-	assert.Equal(t, "gate-secret", creds.GateAPISecret)
-	assert.Equal(t, "bybit-key", creds.BybitAPIKey)
-	assert.Equal(t, "bybit-secret", creds.BybitAPISecret)
-	assert.Equal(t, "bitget-key", creds.BitgetAPIKey)
-	assert.Equal(t, "bitget-secret", creds.BitgetAPISecret)
-	assert.Equal(t, "bingx-key", creds.BingxAPIKey)
-	assert.Equal(t, "bingx-secret", creds.BingxAPISecret)
-	assert.Equal(t, "kucoin-key", creds.KucoinAPIKey)
-	assert.Equal(t, "kucoin-secret", creds.KucoinAPISecret)
-	assert.Equal(t, "kucoin-passphrase", creds.KucoinPassphrase)
-	assert.Equal(t, "okx-key", creds.OkxAPIKey)
-	assert.Equal(t, "okx-secret", creds.OkxAPISecret)
-	assert.Equal(t, "okx-passphrase", creds.OkxAPIPassphrase)
-	assert.Equal(t, "123", creds.TelegramChatID)
-	assert.Equal(t, "token", creds.TelegramBotToken)
+	assert.Equal(t, "mexc-key", cfg.ExchangeConfig["mexc"].APIKey)
+	assert.Equal(t, "mexc-secret", cfg.ExchangeConfig["mexc"].APISecret)
+	assert.Equal(t, "gate-key", cfg.ExchangeConfig["gate"].APIKey)
+	assert.Equal(t, "gate-secret", cfg.ExchangeConfig["gate"].APISecret)
+	assert.Equal(t, "bybit-key", cfg.ExchangeConfig["bybit"].APIKey)
+	assert.Equal(t, "bybit-secret", cfg.ExchangeConfig["bybit"].APISecret)
+	assert.Equal(t, "bitget-key", cfg.ExchangeConfig["bitget"].APIKey)
+	assert.Equal(t, "bitget-secret", cfg.ExchangeConfig["bitget"].APISecret)
+	assert.Equal(t, "bingx-key", cfg.ExchangeConfig["bingx"].APIKey)
+	assert.Equal(t, "bingx-secret", cfg.ExchangeConfig["bingx"].APISecret)
+	assert.Equal(t, "kucoin-key", cfg.ExchangeConfig["kucoin"].APIKey)
+	assert.Equal(t, "kucoin-secret", cfg.ExchangeConfig["kucoin"].APISecret)
+	assert.Equal(t, "kucoin-passphrase", cfg.ExchangeConfig["kucoin"].APIPassphrase)
+	assert.Equal(t, "okx-key", cfg.ExchangeConfig["okx"].APIKey)
+	assert.Equal(t, "okx-secret", cfg.ExchangeConfig["okx"].APISecret)
+	assert.Equal(t, "okx-passphrase", cfg.ExchangeConfig["okx"].APIPassphrase)
 
 	newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
 		return nil, errors.New("login failed")
 	}
-	_, err = LoadFromBitwarden()
+	err = applyBitwardenFallback(&SystemConfig{
+		ExchangeConfig: ExchangeConfig{
+			"mexc": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+		},
+	})
 	require.ErrorContains(t, err, "login failed")
-
-	newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
-		return fakeSecretLoader{errs: map[string]error{"MEXC_API_KEY": errors.New("missing")}}, nil
-	}
-	_, err = LoadFromBitwarden()
-	require.ErrorContains(t, err, "failed to get MEXC_API_KEY")
 }
 
 func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
@@ -389,33 +395,33 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			Mexc:   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
-			Gate:   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
-			Bybit:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
-			Bitget: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
-			Kucoin: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
-			Bingx:  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
-			Okx:    APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://okx.example"}},
+			"mexc":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+			"gate":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
+			"bybit":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
+			"bitget": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
+			"kucoin": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
+			"bingx":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
+			"okx":    APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://okx.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
 
-	assert.Equal(t, "mexc-key", cfg.ExchangeConfig.Mexc.APIKey)
-	assert.Equal(t, "mexc-secret", cfg.ExchangeConfig.Mexc.APISecret)
-	assert.Equal(t, "gate-key", cfg.ExchangeConfig.Gate.APIKey)
-	assert.Equal(t, "gate-secret", cfg.ExchangeConfig.Gate.APISecret)
-	assert.Equal(t, "bybit-key", cfg.ExchangeConfig.Bybit.APIKey)
-	assert.Equal(t, "bybit-secret", cfg.ExchangeConfig.Bybit.APISecret)
-	assert.Equal(t, "bitget-key", cfg.ExchangeConfig.Bitget.APIKey)
-	assert.Equal(t, "bitget-secret", cfg.ExchangeConfig.Bitget.APISecret)
-	assert.Equal(t, "kucoin-key", cfg.ExchangeConfig.Kucoin.APIKey)
-	assert.Equal(t, "kucoin-secret", cfg.ExchangeConfig.Kucoin.APISecret)
-	assert.Equal(t, "kucoin-passphrase", cfg.ExchangeConfig.Kucoin.APIPassphrase)
-	assert.Equal(t, "bingx-key", cfg.ExchangeConfig.Bingx.APIKey)
-	assert.Equal(t, "bingx-secret", cfg.ExchangeConfig.Bingx.APISecret)
-	assert.Equal(t, "okx-key", cfg.ExchangeConfig.Okx.APIKey)
-	assert.Equal(t, "okx-secret", cfg.ExchangeConfig.Okx.APISecret)
-	assert.Equal(t, "okx-passphrase", cfg.ExchangeConfig.Okx.APIPassphrase)
+	assert.Equal(t, "mexc-key", cfg.ExchangeConfig["mexc"].APIKey)
+	assert.Equal(t, "mexc-secret", cfg.ExchangeConfig["mexc"].APISecret)
+	assert.Equal(t, "gate-key", cfg.ExchangeConfig["gate"].APIKey)
+	assert.Equal(t, "gate-secret", cfg.ExchangeConfig["gate"].APISecret)
+	assert.Equal(t, "bybit-key", cfg.ExchangeConfig["bybit"].APIKey)
+	assert.Equal(t, "bybit-secret", cfg.ExchangeConfig["bybit"].APISecret)
+	assert.Equal(t, "bitget-key", cfg.ExchangeConfig["bitget"].APIKey)
+	assert.Equal(t, "bitget-secret", cfg.ExchangeConfig["bitget"].APISecret)
+	assert.Equal(t, "kucoin-key", cfg.ExchangeConfig["kucoin"].APIKey)
+	assert.Equal(t, "kucoin-secret", cfg.ExchangeConfig["kucoin"].APISecret)
+	assert.Equal(t, "kucoin-passphrase", cfg.ExchangeConfig["kucoin"].APIPassphrase)
+	assert.Equal(t, "bingx-key", cfg.ExchangeConfig["bingx"].APIKey)
+	assert.Equal(t, "bingx-secret", cfg.ExchangeConfig["bingx"].APISecret)
+	assert.Equal(t, "okx-key", cfg.ExchangeConfig["okx"].APIKey)
+	assert.Equal(t, "okx-secret", cfg.ExchangeConfig["okx"].APISecret)
+	assert.Equal(t, "okx-passphrase", cfg.ExchangeConfig["okx"].APIPassphrase)
 	assert.Equal(t, "123", cfg.NotiConfig.TelegramChatID)
 	assert.Equal(t, "token", cfg.NotiConfig.TelegramBotToken)
 
@@ -423,6 +429,6 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 		return nil, errors.New("boom")
 	}
 	require.ErrorContains(t, applyBitwardenFallback(&SystemConfig{
-		ExchangeConfig: ExchangeConfig{Mexc: APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}}},
+		ExchangeConfig: ExchangeConfig{"mexc": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}}},
 	}), "bitwarden fallback failed")
 }

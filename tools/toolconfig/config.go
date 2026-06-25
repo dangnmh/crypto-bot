@@ -42,7 +42,11 @@ func Load(configPath string) (*sysconfig.SystemConfig, error) {
 }
 
 func applyBitwardenFallback(cfg *sysconfig.SystemConfig) error {
-	if cfg.ExchangeConfig.Mexc.APIKey != "" && cfg.ExchangeConfig.Mexc.APISecret != "" {
+	if cfg.ExchangeConfig == nil {
+		cfg.ExchangeConfig = make(sysconfig.ExchangeConfig)
+	}
+	mexcCfg := cfg.ExchangeConfig["mexc"]
+	if mexcCfg.APIKey != "" && mexcCfg.APISecret != "" {
 		return nil
 	}
 	if !hasBitwardenConfig() {
@@ -52,39 +56,45 @@ func applyBitwardenFallback(cfg *sysconfig.SystemConfig) error {
 	if err != nil {
 		return fmt.Errorf("bitwarden fallback failed: %w", err)
 	}
-	if cfg.ExchangeConfig.Mexc.APIKey == "" {
-		cfg.ExchangeConfig.Mexc.APIKey = credentials.APIKey
+	if mexcCfg.APIKey == "" {
+		mexcCfg.APIKey = credentials.APIKey
 	}
-	if cfg.ExchangeConfig.Mexc.APISecret == "" {
-		cfg.ExchangeConfig.Mexc.APISecret = credentials.APISecret
+	if mexcCfg.APISecret == "" {
+		mexcCfg.APISecret = credentials.APISecret
 	}
+	cfg.ExchangeConfig["mexc"] = mexcCfg
 	return nil
 }
 
 func validateCredentials(cfg *sysconfig.SystemConfig) error {
-	if cfg.ExchangeConfig.Mexc.APIKey == "" {
+	if cfg.ExchangeConfig == nil || cfg.ExchangeConfig["mexc"].APIKey == "" {
 		return fmt.Errorf("MEXC_API_KEY is required (set in .env, environment, or Bitwarden)")
 	}
-	if cfg.ExchangeConfig.Mexc.APISecret == "" {
+	if cfg.ExchangeConfig["mexc"].APISecret == "" {
 		return fmt.Errorf("MEXC_API_SECRET is required (set in .env, environment, or Bitwarden)")
 	}
 	return nil
 }
 
 func validateEndpoints(cfg *sysconfig.SystemConfig) error {
-	if cfg.ExchangeConfig.Mexc.Future.BaseURL == "" {
+	if cfg.ExchangeConfig == nil || cfg.ExchangeConfig["mexc"].Future.BaseURL == "" {
 		return fmt.Errorf("api.future.baseURL is required")
 	}
-	if cfg.ExchangeConfig.Mexc.WebSocket.WSURL == "" {
+	if cfg.ExchangeConfig["mexc"].WebSocket.WSURL == "" {
 		return fmt.Errorf("api.websocket.wsURL is required")
 	}
 	return nil
 }
 
 func applySystemDefaults(cfg *sysconfig.SystemConfig) {
-	if cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn <= 0 {
-		cfg.ExchangeConfig.Mexc.WebSocket.MaxPairsPerWSConn = 30
+	if cfg.ExchangeConfig == nil {
+		cfg.ExchangeConfig = make(sysconfig.ExchangeConfig)
 	}
+	mexcCfg := cfg.ExchangeConfig["mexc"]
+	if mexcCfg.WebSocket.MaxPairsPerWSConn <= 0 {
+		mexcCfg.WebSocket.MaxPairsPerWSConn = 30
+	}
+	cfg.ExchangeConfig["mexc"] = mexcCfg
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = "info"
 	}

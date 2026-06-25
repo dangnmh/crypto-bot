@@ -45,47 +45,39 @@ Add the variables inside the `vault kv put secret/crypto-bot` command (around li
 
 ## Step 2: Configuration Loader Updates
 
-We must update the config types and configuration parser to read the new environment variables and configurations.
+We must update the config types and the spec registry. The configuration system automatically handles parsing, validation, and fallbacks based on metadata specs.
 
-### 1. Define the Exchange Type Constant
-Open [internal/infrastructure/exchange/types.go](file:///home/four/projects/crypto-bot/internal/infrastructure/exchange/types.go) and add the exchange name constant:
-```go
-const (
-	// ... existing exchanges
-	Exchange<YourExchangeName> = "<your_exchange_name_lowercase>"
-)
-```
+### 1. Define the Exchange Type Constants
+1. Open [internal/infrastructure/exchange/types.go](file:///home/four/projects/crypto-bot/internal/infrastructure/exchange/types.go) and add the exchange name constant:
+   ```go
+   const (
+   	// ... existing exchanges
+   	Exchange<YourExchangeName> = "<your_exchange_name_lowercase>"
+   )
+   ```
+2. Open [internal/infrastructure/config/types.go](file:///home/four/projects/crypto-bot/internal/infrastructure/config/types.go) and add the corresponding config package string constant:
+   ```go
+   const (
+   	// ... existing exchanges
+   	<YourExchangeName>Name = "<your_exchange_name_lowercase>"
+   )
+   ```
 
-### 2. Add Config Struct Field
-Open [internal/infrastructure/config/types.go](file:///home/four/projects/crypto-bot/internal/infrastructure/config/types.go) and add the configuration mapping under `ExchangeConfig`:
+### 2. Register Spec properties
+Open [internal/infrastructure/config/types.go](file:///home/four/projects/crypto-bot/internal/infrastructure/config/types.go) and add your exchange spec metadata to the `ExchangeSpecs` registry map:
 ```go
-type ExchangeConfig struct {
+var ExchangeSpecs = map[string]ExchangeSpec{
 	// ... existing exchanges
-	<YourExchangeName> APIConfig `json:"<your_exchange_name_lowercase>" validate:"api_config"`
+	<YourExchangeName>Name: {
+		RequiresPassphrase: true, // Set to true if exchange requires API passphrase
+		Validate: func(cfg APIConfig) error {
+			// (Optional) Add custom validation rules for this exchange
+			return nil
+		},
+	},
 }
 ```
-
-### 3. Bind Environment Variables & Credentials
-Open [internal/infrastructure/config/loader.go](file:///home/four/projects/crypto-bot/internal/infrastructure/config/loader.go) and perform the following updates:
-
-1. **Bind environment variables** in `InitializeBase`:
-   ```go
-   c.ExchangeConfig.<YourExchangeName>.APIKey = strings.TrimSpace(os.Getenv("<YOUR_EXCHANGE_NAME_UPPERCASE>_API_KEY"))
-   c.ExchangeConfig.<YourExchangeName>.APISecret = strings.TrimSpace(os.Getenv("<YOUR_EXCHANGE_NAME_UPPERCASE>_API_SECRET"))
-   c.ExchangeConfig.<YourExchangeName>.APIPassphrase = strings.TrimSpace(os.Getenv("<YOUR_EXCHANGE_NAME_UPPERCASE>_API_PASSPHRASE"))
-   ```
-2. **Add to active check** inside `InitializeBase` list checking `lo.Contains`:
-   ```go
-   c.ExchangeConfig.<YourExchangeName>.Enable,
-   ```
-3. **Register Bitwarden fallbacks** under `applyBitwardenFallback` if using Bitwarden:
-   ```go
-   fallbackExchangeAPIConfig(&c.ExchangeConfig.<YourExchangeName>, creds.<YourExchangeName>APIKey, creds.<YourExchangeName>APISecret, creds.<YourExchangeName>Passphrase)
-   ```
-4. **Ensure credentials presence check** in `bitwardenFallbackNotNeeded`:
-   ```go
-   exchangeCredentialsComplete("<YourExchangeName>", c.ExchangeConfig.<YourExchangeName>) &&
-   ```
+*Note: The system automatically derives `SupportedExchanges` from the keys of `ExchangeSpecs`. Credentials injection, Bitwarden loading, and standard validations are automated from this spec registry.*
 
 ---
 
@@ -116,6 +108,7 @@ Ensure that the new exchange is added to the blacklist list structure (set to `[
 ```jsonc
   "<your_exchange_name_lowercase>": []
 ```
+*Note: `BlacklistConfig` is a fully dynamic map, so no Go code modifications (like adding struct fields) are required to support new exchange blacklists.*
 
 ### 3. reversion.jsonc
 Add the reversion execution settings for this exchange:
@@ -250,45 +243,35 @@ Implement the `ws.ExchangeAdapter` interface from [ws/interfaces.go](file:///hom
 
 Open [internal/infrastructure/app/provider_factory.go](file:///home/four/projects/crypto-bot/internal/infrastructure/app/provider_factory.go).
 
-### 1. Register the Factory implementation
-Add a provider factory builder struct:
-```go
-// <YourExchangeName>ProviderFactory builds the exchange infrastructure.
-type <YourExchangeName>ProviderFactory struct{}
+Instead of creating separate empty factory structs, we register new exchanges using `SimpleProviderFactory` inside the `DefaultProviderFactories()` slice.
 
-func (<YourExchangeName>ProviderFactory) Name() string { return exchange.Exchange<YourExchangeName> }
+### 1. Register in Default List
+Add a new `SimpleProviderFactory` instance to the returned list:
 
-func (<YourExchangeName>ProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
-	return cfg.ExchangeConfig.<YourExchangeName>.Enable
-}
-
-func (<YourExchangeName>ProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-	sysCfg := cfg.SystemConfig
-	apiCfg := sysCfg.ExchangeConfig.<YourExchangeName>
-	client := exchange.Client(<your_exchange>.NewClient(
-		cfg.HTTPClient,
-		apiCfg.Future.BaseURL,
-		apiCfg.APIKey,
-		apiCfg.APISecret,
-		apiCfg.APIPassphrase,
-		sysCfg.Logging,
-	))
-
-	adapter := <your_exchange>.NewWsAdapter(...)
-	return buildProvider(ctx, exchange.Exchange<YourExchangeName>, exchange.Exchange<YourExchangeName>, cfg, apiCfg, client, adapter), nil
-}
-```
-
-### 2. Register in Default List
-Add your provider factory builder struct to the `DefaultProviderFactories()` slice (around line 50):
 ```go
 func DefaultProviderFactories() []ProviderFactory {
 	return []ProviderFactory{
 		// ... existing factories
-		<YourExchangeName>ProviderFactory{},
+		SimpleProviderFactory{
+			name: exchange.Exchange<YourExchangeName>,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.Exchange<YourExchangeName>]
+				client := exchange.Client(<your_exchange>.NewClient(
+					cfg.HTTPClient,
+					apiCfg.Future.BaseURL,
+					apiCfg.APIKey,
+					apiCfg.APISecret,
+					apiCfg.APIPassphrase, // Or omit if not required
+					cfg.SystemConfig.Logging,
+				))
+				adapter := <your_exchange>.NewWsAdapter(...)
+				return buildProvider(ctx, exchange.Exchange<YourExchangeName>, exchange.Exchange<YourExchangeName>, cfg, apiCfg, client, adapter), nil
+			},
+		},
 	}
 }
 ```
+*Note: If the exchange requires specific enabled-checks or configurations (such as standard vs unified accounts), you can optionally supply a custom `enabledFunc: func(cfg *sysconfig.SystemConfig) bool` closure.*
 
 ---
 

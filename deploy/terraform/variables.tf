@@ -61,3 +61,36 @@ variable "vault_password" {
   sensitive   = true
 }
 
+# ==============================================================================
+# Configuration File Paths
+# ==============================================================================
+
+variable "config_path_system" {
+  type        = string
+  description = "Path to the system.jsonc configuration file"
+  default     = "../../configs/funding/prod/system.jsonc"
+}
+
+variable "config_path_exchange" {
+  type        = string
+  description = "Path to the exchange.jsonc configuration file"
+  default     = "../../configs/funding/prod/exchange.jsonc"
+}
+
+variable "config_path_funding" {
+  type        = string
+  description = "Path to the funding.jsonc configuration file"
+  default     = "../../configs/funding/prod/funding.jsonc"
+}
+
+variable "config_path_blacklist" {
+  type        = string
+  description = "Path to the blacklist.jsonc configuration file"
+  default     = "../../configs/funding/prod/blacklist.jsonc"
+}
+
+variable "config_path_reversion" {
+  type        = string
+  description = "Path to the reversion.jsonc configuration file"
+  default     = "../../configs/funding/prod/reversion.jsonc"
+}

@@ -78,8 +78,9 @@ func loadWith(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) *co
 	revData, err := json.Marshal(mockRev)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), revData, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 
-	cfg, err := config.Load(sysCfg, path)
+	cfg, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
 	require.NoError(t, err)
 	return cfg
 }
@@ -90,7 +91,8 @@ func loadWithError(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string
 	path := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(fundingJSON), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
-	_, err := config.Load(sysCfg, path)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
+	_, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
 	return err
 }
 
@@ -98,7 +100,7 @@ func sysWithDefaults(defaults testDefaults) *config.SystemConfig {
 	sc := &config.SystemConfig{
 		SystemConfig: sysconfig.SystemConfig{
 			ExchangeConfig: sysconfig.ExchangeConfig{
-				Mexc: sysconfig.APIConfig{
+				"mexc": sysconfig.APIConfig{
 					Enable:    true,
 					Future:    sysconfig.RESTConfig{BaseURL: "https://mexc.test"},
 					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
@@ -136,9 +138,10 @@ func TestLoad_FileNotFound(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, filepath.Join(dir, "nonexistent.json"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
+	_, err := config.Load(&config.SystemConfig{}, filepath.Join(dir, "nonexistent.json"), filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read funding config")
+	assert.Contains(t, err.Error(), "read config")
 }
 
 func TestLoad_InvalidJSON(t *testing.T) {
@@ -147,7 +150,8 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
-	_, err := config.Load(sysWithMexc(), path)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
+	_, err := config.Load(sysWithMexc(), path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
 	assert.Error(t, err)
 }
 
@@ -185,8 +189,9 @@ func TestLoad_EmptySymbols(t *testing.T) {
 	revData, err := json.Marshal(mockRev)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), revData, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 
-	cfg, err := config.Load(sysCfg, path)
+	cfg, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Symbols)
 
@@ -424,7 +429,7 @@ func TestLoad_WithBlacklist(t *testing.T) {
 	// Create reversion.jsonc
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
 
-	cfg, err := config.Load(sysWithMexc(), fundingPath)
+	cfg, err := config.Load(sysWithMexc(), fundingPath, blacklistPath, filepath.Join(dir, "reversion.jsonc"))
 	require.NoError(t, err)
 
 	assert.NotNil(t, cfg.Blacklist)

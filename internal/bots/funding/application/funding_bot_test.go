@@ -103,7 +103,7 @@ func TestNewFundingBot_WithBlacklist(t *testing.T) {
 			{Symbol: "ETH_USDT", Exchange: "mexc", MarginUSDT: 100, Leverage: 5},
 		},
 		Blacklist: &config.BlacklistConfig{
-			Common: []string{"ETH_USDT"},
+			"common": []string{"ETH_USDT"},
 		},
 	}
 	sysCfg := &config.SystemConfig{}

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	"crypto-bot/pkg/types"
@@ -107,19 +109,59 @@ type SystemConfig struct {
 	APIServer      APIServerConfig `json:"api_server"`
 }
 
-type ExchangeConfig struct {
-	Mexc        APIConfig `json:"mexc" validate:"api_config"`
-	Gate        APIConfig `json:"gate" validate:"api_config"`
-	Bybit       APIConfig `json:"bybit" validate:"api_config"`
-	Binance     APIConfig `json:"binance" validate:"api_config"`
-	Okx         APIConfig `json:"okx" validate:"api_config"`
-	Hyperliquid APIConfig `json:"hyperliquid" validate:"api_config"`
-	Bitget      APIConfig `json:"bitget" validate:"api_config"`
-	Kucoin      APIConfig `json:"kucoin" validate:"api_config"`
-	Bingx       APIConfig `json:"bingx" validate:"api_config"`
-	Deepcoin    APIConfig `json:"deepcoin" validate:"api_config"`
-	Toobit      APIConfig `json:"toobit" validate:"api_config"`
+const (
+	MexcName        = "mexc"
+	GateName        = "gate"
+	BybitName       = "bybit"
+	BinanceName     = "binance"
+	OkxName         = "okx"
+	HyperliquidName = "hyperliquid"
+	BitgetName      = "bitget"
+	KucoinName      = "kucoin"
+	BingxName       = "bingx"
+	DeepcoinName    = "deepcoin"
+	ToobitName      = "toobit"
+)
+
+type ExchangeSpec struct {
+	RequiresPassphrase bool
+	Validate           func(cfg APIConfig) error
 }
+
+var ExchangeSpecs = map[string]ExchangeSpec{
+	MexcName:        {},
+	GateName:        {},
+	BinanceName:     {},
+	HyperliquidName: {},
+	BitgetName:      {},
+	BingxName:       {},
+	ToobitName:      {},
+	KucoinName:      {RequiresPassphrase: true},
+	OkxName:         {RequiresPassphrase: true},
+	DeepcoinName:    {RequiresPassphrase: true},
+	BybitName: {
+		Validate: func(cfg APIConfig) error {
+			if !IsSupportedBybitAccountType(cfg.AccountType) {
+				return fmt.Errorf("unsupported account type: %s", cfg.AccountType)
+			}
+			return nil
+		},
+	},
+}
+
+// SupportedExchanges contains the list of all supported exchange identifiers.
+var SupportedExchanges []string
+
+func init() {
+	SupportedExchanges = make([]string, 0, len(ExchangeSpecs))
+	for k := range ExchangeSpecs {
+		SupportedExchanges = append(SupportedExchanges, k)
+	}
+	slices.Sort(SupportedExchanges)
+}
+
+// ExchangeConfig maps exchange names to their API configurations.
+type ExchangeConfig map[string]APIConfig
 
 type NotiConfig struct {
 	Enabled          bool   `json:"enable"`

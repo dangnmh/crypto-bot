@@ -319,7 +319,7 @@ func TestConfiguredScanner_Scan_Blacklisted(t *testing.T) {
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 		Blacklist: &config.BlacklistConfig{
-			Common: []string{"BTC_USDT"},
+			"common": []string{"BTC_USDT"},
 		},
 	}
 
@@ -528,7 +528,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 
 	cfg := &config.Config{
 		Blacklist: &config.BlacklistConfig{
-			Mexc: []string{"XRP_USDT"},
+			"mexc": []string{"XRP_USDT"},
 		},
 	}
 

@@ -13,3 +13,11 @@ docker_image = "ghcr.io/dangnmh/crypto-bot:latest"
 # grafana_password = "admin"
 # vault_password   = "root"
 # postgres_password = "postgres"
+
+# Optional: Specific paths for each of the 5 bot configuration files
+# config_path_system    = "../../configs/funding/prod/system.jsonc"
+# config_path_exchange  = "../../configs/funding/prod/exchange.jsonc"
+# config_path_funding   = "../../configs/funding/prod/funding.jsonc"
+# config_path_blacklist = "../../configs/funding/prod/blacklist.jsonc"
+# config_path_reversion = "../../configs/funding/prod/reversion.jsonc"
+

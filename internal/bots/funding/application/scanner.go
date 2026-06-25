@@ -432,7 +432,7 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	// 1. Fetch blacklisted symbols to exclude them early
 	var blacklist []string
 	if s.cfg.Blacklist != nil {
-		blacklist = append(blacklist, s.cfg.Blacklist.Common...)
+		blacklist = append(blacklist, s.cfg.Blacklist.GetCommonBlacklist()...)
 		blacklist = append(blacklist, s.cfg.Blacklist.GetExchangeBlacklist(s.exchange)...)
 	}
 

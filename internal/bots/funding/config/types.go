@@ -27,7 +27,7 @@ const (
 // SymbolConfig represents per-symbol trading settings loaded from funding.json.
 type SymbolConfig struct {
 	Symbol              string       `json:"symbol" validate:"required"`
-	Exchange            string       `json:"exchange" validate:"required,oneof=mexc gate bybit binance okx hyperliquid bitget kucoin bingx toobit"`
+	Exchange            string       `json:"exchange" validate:"required,supported_exchange"`
 	SimulateSettle      string       `json:"simulateSettle"`
 	MaxPriceDiffPercent float64      `json:"maxPriceDiffPercent"`
 	MarginUSDT          float64      `json:"marginUSDT" validate:"gt=0"`
@@ -62,6 +62,9 @@ type ReversionConfig struct {
 	Notifier ReversionNotifierConfig `json:"notifier"`
 }
 
+// FundingConfig represents the array of symbol configurations loaded from funding.jsonc.
+type FundingConfig []SymbolConfig
+
 // Config is the root configuration containing both System and Funding configs.
 type Config struct {
 	System    *SystemConfig    `json:"-" validate:"required"`
@@ -90,57 +93,29 @@ type ExchangeReversionConfig struct {
 	MinFundingRate    float64        `json:"minFundingRate"`
 }
 
-type BlacklistConfig struct {
-	Common      []string `json:"common"`
-	Mexc        []string `json:"mexc"`
-	Gate        []string `json:"gate"`
-	Bybit       []string `json:"bybit"`
-	Binance     []string `json:"binance"`
-	Okx         []string `json:"okx"`
-	Hyperliquid []string `json:"hyperliquid"`
-	Bitget      []string `json:"bitget"`
-	Kucoin      []string `json:"kucoin"`
-	Bingx       []string `json:"bingx"`
-	Toobit      []string `json:"toobit"`
-}
+type BlacklistConfig map[string][]string
 
-func (b *BlacklistConfig) GetExchangeBlacklist(exchange string) []string {
+func (b BlacklistConfig) GetCommonBlacklist() []string {
 	if b == nil {
 		return nil
 	}
-	switch strings.ToLower(strings.TrimSpace(exchange)) {
-	case "mexc":
-		return b.Mexc
-	case "gate":
-		return b.Gate
-	case "bybit":
-		return b.Bybit
-	case "binance":
-		return b.Binance
-	case "okx":
-		return b.Okx
-	case "hyperliquid":
-		return b.Hyperliquid
-	case "bitget":
-		return b.Bitget
-	case "kucoin":
-		return b.Kucoin
-	case "bingx":
-		return b.Bingx
-	case "toobit":
-		return b.Toobit
-	default:
-		return nil
-	}
+	return b["common"]
 }
 
-func (b *BlacklistConfig) IsBlacklisted(exchange, symbol string) bool {
+func (b BlacklistConfig) GetExchangeBlacklist(exchange string) []string {
+	if b == nil {
+		return nil
+	}
+	return b[strings.ToLower(strings.TrimSpace(exchange))]
+}
+
+func (b BlacklistConfig) IsBlacklisted(exchange, symbol string) bool {
 	if b == nil {
 		return false
 	}
 	sym := strings.ToUpper(strings.TrimSpace(symbol))
 	// Check common blacklist
-	for _, s := range b.Common {
+	for _, s := range b["common"] {
 		if strings.ToUpper(strings.TrimSpace(s)) == sym {
 			return true
 		}
