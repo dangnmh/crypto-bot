@@ -508,7 +508,7 @@ func TestAPIServer_FundingScanner(t *testing.T) {
 	t.Parallel()
 	clientMexc := &stubClient{
 		tickers: []exchange.Ticker{
-			{Symbol: "HIGH_USDT", AmountUSDT24: 2000000.0},
+			{Symbol: "HIGH_USDT", AmountUSDT24: 2000000.0, LastPrice: 1.25},
 		},
 		rates: []exchange.FundingRateResult{
 			{Symbol: "HIGH_USDT", Rate: -0.003852},
@@ -549,5 +549,7 @@ func TestAPIServer_FundingScanner(t *testing.T) {
 	require.Len(t, payload.Groups, 1)
 	assert.Equal(t, "HIGH_USDT", payload.Groups[0].StandardSymbol)
 	assert.Equal(t, -0.003852, payload.Groups[0].ScoreRate)
+	require.NotEmpty(t, payload.Groups[0].Opportunities)
+	assert.Equal(t, 1.25, payload.Groups[0].Opportunities[0].Price)
 	_ = resp.Body.Close()
 }

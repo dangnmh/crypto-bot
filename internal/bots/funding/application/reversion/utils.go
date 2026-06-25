@@ -338,7 +338,7 @@ func (r *StatelessRunner) unsubscribeWS(ctx context.Context, symbol string) {
 
 func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate) error {
 	pd, err := r.deps.PriceStore.GetPrice(ctx, c.Symbol, 5*time.Second)
-	if err == nil {
+	if err == nil && pd.BestBid > 0 && pd.BestAsk > 0 {
 		c.BestBid, c.BestAsk, c.LastPrice = pd.BestBid, pd.BestAsk, pd.LastPrice
 		return nil
 	}

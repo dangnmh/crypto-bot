@@ -19,6 +19,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
+	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
@@ -60,6 +61,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		BingxProviderFactory{},
 		KucoinProviderFactory{},
 		DeepcoinProviderFactory{},
+		ToobitProviderFactory{},
 	}
 }
 
@@ -474,4 +476,31 @@ func (DeepcoinProviderFactory) Build(ctx context.Context, cfg ProviderFactoryCon
 		adapter.SetClient(concreteClient)
 	}
 	return buildProvider(ctx, exchange.ExchangeDeepcoin, exchange.ExchangeDeepcoin, cfg, apiCfg, client, adapter), nil
+}
+
+// ToobitProviderFactory builds Toobit infrastructure.
+type ToobitProviderFactory struct{}
+
+func (ToobitProviderFactory) Name() string { return exchange.ExchangeToobit }
+
+func (ToobitProviderFactory) Enabled(cfg *sysconfig.SystemConfig) bool {
+	return cfg.ExchangeConfig.Toobit.Enable
+}
+
+func (ToobitProviderFactory) Build(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+	sysCfg := cfg.SystemConfig
+	apiCfg := sysCfg.ExchangeConfig.Toobit
+	client := exchange.Client(toobit.NewClient(
+		cfg.HTTPClient,
+		apiCfg.Future.BaseURL,
+		apiCfg.APIKey,
+		apiCfg.APISecret,
+		sysCfg.Logging,
+	))
+
+	adapter := toobit.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint())
+	if concreteClient, ok := client.(*toobit.Client); ok {
+		adapter.SetClient(concreteClient)
+	}
+	return buildProvider(ctx, exchange.ExchangeToobit, exchange.ExchangeToobit, cfg, apiCfg, client, adapter), nil
 }

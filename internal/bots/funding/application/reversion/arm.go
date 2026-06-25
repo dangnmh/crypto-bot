@@ -146,7 +146,7 @@ func (r *StatelessRunner) waitForFreshPrice(ctx context.Context, symbol string, 
 	defer cancel()
 
 	updates := priceStore.SubscribePrice(waitCtx, symbol)
-	if _, err := priceStore.GetPrice(ctx, symbol, maxWait); err == nil {
+	if pd, err := priceStore.GetPrice(ctx, symbol, maxWait); err == nil && pd.BestBid > 0 && pd.BestAsk > 0 {
 		return nil
 	}
 
@@ -166,7 +166,7 @@ func (r *StatelessRunner) waitForFreshPrice(ctx context.Context, symbol string, 
 				}
 				return nil
 			}
-			if pd != nil {
+			if pd != nil && pd.BestBid > 0 && pd.BestAsk > 0 {
 				return nil
 			}
 		}

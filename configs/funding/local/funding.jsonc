@@ -39,9 +39,9 @@
   //   "simulateSettle": "2026-06-18T22:30:00.000+07:00"
   // },
   {
-    "symbol": "LAB-USDT-SWAP",
+    "symbol": "H-SWAP-USDT",
     "marginUSDT": 3,
-    "exchange": "deepcoin",
-    "simulateSettle": "2026-06-20T22:10:00.000+07:00"
-  },
+    "exchange": "toobit",
+    "simulateSettle": "2026-06-25T11:05:00.000+07:00"
+  }
 ]

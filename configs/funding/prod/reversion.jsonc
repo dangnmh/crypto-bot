@@ -103,6 +103,12 @@
       "bufferTime": "-200ms",
       "postSettleTimeout": "0.5s"
     },
+    "toobit": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "0.5s"
+    }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
   // No dynamic pricing, orderbook wall cap, imbalance filter, or trailing stop.

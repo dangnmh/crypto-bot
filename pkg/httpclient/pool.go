@@ -68,11 +68,7 @@ func (r *requestIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 	if reqID != "" {
 		req = req.Clone(ctx)
 		req.Header.Set("X-Request-ID", reqID)
-		req.Header.Set("req_id", reqID)
-		req.Header.Set("request_id", reqID)
-		req.Header.Set("requestid", reqID)
 	}
-
 	return r.next.RoundTrip(req)
 }
 
@@ -97,9 +93,6 @@ func (t *traceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	if reqID != "" {
 		req = req.Clone(ctx)
 		req.Header.Set("X-Request-ID", reqID)
-		req.Header.Set("req_id", reqID)
-		req.Header.Set("request_id", reqID)
-		req.Header.Set("requestid", reqID)
 		ctx = req.Context()
 	}
 

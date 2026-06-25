@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -28,12 +27,6 @@ func Load(sysCfg *SystemConfig, fundingPath string) (*Config, error) {
 	blacklistPath := filepath.Join(configDir, "blacklist.jsonc")
 	if blk, err := LoadBlacklist(blacklistPath); err == nil {
 		cfg.Blacklist = blk
-	} else if os.IsNotExist(err) {
-		// Fallback to blacklist.json
-		blacklistPathJSON := filepath.Join(configDir, "blacklist.json")
-		if blk, err := LoadBlacklist(blacklistPathJSON); err == nil {
-			cfg.Blacklist = blk
-		}
 	}
 
 	reversionCfg, err := loadReversionConfig(configDir)
@@ -177,6 +170,8 @@ func (c *Config) exchangeConfigured(name string) bool {
 		return c.System.ExchangeConfig.Kucoin.Enable
 	case exchange.ExchangeBingx:
 		return c.System.ExchangeConfig.Bingx.Enable
+	case exchange.ExchangeToobit:
+		return c.System.ExchangeConfig.Toobit.Enable
 	default:
 		return false
 	}

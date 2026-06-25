@@ -156,7 +156,6 @@ func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
 			}
 		}
 	}
-
 	return activeExchanges
 }
 

@@ -175,6 +175,59 @@ Implement the required interfaces from [exchange/interfaces.go](file:///home/fou
     * **Warm-up execution:** Perform initial connectivity checks or server time syncing (e.g., pinging/calling `/ping` endpoints).
 * **Helpers**: Use generic HTTP response parsers like `ParseResponse[T]` or `ParseResponseFirst[T]` to avoid JSON unmarshaling boilerplates.
 * **Error Wrapping**: Ensure API errors from the exchange are mapped to appropriate types like `*exchange.APIError` or `*exchange.OrderRejectedError` using helper mappings.
+* **Raw Requests (`exchange.RawRequest` & helper patterns)**:
+  * The REST Client **must** implement the `exchange.RawRequest` interface to support debugging and raw endpoint inspection:
+    ```go
+    type RawRequest interface {
+    	GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error)
+    	GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error)
+    	GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+    	GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+    	GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error)
+    	GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error)
+    	GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error)
+    }
+    ```
+  * Always implement a low-level helper `RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error)` to execute signed or unsigned queries to the API, and delegate to it.
+  * Always implement a private raw endpoint helper `getRawOpenPositions(ctx context.Context, req YourPositionsRequest) ([]YourPosition, error)` to fetch raw positions directly before parsing them into the domain type in `GetOpenPositions`.
+  
+  **Example Client RawRequest & Raw Open Positions Implementation:**
+  ```go
+  // RawRequest executes a signed or unsigned HTTP request to the exchange API.
+  func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+      // 1. Build and sign query params/body
+      // 2. Perform HTTP request via c.httpClient
+      // 3. Return raw response bytes
+  }
+
+  type okxPositionsRequest struct {
+      InstType string `json:"instType"`
+      InstID   string `json:"instId,omitempty"`
+  }
+
+  func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsRequest) ([]okxPosition, error) {
+      params := make(map[string]string)
+      params["instType"] = req.InstType
+      if req.InstID != "" {
+          params["instId"] = req.InstID
+      }
+      body, err := c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions", params, nil)
+      if err != nil {
+          return nil, fmt.Errorf("failed to get raw open positions: %w", err)
+      }
+      var resp okxPositionsResponse
+      if err := json.Unmarshal(body, &resp); err != nil {
+          return nil, err
+      }
+      return resp.Data, nil
+  }
+  
+  // Implementing exchange.RawRequest interface methods...
+  func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+      return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions", params, nil)
+  }
+  ```
+
 
 ### 2. WebSocket Subscription Adapter (`ws_adapter.go`)
 Implement the `ws.ExchangeAdapter` interface from [ws/interfaces.go](file:///home/four/projects/crypto-bot/internal/infrastructure/ws/interfaces.go):

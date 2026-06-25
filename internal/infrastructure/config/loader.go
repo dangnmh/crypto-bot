@@ -49,6 +49,8 @@ func InitializeBase(c *SystemConfig) error {
 	c.ExchangeConfig.Deepcoin.APIKey = strings.TrimSpace(os.Getenv("DEEPCOIN_API_KEY"))
 	c.ExchangeConfig.Deepcoin.APISecret = strings.TrimSpace(os.Getenv("DEEPCOIN_API_SECRET"))
 	c.ExchangeConfig.Deepcoin.APIPassphrase = strings.TrimSpace(os.Getenv("DEEPCOIN_API_PASSPHRASE"))
+	c.ExchangeConfig.Toobit.APIKey = strings.TrimSpace(os.Getenv("TOOBIT_API_KEY"))
+	c.ExchangeConfig.Toobit.APISecret = strings.TrimSpace(os.Getenv("TOOBIT_API_SECRET"))
 	c.NotiConfig.TelegramChatID = strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
 	c.NotiConfig.TelegramBotToken = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	if err := applyBitwardenFallback(c); err != nil {
@@ -69,6 +71,7 @@ func InitializeBase(c *SystemConfig) error {
 		c.ExchangeConfig.Hyperliquid.Enable,
 		c.ExchangeConfig.Bitget.Enable,
 		c.ExchangeConfig.Deepcoin.Enable,
+		c.ExchangeConfig.Toobit.Enable,
 	}, true) {
 		return fmt.Errorf("at least one active exchange must be enabled")
 	}
@@ -106,6 +109,7 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Bingx, creds.BingxAPIKey, creds.BingxAPISecret, "")
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Okx, creds.OkxAPIKey, creds.OkxAPISecret, creds.OkxAPIPassphrase)
 	fallbackExchangeAPIConfig(&c.ExchangeConfig.Deepcoin, creds.DeepcoinAPIKey, creds.DeepcoinAPISecret, creds.DeepcoinAPIPassphrase)
+	fallbackExchangeAPIConfig(&c.ExchangeConfig.Toobit, creds.ToobitAPIKey, creds.ToobitAPISecret, "")
 
 	if c.NotiConfig.TelegramChatID == "" {
 		c.NotiConfig.TelegramChatID = creds.TelegramChatID
@@ -143,6 +147,7 @@ func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 		exchangeCredentialsComplete(deepcoinName, c.ExchangeConfig.Deepcoin) &&
 		exchangeCredentialsComplete(okxName, c.ExchangeConfig.Okx) &&
 		exchangeCredentialsComplete(kucoinName, c.ExchangeConfig.Kucoin) &&
+		exchangeCredentialsComplete("Toobit", c.ExchangeConfig.Toobit) &&
 		notificationCredentialsComplete(c.NotiConfig)
 }
 
@@ -204,6 +209,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	deepcoinKey, _ := loader.GetSecret("DEEPCOIN_API_KEY")
 	deepcoinSecret, _ := loader.GetSecret("DEEPCOIN_API_SECRET")
 	deepcoinPassphrase, _ := loader.GetSecret("DEEPCOIN_API_PASSPHRASE")
+	toobitKey, _ := loader.GetSecret("TOOBIT_API_KEY")
+	toobitSecret, _ := loader.GetSecret("TOOBIT_API_SECRET")
 
 	telegramChatID, err := loader.GetSecret("TELEGRAM_CHAT_ID")
 	if err != nil {
@@ -237,6 +244,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 	deepcoinKey = strings.TrimSpace(deepcoinKey)
 	deepcoinSecret = strings.TrimSpace(deepcoinSecret)
 	deepcoinPassphrase = strings.TrimSpace(deepcoinPassphrase)
+	toobitKey = strings.TrimSpace(toobitKey)
+	toobitSecret = strings.TrimSpace(toobitSecret)
 	telegramChatID = strings.TrimSpace(telegramChatID)
 	telegramBotToken = strings.TrimSpace(telegramBotToken)
 
@@ -262,6 +271,8 @@ func LoadFromBitwarden() (*bitwardenCredentials, error) {
 		DeepcoinAPIKey:        deepcoinKey,
 		DeepcoinAPISecret:     deepcoinSecret,
 		DeepcoinAPIPassphrase: deepcoinPassphrase,
+		ToobitAPIKey:          toobitKey,
+		ToobitAPISecret:       toobitSecret,
 		TelegramChatID:        telegramChatID,
 		TelegramBotToken:      telegramBotToken,
 	}, nil
@@ -348,6 +359,7 @@ func applySystemDefaults(c *SystemConfig) {
 	applyExchangeWSDefaults(&c.ExchangeConfig.Kucoin)
 	applyExchangeWSDefaults(&c.ExchangeConfig.Bingx)
 	applyExchangeWSDefaults(&c.ExchangeConfig.Deepcoin)
+	applyExchangeWSDefaults(&c.ExchangeConfig.Toobit)
 	if c.Env == "" {
 		c.Env = "dev"
 	}
@@ -391,6 +403,8 @@ type bitwardenCredentials struct {
 	DeepcoinAPIKey        string
 	DeepcoinAPISecret     string
 	DeepcoinAPIPassphrase string
+	ToobitAPIKey          string
+	ToobitAPISecret       string
 	TelegramChatID        string
 	TelegramBotToken      string
 }

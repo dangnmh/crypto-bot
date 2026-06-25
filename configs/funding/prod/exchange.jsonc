@@ -100,5 +100,16 @@
         "privateURL": "wss://stream.deepcoin.com/v1/private"
       }
     },
+    "toobit": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api.toobit.com"
+      },
+      "websocket": {
+        "publicURL": "wss://stream.toobit.com/quote/ws/v1",
+        "privateURL": "wss://stream.toobit.com",
+        "maxPairsPerWSConn": 20
+      }
+    }
   }
 }

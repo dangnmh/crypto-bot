@@ -134,6 +134,8 @@ vault kv put secret/crypto-bot \
   KUCOIN_API_PASSPHRASE="kucoin_api_passphrase_from_vault" \
   BINGX_API_KEY="bingx_api_key_from_vault" \
   BINGX_API_SECRET="bingx_api_secret_from_vault" \
+  TOOBIT_API_KEY="toobit_api_key_from_vault" \
+  TOOBIT_API_SECRET="toobit_api_secret_from_vault" \
   DATABASE_URL="postgres://postgres:postgres@postgresql:5432/postgres?sslmode=disable" \
   TELEGRAM_CHAT_ID="telegram_chat_id_from_vault" \
   TELEGRAM_BOT_TOKEN="telegram_bot_token_from_vault"

@@ -27,7 +27,7 @@ const (
 // SymbolConfig represents per-symbol trading settings loaded from funding.json.
 type SymbolConfig struct {
 	Symbol              string       `json:"symbol" validate:"required"`
-	Exchange            string       `json:"exchange" validate:"required,oneof=mexc gate bybit binance okx hyperliquid bitget kucoin bingx"`
+	Exchange            string       `json:"exchange" validate:"required,oneof=mexc gate bybit binance okx hyperliquid bitget kucoin bingx toobit"`
 	SimulateSettle      string       `json:"simulateSettle"`
 	MaxPriceDiffPercent float64      `json:"maxPriceDiffPercent"`
 	MarginUSDT          float64      `json:"marginUSDT" validate:"gt=0"`
@@ -101,6 +101,7 @@ type BlacklistConfig struct {
 	Bitget      []string `json:"bitget"`
 	Kucoin      []string `json:"kucoin"`
 	Bingx       []string `json:"bingx"`
+	Toobit      []string `json:"toobit"`
 }
 
 func (b *BlacklistConfig) GetExchangeBlacklist(exchange string) []string {
@@ -126,6 +127,8 @@ func (b *BlacklistConfig) GetExchangeBlacklist(exchange string) []string {
 		return b.Kucoin
 	case "bingx":
 		return b.Bingx
+	case "toobit":
+		return b.Toobit
 	default:
 		return nil
 	}

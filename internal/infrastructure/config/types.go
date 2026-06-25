@@ -118,6 +118,7 @@ type ExchangeConfig struct {
 	Kucoin      APIConfig `json:"kucoin" validate:"api_config"`
 	Bingx       APIConfig `json:"bingx" validate:"api_config"`
 	Deepcoin    APIConfig `json:"deepcoin" validate:"api_config"`
+	Toobit      APIConfig `json:"toobit" validate:"api_config"`
 }
 
 type NotiConfig struct {

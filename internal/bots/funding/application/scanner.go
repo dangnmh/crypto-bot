@@ -227,7 +227,7 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 	if err := j.engine.Bus.Publish(reversion.TopicReversionCandidate, startEvt); err != nil {
 		j.log.Error("Failed to publish reversion candidate event", slog.Any("error", err))
 	} else {
-		j.log.Error("Reversion candidate event successfully published", slog.Time("settle", settle))
+		j.log.Info("Reversion candidate event successfully published", slog.Time("settle", settle))
 	}
 }
 

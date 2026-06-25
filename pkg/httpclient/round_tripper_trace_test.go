@@ -33,14 +33,8 @@ func newTraceTestServer(t *testing.T, expectedID string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, expectedID, r.Header.Get("X-Request-ID"))
-		assert.Equal(t, expectedID, r.Header.Get("req_id"))
-		assert.Equal(t, expectedID, r.Header.Get("request_id"))
-		assert.Equal(t, expectedID, r.Header.Get("requestid"))
 
 		assertHeaderCasePreserved(t, r.Header, "X-Request-ID", expectedID)
-		assertHeaderCasePreserved(t, r.Header, "req_id", expectedID)
-		assertHeaderCasePreserved(t, r.Header, "request_id", expectedID)
-		assertHeaderCasePreserved(t, r.Header, "requestid", expectedID)
 
 		w.WriteHeader(http.StatusOK)
 	}))

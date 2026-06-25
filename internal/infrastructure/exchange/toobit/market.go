@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 )
 
 type toobitTicker struct {
@@ -38,51 +37,126 @@ type toobitFundingRate struct {
 	FundingRateFloor string      `json:"fundingRateFloor"`
 }
 
-func (c *Client) request(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {
-	reqURL, err := url.Parse(c.baseURL + path)
+type serverTimeResponse struct {
+	ServerTime int64 `json:"serverTime"`
+}
+
+// GetServerTime returns the server millisecond timestamp.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	body, err := c.request(ctx, http.MethodGet, "/api/v1/time", nil, false)
 	if err != nil {
-		return nil, fmt.Errorf("parse url: %w", err)
+		return 0, err
+	}
+	var resp serverTimeResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0, fmt.Errorf("unmarshal server time: %w", err)
+	}
+	return resp.ServerTime, nil
+}
+
+type toobitExchangeInfo struct {
+	Contracts []toobitContract `json:"contracts"`
+	Symbols   []toobitContract `json:"symbols"` // fallback
+}
+
+type toobitContract struct {
+	Symbol             string         `json:"symbol"`
+	BaseAsset          string         `json:"baseAsset"`
+	QuoteAsset         string         `json:"quoteAsset"`
+	MarginAsset        string         `json:"marginAsset"`
+	ContractMultiplier string         `json:"contractMultiplier"`
+	Filters            []toobitFilter `json:"filters"`
+}
+
+type toobitFilter struct {
+	FilterType string `json:"filterType"`
+	TickSize   string `json:"tickSize,omitempty"`
+	StepSize   string `json:"stepSize,omitempty"`
+	MinQty     string `json:"minQty,omitempty"`
+	MinPrice   string `json:"minPrice,omitempty"`
+}
+
+// GetContractDetails returns contracts specs.
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+	body, err := c.request(ctx, http.MethodGet, "/api/v1/exchangeInfo", nil, false)
+	if err != nil {
+		return nil, err
+	}
+	var resp toobitExchangeInfo
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal exchange info: %w", err)
 	}
 
-	if len(query) > 0 {
-		q := reqURL.Query()
-		for k, v := range query {
-			q.Set(k, v)
+	contracts := resp.Contracts
+	if len(contracts) == 0 {
+		contracts = resp.Symbols
+	}
+
+	details := make([]exchange.ContractDetail, 0, len(contracts))
+	for i := range contracts {
+		raw := &contracts[i]
+
+		priceUnit := 0.0
+		minVol := 0.0
+		stepSize := 0.0
+		tickSizeStr := ""
+		stepSizeStr := ""
+
+		for _, f := range raw.Filters {
+			switch f.FilterType {
+			case "PRICE_FILTER":
+				priceUnit = decmath.ParseFloat(f.TickSize)
+				tickSizeStr = f.TickSize
+			case "LOT_SIZE":
+				minVol = decmath.ParseFloat(f.MinQty)
+				stepSize = decmath.ParseFloat(f.StepSize)
+				stepSizeStr = f.StepSize
+			}
 		}
-		reqURL.RawQuery = q.Encode()
+
+		priceScale := decmath.DecimalPlaces(tickSizeStr)
+		volScale := decmath.DecimalPlaces(stepSizeStr)
+
+		multiplier := 1.0
+		if raw.ContractMultiplier != "" {
+			multiplier = decmath.ParseFloat(raw.ContractMultiplier)
+		}
+
+		displayName := raw.Symbol
+		displayName = strings.ReplaceAll(displayName, "-SWAP", "")
+		displayName = strings.ReplaceAll(displayName, "-", "")
+		displayName = strings.ReplaceAll(displayName, "_", "")
+
+		details = append(details, exchange.ContractDetail{
+			Symbol:        raw.Symbol,
+			DisplayName:   displayName,
+			DisplayNameEn: displayName,
+			BaseCoin:      raw.BaseAsset,
+			QuoteCoin:     raw.QuoteAsset,
+			SettleCoin:    raw.MarginAsset,
+			ContractSize:  multiplier,
+			MinLeverage:   1,
+			MaxLeverage:   100,
+			PriceUnit:     priceUnit,
+			MinVol:        int(minVol),
+			VolUnit:       int(stepSize),
+			PriceScale:    priceScale,
+			VolScale:      volScale,
+			State:         1,
+		})
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	return body, nil
+	return details, nil
 }
 
 // GetTickers returns 24hr ticker price change statistics for all or a specific symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	query := make(map[string]string)
 	if symbol != "" {
-		query["symbol"] = toToobitSymbol(symbol)
+		query["symbol"] = symbol
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/quote/v1/contract/ticker/24hr", query)
+	body, err := c.request(ctx, http.MethodGet, "/quote/v1/contract/ticker/24hr", query, false)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +176,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		amt, _ := strconv.ParseFloat(item.Qv, 64)
 
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:       toStandardSymbol(item.S),
+			Symbol:       item.S,
 			LastPrice:    last,
 			Bid1:         bid,
 			Ask1:         ask,
@@ -121,7 +195,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/fundingRate", nil)
+	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/fundingRate", nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -135,14 +209,12 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	rateMap := make(map[string]*toobitFundingRate)
 	for i := range rawList {
 		item := &rawList[i]
-		stdSym := toStandardSymbol(item.Symbol)
-		rateMap[stdSym] = item
+		rateMap[item.Symbol] = item
 	}
 
 	results := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		stdSym := toStandardSymbol(sym)
-		item, exists := rateMap[stdSym]
+		item, exists := rateMap[sym]
 		if !exists {
 			continue
 		}
@@ -160,28 +232,6 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	return results, nil
 }
 
-func toToobitSymbol(s string) string {
-	upper := strings.ToUpper(s)
-	if strings.Contains(upper, "SWAP") {
-		return upper
-	}
-	if before, ok := strings.CutSuffix(upper, "USDT"); ok {
-		return before + "-SWAP-USDT"
-	}
-	if before, ok := strings.CutSuffix(upper, "USDC"); ok {
-		return before + "-SWAP-USDC"
-	}
-	return upper
-}
-
-func toStandardSymbol(s string) string {
-	upper := strings.ToUpper(s)
-	upper = strings.ReplaceAll(upper, "-SWAP", "")
-	upper = strings.ReplaceAll(upper, "-", "")
-	upper = strings.ReplaceAll(upper, "_", "")
-	return upper
-}
-
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -195,19 +245,20 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
-		whitelistMap[toStandardSymbol(sym)] = true
+		whitelistMap[sym] = true
 	}
 
 	blacklistMap := make(map[string]bool)
 	for _, sym := range blacklist {
-		blacklistMap[toStandardSymbol(sym)] = true
+		blacklistMap[sym] = true
 	}
 
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for _, t := range tickers {
-		stdSym := toStandardSymbol(t.Symbol)
+		stdSym := t.Symbol
 		if blacklistMap[stdSym] {
 			continue
 		}
@@ -223,6 +274,7 @@ func (c *Client) GetPotentialFundingSymbols(
 
 		filteredSymbols = append(filteredSymbols, t.Symbol)
 		volMap[stdSym] = t.AmountUSDT24
+		priceMap[stdSym] = t.LastPrice
 	}
 
 	if len(filteredSymbols) == 0 {
@@ -236,12 +288,13 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	var results []exchange.PotentialFundingResult
 	for _, r := range rates {
-		stdSym := toStandardSymbol(r.Symbol)
+		stdSym := r.Symbol
 		results = append(results, exchange.PotentialFundingResult{
 			Symbol:     r.Symbol,
 			Rate:       r.Rate,
 			SettleTime: r.SettleTime,
 			Volume24h:  volMap[stdSym],
+			Price:      priceMap[stdSym],
 		})
 	}
 

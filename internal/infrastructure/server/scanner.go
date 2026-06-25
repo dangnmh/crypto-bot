@@ -23,6 +23,7 @@ type Opportunity struct {
 	FundingRate    float64 `json:"fundingRate"`
 	NextSettleTime int64   `json:"nextSettleTime"`
 	Volume24h      float64 `json:"volume24h"`
+	Price          float64 `json:"price"`
 }
 
 type SymbolGroup struct {
@@ -145,6 +146,7 @@ func (s *APIServer) fetchOpportunities(ctx context.Context, providers map[string
 					FundingRate:    r.Rate,
 					NextSettleTime: nextSettle,
 					Volume24h:      r.Volume24h,
+					Price:          r.Price,
 				})
 			}
 
@@ -245,6 +247,7 @@ type potentialFundingResult struct {
 	Rate       float64
 	SettleTime int64
 	Volume24h  float64
+	Price      float64
 }
 
 func getPotentialFundingSymbols(
@@ -265,6 +268,7 @@ func getPotentialFundingSymbols(
 
 	var filteredSymbols []string
 	volMap := make(map[string]float64)
+	priceMap := make(map[string]float64)
 
 	for _, t := range tickers {
 		if blacklistMap[t.Symbol] {
@@ -277,6 +281,7 @@ func getPotentialFundingSymbols(
 
 		filteredSymbols = append(filteredSymbols, t.Symbol)
 		volMap[t.Symbol] = vol
+		priceMap[t.Symbol] = t.LastPrice
 	}
 
 	if len(filteredSymbols) == 0 {
@@ -295,6 +300,7 @@ func getPotentialFundingSymbols(
 			Rate:       r.Rate,
 			SettleTime: r.SettleTime,
 			Volume24h:  volMap[r.Symbol],
+			Price:      priceMap[r.Symbol],
 		})
 	}
 
