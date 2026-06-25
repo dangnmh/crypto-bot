@@ -103,6 +103,10 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		"side":   positionSide,
 	}
 
+	if orderInfo.CreateTime > 0 {
+		params["startTime"] = strconv.FormatInt(orderInfo.CreateTime, 10)
+	}
+
 	body, err := c.GetHistoryPositionsRaw(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("query closed position history failed: %w", err)
@@ -138,7 +142,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		}
 	}
 
-	fundingFee, err := c.getHoldFee(ctx, symbol, xjson.ToInt64(row.OpenTime))
+	fundingFee, err := c.getHoldFee(ctx, symbol, orderInfo.CreateTime)
 	if err != nil {
 		c.logger.Debug("failed to fetch funding fee", "error", err)
 	}
