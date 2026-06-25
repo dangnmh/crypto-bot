@@ -119,10 +119,6 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 
 	row := histData[0]
 
-	if xjson.ToInt64(row.CloseTime) < orderInfo.CreateTime-10000 {
-		return nil, fmt.Errorf("query closed pnl failed: position record not yet closed/finalized in history (found stale record closed at %d, order created at %d)", xjson.ToInt64(row.CloseTime), orderInfo.CreateTime)
-	}
-
 	entryPrice, _ := strconv.ParseFloat(row.OpenAvgPrice, 64)
 	exitPrice, _ := strconv.ParseFloat(row.CloseAvgPrice, 64)
 	closedSize, _ := strconv.ParseFloat(row.CloseTotalQty, 64)
