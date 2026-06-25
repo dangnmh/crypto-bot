@@ -85,7 +85,13 @@ Open [tools/scanner/main.go](file:///home/four/projects/crypto-bot/tools/scanner
 2. Instantiate the client using the public REST API base URL.
 3. Register the client instance in the `allClients` map.
 
-### Step 5: Verify the Scanner Integration
+### Step 5: Register in the Symbol Counter Tool
+Open [tools/symbol_counter/main.go](file:///home/four/projects/crypto-bot/tools/symbol_counter/main.go) and:
+1. Import your new exchange client package.
+2. Instantiate the client using the public REST API base URL.
+3. Register the client instance in the `clients` map.
+
+### Step 6: Verify the Scanner Integration
 To verify that the newly added exchange client works correctly and fetches active market data, run the scanner tool specifically targeting your exchange and setting the minimum funding rate threshold to `0`:
 
 ```bash
@@ -93,6 +99,15 @@ make scan/funding exchanges=<your_exchange_name_lowercase> minFundingRate=0
 ```
 
 Verify that the output is displayed as a formatted table containing standardized symbols, real-time funding rates, settlement countdowns, and 24-hour volume statistics.
+
+### Step 7: Verify the Symbol Counter Integration
+To verify that the newly added exchange client counts symbols correctly, run:
+
+```bash
+go run ./tools/symbol_counter/main.go
+```
+
+Verify that the output table contains your new exchange, active symbols count, the method used (e.g. `GetPotentialFundingSymbols` or `GetContractDetails`), and a status of `SUCCESS`.
 
 ---
 
