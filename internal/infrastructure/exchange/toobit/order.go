@@ -14,6 +14,8 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	"github.com/google/uuid"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type toobitResponse[T any] struct {
@@ -41,7 +43,7 @@ func parseResponse[T any](body []byte) (T, error) {
 	trimmed := strings.TrimSpace(string(body))
 	if strings.HasPrefix(trimmed, "[") {
 		var data T
-		if err := json.Unmarshal(body, &data); err != nil {
+		if err := xjson.Unmarshal(body, &data); err != nil {
 			var zero T
 			return zero, fmt.Errorf("unmarshal raw array: %w", err)
 		}
@@ -49,10 +51,10 @@ func parseResponse[T any](body []byte) (T, error) {
 	}
 
 	var rawMap map[string]any
-	if err := json.Unmarshal(body, &rawMap); err == nil {
+	if err := xjson.Unmarshal(body, &rawMap); err == nil {
 		if _, hasCode := rawMap["code"]; hasCode {
 			var envelope toobitResponse[T]
-			if err := json.Unmarshal(body, &envelope); err != nil {
+			if err := xjson.Unmarshal(body, &envelope); err != nil {
 				var zero T
 				return zero, fmt.Errorf("unmarshal envelope: %w", err)
 			}
@@ -67,7 +69,7 @@ func parseResponse[T any](body []byte) (T, error) {
 	}
 
 	var data T
-	if err := json.Unmarshal(body, &data); err != nil {
+	if err := xjson.Unmarshal(body, &data); err != nil {
 		var zero T
 		return zero, fmt.Errorf("unmarshal raw object: %w", err)
 	}

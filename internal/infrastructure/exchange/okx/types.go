@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // APIResponse is the generic OKX V5 REST response envelope.
@@ -20,7 +22,7 @@ type APIResponse[T any] struct {
 // checks for API-level errors (code != "0"), and returns the typed Data array.
 func ParseResponse[T any](body []byte, path string) ([]T, error) {
 	var resp APIResponse[T]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse %s response: %w", path, err)
 	}
 	if resp.Code != "0" {
@@ -49,7 +51,7 @@ func ParseResponseFirst[T any](body []byte, path string) (T, error) {
 // but discards the data payload.
 func ParseResponseIgnoreData(body []byte, path string) error {
 	var resp APIResponse[json.RawMessage]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("parse %s response: %w", path, err)
 	}
 	if resp.Code != "0" {
@@ -81,7 +83,7 @@ func toHTTPError(statusCode int, body []byte, path string) *exchange.APIError {
 		Code string `json:"code"`
 		Msg  string `json:"msg"`
 	}
-	if err := json.Unmarshal(body, &resp); err == nil && resp.Code != "" {
+	if err := xjson.Unmarshal(body, &resp); err == nil && resp.Code != "" {
 		var codeVal int
 		if _, err := fmt.Sscanf(resp.Code, "%d", &codeVal); err == nil {
 			apiErr.Code = codeVal

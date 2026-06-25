@@ -2,7 +2,6 @@ package krakenfutures
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type krakenTickersResponse struct {
@@ -105,7 +106,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	var resp krakenTickersResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal kraken tickers: %w", err)
 	}
 

@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +22,8 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the Binance USD-M Futures REST API client.
@@ -148,7 +149,7 @@ func (c *Client) request(ctx context.Context, method, path string, params map[st
 	}
 
 	if result != nil {
-		if err := json.Unmarshal(body, result); err != nil {
+		if err := xjson.Unmarshal(body, result); err != nil {
 			return fmt.Errorf("unmarshal response: %w (body=%s)", err, string(body))
 		}
 	}

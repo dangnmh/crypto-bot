@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +22,8 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the Bybit V5 Perpetual Futures REST API client.
@@ -193,7 +194,7 @@ type bybitResponse[T any] struct {
 
 func parseResponse[T any](body []byte, errPrefix string) (T, error) {
 	var resp bybitResponse[T]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		var zero T
 		return zero, fmt.Errorf("%s json unmarshal: %w", errPrefix, err)
 	}
@@ -208,7 +209,7 @@ func decodeListResponse[T any](body []byte, errPrefix string) ([]T, error) {
 	var resp bybitResponse[struct {
 		List []T `json:"list"`
 	}]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("%s json unmarshal: %w", errPrefix, err)
 	}
 	if resp.RetCode != 0 {
@@ -306,5 +307,5 @@ func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) (
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(info)
+	return xjson.Marshal(info)
 }

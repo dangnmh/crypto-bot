@@ -16,6 +16,8 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for MEXC Futures.
@@ -169,7 +171,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		var baseMsg struct {
 			Channel string `json:"channel"`
 		}
-		if err := json.Unmarshal(data, &baseMsg); err == nil {
+		if err := xjson.Unmarshal(data, &baseMsg); err == nil {
 			return mapMexcChannel(baseMsg.Channel)
 		}
 		return ""
@@ -197,12 +199,12 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		Symbol string          `json:"symbol"`
 		Data   json.RawMessage `json:"data"`
 	}
-	if err = json.Unmarshal(data, &msg); err != nil {
+	if err = xjson.Unmarshal(data, &msg); err != nil {
 		return "", nil, err
 	}
 
 	var ticker WsTickerData
-	if err = json.Unmarshal(msg.Data, &ticker); err != nil {
+	if err = xjson.Unmarshal(msg.Data, &ticker); err != nil {
 		return "", nil, err
 	}
 
@@ -231,7 +233,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	var msg struct {
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 
@@ -241,7 +243,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		PositionID json.RawMessage `json:"positionId"`
 	}
 
-	if err := json.Unmarshal(msg.Data, &raw); err != nil {
+	if err := xjson.Unmarshal(msg.Data, &raw); err != nil {
 		return nil, err
 	}
 

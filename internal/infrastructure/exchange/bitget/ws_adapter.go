@@ -2,7 +2,6 @@ package bitget
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -15,6 +14,8 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const msgPong = "pong"
@@ -195,7 +196,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		BaseVolume string `json:"baseVolume"`
 	}
 
-	if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+	if err := xjson.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
 		return "", nil, fmt.Errorf("parse ticker data node: %w", err)
 	}
 
@@ -256,7 +257,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	if channel == channelPositionsHistory {
 		var dataArr []bitgetHistoryPositionWs
-		if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+		if err := xjson.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
 			return nil, fmt.Errorf("parse history position data: %w", err)
 		}
 
@@ -292,7 +293,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	var dataArr []bitgetPosition
-	if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+	if err := xjson.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
 		return nil, fmt.Errorf("parse position data: %w", err)
 	}
 

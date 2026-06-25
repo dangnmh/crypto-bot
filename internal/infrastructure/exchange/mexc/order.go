@@ -9,6 +9,8 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -156,7 +158,7 @@ func (c *Client) changeRawLeverage(ctx context.Context, req mexcChangeLeverageRe
 
 func parseCancelOrdersResponse(body []byte) ([]mexcCancelOrderResult, error) {
 	var raw APIResponse[json.RawMessage]
-	if err := json.Unmarshal(body, &raw); err != nil {
+	if err := xjson.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("parse cancel_orders response: %w", err)
 	}
 	if !raw.Success {
@@ -166,7 +168,7 @@ func parseCancelOrdersResponse(body []byte) ([]mexcCancelOrderResult, error) {
 		return nil, nil
 	}
 	var results []mexcCancelOrderResult
-	if err := json.Unmarshal(raw.Data, &results); err != nil {
+	if err := xjson.Unmarshal(raw.Data, &results); err != nil {
 		return nil, fmt.Errorf("parse cancel_orders data: %w", err)
 	}
 	return results, nil

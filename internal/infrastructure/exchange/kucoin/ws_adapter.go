@@ -2,7 +2,6 @@ package kucoin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for KuCoin Futures.
@@ -181,7 +182,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	}
 
 	var raw wsTicker
-	if err := json.Unmarshal(dataNode, &raw); err != nil {
+	if err := xjson.Unmarshal(dataNode, &raw); err != nil {
 		return "", nil, err
 	}
 

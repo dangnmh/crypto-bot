@@ -2,7 +2,6 @@ package kucoin
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type kucoinCreateOrderRequest struct {
@@ -89,7 +90,7 @@ func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderReques
 	if req.TriggerStopUpPrice != "" || req.TriggerStopDownPrice != "" {
 		path = "/api/v1/st-orders"
 	}
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("kucoin marshal create order request: %w", err)
 	}
@@ -447,7 +448,7 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 		bodyMap["triggerStopDownPrice"] = decmath.FormatFloat(stopDownPrice)
 	}
 
-	bodyBytes, err := json.Marshal(bodyMap)
+	bodyBytes, err := xjson.Marshal(bodyMap)
 	if err != nil {
 		return fmt.Errorf("kucoin marshal place tpsl request: %w", err)
 	}
@@ -517,7 +518,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		paramSymbol:  symbol,
 		"marginMode": marginMode,
 	}
-	bodyBytes, err := json.Marshal(bodyMap)
+	bodyBytes, err := xjson.Marshal(bodyMap)
 	if err != nil {
 		return fmt.Errorf("kucoin marshal switch margin mode request: %w", err)
 	}

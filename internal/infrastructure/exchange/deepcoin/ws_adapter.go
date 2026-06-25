@@ -2,7 +2,6 @@ package deepcoin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type WsAdapter struct {
@@ -130,7 +131,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 				Table string `json:"table"`
 			} `json:"result"`
 		}
-		if err := json.Unmarshal(data, &topicCheck); err == nil {
+		if err := xjson.Unmarshal(data, &topicCheck); err == nil {
 			if topicCheck.Topic == wsTopicMarket || topicCheck.A == "PO" {
 				return "ticker"
 			}
@@ -161,7 +162,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 			V   flexString `json:"V"`
 		} `json:"d"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return "", nil, err
 	}
 
@@ -213,7 +214,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 			} `json:"data"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 	if len(msg.Result) == 0 {

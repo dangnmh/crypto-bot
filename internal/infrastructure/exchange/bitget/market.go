@@ -9,6 +9,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -71,7 +73,7 @@ func (c *Client) getRawServerTime(ctx context.Context, _ bitgetServerTimeRequest
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse server time response: %w", err)
 	}
 	if resp.Code != "00000" {
@@ -135,7 +137,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	}
 
 	var strVal string
-	if err := json.Unmarshal(data, &strVal); err == nil {
+	if err := xjson.Unmarshal(data, &strVal); err == nil {
 		val, err := strconv.ParseInt(strVal, 10, 64)
 		if err == nil {
 			return val, nil
@@ -143,7 +145,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	}
 
 	var numVal int64
-	if err := json.Unmarshal(data, &numVal); err == nil {
+	if err := xjson.Unmarshal(data, &numVal); err == nil {
 		return numVal, nil
 	}
 

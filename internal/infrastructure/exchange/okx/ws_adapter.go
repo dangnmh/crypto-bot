@@ -14,6 +14,8 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for OKX V5.
@@ -206,11 +208,11 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 
 	// OKX data is an array of objects
 	var dataArr []json.RawMessage
-	if err := json.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+	if err := xjson.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
 		return "", nil, fmt.Errorf("parse ticker data node: %w", err)
 	}
 
-	if err := json.Unmarshal(dataArr[0], &rawTicker); err != nil {
+	if err := xjson.Unmarshal(dataArr[0], &rawTicker); err != nil {
 		return "", nil, err
 	}
 
@@ -243,7 +245,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	var dataArr []okxPosition
-	if err := json.Unmarshal(dataNode, &dataArr); err != nil {
+	if err := xjson.Unmarshal(dataNode, &dataArr); err != nil {
 		return nil, fmt.Errorf("parse position data: %w", err)
 	}
 	if len(dataArr) == 0 {

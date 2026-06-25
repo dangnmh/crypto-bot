@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type weexTicker struct {
@@ -93,7 +95,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	var rawList []weexTicker
-	if err := json.Unmarshal(body, &rawList); err != nil {
+	if err := xjson.Unmarshal(body, &rawList); err != nil {
 		return nil, fmt.Errorf("unmarshal tickers: %w", err)
 	}
 
@@ -133,7 +135,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	var rawList []weexPremiumIndex
-	if err := json.Unmarshal(body, &rawList); err != nil {
+	if err := xjson.Unmarshal(body, &rawList); err != nil {
 		return nil, fmt.Errorf("unmarshal funding rates: %w", err)
 	}
 

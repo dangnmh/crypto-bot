@@ -2,7 +2,6 @@ package bingx
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +19,8 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the BingX Futures Swap V2 REST API client.
@@ -186,10 +187,10 @@ func (c *Client) requestCtx(ctx context.Context, method, path string, params map
 	maps.Copy(allParams, params)
 
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		bodyBytes, err := xjson.Marshal(body)
 		if err == nil {
 			var m map[string]any
-			if err := json.Unmarshal(bodyBytes, &m); err == nil {
+			if err := xjson.Unmarshal(bodyBytes, &m); err == nil {
 				for k, v := range m {
 					allParams[k] = fmt.Sprintf("%v", v)
 				}

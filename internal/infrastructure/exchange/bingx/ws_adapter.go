@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +18,8 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for BingX Futures.
@@ -220,7 +221,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 			AQty string `json:"A"` // Best ask qty
 		}
 		var raw wsBookTicker
-		if err := json.Unmarshal(dataNode, &raw); err != nil {
+		if err := xjson.Unmarshal(dataNode, &raw); err != nil {
 			return "", nil, fmt.Errorf("unmarshal bookTicker push: %w", err)
 		}
 		bid = decmath.ParseFloat(raw.B)
@@ -247,7 +248,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 			IgnoredA any `json:"a"` // Matches "a" ask quantity exactly
 		}
 		var raw ws24hTicker
-		if err := json.Unmarshal(dataNode, &raw); err != nil {
+		if err := xjson.Unmarshal(dataNode, &raw); err != nil {
 			return "", nil, fmt.Errorf("unmarshal ticker push: %w", err)
 		}
 
@@ -283,7 +284,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 			} `json:"P"`
 		} `json:"a"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 

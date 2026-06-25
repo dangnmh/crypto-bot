@@ -2,7 +2,6 @@ package batonex
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type batonexTicker struct {
@@ -75,12 +76,12 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	var rawTickers []batonexTicker
 	if symbol != "" {
 		var single batonexTicker
-		if err := json.Unmarshal(body, &single); err != nil {
+		if err := xjson.Unmarshal(body, &single); err != nil {
 			return nil, fmt.Errorf("unmarshal single ticker: %w", err)
 		}
 		rawTickers = []batonexTicker{single}
 	} else {
-		if err := json.Unmarshal(body, &rawTickers); err != nil {
+		if err := xjson.Unmarshal(body, &rawTickers); err != nil {
 			return nil, fmt.Errorf("unmarshal tickers: %w", err)
 		}
 	}
@@ -135,7 +136,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	var rawList []batonexContract
-	if err := json.Unmarshal(body, &rawList); err != nil {
+	if err := xjson.Unmarshal(body, &rawList); err != nil {
 		return nil, fmt.Errorf("unmarshal contracts: %w", err)
 	}
 

@@ -1,9 +1,10 @@
 package deepcoin
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const (
@@ -45,7 +46,7 @@ type flexString string
 
 func (f *flexString) UnmarshalJSON(data []byte) error {
 	var val any
-	if err := json.Unmarshal(data, &val); err != nil {
+	if err := xjson.Unmarshal(data, &val); err != nil {
 		return err
 	}
 	switch v := val.(type) {
@@ -73,7 +74,7 @@ type APIResponse[T any] struct {
 // ParseResponse parses a JSON response where the 'data' field is a list.
 func ParseResponse[T any](body []byte, desc string) ([]T, error) {
 	var resp APIResponse[[]T]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse %s response: %w", desc, err)
 	}
 	if resp.Code != "0" {
@@ -86,7 +87,7 @@ func ParseResponse[T any](body []byte, desc string) ([]T, error) {
 func ParseResponseFirst[T any](body []byte, desc string) (T, error) {
 	var resp APIResponse[T]
 	var zero T
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return zero, fmt.Errorf("parse %s response: %w", desc, err)
 	}
 	if resp.Code != "0" {

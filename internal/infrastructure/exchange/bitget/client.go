@@ -3,7 +3,6 @@ package bitget
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +19,8 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the Bitget V2 Futures REST API client.
@@ -165,7 +166,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 	var bodyReader io.Reader
 	var bodyStr string
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		bodyBytes, err := xjson.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal POST body: %w", err)
 		}

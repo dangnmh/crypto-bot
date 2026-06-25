@@ -3,7 +3,6 @@ package mexc
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +18,8 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the MEXC Futures REST API client with connection pooling.
@@ -118,7 +119,7 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 	var bodyBytes []byte
 	if body != nil {
 		var err error
-		bodyBytes, err = json.Marshal(body)
+		bodyBytes, err = xjson.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal POST body: %w", err)
 		}
@@ -279,5 +280,5 @@ func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) (
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(info)
+	return xjson.Marshal(info)
 }

@@ -2,7 +2,6 @@ package toobit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -26,7 +25,7 @@ func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
 		return "", err
 	}
 	var res toobitListenKey
-	if err := json.Unmarshal(body, &res); err != nil {
+	if err := xjson.Unmarshal(body, &res); err != nil {
 		return "", fmt.Errorf("unmarshal listenKey: %w", err)
 	}
 	return res.ListenKey, nil

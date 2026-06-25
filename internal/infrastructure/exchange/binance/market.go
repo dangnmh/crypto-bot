@@ -2,7 +2,6 @@ package binance
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -93,12 +94,12 @@ func getRawList[T any](c *Client, ctx context.Context, path, symbol, label strin
 
 	var list []T
 	if len(body) > 0 && body[0] == '[' {
-		if err := json.Unmarshal(body, &list); err != nil {
+		if err := xjson.Unmarshal(body, &list); err != nil {
 			return nil, err
 		}
 	} else {
 		var single T
-		if err := json.Unmarshal(body, &single); err != nil {
+		if err := xjson.Unmarshal(body, &single); err != nil {
 			return nil, err
 		}
 		list = []T{single}

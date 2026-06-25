@@ -7,6 +7,8 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // APIResponse is the generic MEXC Futures REST response envelope.
@@ -22,7 +24,7 @@ type APIResponse[T any] struct {
 // This replaces the repetitive unmarshal+check pattern across all API methods.
 func ParseResponse[T any](body []byte, path string) (T, error) {
 	var resp APIResponse[T]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		var zero T
 		return zero, fmt.Errorf("parse %s response: %w", path, err)
 	}
@@ -37,7 +39,7 @@ func ParseResponse[T any](body []byte, path string) (T, error) {
 // but discards the data payload. Used for void-return operations (cancel, close).
 func ParseResponseIgnoreData(body []byte, path string) error {
 	var resp APIResponse[json.RawMessage]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("parse %s response: %w", path, err)
 	}
 	if !resp.Success {

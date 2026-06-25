@@ -15,6 +15,8 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Toobit.
@@ -162,7 +164,7 @@ func extractArrayChannel(data []byte) string {
 		Event     string      `json:"e"`
 		EventTime json.Number `json:"E"`
 	}
-	if err := json.Unmarshal(data, &list); err != nil {
+	if err := xjson.Unmarshal(data, &list); err != nil {
 		slog.Error("unmarshal extractArrayChannel error", slog.String("exchange", "toobit"), slog.Any("error", err), slog.String("data", string(data)))
 		return ""
 	}
@@ -180,7 +182,7 @@ func extractObjectChannel(data []byte) string {
 		Topic string `json:"topic"`
 		Event string `json:"event"`
 	}
-	if err := json.Unmarshal(data, &msg); err == nil {
+	if err := xjson.Unmarshal(data, &msg); err == nil {
 		if msg.Topic == topicBookTicker || msg.Topic == topicRealtimes {
 			return channelTicker
 		}
@@ -210,7 +212,7 @@ func (a *WsAdapter) handleBookTicker(sym string, rawData json.RawMessage) (strin
 	}
 
 	var bt wsBookTickerData
-	if err := json.Unmarshal(rawData, &bt); err != nil {
+	if err := xjson.Unmarshal(rawData, &bt); err != nil {
 		return "", nil, fmt.Errorf("unmarshal bookTicker data: %w", err)
 	}
 
@@ -242,7 +244,7 @@ func (a *WsAdapter) handleBookTicker(sym string, rawData json.RawMessage) (strin
 // handleRealtimes parses and merges realtimes data.
 func (a *WsAdapter) handleRealtimes(sym string, rawData json.RawMessage) (string, *store.PriceData, error) {
 	var list []wsRealtimesData
-	if err := json.Unmarshal(rawData, &list); err != nil {
+	if err := xjson.Unmarshal(rawData, &list); err != nil {
 		return "", nil, fmt.Errorf("unmarshal realtimes data: %w", err)
 	}
 	if len(list) == 0 {
@@ -285,7 +287,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 		Symbol string          `json:"symbol"`
 		Data   json.RawMessage `json:"data"`
 	}
-	if err := json.Unmarshal(data, &basic); err != nil {
+	if err := xjson.Unmarshal(data, &basic); err != nil {
 		return "", nil, fmt.Errorf("unmarshal ticker basic: %w", err)
 	}
 
@@ -321,7 +323,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	var list []wsPositionData
-	if err := json.Unmarshal(data, &list); err != nil {
+	if err := xjson.Unmarshal(data, &list); err != nil {
 		return nil, fmt.Errorf("unmarshal position: %w", err)
 	}
 	if len(list) == 0 {

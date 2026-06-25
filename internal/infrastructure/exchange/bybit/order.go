@@ -2,7 +2,6 @@ package bybit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -98,7 +99,7 @@ type bybitOrder struct {
 // Private raw methods invoking the Bybit API.
 
 func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("bybit create order marshal: %w", err)
 	}
@@ -114,7 +115,7 @@ func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest
 }
 
 func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit set trading stop marshal: %w", err)
 	}
@@ -127,7 +128,7 @@ func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) er
 }
 
 func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest) error {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit cancel order marshal: %w", err)
 	}
@@ -136,7 +137,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest
 		return fmt.Errorf("bybit cancel order: %w", err)
 	}
 	var resp bybitResponse[any]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit cancel order json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {
@@ -149,7 +150,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest
 }
 
 func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllOpenOrdersRequest) error {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit cancel all orders marshal: %w", err)
 	}
@@ -209,7 +210,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 }
 
 func (c *Client) changeRawLeverage(ctx context.Context, req bybitChangeLeverageRequest) error {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit change leverage marshal: %w", err)
 	}
@@ -218,7 +219,7 @@ func (c *Client) changeRawLeverage(ctx context.Context, req bybitChangeLeverageR
 		return fmt.Errorf("bybit change leverage: %w", err)
 	}
 	var resp bybitResponse[any]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit change leverage json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 && resp.RetCode != 110043 {
@@ -447,7 +448,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		"buyLeverage":  leverageStr,
 		"sellLeverage": leverageStr,
 	}
-	bodyBytes, err := json.Marshal(params)
+	bodyBytes, err := xjson.Marshal(params)
 	if err != nil {
 		return fmt.Errorf("bybit switch margin mode marshal: %w", err)
 	}
@@ -456,7 +457,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		return fmt.Errorf("bybit switch margin mode: %w", err)
 	}
 	var resp bybitResponse[any]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit switch margin mode json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {
@@ -481,7 +482,7 @@ func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string)
 	utaParams := map[string]any{
 		paramSetMarginMode: utaMarginMode,
 	}
-	bodyBytes, err := json.Marshal(utaParams)
+	bodyBytes, err := xjson.Marshal(utaParams)
 	if err != nil {
 		return fmt.Errorf("bybit set account margin mode marshal: %w", err)
 	}
@@ -490,7 +491,7 @@ func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string)
 		return fmt.Errorf("bybit set account margin mode: %w", err)
 	}
 	var resp bybitResponse[any]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit set account margin mode json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {
@@ -515,7 +516,7 @@ func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, position
 		"mode":      mode,
 	}
 
-	bodyBytes, err := json.Marshal(params)
+	bodyBytes, err := xjson.Marshal(params)
 	if err != nil {
 		return fmt.Errorf("bybit switch position mode marshal: %w", err)
 	}
@@ -525,7 +526,7 @@ func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, position
 	}
 
 	var resp bybitResponse[any]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit switch position mode json unmarshal: %w", err)
 	}
 

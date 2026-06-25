@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type coinwTicker struct {
@@ -85,7 +87,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	var resp coinwTickerResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal coinw response: %w", err)
 	}
 
@@ -136,7 +138,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	var resp coinwInstrumentResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal coinw instruments response: %w", err)
 	}
 

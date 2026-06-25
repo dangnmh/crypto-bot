@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // APIResponse is the generic KuCoin REST response envelope.
@@ -20,7 +22,7 @@ type APIResponse[T any] struct {
 func ParseResponse[T any](body []byte, path string) (T, error) {
 	var resp APIResponse[T]
 	var zero T
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return zero, fmt.Errorf("parse %s response: %w", path, err)
 	}
 	if resp.Code != "200000" {
@@ -35,7 +37,7 @@ func ParseResponse[T any](body []byte, path string) (T, error) {
 // but discards the data payload.
 func ParseResponseIgnoreData(body []byte, path string) error {
 	var resp APIResponse[json.RawMessage]
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("parse %s response: %w", path, err)
 	}
 	if resp.Code != "200000" {

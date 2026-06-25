@@ -2,12 +2,13 @@ package mexc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/samber/lo"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const exchangeName = "mexc"
@@ -85,7 +86,7 @@ func (c *Client) getRawHistoryPositions(ctx context.Context, req mexcHistoryPosi
 		Message string              `json:"message"`
 		Data    []mexcHistoryPosRow `json:"data"`
 	}
-	if err := json.Unmarshal(histBody, &histResp); err != nil {
+	if err := xjson.Unmarshal(histBody, &histResp); err != nil {
 		return nil, fmt.Errorf("unmarshal history positions: %w", err)
 	}
 	if !histResp.Success {

@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -21,6 +20,8 @@ import (
 	"crypto-bot/pkg/httpclient"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the Toobit REST API client.
@@ -196,7 +197,7 @@ type toobitErrorResponse struct {
 
 func checkError(body []byte) error {
 	var envelope toobitErrorResponse
-	_ = json.Unmarshal(body, &envelope)
+	_ = xjson.Unmarshal(body, &envelope)
 	if envelope.Code == nil {
 		return nil
 	}
@@ -228,7 +229,7 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 	if len(body) > 0 {
 		if strings.HasPrefix(string(body), "{") {
 			var bodyMap map[string]any
-			if err := json.Unmarshal(body, &bodyMap); err == nil {
+			if err := xjson.Unmarshal(body, &bodyMap); err == nil {
 				for k, v := range bodyMap {
 					params[k] = fmt.Sprintf("%v", v)
 				}
@@ -307,5 +308,5 @@ func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) (
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(info)
+	return xjson.Marshal(info)
 }

@@ -2,7 +2,6 @@ package gate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -11,6 +10,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const (
@@ -35,7 +36,7 @@ func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) (
 		return nil, err
 	}
 	var result []gatePosition
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
@@ -50,7 +51,7 @@ func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) 
 		return nil, err
 	}
 	var result []gatePosition
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
@@ -72,7 +73,7 @@ func (c *Client) getRawMyTrades(ctx context.Context, settle, contract string, or
 		return nil, err
 	}
 	var result []gateMyTrade
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
@@ -97,7 +98,7 @@ func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, change
 		return nil, err
 	}
 	var result []gateAccountBook
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil

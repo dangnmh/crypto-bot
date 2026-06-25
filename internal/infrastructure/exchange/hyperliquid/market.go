@@ -16,6 +16,8 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	hl "github.com/sonirico/go-hyperliquid"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const venueHlPerp = "HlPerp"
@@ -32,16 +34,16 @@ type RawVenueItem struct {
 
 func (r *RawVenueItem) UnmarshalJSON(data []byte) error {
 	var arr []json.RawMessage
-	if err := json.Unmarshal(data, &arr); err != nil {
+	if err := xjson.Unmarshal(data, &arr); err != nil {
 		return err
 	}
 	if len(arr) < 2 {
 		return fmt.Errorf("invalid venue item length")
 	}
-	if err := json.Unmarshal(arr[0], &r.Venue); err != nil {
+	if err := xjson.Unmarshal(arr[0], &r.Venue); err != nil {
 		return err
 	}
-	if err := json.Unmarshal(arr[1], &r.Info); err != nil {
+	if err := xjson.Unmarshal(arr[1], &r.Info); err != nil {
 		return err
 	}
 	return nil
@@ -54,16 +56,16 @@ type RawAssetFunding struct {
 
 func (r *RawAssetFunding) UnmarshalJSON(data []byte) error {
 	var arr []json.RawMessage
-	if err := json.Unmarshal(data, &arr); err != nil {
+	if err := xjson.Unmarshal(data, &arr); err != nil {
 		return err
 	}
 	if len(arr) < 2 {
 		return fmt.Errorf("invalid asset funding length")
 	}
-	if err := json.Unmarshal(arr[0], &r.Asset); err != nil {
+	if err := xjson.Unmarshal(arr[0], &r.Asset); err != nil {
 		return err
 	}
-	if err := json.Unmarshal(arr[1], &r.Venues); err != nil {
+	if err := xjson.Unmarshal(arr[1], &r.Venues); err != nil {
 		return err
 	}
 	return nil
@@ -89,7 +91,7 @@ func (c *Client) getRawPredictedFundings(ctx context.Context, _ hyperliquidPredi
 	payload := map[string]string{
 		"type": "predictedFundings",
 	}
-	bodyBytes, err := json.Marshal(payload)
+	bodyBytes, err := xjson.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +119,7 @@ func (c *Client) getRawPredictedFundings(ctx context.Context, _ hyperliquidPredi
 	}
 
 	var rawAssets []RawAssetFunding
-	if err := json.Unmarshal(body, &rawAssets); err != nil {
+	if err := xjson.Unmarshal(body, &rawAssets); err != nil {
 		return nil, err
 	}
 	return rawAssets, nil

@@ -2,7 +2,6 @@ package okx
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -123,7 +124,7 @@ type okxSetLeverageRequest struct {
 // Private raw methods invoking the OKX V5 REST API.
 
 func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) (*okxCreateOrderResult, error) {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("okx marshal create order request: %w", err)
 	}
@@ -139,7 +140,7 @@ func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) 
 }
 
 func (c *Client) cancelRawOrder(ctx context.Context, req okxCancelOrderRequest) (*okxCancelOrderResult, error) {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("okx marshal cancel order request: %w", err)
 	}
@@ -193,7 +194,7 @@ func (c *Client) getRawOrderDetail(ctx context.Context, req okxOrderDetailReques
 }
 
 func (c *Client) setRawLeverage(ctx context.Context, req okxSetLeverageRequest) error {
-	bodyBytes, err := json.Marshal(req)
+	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("okx marshal set leverage request: %w", err)
 	}

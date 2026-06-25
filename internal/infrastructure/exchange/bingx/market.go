@@ -2,12 +2,13 @@ package bingx
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -121,7 +122,7 @@ func (c *Client) getRawTickers(ctx context.Context, req bingxTickersRequest) ([]
 
 	var rawTickers []rawBingxTicker
 	var singleTicker rawBingxTicker
-	if err := json.Unmarshal(tickerBody, &singleTicker); err == nil && singleTicker.Symbol != "" {
+	if err := xjson.Unmarshal(tickerBody, &singleTicker); err == nil && singleTicker.Symbol != "" {
 		rawTickers = []rawBingxTicker{singleTicker}
 	} else {
 		tickersParsed, err := ParseResponse[[]rawBingxTicker](tickerBody, "tickers")

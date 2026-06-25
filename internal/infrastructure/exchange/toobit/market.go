@@ -10,6 +10,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type toobitTicker struct {
@@ -48,7 +50,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	var resp serverTimeResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return 0, fmt.Errorf("unmarshal server time: %w", err)
 	}
 	return resp.ServerTime, nil
@@ -83,7 +85,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		return nil, err
 	}
 	var resp toobitExchangeInfo
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("unmarshal exchange info: %w", err)
 	}
 
@@ -162,7 +164,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	var rawList []toobitTicker
-	if err := json.Unmarshal(body, &rawList); err != nil {
+	if err := xjson.Unmarshal(body, &rawList); err != nil {
 		return nil, fmt.Errorf("unmarshal tickers: %w", err)
 	}
 
@@ -201,7 +203,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	var rawList []toobitFundingRate
-	if err := json.Unmarshal(body, &rawList); err != nil {
+	if err := xjson.Unmarshal(body, &rawList); err != nil {
 		return nil, fmt.Errorf("unmarshal funding rates: %w", err)
 	}
 

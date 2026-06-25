@@ -13,6 +13,8 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Gate.io Futures.
@@ -115,7 +117,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		var msg struct {
 			Channel string `json:"channel"`
 		}
-		if err := json.Unmarshal(data, &msg); err == nil {
+		if err := xjson.Unmarshal(data, &msg); err == nil {
 			switch msg.Channel {
 			case gateChannelTickers:
 				return "ticker"
@@ -145,7 +147,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 			AskSize  json.Number `json:"A"` // best ask size
 		} `json:"result"`
 	}
-	if err = json.Unmarshal(data, &msg); err != nil {
+	if err = xjson.Unmarshal(data, &msg); err != nil {
 		return "", nil, err
 	}
 	if msg.Result.Contract == "" {
@@ -169,14 +171,14 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	var eventMsg struct {
 		Event string `json:"event"`
 	}
-	if err := json.Unmarshal(data, &eventMsg); err == nil && eventMsg.Event != "" && eventMsg.Event != "update" {
+	if err := xjson.Unmarshal(data, &eventMsg); err == nil && eventMsg.Event != "" && eventMsg.Event != "update" {
 		return nil, nil
 	}
 
 	var msg struct {
 		Result []json.RawMessage `json:"result"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 	if len(msg.Result) == 0 {
@@ -192,7 +194,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		CrossLeverageLimit json.Number `json:"cross_leverage_limit"`
 		RealisedPnl        json.Number `json:"realised_pnl"`
 	}
-	if err := json.Unmarshal(msg.Result[0], &raw); err != nil {
+	if err := xjson.Unmarshal(msg.Result[0], &raw); err != nil {
 		return nil, err
 	}
 

@@ -11,6 +11,8 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -29,7 +31,7 @@ type gatePositionCrossModeRequest struct {
 // Private raw methods invoking raw HTTP requests.
 
 func (c *Client) createRawOrder(ctx context.Context, settle string, order gateFuturesOrder) (*gateFuturesOrder, error) {
-	bodyBytes, err := json.Marshal(order)
+	bodyBytes, err := xjson.Marshal(order)
 	if err != nil {
 		return nil, fmt.Errorf("gate marshal order: %w", err)
 	}
@@ -39,7 +41,7 @@ func (c *Client) createRawOrder(ctx context.Context, settle string, order gateFu
 		return nil, err
 	}
 	var result gateFuturesOrder
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
@@ -69,7 +71,7 @@ func (c *Client) getRawOrder(ctx context.Context, settle, orderID string) (*gate
 		return nil, err
 	}
 	var result gateFuturesOrder
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
@@ -94,7 +96,7 @@ func (c *Client) getRawOrdersByStatus(ctx context.Context, settle, symbol, statu
 		return nil, err
 	}
 	var result []gateFuturesOrder
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
@@ -113,7 +115,7 @@ func (c *Client) getRawOrdersTimerange(ctx context.Context, settle, symbol strin
 		return nil, err
 	}
 	var result []gateFuturesOrderTimerange
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
@@ -351,7 +353,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 		Contract: symbol,
 		Mode:     modeStr,
 	}
-	bodyBytes, err := json.Marshal(&body)
+	bodyBytes, err := xjson.Marshal(&body)
 	if err != nil {
 		return err
 	}

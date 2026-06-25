@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -16,6 +15,8 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Bybit Futures.
@@ -147,7 +148,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			Op      string `json:"op"`
 			RetCode int    `json:"retCode"`
 		}
-		if err := json.Unmarshal(data, &authResp); err == nil && authResp.Op == wsOpAuth {
+		if err := xjson.Unmarshal(data, &authResp); err == nil && authResp.Op == wsOpAuth {
 			if authResp.RetCode == 0 {
 				a.authMu.Lock()
 				select {
@@ -162,7 +163,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		var msg struct {
 			Topic string `json:"topic"`
 		}
-		if err := json.Unmarshal(data, &msg); err == nil {
+		if err := xjson.Unmarshal(data, &msg); err == nil {
 			if strings.HasPrefix(msg.Topic, "tickers.") {
 				return "ticker"
 			}
@@ -190,7 +191,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		Topic string       `json:"topic"`
 		Data  *bybitTicker `json:"data"`
 	}
-	if err = json.Unmarshal(data, &msg); err != nil {
+	if err = xjson.Unmarshal(data, &msg); err != nil {
 		return "", nil, err
 	}
 	if msg.Data == nil {
@@ -215,7 +216,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		Topic string          `json:"topic"`
 		Data  []bybitPosition `json:"data"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 	if len(msg.Data) == 0 {

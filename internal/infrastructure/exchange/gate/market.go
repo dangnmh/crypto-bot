@@ -2,13 +2,14 @@ package gate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -30,7 +31,7 @@ func (c *Client) getRawServerTime(ctx context.Context) (*gateSystemTime, error) 
 		return nil, err
 	}
 	var result gateSystemTime
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return &result, nil
@@ -43,7 +44,7 @@ func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsReq
 		return nil, err
 	}
 	var result []gateContract
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil
@@ -61,7 +62,7 @@ func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]g
 		return nil, err
 	}
 	var result []gateFuturesTicker
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := xjson.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
 	}
 	return result, nil

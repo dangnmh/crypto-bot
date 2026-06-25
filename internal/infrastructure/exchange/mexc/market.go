@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -123,12 +125,12 @@ func (c *Client) getRawTickers(ctx context.Context, req mexcTickersRequest) ([]m
 	}
 
 	var list []mexcTicker
-	if err := json.Unmarshal(raw, &list); err == nil {
+	if err := xjson.Unmarshal(raw, &list); err == nil {
 		return list, nil
 	}
 
 	var single mexcTicker
-	if err := json.Unmarshal(raw, &single); err != nil {
+	if err := xjson.Unmarshal(raw, &single); err != nil {
 		return nil, fmt.Errorf("parse ticker data: %w", err)
 	}
 	return []mexcTicker{single}, nil

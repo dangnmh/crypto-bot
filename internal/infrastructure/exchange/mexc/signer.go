@@ -4,10 +4,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // SignRequest generates the MEXC Futures HMAC-SHA256 signature.
@@ -32,7 +33,7 @@ func SignRequest(apiKey, apiSecret, timestamp, method string, params any) string
 			case []byte:
 				paramStr = string(p)
 			default:
-				data, err := json.Marshal(params)
+				data, err := xjson.Marshal(params)
 				if err == nil {
 					paramStr = string(data)
 				}

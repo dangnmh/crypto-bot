@@ -23,6 +23,8 @@ import (
 	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Client is the Gate.io Perpetual Futures REST API client.
@@ -117,7 +119,7 @@ func handleResponse(resp *http.Response, respBody []byte, result any) error {
 			Message string `json:"message"`
 			Detail  string `json:"detail"`
 		}
-		if err := json.Unmarshal(respBody, &apiErr); err == nil && apiErr.Label != "" {
+		if err := xjson.Unmarshal(respBody, &apiErr); err == nil && apiErr.Label != "" {
 			msg := apiErr.Message
 			if apiErr.Detail != "" {
 				msg = apiErr.Detail
@@ -128,7 +130,7 @@ func handleResponse(resp *http.Response, respBody []byte, result any) error {
 	}
 
 	if result != nil {
-		if err := json.Unmarshal(respBody, result); err != nil {
+		if err := xjson.Unmarshal(respBody, result); err != nil {
 			return fmt.Errorf("failed to unmarshal gate response: %w (body=%s)", err, string(respBody))
 		}
 	}
@@ -151,7 +153,7 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, query url
 	var bodyBytes []byte
 	if bodyObj != nil {
 		var err error
-		bodyBytes, err = json.Marshal(bodyObj)
+		bodyBytes, err = xjson.Marshal(bodyObj)
 		if err != nil {
 			return err
 		}
@@ -212,7 +214,7 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 			Message string `json:"message"`
 			Detail  string `json:"detail"`
 		}
-		if err := json.Unmarshal(respBody, &apiErr); err == nil && apiErr.Label != "" {
+		if err := xjson.Unmarshal(respBody, &apiErr); err == nil && apiErr.Label != "" {
 			msg := apiErr.Message
 			if apiErr.Detail != "" {
 				msg = apiErr.Detail
@@ -440,5 +442,5 @@ func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) (
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(info)
+	return xjson.Marshal(info)
 }

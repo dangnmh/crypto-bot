@@ -2,7 +2,6 @@ package bybit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,6 +9,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -87,7 +88,7 @@ func (c *Client) getRawServerTime(ctx context.Context, _ bybitServerTimeRequest)
 		RetMsg  string `json:"retMsg"`
 		Time    int64  `json:"time"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return 0, fmt.Errorf("bybit get server time json unmarshal: %w", err)
 	}
 	if resp.RetCode != 0 {

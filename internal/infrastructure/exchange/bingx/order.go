@@ -2,7 +2,6 @@ package bingx
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -10,6 +9,8 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -64,7 +65,7 @@ type flexInt64 int64
 
 func (f *flexInt64) UnmarshalJSON(data []byte) error {
 	var val any
-	if err := json.Unmarshal(data, &val); err != nil {
+	if err := xjson.Unmarshal(data, &val); err != nil {
 		return err
 	}
 	switch v := val.(type) {
@@ -239,7 +240,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 			paramPrice:       req.TakeProfitPrice,
 			paramWorkingType: valMarkPrice,
 		}
-		tpBytes, err := json.Marshal(tpObj)
+		tpBytes, err := xjson.Marshal(tpObj)
 		if err == nil {
 			rawReq.TakeProfit = string(tpBytes)
 			tpslSubmitted = true
@@ -253,7 +254,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 			paramPrice:       req.StopLossPrice,
 			paramWorkingType: valMarkPrice,
 		}
-		slBytes, err := json.Marshal(slObj)
+		slBytes, err := xjson.Marshal(slObj)
 		if err == nil {
 			rawReq.StopLoss = string(slBytes)
 			tpslSubmitted = true

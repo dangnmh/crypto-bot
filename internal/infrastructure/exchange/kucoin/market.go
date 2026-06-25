@@ -8,6 +8,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type kucoinContract struct {
@@ -107,7 +109,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	}
 
 	var numVal int64
-	if err := json.Unmarshal(body, &numVal); err == nil {
+	if err := xjson.Unmarshal(body, &numVal); err == nil {
 		return numVal, nil
 	}
 

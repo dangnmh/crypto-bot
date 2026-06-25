@@ -14,6 +14,8 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
+
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Binance Futures.
@@ -154,7 +156,7 @@ func parseStandardWS(data []byte) string {
 		EventTime int64  `json:"E"`
 		Stream    string `json:"stream"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		slog.Error("parseStandardWS error", slog.Any("error", err), slog.String("data", string(data)))
 		return ""
 	}
@@ -197,7 +199,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		Data   json.RawMessage `json:"data"`
 	}
 	rawJSON := data
-	if errWrap := json.Unmarshal(data, &wrap); errWrap == nil && len(wrap.Data) > 0 {
+	if errWrap := xjson.Unmarshal(data, &wrap); errWrap == nil && len(wrap.Data) > 0 {
 		rawJSON = wrap.Data
 	}
 
@@ -205,7 +207,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	var eventType struct {
 		EventName string `json:"e"`
 	}
-	_ = json.Unmarshal(rawJSON, &eventType)
+	_ = xjson.Unmarshal(rawJSON, &eventType)
 
 	switch eventType.EventName {
 	case evt24hrTicker:
@@ -226,7 +228,7 @@ func parse24hTickerEvent(rawJSON []byte) (string, *store.PriceData, error) {
 		CloseTime int64  `json:"C"` // Explicitly declared to prevent case-insensitive "C" -> "c" type mismatch collision
 		Volume24  string `json:"v"`
 	}
-	if errRaw := json.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
+	if errRaw := xjson.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
 		return "", nil, fmt.Errorf("invalid ticker event payload: %w", errRaw)
 	}
 	pd := &store.PriceData{
@@ -245,7 +247,7 @@ func parse24hMiniTickerEvent(rawJSON []byte) (string, *store.PriceData, error) {
 		LastPrice string `json:"c"`
 		Volume24  string `json:"v"`
 	}
-	if errRaw := json.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
+	if errRaw := xjson.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
 		return "", nil, fmt.Errorf("invalid miniTicker event payload: %w", errRaw)
 	}
 	pd := &store.PriceData{
@@ -266,7 +268,7 @@ func parseBookTickerEvent(rawJSON []byte) (string, *store.PriceData, error) {
 		BestAsk    string `json:"a"`
 		BestAskQty string `json:"A"` // Prevent case-insensitive "A" -> "a" type mismatch
 	}
-	if errRaw := json.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
+	if errRaw := xjson.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
 		return "", nil, fmt.Errorf("invalid bookTicker event payload: %w", errRaw)
 	}
 	bid := decmath.ParseFloat(raw.BestBid)
@@ -294,7 +296,7 @@ func parseFallbackTicker(rawJSON []byte) (string, *store.PriceData, error) {
 		BestAsk   string `json:"a"`
 		Volume24  string `json:"v"`
 	}
-	if errRaw := json.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
+	if errRaw := xjson.Unmarshal(rawJSON, &raw); errRaw != nil || raw.Symbol == "" {
 		return "", nil, fmt.Errorf("invalid fallback ticker payload: %w", errRaw)
 	}
 	bid := decmath.ParseFloat(raw.BestBid)
@@ -328,7 +330,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 			} `json:"P"`
 		} `json:"a"`
 	}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	if err := xjson.Unmarshal(data, &msg); err != nil {
 		return nil, err
 	}
 
