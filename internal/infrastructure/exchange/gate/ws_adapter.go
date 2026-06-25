@@ -140,11 +140,11 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
 	var msg struct {
 		Result struct {
-			Contract string      `json:"s"` // contract
-			Bid      json.Number `json:"b"` // best bid
-			BidSize  json.Number `json:"B"` // best bid size
-			Ask      json.Number `json:"a"` // best ask
-			AskSize  json.Number `json:"A"` // best ask size
+			Contract string       `json:"s"` // contract
+			Bid      xjson.Number `json:"b"` // best bid
+			BidSize  xjson.Number `json:"B"` // best bid size
+			Ask      xjson.Number `json:"a"` // best ask
+			AskSize  xjson.Number `json:"A"` // best ask size
 		} `json:"result"`
 	}
 	if err = xjson.Unmarshal(data, &msg); err != nil {
@@ -187,12 +187,12 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	//nolint:misspell // Gate.io API uses British spelling realized_pnl in JSON response.
 	var raw struct {
-		Contract           string      `json:"contract"`
-		Size               json.Number `json:"size"`
-		EntryPrice         json.Number `json:"entry_price"`
-		Leverage           json.Number `json:"leverage"`
-		CrossLeverageLimit json.Number `json:"cross_leverage_limit"`
-		RealisedPnl        json.Number `json:"realised_pnl"`
+		Contract           string       `json:"contract"`
+		Size               xjson.Number `json:"size"`
+		EntryPrice         xjson.Number `json:"entry_price"`
+		Leverage           xjson.Number `json:"leverage"`
+		CrossLeverageLimit xjson.Number `json:"cross_leverage_limit"`
+		RealisedPnl        xjson.Number `json:"realised_pnl"`
 	}
 	if err := xjson.Unmarshal(msg.Result[0], &raw); err != nil {
 		return nil, err

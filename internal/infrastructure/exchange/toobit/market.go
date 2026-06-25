@@ -2,7 +2,6 @@ package toobit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -30,13 +29,13 @@ type toobitTicker struct {
 }
 
 type toobitFundingRate struct {
-	Symbol           string      `json:"symbol"`
-	Rate             string      `json:"rate"`
-	Period           string      `json:"period"`
-	NextFundingTime  json.Number `json:"nextFundingTime"`
-	Interest         string      `json:"interest"`
-	FundingRateCap   string      `json:"fundingRateCap"`
-	FundingRateFloor string      `json:"fundingRateFloor"`
+	Symbol           string       `json:"symbol"`
+	Rate             string       `json:"rate"`
+	Period           string       `json:"period"`
+	NextFundingTime  xjson.Number `json:"nextFundingTime"`
+	Interest         string       `json:"interest"`
+	FundingRateCap   string       `json:"fundingRateCap"`
+	FundingRateFloor string       `json:"fundingRateFloor"`
 }
 
 type serverTimeResponse struct {

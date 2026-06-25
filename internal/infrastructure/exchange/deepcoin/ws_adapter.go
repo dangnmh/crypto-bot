@@ -147,19 +147,19 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	var msg struct {
 		Topic string `json:"Topic"`
 		Data  struct {
-			Symbol    string     `json:"Symbol"`
-			LastPrice flexString `json:"LastPrice"`
-			BidPrice  flexString `json:"BidPrice"`
-			AskPrice  flexString `json:"AskPrice"`
-			Volume24  flexString `json:"Volume24"`
+			Symbol    string       `json:"Symbol"`
+			LastPrice xjson.Number `json:"LastPrice"`
+			BidPrice  xjson.Number `json:"BidPrice"`
+			AskPrice  xjson.Number `json:"AskPrice"`
+			Volume24  xjson.Number `json:"Volume24"`
 		} `json:"Data"`
 		A string `json:"a"`
 		D struct {
-			I   string     `json:"I"`
-			N   flexString `json:"N"`
-			BP1 flexString `json:"BP1"`
-			AP1 flexString `json:"AP1"`
-			V   flexString `json:"V"`
+			I   string       `json:"I"`
+			N   xjson.Number `json:"N"`
+			BP1 xjson.Number `json:"BP1"`
+			AP1 xjson.Number `json:"AP1"`
+			V   xjson.Number `json:"V"`
 		} `json:"d"`
 	}
 	if err := xjson.Unmarshal(data, &msg); err != nil {
@@ -206,11 +206,11 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		Result []struct {
 			Table string `json:"table"`
 			Data  struct {
-				I  string     `json:"I"`  // Instrument
-				P  flexString `json:"p"`  // Direction ("1" = Long, "2" = Short)
-				Po flexString `json:"Po"` // Position qty
-				OP flexString `json:"OP"` // Open Price
-				U  flexString `json:"u"`  // Used margin
+				I  string       `json:"I"`  // Instrument
+				P  xjson.Number `json:"p"`  // Direction ("1" = Long, "2" = Short)
+				Po xjson.Number `json:"Po"` // Position qty
+				OP xjson.Number `json:"OP"` // Open Price
+				U  xjson.Number `json:"u"`  // Used margin
 			} `json:"data"`
 		} `json:"result"`
 	}

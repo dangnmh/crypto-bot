@@ -2,7 +2,6 @@ package weex
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,31 +15,31 @@ import (
 )
 
 type weexTicker struct {
-	Symbol             string      `json:"symbol"`
-	PriceChange        string      `json:"priceChange"`
-	PriceChangePercent string      `json:"priceChangePercent"`
-	LastPrice          string      `json:"lastPrice"`
-	OpenPrice          string      `json:"openPrice"`
-	HighPrice          string      `json:"highPrice"`
-	LowPrice           string      `json:"lowPrice"`
-	Volume             string      `json:"volume"`
-	QuoteVolume        string      `json:"quoteVolume"`
-	MarkPrice          string      `json:"markPrice"`
-	IndexPrice         string      `json:"indexPrice"`
-	OpenTime           json.Number `json:"openTime"`
-	CloseTime          json.Number `json:"closeTime"`
+	Symbol             string       `json:"symbol"`
+	PriceChange        string       `json:"priceChange"`
+	PriceChangePercent string       `json:"priceChangePercent"`
+	LastPrice          string       `json:"lastPrice"`
+	OpenPrice          string       `json:"openPrice"`
+	HighPrice          string       `json:"highPrice"`
+	LowPrice           string       `json:"lowPrice"`
+	Volume             string       `json:"volume"`
+	QuoteVolume        string       `json:"quoteVolume"`
+	MarkPrice          string       `json:"markPrice"`
+	IndexPrice         string       `json:"indexPrice"`
+	OpenTime           xjson.Number `json:"openTime"`
+	CloseTime          xjson.Number `json:"closeTime"`
 }
 
 type weexPremiumIndex struct {
-	Symbol              string      `json:"symbol"`
-	MarkPrice           string      `json:"markPrice"`
-	IndexPrice          string      `json:"indexPrice"`
-	LastFundingRate     string      `json:"lastFundingRate"`
-	ForecastFundingRate string      `json:"forecastFundingRate"`
-	InterestRate        string      `json:"interestRate"`
-	NextFundingTime     json.Number `json:"nextFundingTime"`
-	Time                json.Number `json:"time"`
-	CollectCycle        json.Number `json:"collectCycle"`
+	Symbol              string       `json:"symbol"`
+	MarkPrice           string       `json:"markPrice"`
+	IndexPrice          string       `json:"indexPrice"`
+	LastFundingRate     string       `json:"lastFundingRate"`
+	ForecastFundingRate string       `json:"forecastFundingRate"`
+	InterestRate        string       `json:"interestRate"`
+	NextFundingTime     xjson.Number `json:"nextFundingTime"`
+	Time                xjson.Number `json:"time"`
+	CollectCycle        xjson.Number `json:"collectCycle"`
 }
 
 func (c *Client) request(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {

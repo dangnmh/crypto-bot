@@ -2,7 +2,6 @@ package coinw
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,10 +14,10 @@ import (
 )
 
 type coinwTicker struct {
-	Name        string      `json:"name"`
-	LastPrice   json.Number `json:"last_price"`
-	TotalVolume json.Number `json:"total_volume"`
-	Ts          int64       `json:"ts"`
+	Name        string       `json:"name"`
+	LastPrice   xjson.Number `json:"last_price"`
+	TotalVolume xjson.Number `json:"total_volume"`
+	Ts          int64        `json:"ts"`
 }
 
 type coinwTickerResponse struct {
@@ -28,12 +27,12 @@ type coinwTickerResponse struct {
 }
 
 type coinwInstrument struct {
-	Base           string      `json:"base"`
-	Quote          string      `json:"quote"`
-	Name           string      `json:"name"`
-	SettledAt      int64       `json:"settledAt"`
-	SettlementRate json.Number `json:"settlementRate"`
-	Status         string      `json:"status"`
+	Base           string       `json:"base"`
+	Quote          string       `json:"quote"`
+	Name           string       `json:"name"`
+	SettledAt      int64        `json:"settledAt"`
+	SettlementRate xjson.Number `json:"settlementRate"`
+	Status         string       `json:"status"`
 }
 
 type coinwInstrumentResponse struct {

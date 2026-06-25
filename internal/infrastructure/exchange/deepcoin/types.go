@@ -2,7 +2,6 @@ package deepcoin
 
 import (
 	"fmt"
-	"strconv"
 
 	"crypto-bot/pkg/xjson"
 )
@@ -40,29 +39,6 @@ const (
 
 	wsTablePosition = "Position"
 )
-
-// flexString allows relaxed unmarshaling of numbers, strings, and booleans into string fields.
-type flexString string
-
-func (f *flexString) UnmarshalJSON(data []byte) error {
-	var val any
-	if err := xjson.Unmarshal(data, &val); err != nil {
-		return err
-	}
-	switch v := val.(type) {
-	case float64:
-		*f = flexString(strconv.FormatFloat(v, 'f', -1, 64))
-	case int64:
-		*f = flexString(strconv.FormatInt(v, 10))
-	case string:
-		*f = flexString(v)
-	case bool:
-		*f = flexString(strconv.FormatBool(v))
-	default:
-		*f = ""
-	}
-	return nil
-}
 
 // APIResponse represents the standard Deepcoin API response wrapper.
 type APIResponse[T any] struct {

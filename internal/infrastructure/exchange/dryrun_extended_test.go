@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/xjson"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,19 +16,19 @@ func TestWsOrderDeal_GetOrderID(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		orderID any
+		orderID xjson.Number
 		want    string
 	}{
-		{"string ID", "abc123", "abc123"},
-		{"numeric ID", float64(12345), "12345"},
-		{"int ID", 42, "42"},
+		{"string ID", xjson.Number("abc123"), "abc123"},
+		{"numeric ID", xjson.Number("12345"), "12345"},
+		{"int ID", xjson.Number("42"), "42"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			d := &exchange.WsOrderDeal{OrderID: tt.orderID}
-			assert.Equal(t, tt.want, d.GetOrderID())
+			assert.Equal(t, tt.want, d.OrderID.String())
 		})
 	}
 }

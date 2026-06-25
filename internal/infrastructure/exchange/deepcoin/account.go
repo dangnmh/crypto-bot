@@ -5,17 +5,19 @@ import (
 	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type deepcoinPosition struct {
-	InstID      string     `json:"instId"`
-	PosSide     string     `json:"posSide"`
-	Pos         flexString `json:"pos"`
-	AvgPx       flexString `json:"avgPx"`
-	Lever       flexString `json:"lever"`
-	Ccy         string     `json:"ccy"`
-	MgnMode     string     `json:"mgnMode"`
-	MrgPosition string     `json:"mrgPosition"`
+	InstID      string       `json:"instId"`
+	PosSide     string       `json:"posSide"`
+	Pos         xjson.Number `json:"pos"`
+	AvgPx       xjson.Number `json:"avgPx"`
+	Lever       xjson.Number `json:"lever"`
+	Ccy         string       `json:"ccy"`
+	MgnMode     string       `json:"mgnMode"`
+	MrgPosition string       `json:"mrgPosition"`
 }
 
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {

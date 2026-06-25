@@ -2,7 +2,6 @@ package gate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -510,34 +509,34 @@ func mapOrderInfo(raw gateFuturesOrder) exchange.OrderInfo {
 }
 
 type gateFuturesOrderTimerange struct {
-	Id                   int64       `json:"id"`
-	User                 int         `json:"user"`
-	CreateTime           float64     `json:"create_time"`
-	UpdateTime           string      `json:"update_time"`
-	FinishTime           string      `json:"finish_time"`
-	FinishAs             string      `json:"finish_as"`
-	Status               string      `json:"status"`
-	Contract             string      `json:"contract"`
-	Size                 json.Number `json:"size"`
-	Iceberg              json.Number `json:"iceberg"`
-	Price                string      `json:"price"`
-	IsClose              bool        `json:"is_close"`
-	IsReduceOnly         bool        `json:"is_reduce_only"`
-	IsLiq                bool        `json:"is_liq"`
-	Tif                  string      `json:"tif"`
-	Left                 json.Number `json:"left"`
-	FillPrice            string      `json:"fill_price"`
-	Text                 string      `json:"text"`
-	Tkfr                 string      `json:"tkfr"`
-	Mkfr                 string      `json:"mkfr"`
-	Refu                 int         `json:"refu"`
-	StpId                int         `json:"stp_id"`
-	StpAct               string      `json:"stp_act"`
-	AmendText            string      `json:"amend_text"`
-	MarketOrderSlipRatio string      `json:"market_order_slip_ratio"`
-	PosMarginMode        string      `json:"pos_margin_mode"`
-	TpslTpTriggerPrice   string      `json:"tpsl_tp_trigger_price"`
-	TpslSlTriggerPrice   string      `json:"tpsl_sl_trigger_price"`
+	Id                   int64        `json:"id"`
+	User                 int          `json:"user"`
+	CreateTime           float64      `json:"create_time"`
+	UpdateTime           string       `json:"update_time"`
+	FinishTime           string       `json:"finish_time"`
+	FinishAs             string       `json:"finish_as"`
+	Status               string       `json:"status"`
+	Contract             string       `json:"contract"`
+	Size                 xjson.Number `json:"size"`
+	Iceberg              xjson.Number `json:"iceberg"`
+	Price                string       `json:"price"`
+	IsClose              bool         `json:"is_close"`
+	IsReduceOnly         bool         `json:"is_reduce_only"`
+	IsLiq                bool         `json:"is_liq"`
+	Tif                  string       `json:"tif"`
+	Left                 xjson.Number `json:"left"`
+	FillPrice            string       `json:"fill_price"`
+	Text                 string       `json:"text"`
+	Tkfr                 string       `json:"tkfr"`
+	Mkfr                 string       `json:"mkfr"`
+	Refu                 int          `json:"refu"`
+	StpId                int          `json:"stp_id"`
+	StpAct               string       `json:"stp_act"`
+	AmendText            string       `json:"amend_text"`
+	MarketOrderSlipRatio string       `json:"market_order_slip_ratio"`
+	PosMarginMode        string       `json:"pos_margin_mode"`
+	TpslTpTriggerPrice   string       `json:"tpsl_tp_trigger_price"`
+	TpslSlTriggerPrice   string       `json:"tpsl_sl_trigger_price"`
 }
 
 func parseTimerangeTimes(finishTime, updateTime string) (finishTimeMs, updateTimeMs int64) {

@@ -51,9 +51,9 @@ type bingxChangeLeverageRequest struct {
 
 type bingxCreateOrderResponse struct {
 	Order struct {
-		OrderID       flexInt64 `json:"orderId"`
-		UpperOrderID  string    `json:"orderID"`
-		ClientOrderID string    `json:"clientOrderId"`
+		OrderID       xjson.Number `json:"orderId"`
+		UpperOrderID  string       `json:"orderID"`
+		ClientOrderID string       `json:"clientOrderId"`
 	} `json:"order"`
 }
 
@@ -61,44 +61,20 @@ type bingxGetOrderResponse struct {
 	Order bingxOrder `json:"order"`
 }
 
-type flexInt64 int64
-
-func (f *flexInt64) UnmarshalJSON(data []byte) error {
-	var val any
-	if err := xjson.Unmarshal(data, &val); err != nil {
-		return err
-	}
-	switch v := val.(type) {
-	case float64:
-		*f = flexInt64(v)
-	case int64:
-		*f = flexInt64(v)
-	case string:
-		parsed, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			return err
-		}
-		*f = flexInt64(parsed)
-	default:
-		return fmt.Errorf("unexpected type for flexInt64: %T", val)
-	}
-	return nil
-}
-
 type bingxOrder struct {
-	OrderID      flexInt64 `json:"orderId"`
-	ClientOid    string    `json:"clientOid"`
-	Symbol       string    `json:"symbol"`
-	Side         string    `json:"side"`
-	PositionSide string    `json:"positionSide"`
-	Type         string    `json:"type"`
-	Quantity     string    `json:"quantity"`
-	OrigQty      string    `json:"origQty"`
-	Price        string    `json:"price"`
-	Status       string    `json:"status"`
-	ExecutedQty  string    `json:"executedQty"`
-	AvgPrice     string    `json:"avgPrice"`
-	Time         int64     `json:"time"`
+	OrderID      xjson.Number `json:"orderId"`
+	ClientOid    string       `json:"clientOid"`
+	Symbol       string       `json:"symbol"`
+	Side         string       `json:"side"`
+	PositionSide string       `json:"positionSide"`
+	Type         string       `json:"type"`
+	Quantity     string       `json:"quantity"`
+	OrigQty      string       `json:"origQty"`
+	Price        string       `json:"price"`
+	Status       string       `json:"status"`
+	ExecutedQty  string       `json:"executedQty"`
+	AvgPrice     string       `json:"avgPrice"`
+	Time         int64        `json:"time"`
 }
 
 // Private raw methods invoking the BingX REST API.
@@ -266,7 +242,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return exchange.CreateOrderResult{}, err
 	}
 
-	orderIDStr := strconv.FormatInt(int64(res.Order.OrderID), 10)
+	orderIDStr := res.Order.OrderID.String()
 	if orderIDStr == "0" {
 		orderIDStr = res.Order.UpperOrderID
 	}
@@ -520,7 +496,7 @@ func (c *Client) toOrderInfo(o *bingxOrder) *exchange.OrderInfo {
 	avg := decmath.ParseFloat(o.AvgPrice)
 
 	return &exchange.OrderInfo{
-		OrderID:      strconv.FormatInt(int64(o.OrderID), 10),
+		OrderID:      o.OrderID.String(),
 		Symbol:       o.Symbol,
 		Price:        price,
 		Vol:          qty,

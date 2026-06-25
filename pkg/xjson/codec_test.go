@@ -11,11 +11,11 @@ import (
 )
 
 type testStruct struct {
-	Symbol   string      `json:"symbol"`
-	Price    json.Number `json:"price"`
-	Quantity json.Number `json:"qty"`
-	Volume   float64     `json:"volume"`
-	Nested   *testNested `json:"nested"`
+	Symbol   string       `json:"symbol"`
+	Price    xjson.Number `json:"price"`
+	Quantity xjson.Number `json:"qty"`
+	Volume   float64      `json:"volume"`
+	Nested   *testNested  `json:"nested"`
 }
 
 type testNested struct {
@@ -61,8 +61,8 @@ func TestMarshalUnmarshal(t *testing.T) {
 
 	val := testStruct{
 		Symbol:   "BTCUSDT",
-		Price:    json.Number("12.34"),
-		Quantity: json.Number("5"),
+		Price:    xjson.Number("12.34"),
+		Quantity: xjson.Number("5"),
 		Volume:   100.5,
 		Nested:   &testNested{Val: 42},
 	}
@@ -84,10 +84,10 @@ func TestMarshalUnmarshal(t *testing.T) {
 func TestNumberHelpers(t *testing.T) {
 	t.Parallel()
 
-	n := json.Number("123.45")
+	n := xjson.Number("123.45")
 	assert.Equal(t, 123.45, xjson.ToFloat64(n))
 
-	n2 := json.Number("678")
+	n2 := xjson.Number("678")
 	assert.Equal(t, int64(678), xjson.ToInt64(n2))
 }
 
@@ -113,6 +113,7 @@ func TestNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var n xjson.Number
 			err := json.Unmarshal([]byte(tt.input), &n)
 			if tt.expectErr {
@@ -138,6 +139,7 @@ func TestNumber(t *testing.T) {
 
 	for _, tt := range marshalTests {
 		t.Run("marshal_"+tt.name, func(t *testing.T) {
+			t.Parallel()
 			data, err := json.Marshal(tt.input)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, string(data))
@@ -168,4 +170,3 @@ func TestNumber(t *testing.T) {
 
 	assert.Equal(t, "", nEmpty.String())
 }
-

@@ -1,11 +1,8 @@
 package exchange
 
 import (
-	"encoding/json"
-	"fmt"
-	"strconv"
-
 	"crypto-bot/internal/domain"
+	"crypto-bot/pkg/xjson"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -242,7 +239,7 @@ type ChangeLeverageRequest struct {
 // It is kept for backward compatibility with existing order lifecycle tests.
 type WsOrderDeal struct {
 	Symbol       string              `json:"symbol"`
-	OrderID      any                 `json:"orderId"`
+	OrderID      xjson.Number        `json:"orderId"`
 	PositionID   int64               `json:"positionId,omitempty"`
 	Price        float64             `json:"price"`
 	Vol          float64             `json:"vol"`
@@ -269,99 +266,49 @@ type WsOrderDeal struct {
 	ReduceOnly   bool                `json:"reduceOnly,omitempty"`
 }
 
-// GetOrderID returns the order ID as a string, handling both string and numeric JSON formats.
-func (w *WsOrderDeal) GetOrderID() string {
-	return interfaceIDToString(w.OrderID)
-}
-
 // PersonalOrderDeal represents push.personal.order.deal execution data.
 type PersonalOrderDeal struct {
-	ID           any     `json:"id"`
-	Symbol       string  `json:"symbol"`
-	Side         int     `json:"side"`
-	Vol          float64 `json:"vol"`
-	Price        float64 `json:"price"`
-	FeeCurrency  string  `json:"feeCurrency"`
-	Fee          float64 `json:"fee"`
-	Timestamp    int64   `json:"timestamp"`
-	Profit       float64 `json:"profit"`
-	IsTaker      bool    `json:"isTaker"`
-	Category     int     `json:"category"`
-	OrderID      any     `json:"orderId"`
-	IsSelf       bool    `json:"isSelf"`
-	ExternalOID  string  `json:"externalOid"`
-	PositionMode int     `json:"positionMode"`
-	ReduceOnly   bool    `json:"reduceOnly"`
-	OpponentUID  int64   `json:"opponentUid"`
-}
-
-func (d *PersonalOrderDeal) GetID() string {
-	return interfaceIDToString(d.ID)
-}
-
-func (d *PersonalOrderDeal) GetOrderID() string {
-	return interfaceIDToString(d.OrderID)
+	ID           xjson.Number `json:"id"`
+	Symbol       string       `json:"symbol"`
+	Side         int          `json:"side"`
+	Vol          float64      `json:"vol"`
+	Price        float64      `json:"price"`
+	FeeCurrency  string       `json:"feeCurrency"`
+	Fee          float64      `json:"fee"`
+	Timestamp    int64        `json:"timestamp"`
+	Profit       float64      `json:"profit"`
+	IsTaker      bool         `json:"isTaker"`
+	Category     int          `json:"category"`
+	OrderID      xjson.Number `json:"orderId"`
+	IsSelf       bool         `json:"isSelf"`
+	ExternalOID  string       `json:"externalOid"`
+	PositionMode int          `json:"positionMode"`
+	ReduceOnly   bool         `json:"reduceOnly"`
+	OpponentUID  int64        `json:"opponentUid"`
 }
 
 // PersonalTrackOrderUpdate represents push.personal.track.order data.
 type PersonalTrackOrderUpdate struct {
-	ID           any     `json:"id"`
-	Symbol       string  `json:"symbol"`
-	Leverage     int     `json:"leverage"`
-	Side         int     `json:"side"`
-	Vol          float64 `json:"vol"`
-	OpenType     int     `json:"openType"`
-	Trend        int     `json:"trend"`
-	ActivePrice  float64 `json:"activePrice"`
-	MarkPrice    float64 `json:"markPrice"`
-	BackType     int     `json:"backType"`
-	BackValue    float64 `json:"backValue"`
-	TriggerPrice float64 `json:"triggerPrice"`
-	TriggerType  int     `json:"triggerType"`
-	OrderID      any     `json:"orderId"`
-	ErrorCode    int     `json:"errorCode"`
-	State        int     `json:"state"`
-	PositionMode int     `json:"positionMode"`
-	ReduceOnly   bool    `json:"reduceOnly"`
-	CreateTime   int64   `json:"createTime"`
-	UpdateTime   int64   `json:"updateTime"`
-}
-
-func (t *PersonalTrackOrderUpdate) GetID() string {
-	return interfaceIDToString(t.ID)
-}
-
-func (t *PersonalTrackOrderUpdate) GetOrderID() string {
-	return interfaceIDToString(t.OrderID)
-}
-
-func interfaceIDToString(id any) string {
-	switch v := id.(type) {
-	case string:
-		return v
-	case json.Number:
-		return v.String()
-	case float64:
-		if v == float64(int64(v)) {
-			return strconv.FormatInt(int64(v), 10)
-		}
-	case float32:
-		v64 := float64(v)
-		if v64 == float64(int64(v64)) {
-			return strconv.FormatInt(int64(v64), 10)
-		}
-	case int:
-		return strconv.Itoa(v)
-	case int64:
-		return strconv.FormatInt(v, 10)
-	case int32:
-		return strconv.FormatInt(int64(v), 10)
-	case uint64:
-		return strconv.FormatUint(v, 10)
-	case uint:
-		return strconv.FormatUint(uint64(v), 10)
-	}
-	return fmt.Sprintf("%v", id)
+	ID           xjson.Number `json:"id"`
+	Symbol       string       `json:"symbol"`
+	Leverage     int          `json:"leverage"`
+	Side         int          `json:"side"`
+	Vol          float64      `json:"vol"`
+	OpenType     int          `json:"openType"`
+	Trend        int          `json:"trend"`
+	ActivePrice  float64      `json:"activePrice"`
+	MarkPrice    float64      `json:"markPrice"`
+	BackType     int          `json:"backType"`
+	BackValue    float64      `json:"backValue"`
+	TriggerPrice float64      `json:"triggerPrice"`
+	TriggerType  int          `json:"triggerType"`
+	OrderID      xjson.Number `json:"orderId"`
+	ErrorCode    int          `json:"errorCode"`
+	State        int          `json:"state"`
+	PositionMode int          `json:"positionMode"`
+	ReduceOnly   bool         `json:"reduceOnly"`
+	CreateTime   int64        `json:"createTime"`
+	UpdateTime   int64        `json:"updateTime"`
 }
 
 // PersonalPositionUpdate represents push.personal.position data.

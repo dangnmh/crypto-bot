@@ -9,6 +9,8 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const (
@@ -20,7 +22,7 @@ const (
 // Raw request/response models for market endpoints.
 
 type deepcoinServerTimeResponse struct {
-	Ts flexString `json:"ts"`
+	Ts xjson.Number `json:"ts"`
 }
 
 type deepcoinInstrument struct {

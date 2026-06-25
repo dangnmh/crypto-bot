@@ -2,7 +2,6 @@ package toobit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -82,22 +81,22 @@ type toobitCreateOrderResponse struct {
 }
 
 type toobitOrder struct {
-	OrderID       string      `json:"orderId"`
-	Symbol        string      `json:"symbol"`
-	Price         string      `json:"price"`
-	Qty           string      `json:"qty"`
-	Quantity      string      `json:"quantity"` // fallback
-	OrigQty       string      `json:"origQty"`  // V1
-	AvgPrice      string      `json:"avgPrice"`
-	CumQty        string      `json:"cumQty"`
-	ExecutedQty   string      `json:"executedQty"` // fallback & V1
-	Status        string      `json:"status"`
-	ClientOrderId string      `json:"clientOrderId"`
-	Side          string      `json:"side"`
-	PositionSide  string      `json:"positionSide"` // V2
-	Type          string      `json:"type"`
-	Time          json.Number `json:"time"`
-	UpdateTime    json.Number `json:"updateTime"`
+	OrderID       string       `json:"orderId"`
+	Symbol        string       `json:"symbol"`
+	Price         string       `json:"price"`
+	Qty           string       `json:"qty"`
+	Quantity      string       `json:"quantity"` // fallback
+	OrigQty       string       `json:"origQty"`  // V1
+	AvgPrice      string       `json:"avgPrice"`
+	CumQty        string       `json:"cumQty"`
+	ExecutedQty   string       `json:"executedQty"` // fallback & V1
+	Status        string       `json:"status"`
+	ClientOrderId string       `json:"clientOrderId"`
+	Side          string       `json:"side"`
+	PositionSide  string       `json:"positionSide"` // V2
+	Type          string       `json:"type"`
+	Time          xjson.Number `json:"time"`
+	UpdateTime    xjson.Number `json:"updateTime"`
 }
 
 type toobitPosition struct {
@@ -529,7 +528,7 @@ func (c *Client) toOrderInfo(o *toobitOrder) *exchange.OrderInfo {
 	}
 }
 
-func parseTime(n json.Number) int64 {
+func parseTime(n xjson.Number) int64 {
 	val, err := n.Int64()
 	if err != nil {
 		return 0
@@ -538,32 +537,32 @@ func parseTime(n json.Number) int64 {
 }
 
 type toobitHistoryPosition struct {
-	Symbol                string      `json:"symbol"`
-	Side                  string      `json:"side"`
-	Position              string      `json:"position"`
-	OpenValue             string      `json:"openValue"`
-	CloseValue            string      `json:"closeValue"`
-	CloseTotalQty         string      `json:"closeTotalQty"`
-	RealizedPnL           string      `json:"realizedPnL"`
-	RealizedPnlRate       string      `json:"realizedPnlRate"`
-	RealizedPnlWithoutFee string      `json:"realizedPnlWithoutFee"`
-	Status                string      `json:"status"`
-	OpenAvgPrice          string      `json:"openAvgPrice"`
-	CloseAvgPrice         string      `json:"closeAvgPrice"`
-	OpenFee               string      `json:"openFee"`
-	CloseFee              string      `json:"closeFee"`
-	OpenTime              json.Number `json:"openTime"`
-	CloseTime             json.Number `json:"closeTime"`
-	ID                    string      `json:"id"`
+	Symbol                string       `json:"symbol"`
+	Side                  string       `json:"side"`
+	Position              string       `json:"position"`
+	OpenValue             string       `json:"openValue"`
+	CloseValue            string       `json:"closeValue"`
+	CloseTotalQty         string       `json:"closeTotalQty"`
+	RealizedPnL           string       `json:"realizedPnL"`
+	RealizedPnlRate       string       `json:"realizedPnlRate"`
+	RealizedPnlWithoutFee string       `json:"realizedPnlWithoutFee"`
+	Status                string       `json:"status"`
+	OpenAvgPrice          string       `json:"openAvgPrice"`
+	CloseAvgPrice         string       `json:"closeAvgPrice"`
+	OpenFee               string       `json:"openFee"`
+	CloseFee              string       `json:"closeFee"`
+	OpenTime              xjson.Number `json:"openTime"`
+	CloseTime             xjson.Number `json:"closeTime"`
+	ID                    string       `json:"id"`
 }
 
 type toobitFuturesBalanceFlowRow struct {
-	ID            json.Number `json:"id"`
-	Coin          string      `json:"coin"`
-	FlowTypeValue int         `json:"flowTypeValue"`
-	FlowType      string      `json:"flowType"`
-	FlowName      string      `json:"flowName"`
-	Change        string      `json:"change"`
-	Total         string      `json:"total"`
-	Created       json.Number `json:"created"`
+	ID            xjson.Number `json:"id"`
+	Coin          string       `json:"coin"`
+	FlowTypeValue int          `json:"flowTypeValue"`
+	FlowType      string       `json:"flowType"`
+	FlowName      string       `json:"flowName"`
+	Change        string       `json:"change"`
+	Total         string       `json:"total"`
+	Created       xjson.Number `json:"created"`
 }

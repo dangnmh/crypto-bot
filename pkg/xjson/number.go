@@ -66,15 +66,14 @@ func (n Number) String() string {
 	return string(n)
 }
 
-// ToInt64 parses standard json.Number to int64, ignoring errors.
-func ToInt64(n json.Number) int64 {
+// ToInt64 parses Number to int64, ignoring errors.
+func ToInt64(n Number) int64 {
 	i, _ := n.Int64()
 	return i
 }
 
-// ToFloat64 parses standard json.Number to float64, ignoring errors.
-func ToFloat64(n json.Number) float64 {
+// ToFloat64 parses Number to float64, ignoring errors.
+func ToFloat64(n Number) float64 {
 	f, _ := n.Float64()
 	return f
 }
-

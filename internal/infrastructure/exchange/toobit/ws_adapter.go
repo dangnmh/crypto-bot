@@ -161,8 +161,8 @@ func extractChannel(data []byte) string {
 
 func extractArrayChannel(data []byte) string {
 	var list []struct {
-		Event     string      `json:"e"`
-		EventTime json.Number `json:"E"`
+		Event     string       `json:"e"`
+		EventTime xjson.Number `json:"E"`
 	}
 	if err := xjson.Unmarshal(data, &list); err != nil {
 		slog.Error("unmarshal extractArrayChannel error", slog.String("exchange", "toobit"), slog.Any("error", err), slog.String("data", string(data)))
@@ -302,14 +302,14 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 }
 
 type wsPositionData struct {
-	Event     string      `json:"e"`
-	Symbol    string      `json:"s"`
-	Side      string      `json:"S"`
-	AvgPrice  string      `json:"p"`
-	Position  string      `json:"P"`
-	Pnl       string      `json:"up"`
-	Leverage  string      `json:"v"`
-	EventTime json.Number `json:"E"`
+	Event     string       `json:"e"`
+	Symbol    string       `json:"s"`
+	Side      string       `json:"S"`
+	AvgPrice  string       `json:"p"`
+	Position  string       `json:"P"`
+	Pnl       string       `json:"up"`
+	Leverage  string       `json:"v"`
+	EventTime xjson.Number `json:"E"`
 }
 
 // ParsePosition parses position update pushes.

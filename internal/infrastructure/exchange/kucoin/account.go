@@ -2,7 +2,6 @@ package kucoin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -11,18 +10,20 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 const exchangeName = "kucoin"
 
 type kucoinPosition struct {
-	Symbol           string      `json:"symbol"`
-	CurrentQty       json.Number `json:"currentQty"`
-	AvgEntryPrice    json.Number `json:"avgEntryPrice"`
-	RealisedPNL      json.Number `json:"realisedPNL"`
-	UnrealisedPNL    json.Number `json:"unrealisedPNL"`
-	Leverage         json.Number `json:"leverage"`
-	LiquidationPrice json.Number `json:"liquidationPrice"`
+	Symbol           string       `json:"symbol"`
+	CurrentQty       xjson.Number `json:"currentQty"`
+	AvgEntryPrice    xjson.Number `json:"avgEntryPrice"`
+	RealisedPNL      xjson.Number `json:"realisedPNL"`
+	UnrealisedPNL    xjson.Number `json:"unrealisedPNL"`
+	Leverage         xjson.Number `json:"leverage"`
+	LiquidationPrice xjson.Number `json:"liquidationPrice"`
 }
 
 type kucoinOpenPositionsRequest struct{}

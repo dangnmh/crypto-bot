@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -287,11 +286,11 @@ type gateFuturesTicker struct {
 }
 
 type gatePosition struct {
-	Contract   string      `json:"contract"`
-	Size       json.Number `json:"size"`
-	EntryPrice string      `json:"entry_price"`
-	Leverage   json.Number `json:"leverage"`
-	Mode       string      `json:"mode"`
+	Contract   string       `json:"contract"`
+	Size       xjson.Number `json:"size"`
+	EntryPrice string       `json:"entry_price"`
+	Leverage   xjson.Number `json:"leverage"`
+	Mode       string       `json:"mode"`
 	//nolint:misspell // Gate.io API uses the British spelling realised_pnl.
 	RealisedPnl  string `json:"realised_pnl"`
 	PnlPnl       string `json:"pnl_pnl"`
@@ -304,18 +303,18 @@ type gatePosition struct {
 }
 
 type gateMyTrade struct {
-	ID         int64       `json:"id"`
-	CreateTime float64     `json:"create_time"`
-	Contract   string      `json:"contract"`
-	OrderID    string      `json:"order_id"`
-	Size       json.Number `json:"size"`
-	CloseSize  json.Number `json:"close_size"`
-	Price      json.Number `json:"price"`
-	Role       string      `json:"role"`
-	Text       string      `json:"text"`
-	Fee        json.Number `json:"fee"`
-	PointFee   json.Number `json:"point_fee"`
-	TradeValue string      `json:"trade_value"`
+	ID         int64        `json:"id"`
+	CreateTime float64      `json:"create_time"`
+	Contract   string       `json:"contract"`
+	OrderID    string       `json:"order_id"`
+	Size       xjson.Number `json:"size"`
+	CloseSize  xjson.Number `json:"close_size"`
+	Price      xjson.Number `json:"price"`
+	Role       string       `json:"role"`
+	Text       string       `json:"text"`
+	Fee        xjson.Number `json:"fee"`
+	PointFee   xjson.Number `json:"point_fee"`
+	TradeValue string       `json:"trade_value"`
 }
 
 type gateAccountBook struct {

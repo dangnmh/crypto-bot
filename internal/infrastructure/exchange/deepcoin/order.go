@@ -9,6 +9,8 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"crypto-bot/pkg/xjson"
 )
 
 type deepcoinOrderReq struct {
@@ -34,17 +36,17 @@ type deepcoinOrderResultData struct {
 }
 
 type deepcoinOrder struct {
-	InstID    string     `json:"instId"`
-	OrdId     string     `json:"ordId"`
-	ClOrdId   string     `json:"clOrdId"`
-	Px        flexString `json:"px"`
-	Sz        flexString `json:"sz"`
-	OrdType   string     `json:"ordType"`
-	Side      string     `json:"side"`
-	PosSide   string     `json:"posSide"`
-	AccFillSz flexString `json:"accFillSz"`
-	AvgPx     flexString `json:"avgPx"`
-	State     string     `json:"state"`
+	InstID    string       `json:"instId"`
+	OrdId     string       `json:"ordId"`
+	ClOrdId   string       `json:"clOrdId"`
+	Px        xjson.Number `json:"px"`
+	Sz        xjson.Number `json:"sz"`
+	OrdType   string       `json:"ordType"`
+	Side      string       `json:"side"`
+	PosSide   string       `json:"posSide"`
+	AccFillSz xjson.Number `json:"accFillSz"`
+	AvgPx     xjson.Number `json:"avgPx"`
+	State     string       `json:"state"`
 }
 
 func mapDeepcoinOrderSideAndPosition(reqSide domain.Side) (string, string, bool) {
