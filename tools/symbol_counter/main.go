@@ -16,6 +16,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
+	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
@@ -90,6 +91,7 @@ func main() {
 		"bitmart":       bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg),
 		"coinw":         coinw.NewClient(httpPool, "https://api.coinw.com", logCfg),
 		"krakenfutures": krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg),
+		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", logCfg),
 	}
 
 	var results []Result
