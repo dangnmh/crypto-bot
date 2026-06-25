@@ -690,7 +690,7 @@ func TestClient_RawRequests(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		switch r.URL.Path {
 		case "/api/v1/futures/order":
-			_, _ = w.Write([]byte(`{"code": "200", "data": {"orderId": "close-order-123", "status": "FILLED", "side": "SELL_CLOSE"}}`))
+			_, _ = w.Write([]byte(`{"code": "200", "data": {"orderId": "close-order-123", "status": "FILLED", "side": "SELL_CLOSE", "time": 1579007187214}}`))
 		case "/api/v1/futures/historyPositions":
 			_, _ = w.Write([]byte(`{"code": "200", "data": [{"symbol": "BTC-SWAP-USDT", "side": "LONG", "openAvgPrice": "24000", "closeAvgPrice": "25000", "closeTotalQty": "10", "realizedPnL": "1000", "realizedPnlWithoutFee": "1000.5", "openFee": "0.1", "closeFee": "0.1"}]}`))
 		case "/api/v1/futures/balanceFlow":
@@ -720,7 +720,8 @@ func TestClient_GetOrderPNL(t *testing.T) {
 					"status": "FILLED",
 					"side": "SELL_CLOSE",
 					"origQty": "10",
-					"avgPrice": "25000"
+					"avgPrice": "25000",
+					"time": 1579007187214
 				}
 			}`))
 		case "/api/v1/futures/historyPositions":
