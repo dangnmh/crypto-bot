@@ -62,44 +62,6 @@
         "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt"
       }
     },
-    "hyperliquid": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://api.hyperliquid.xyz"
-      },
-      "websocket": {
-        "wsURL": "wss://api.hyperliquid.xyz/ws"
-      }
-    },
-    "bitget": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://api.bitget.com"
-      },
-      "websocket": {
-        "publicURL": "wss://ws.bitget.com/v2/ws/public",
-        "privateURL": "wss://ws.bitget.com/v2/ws/private"
-      }
-    },
-    "bingx": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://open-api.bingx.com"
-      },
-      "websocket": {
-        "wsURL": "wss://open-api-ws.bingx.com/market"
-      }
-    },
-    "deepcoin": {
-      "enable": false,
-      "future": {
-        "baseURL": "https://api.deepcoin.com"
-      },
-      "websocket": {
-        "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
-        "privateURL": "wss://stream.deepcoin.com/v1/private"
-      }
-    },
     "toobit": {
       "enable": true,
       "future": {
