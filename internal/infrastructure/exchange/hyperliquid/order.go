@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 
+	"github.com/google/uuid"
 	"github.com/samber/lo"
 	hl "github.com/sonirico/go-hyperliquid"
 )
@@ -308,13 +310,15 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 
 	isBuy := closeSide != domain.SideCloseLong
 
+	clOID := "0x" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	req := hyperliquidCreateOrderRequest{
-		Coin:       symbol,
-		IsBuy:      isBuy,
-		Price:      0.0,
-		Size:       volume,
-		ReduceOnly: true,
-		Tif:        tifIoc,
+		Coin:          symbol,
+		IsBuy:         isBuy,
+		Price:         0.0,
+		Size:          volume,
+		ReduceOnly:    true,
+		Tif:           tifIoc,
+		ClientOrderID: &clOID,
 	}
 
 	status, err := c.createRawOrder(ctx, req)

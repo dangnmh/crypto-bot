@@ -1,43 +1,17 @@
 package orders
 
 import (
-	"strings"
 	"time"
+
+	"crypto-bot/internal/infrastructure/exchange"
 )
 
-// ExternalUniqueID generates a client order ID following the format:
-// SYMBOL (alphanumeric only) + SETTLETIME (alphanumeric DDMMYYYYHHmmss in GMT+7) + "_" + EXCHANGE.
-// The entire string is converted to upper case and truncated to a maximum of 32 characters.
-func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) string {
-	var sb strings.Builder
-	for _, r := range symbol {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			sb.WriteRune(r)
-		}
-	}
-	symFiltered := sb.String()
-
-	// 2. Format settle time in GMT+7 time zone directly as alphanumeric DDMMYYYYHHmmss
-	loc := time.FixedZone("GMT+7", 7*60*60)
-	settleLocal := settleTime.In(loc)
-	settleStr := settleLocal.Format("02012006150405")
-
-	// 3. Concatenate: settleStr + exchange + symFiltered
-	rawID := settleStr + exchange + symFiltered
-
-	// 4. Upper case the whole string
-	return strings.ToUpper(rawID)
+// ExternalUniqueID delegates to exchange.ExternalUniqueID.
+func ExternalUniqueID(symbol string, settleTime time.Time, exchangeName string) string {
+	return exchange.ExternalUniqueID(symbol, settleTime, exchangeName)
 }
 
-func ExternalOrderID(symbol string, settleTime time.Time, exchange string) string {
-	upperID := ExternalUniqueID(symbol, settleTime, exchange)
-	maxLen := 32
-	if strings.EqualFold(exchange, "gate") {
-		maxLen = 28
-	}
-
-	if len(upperID) > maxLen {
-		return upperID[:maxLen]
-	}
-	return upperID
+// ExternalOrderID delegates to exchange.ExternalOrderID.
+func ExternalOrderID(symbol string, settleTime time.Time, exchangeName string) string {
+	return exchange.ExternalOrderID(symbol, settleTime, exchangeName)
 }

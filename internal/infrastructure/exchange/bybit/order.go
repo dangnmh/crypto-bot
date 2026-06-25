@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -386,6 +387,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "bybit"),
 	}
 	_, err := c.CreateOrder(ctx, req)
 	return err

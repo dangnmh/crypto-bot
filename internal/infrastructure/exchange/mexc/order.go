@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -278,6 +279,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         int(exchange.OrderTypeMarket),
 		PositionMode: int(positionMode),
 		ReduceOnly:   true,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "mexc"),
 	}
 	_, err := c.createRawOrder(ctx, req)
 	return err

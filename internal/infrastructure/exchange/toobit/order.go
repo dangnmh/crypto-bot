@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+
+	"github.com/google/uuid"
 )
 
 type toobitResponse[T any] struct {
@@ -184,9 +187,11 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		params["timeInForce"] = tif
 	}
 
-	if req.ExternalOID != "" {
-		params["newClientOrderId"] = req.ExternalOID
+	clientOid := req.ExternalOID
+	if clientOid == "" {
+		clientOid = uuid.NewString()
 	}
+	params["newClientOrderId"] = clientOid
 
 	if req.StopLossPrice > 0 {
 		params["stopLoss"] = strconv.FormatFloat(req.StopLossPrice, 'f', -1, 64)
@@ -385,6 +390,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		Vol:          volume,
 		PositionMode: positionMode,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "toobit"),
 	})
 	return err
 }
@@ -402,7 +408,10 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort {
 			closeSide = domain.SideCloseShort
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1)
+		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

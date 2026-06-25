@@ -598,10 +598,18 @@ func TestClient_Helpers_And_Errors(t *testing.T) {
 
 	// 4. ClosePosition and CloseAllPositions
 	serverClose := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
 		if r.URL.Path == "/api/v1/futures/positions" {
+			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"code": 200, "data": [{"symbol": "BTC-SWAP-USDT", "side": "SHORT", "avgPrice": "50000", "position": "1.0"}]}`))
 		} else {
+			_ = r.ParseForm()
+			clientOid := r.FormValue("newClientOrderId")
+			if clientOid == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"code": -1004, "msg": "Missing required parameter 'newClientOrderId'"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"code": 200, "data": {"orderId": "order-close"}}`))
 		}
 	}))
@@ -613,6 +621,22 @@ func TestClient_Helpers_And_Errors(t *testing.T) {
 
 	err = clientClose.CloseAllPositions(context.Background(), "BTC-SWAP-USDT")
 	require.NoError(t, err)
+
+	// 5. CloseAllPositions error propagation
+	serverCloseErr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/futures/positions" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"code": 200, "data": [{"symbol": "BTC-SWAP-USDT", "side": "SHORT", "avgPrice": "50000", "position": "1.0"}]}`))
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code": -1004, "msg": "failed to place order"}`))
+		}
+	}))
+	defer serverCloseErr.Close()
+
+	clientCloseErr := toobit.NewClient(serverCloseErr.Client(), serverCloseErr.URL, "key", "secret", config.LoggingConfig{})
+	err = clientCloseErr.CloseAllPositions(context.Background(), "BTC-SWAP-USDT")
+	require.Error(t, err)
 }
 
 func TestClient_RawRequests(t *testing.T) {

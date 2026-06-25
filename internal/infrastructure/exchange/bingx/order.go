@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -358,6 +359,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		Vol:          volume,
 		PositionMode: positionMode,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "bingx"),
 	})
 	return err
 }
