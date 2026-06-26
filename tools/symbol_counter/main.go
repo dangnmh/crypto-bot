@@ -88,7 +88,7 @@ func main() {
 		"weex":          weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg),
 		"batonex":       batonex.NewClient(httpPool, "https://api.batonex.com", logCfg),
 		"zoomex":        zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg),
-		"bitmart":       bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg),
+		"bitmart":       bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg),
 		"coinw":         coinw.NewClient(httpPool, "https://api.coinw.com", logCfg),
 		"krakenfutures": krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg),
 		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", logCfg),

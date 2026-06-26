@@ -101,7 +101,7 @@ func main() {
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	bitunixClient := bitunix.NewClient(httpPool, "https://fapi.bitunix.com", logCfg)
 	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
-	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", logCfg)
+	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
 	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
 

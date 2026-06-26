@@ -3,13 +3,11 @@ package bitmart
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 
 	"crypto-bot/pkg/xjson"
 )
@@ -34,48 +32,11 @@ type bitmartResponse struct {
 	Data    bitmartData `json:"data"`
 }
 
-func (c *Client) request(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {
-	reqURL, err := url.Parse(c.baseURL + path)
-	if err != nil {
-		return nil, fmt.Errorf("parse url: %w", err)
-	}
-
-	if len(query) > 0 {
-		q := reqURL.Query()
-		for k, v := range query {
-			q.Set(k, v)
-		}
-		reqURL.RawQuery = q.Encode()
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	return body, nil
-}
-
 // GetTickers returns 24hr ticker price change statistics.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	query := make(map[string]string)
 	if symbol != "" {
-		query["symbol"] = toBitmartSymbol(symbol)
+		query["symbol"] = symbol
 	}
 
 	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", query)
@@ -108,7 +69,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		amt, _ := strconv.ParseFloat(item.Turnover24h, 64)
 
 		tickers = append(tickers, exchange.Ticker{
-			Symbol:       toStandardSymbol(item.Symbol),
+			Symbol:       item.Symbol,
 			LastPrice:    last,
 			Bid1:         bid,
 			Ask1:         ask,
@@ -144,13 +105,13 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	rateMap := make(map[string]*bitmartSymbolDetail)
 	for i := range resp.Data.Symbols {
 		item := &resp.Data.Symbols[i]
-		stdSym := toStandardSymbol(item.Symbol)
+		stdSym := item.Symbol
 		rateMap[stdSym] = item
 	}
 
 	results := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		stdSym := toStandardSymbol(sym)
+		stdSym := sym
 		item, exists := rateMap[stdSym]
 		if !exists {
 			continue
@@ -166,24 +127,6 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	return results, nil
-}
-
-func toStandardSymbol(s string) string {
-	upper := strings.ToUpper(s)
-	upper = strings.ReplaceAll(upper, "-PERP", "")
-	upper = strings.ReplaceAll(upper, "-SWAP", "")
-	upper = strings.ReplaceAll(upper, "-", "")
-	upper = strings.ReplaceAll(upper, "_", "")
-	return upper
-}
-
-func toBitmartSymbol(s string) string {
-	upper := strings.ToUpper(s)
-	upper = strings.ReplaceAll(upper, "-PERP", "")
-	upper = strings.ReplaceAll(upper, "-SWAP", "")
-	upper = strings.ReplaceAll(upper, "-", "")
-	upper = strings.ReplaceAll(upper, "_", "")
-	return upper
 }
 
 func (c *Client) GetPotentialFundingSymbols(
@@ -208,18 +151,18 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
-		whitelistMap[toStandardSymbol(sym)] = true
+		whitelistMap[sym] = true
 	}
 
 	blacklistMap := make(map[string]bool)
 	for _, sym := range blacklist {
-		blacklistMap[toStandardSymbol(sym)] = true
+		blacklistMap[sym] = true
 	}
 
 	var results []exchange.PotentialFundingResult
 	for i := range resp.Data.Symbols {
 		item := &resp.Data.Symbols[i]
-		stdSym := toStandardSymbol(item.Symbol)
+		stdSym := item.Symbol
 		if blacklistMap[stdSym] {
 			continue
 		}
@@ -238,7 +181,7 @@ func (c *Client) GetPotentialFundingSymbols(
 		rate, _ := strconv.ParseFloat(item.FundingRate, 64)
 		price, _ := strconv.ParseFloat(item.LastPrice, 64)
 		results = append(results, exchange.PotentialFundingResult{
-			Symbol:     toStandardSymbol(item.Symbol),
+			Symbol:     item.Symbol,
 			Rate:       rate,
 			SettleTime: item.FundingTime,
 			Volume24h:  amt,
@@ -247,4 +190,117 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	return results, nil
+}
+
+type serverTimeResponse struct {
+	Code int `json:"code"`
+	Data struct {
+		ServerTime int64 `json:"server_time"`
+	} `json:"data"`
+}
+
+// GetServerTime returns system time from system/time.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	body, err := c.request(ctx, http.MethodGet, "/system/time", nil)
+	if err != nil {
+		return 0, err
+	}
+	var resp serverTimeResponse
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return 0, fmt.Errorf("unmarshal server time: %w", err)
+	}
+	if resp.Code != 1000 {
+		return 0, fmt.Errorf("bitmart API error: %d", resp.Code)
+	}
+	return resp.Data.ServerTime, nil
+}
+
+type bitmartContractItem struct {
+	Symbol         string `json:"symbol"`
+	BaseCurrency   string `json:"base_currency"`
+	QuoteCurrency  string `json:"quote_currency"`
+	ContractSize   string `json:"contract_size"`
+	MinLeverage    string `json:"min_leverage"`
+	MaxLeverage    string `json:"max_leverage"`
+	PricePrecision string `json:"price_precision"`
+	VolPrecision   string `json:"vol_precision"`
+	MinVolume      string `json:"min_volume"`
+	MaxVolume      string `json:"max_volume"`
+	Status         string `json:"status"`
+}
+
+type bitmartContractData struct {
+	Symbols []bitmartContractItem `json:"symbols"`
+}
+
+type bitmartContractResponse struct {
+	Code    int                 `json:"code"`
+	Message string              `json:"message"`
+	Data    bitmartContractData `json:"data"`
+}
+
+// GetContractDetails returns contracts specs.
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp bitmartContractResponse
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal contract details: %w", err)
+	}
+	if resp.Code != 1000 {
+		return nil, fmt.Errorf("bitmart API error: %d - %s", resp.Code, resp.Message)
+	}
+
+	details := make([]exchange.ContractDetail, 0, len(resp.Data.Symbols))
+	for i := range resp.Data.Symbols {
+		item := &resp.Data.Symbols[i]
+
+		priceUnit := decmath.ParseFloat(item.PricePrecision)
+		minVol := int(decmath.ParseFloat(item.MinVolume))
+		volUnit := int(decmath.ParseFloat(item.VolPrecision))
+
+		priceScale := decmath.DecimalPlaces(item.PricePrecision)
+		volScale := decmath.DecimalPlaces(item.VolPrecision)
+
+		multiplier := decmath.ParseFloat(item.ContractSize)
+		if multiplier == 0 {
+			multiplier = 1.0
+		}
+
+		minLev := int(decmath.ParseFloat(item.MinLeverage))
+		if minLev == 0 {
+			minLev = 1
+		}
+		maxLev := int(decmath.ParseFloat(item.MaxLeverage))
+		if maxLev == 0 {
+			maxLev = 100
+		}
+
+		state := 0
+		if item.Status == "Trading" {
+			state = 1
+		}
+
+		details = append(details, exchange.ContractDetail{
+			Symbol:        item.Symbol,
+			DisplayName:   item.Symbol,
+			DisplayNameEn: item.Symbol,
+			BaseCoin:      item.BaseCurrency,
+			QuoteCoin:     item.QuoteCurrency,
+			SettleCoin:    item.QuoteCurrency,
+			ContractSize:  multiplier,
+			MinLeverage:   minLev,
+			MaxLeverage:   maxLev,
+			PriceUnit:     priceUnit,
+			MinVol:        minVol,
+			VolUnit:       volUnit,
+			PriceScale:    priceScale,
+			VolScale:      volScale,
+			State:         state,
+		})
+	}
+
+	return details, nil
 }

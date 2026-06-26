@@ -72,6 +72,17 @@
         "privateURL": "wss://stream.toobit.com",
         "maxPairsPerWSConn": 20
       }
+    },
+    "bitmart": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api-cloud-v2.bitmart.com"
+      },
+      "websocket": {
+        "publicURL": "wss://openapi-ws-v2.bitmart.com/api?protocol=1.1",
+        "privateURL": "wss://openapi-ws-v2.bitmart.com/user?protocol=1.1",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }

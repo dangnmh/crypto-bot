@@ -136,6 +136,9 @@ vault kv put secret/crypto-bot \
   BINGX_API_SECRET="bingx_api_secret_from_vault" \
   TOOBIT_API_KEY="toobit_api_key_from_vault" \
   TOOBIT_API_SECRET="toobit_api_secret_from_vault" \
+  BITMART_API_KEY="bitmart_api_key_from_vault" \
+  BITMART_API_SECRET="bitmart_api_secret_from_vault" \
+  BITMART_API_PASSPHRASE="bitmart_api_passphrase_from_vault" \
   DATABASE_URL="postgres://postgres:postgres@postgresql:5432/postgres?sslmode=disable" \
   TELEGRAM_CHAT_ID="telegram_chat_id_from_vault" \
   TELEGRAM_BOT_TOKEN="telegram_bot_token_from_vault"

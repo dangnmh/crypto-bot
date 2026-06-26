@@ -121,6 +121,7 @@ const (
 	BingxName       = "bingx"
 	DeepcoinName    = "deepcoin"
 	ToobitName      = "toobit"
+	BitmartName     = "bitmart"
 )
 
 type ExchangeSpec struct {
@@ -136,6 +137,7 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	BitgetName:      {},
 	BingxName:       {},
 	ToobitName:      {},
+	BitmartName:     {RequiresPassphrase: true},
 	KucoinName:      {RequiresPassphrase: true},
 	OkxName:         {RequiresPassphrase: true},
 	DeepcoinName:    {RequiresPassphrase: true},

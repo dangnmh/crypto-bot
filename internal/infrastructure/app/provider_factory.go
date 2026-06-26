@@ -12,6 +12,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
+	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
@@ -198,6 +199,18 @@ func DefaultProviderFactories() []ProviderFactory {
 					adapter.SetClient(concreteClient)
 				}
 				return buildProvider(ctx, exchange.ExchangeToobit, exchange.ExchangeToobit, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeBitmart,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBitmart]
+				client := exchange.Client(bitmart.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+				adapter := bitmart.NewWsAdapter(apiCfg.WebSocket.PrivateEndpoint(), apiCfg.APIPassphrase)
+				if concreteClient, ok := client.(*bitmart.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeBitmart, exchange.ExchangeBitmart, cfg, apiCfg, client, adapter), nil
 			},
 		},
 	}

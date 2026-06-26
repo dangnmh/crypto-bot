@@ -38,10 +38,16 @@
   //   "exchange": "gate",
   //   "simulateSettle": "2026-06-18T22:30:00.000+07:00"
   // },
+  // {
+  //   "symbol": "0G-SWAP-USDT",
+  //   "marginUSDT": 3,
+  //   "exchange": "toobit",
+  //   "simulateSettle": "2026-06-25T17:50:00.000+07:00"
+  // },
   {
-    "symbol": "H-SWAP-USDT",
+    "symbol": "PORTALUSDT",
     "marginUSDT": 3,
-    "exchange": "toobit",
-    "simulateSettle": "2026-06-25T11:05:00.000+07:00"
+    "exchange": "bitmart",
+    "simulateSettle": "2026-06-26T22:15:00.000+07:00"
   }
 ]
