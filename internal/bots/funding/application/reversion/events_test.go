@@ -387,3 +387,58 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 	assert.Contains(t, msg, "Order ID: ord-12345")
 	assert.Contains(t, msg, "Client ID: client-abc")
 }
+
+func TestBaseReversionEvent_DeduplicateKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		externalID string
+		topic      string
+		expected   string
+	}{
+		{
+			name:       "Both fields set",
+			externalID: "client_id_123",
+			topic:      "funding.reversion.armed",
+			expected:   "client_id_123funding.reversion.armed",
+		},
+		{
+			name:       "Empty externalID",
+			externalID: "",
+			topic:      "funding.reversion.armed",
+			expected:   "",
+		},
+		{
+			name:       "Empty topic",
+			externalID: "client_id_123",
+			topic:      "",
+			expected:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			evt := reversion.BaseReversionEvent{
+				ExternalID: tt.externalID,
+				Topic:      tt.topic,
+			}
+			assert.Equal(t, tt.expected, evt.DeduplicateKey())
+		})
+	}
+}
+
+func TestCandidateFoundEvent_DeduplicateKeyInherited(t *testing.T) {
+	t.Parallel()
+
+	evt := reversion.CandidateFoundEvent{
+		BaseReversionEvent: reversion.BaseReversionEvent{
+			ExternalID: "client_id_123",
+			Topic:      "funding.reversion.candidate",
+		},
+	}
+	assert.Equal(t, "client_id_123funding.reversion.candidate", evt.DeduplicateKey())
+}
+
