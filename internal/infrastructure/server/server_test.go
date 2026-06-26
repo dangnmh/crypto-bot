@@ -70,7 +70,7 @@ func (s *stubClient) GetOpenOrders(ctx context.Context, symbol string) ([]exchan
 	return nil, nil
 }
 func (s *stubClient) CloseAllPositions(ctx context.Context, symbol string) error { return nil }
-func (s *stubClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (s *stubClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	return nil
 }
 func (s *stubClient) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
@@ -184,7 +184,7 @@ func (s *stubClientNoClosedPnL) GetOpenOrders(ctx context.Context, symbol string
 func (s *stubClientNoClosedPnL) CloseAllPositions(ctx context.Context, symbol string) error {
 	return nil
 }
-func (s *stubClientNoClosedPnL) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (s *stubClientNoClosedPnL) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	return nil
 }
 func (s *stubClientNoClosedPnL) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {

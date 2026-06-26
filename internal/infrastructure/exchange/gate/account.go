@@ -325,11 +325,13 @@ func (c *Client) waitAndFindClosingTrades(ctx context.Context, symbol, openingOr
 // mapPosition maps a gatePosition to exchange.Position.
 func mapPosition(raw gatePosition) exchange.Position {
 	sizeVal, _ := raw.Size.Int64()
+	levVal, _ := raw.Leverage.Int64()
 	pos := exchange.Position{
 		Symbol:       raw.Contract,
 		HoldVol:      float64(decmath.AbsInt64(sizeVal)),
 		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
 		OpenAvgPrice: decmath.ParseFloat(raw.EntryPrice),
+		Leverage:     int(levVal),
 	}
 
 	if sizeVal > 0 {

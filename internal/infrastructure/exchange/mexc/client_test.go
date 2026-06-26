@@ -408,7 +408,7 @@ func TestClient_ClosePosition(t *testing.T) {
 	defer srv.Close()
 
 	client := newTestClient(srv)
-	err := client.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1.5, 1)
+	err := client.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1.5, 1, 1)
 	if err != nil {
 		t.Fatalf("ClosePosition failed: %v", err)
 	}

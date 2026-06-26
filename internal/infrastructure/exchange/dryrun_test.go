@@ -60,7 +60,7 @@ func (s *stubClient) CloseAllPositions(_ context.Context, _ string) error {
 	s.closeCalled = true
 	return nil
 }
-func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _ float64, _ domain.PositionMode) error {
+func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _ float64, _ domain.PositionMode, _ int) error {
 	s.closePositionCalled = true
 	return nil
 }
@@ -115,7 +115,7 @@ func TestDryRunClient_ClosePosition_NoRealCall(t *testing.T) {
 	stub := &stubClient{}
 	dry := exchange.NewDryRunClient(stub)
 
-	err := dry.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, domain.PositionModeHedge)
+	err := dry.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, domain.PositionModeHedge, 10)
 	require.NoError(t, err)
 	assert.False(t, stub.closePositionCalled, "real ClosePosition should NOT be called in dry-run mode")
 }

@@ -229,7 +229,7 @@ func TestClient_ClosePosition(t *testing.T) {
 	defer server.Close()
 
 	client := hyperliquid.NewClient(context.Background(), server.Client(), server.URL, "", "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", config.LoggingConfig{})
-	err := client.ClosePosition(context.Background(), "BTC", domain.SideCloseLong, 0.01, 1)
+	err := client.ClosePosition(context.Background(), "BTC", domain.SideCloseLong, 0.01, 1, 10)
 	require.NoError(t, err)
 }
 

@@ -369,7 +369,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition is a helper to close a position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	submitSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		submitSide = exchange.SideCloseShort
@@ -382,6 +382,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Vol:          volume,
 		PositionMode: positionMode,
 		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "kucoin"),
+		Leverage:     leverage,
 	})
 	return err
 }
@@ -399,7 +400,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort { // Short
 			closeSide = domain.SideCloseShort
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge)
+		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
 	}
 
 	return nil

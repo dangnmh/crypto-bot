@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -273,11 +274,13 @@ func mapPosition(raw bybitPosition) exchange.Position {
 		avgPrice = raw.AvgPrice
 	}
 
+	lev, _ := strconv.Atoi(raw.Leverage)
 	pos := exchange.Position{
 		Symbol:       raw.Symbol,
 		HoldVol:      decmath.ParseFloat(raw.Size),
 		HoldAvgPrice: decmath.ParseFloat(avgPrice),
 		OpenAvgPrice: decmath.ParseFloat(avgPrice),
+		Leverage:     lev,
 	}
 
 	switch raw.PositionIdx {

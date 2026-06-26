@@ -211,7 +211,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	return nil, fmt.Errorf("GetOpenOrders not supported on Deepcoin")
 }
 
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	submitSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		submitSide = exchange.SideCloseShort
@@ -222,6 +222,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		Vol:          volume,
 		PositionMode: positionMode,
+		Leverage:     leverage,
 		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "deepcoin"),
 	})
 	return err
@@ -238,7 +239,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort {
 			closeSide = domain.SideCloseShort
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1)
+		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1, pos.Leverage)
 	}
 	return nil
 }

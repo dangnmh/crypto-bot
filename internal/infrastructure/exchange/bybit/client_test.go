@@ -527,7 +527,7 @@ func TestClient_ClosePosition_And_ChangeLeverage(t *testing.T) {
 	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	// ClosePosition
-	err := client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 1.0, 1)
+	err := client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 1.0, 1, 10)
 	require.NoError(t, err)
 
 	// CloseAllPositions

@@ -34,7 +34,7 @@ type OrderExecutor interface {
 	GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error)
 	GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)
 	GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)
-	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error
+	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
 	SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error

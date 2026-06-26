@@ -107,7 +107,7 @@ func TestClient_OrderEndpoints(t *testing.T) {
 	assert.Equal(t, "42", orderByExt.OrderID)
 	assert.Equal(t, exchange.OrderStateFilled, orderByExt.State)
 
-	require.NoError(t, client.ClosePosition(ctx, "BTC_USDT", domain.SideCloseLong, 2, 1))
+	require.NoError(t, client.ClosePosition(ctx, "BTC_USDT", domain.SideCloseLong, 2, 1, 20))
 	require.NoError(t, client.CloseAllPositions(ctx, "BTC_USDT"))
 	require.NoError(t, client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{Symbol: "BTC_USDT", Leverage: 20}))
 }
@@ -152,7 +152,7 @@ func TestClient_LatencyWarmUpAndRESTErrors(t *testing.T) {
 	require.Error(t, err)
 	_, err = errClient.GetOpenOrders(context.Background(), "BTC_USDT")
 	require.Error(t, err)
-	require.Error(t, errClient.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, 1))
+	require.Error(t, errClient.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1, 1, 10))
 	require.Error(t, errClient.CloseAllPositions(context.Background(), "BTC_USDT"))
 	require.Error(t, errClient.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{Symbol: "BTC_USDT", Leverage: 10}))
 	_, err = errClient.Latency(context.Background())

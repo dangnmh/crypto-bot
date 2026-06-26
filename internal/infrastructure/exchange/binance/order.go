@@ -418,7 +418,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition closes a single position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	req := exchange.SubmitOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
@@ -426,6 +426,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
+		Leverage:     leverage,
 		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "binance"),
 	}
 	_, err := c.CreateOrder(ctx, req)
@@ -446,7 +447,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 			if pos.PositionType == exchange.PositionTypeLong {
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge)
+			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
 			if err != nil {
 				return err
 			}

@@ -177,6 +177,7 @@ type Position struct {
 	CloseProfitLoss float64      `json:"closeProfitLoss"`
 	Fee             float64      `json:"fee"`
 	HoldFee         float64      `json:"holdFee"`
+	Leverage        int          `json:"leverage,omitempty"`
 }
 
 // OrderInfo holds order information.

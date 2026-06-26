@@ -273,7 +273,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 }
 
 // ClosePosition closes one position leg using a reduce-only market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	req := mexcCreateOrderRequest{
 		Symbol:       symbol,
 		Vol:          volume,
@@ -282,6 +282,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		PositionMode: int(positionMode),
 		ReduceOnly:   true,
 		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "mexc"),
+		Leverage:     leverage,
 	}
 	_, err := c.createRawOrder(ctx, req)
 	return err

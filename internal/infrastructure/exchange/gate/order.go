@@ -265,7 +265,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition submits a market order to close an open position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	orderSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		orderSide = exchange.SideCloseShort
@@ -278,6 +278,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "gate"),
+		Leverage:     leverage,
 	})
 	if err != nil {
 		return fmt.Errorf("gate.io close position: %w", err)
@@ -301,7 +302,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 			} else { // Short
 				side = domain.SideCloseShort
 			}
-			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge) // default hedge mode close
+			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage) // default hedge mode close
 			if posErr != nil {
 				return posErr
 			}

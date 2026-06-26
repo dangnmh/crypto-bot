@@ -111,6 +111,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		holdVol := math.Abs(posVal)
 		avgPx, _ := strconv.ParseFloat(pos.AvgPx, 64)
+		lev, _ := strconv.Atoi(pos.Lever)
 
 		posType := mapPositionType(pos.PosSide, posVal, pos.InstID, pos.PosCcy)
 
@@ -120,6 +121,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			HoldAvgPrice: avgPx,
 			OpenAvgPrice: avgPx,
 			PositionType: posType,
+			Leverage:     lev,
 		})
 	}
 

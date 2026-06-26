@@ -168,5 +168,6 @@ func (p *mexcPosition) toPosition() exchange.Position {
 		CloseProfitLoss: 0,
 		Fee:             0,
 		HoldFee:         p.HoldFee,
+		Leverage:        p.Leverage,
 	}
 }

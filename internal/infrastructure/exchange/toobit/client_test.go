@@ -616,7 +616,7 @@ func TestClient_Helpers_And_Errors(t *testing.T) {
 	defer serverClose.Close()
 
 	clientClose := toobit.NewClient(serverClose.Client(), serverClose.URL, "key", "secret", config.LoggingConfig{})
-	err = clientClose.ClosePosition(context.Background(), "BTC-SWAP-USDT", domain.SideCloseShort, 1.0, domain.PositionModeHedge)
+	err = clientClose.ClosePosition(context.Background(), "BTC-SWAP-USDT", domain.SideCloseShort, 1.0, domain.PositionModeHedge, 10)
 	require.NoError(t, err)
 
 	err = clientClose.CloseAllPositions(context.Background(), "BTC-SWAP-USDT")

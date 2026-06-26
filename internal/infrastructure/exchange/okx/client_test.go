@@ -415,7 +415,7 @@ func TestClient_ClosePosition(t *testing.T) {
 	defer server.Close()
 
 	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	err := client.ClosePosition(context.Background(), "BTC-USDT-SWAP", domain.SideCloseLong, 1.0, 1)
+	err := client.ClosePosition(context.Background(), "BTC-USDT-SWAP", domain.SideCloseLong, 1.0, 1, 10)
 	require.NoError(t, err)
 }
 

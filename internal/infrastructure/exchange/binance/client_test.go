@@ -421,7 +421,7 @@ func TestClient_ExtendedPrivateMethods(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 5. ClosePosition
-	err = client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 0.5, 1)
+	err = client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 0.5, 1, 20)
 	assert.NoError(t, err)
 
 	// 6. CloseAllPositions

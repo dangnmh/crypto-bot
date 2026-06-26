@@ -51,6 +51,7 @@ type positionRiskItem struct {
 	PositionAmt  string `json:"positionAmt"`
 	EntryPrice   string `json:"entryPrice"`
 	PositionSide string `json:"positionSide"`
+	Leverage     string `json:"leverage"`
 }
 
 type userTradeItem struct {

@@ -114,6 +114,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		absAmt := math.Abs(amt)
 		entry := decmath.ParseFloat(p.EntryPrice)
+		levVal, _ := strconv.Atoi(p.Leverage)
 
 		positions = append(positions, exchange.Position{
 			Symbol:       p.Symbol,
@@ -121,6 +122,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			HoldAvgPrice: entry,
 			OpenAvgPrice: entry,
 			PositionType: sideVal,
+			Leverage:     levVal,
 		})
 	}
 

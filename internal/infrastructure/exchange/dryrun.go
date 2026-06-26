@@ -182,12 +182,13 @@ func (d *DryRunClient) CloseAllPositions(ctx context.Context, symbol string) err
 	return nil
 }
 
-func (d *DryRunClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (d *DryRunClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	d.log.WarnContext(ctx, "🧪 DRY-RUN ClosePosition",
 		slog.String("symbol", symbol),
 		slog.String("side", closeSide.String()),
 		slog.Float64("vol", volume),
 		slog.Int("positionMode", int(positionMode)),
+		slog.Int("leverage", leverage),
 	)
 	return nil
 }

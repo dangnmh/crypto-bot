@@ -365,6 +365,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		avgPrice := decmath.ParseFloat(raw.AvgPrice)
 		pnl := decmath.ParseFloat(raw.UnrealizedPnl)
+		levVal, _ := strconv.Atoi(raw.Leverage)
 
 		positions = append(positions, exchange.Position{
 			Symbol:          raw.Symbol,
@@ -373,13 +374,14 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			OpenAvgPrice:    avgPrice,
 			HoldAvgPrice:    avgPrice,
 			CloseProfitLoss: pnl,
+			Leverage:        levVal,
 		})
 	}
 	return positions, nil
 }
 
 // ClosePosition closes a position by submitting a market reduction order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode) error {
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	submitSide := exchange.SideCloseLong
 	if closeSide == domain.SideCloseShort {
 		submitSide = exchange.SideCloseShort
@@ -392,6 +394,7 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Vol:          volume,
 		PositionMode: positionMode,
 		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "toobit"),
+		Leverage:     leverage,
 	})
 	return err
 }
@@ -409,7 +412,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort {
 			closeSide = domain.SideCloseShort
 		}
-		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1)
+		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1, pos.Leverage)
 		if err != nil {
 			return err
 		}
