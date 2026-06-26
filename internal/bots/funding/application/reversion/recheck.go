@@ -54,9 +54,10 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 
 	r.log.InfoContext(ctx, "FR OK", slog.String("symbol", c.Symbol), slog.Float64("fr", fundingRate*100))
 
+	base := nextReversionBase(waitEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now())
+	base.FundingRate = fundingRate
 	evt := ConfirmedEvent{
-		BaseReversionEvent: nextReversionBase(waitEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
-		FundingRate:        fundingRate,
+		BaseReversionEvent: base,
 		Candidate:          c,
 	}
 

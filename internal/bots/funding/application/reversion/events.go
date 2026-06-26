@@ -227,8 +227,7 @@ func (e WaitCompleteEvent) GetDataMap() map[string]any {
 
 type ConfirmedEvent struct {
 	BaseReversionEvent
-	FundingRate float64                 `json:"funding_rate"`
-	Candidate   fundingdomain.Candidate `json:"candidate"`
+	Candidate fundingdomain.Candidate `json:"candidate"`
 }
 
 func (e ConfirmedEvent) GetMessage() string { return "Recheck confirmed" }
@@ -238,8 +237,7 @@ func (e ConfirmedEvent) GetDataMap() map[string]any {
 
 type MarginModeReadyEvent struct {
 	BaseReversionEvent
-	FundingRate float64                 `json:"funding_rate"`
-	Candidate   fundingdomain.Candidate `json:"candidate"`
+	Candidate fundingdomain.Candidate `json:"candidate"`
 }
 
 func (e MarginModeReadyEvent) GetMessage() string { return "Margin mode ready" }
@@ -250,7 +248,6 @@ func (e MarginModeReadyEvent) GetDataMap() map[string]any {
 type FireTimingReadyEvent struct {
 	BaseReversionEvent
 	Candidate        fundingdomain.Candidate `json:"candidate"`
-	FundingRate      float64                 `json:"funding_rate"`
 	LatencyRTTMs     int64                   `json:"latency_rtt_ms"`
 	FireOffsetMs     int64                   `json:"fire_offset_ms"`
 	SnapshotOffsetMs int64                   `json:"snapshot_offset_ms"`
@@ -362,7 +359,6 @@ type IOCOutcomeCheckedEvent struct {
 	Reason       ReversionReason   `json:"reason"`
 	CheckedAt    time.Time         `json:"checked_at"`
 	Timeout      time.Duration     `json:"timeout"`
-	FundingRate  float64           `json:"funding_rate"`
 	VolUSDT24h   float64           `json:"vol_usdt_24h"`
 }
 

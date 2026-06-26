@@ -38,13 +38,22 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		SettleTime: now.Add(time.Hour),
 	}
 
+	baseWithFR := base
+	baseWithFR.FundingRate = 0.001
+
 	baseWithOrderAndSide := base
 	baseWithOrderAndSide.OrderID = "ord-1"
 	baseWithOrderAndSide.Side = shared.SideOpenLong
 
+	baseWithOrderAndSideWithFR := baseWithOrderAndSide
+	baseWithOrderAndSideWithFR.FundingRate = 0.001
+
 	baseWithOrderAndSideNoNotify := baseNoNotify
 	baseWithOrderAndSideNoNotify.OrderID = "ord-1"
 	baseWithOrderAndSideNoNotify.Side = shared.SideOpenLong
+
+	baseWithOrderAndSideNoNotifyWithFR := baseWithOrderAndSideNoNotify
+	baseWithOrderAndSideNoNotifyWithFR.FundingRate = 0.001
 
 	candidate := fundingdomain.Candidate{
 		TradeIntent: fundingdomain.TradeIntent{
@@ -122,7 +131,7 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		},
 		{
 			name:        "confirmed",
-			event:       reversion.ConfirmedEvent{BaseReversionEvent: base, FundingRate: 0.001, Candidate: candidate},
+			event:       reversion.ConfirmedEvent{BaseReversionEvent: baseWithFR, Candidate: candidate},
 			messagePart: "Recheck confirmed",
 			keys:        []string{"fundingRate"},
 			notify:      true,
@@ -164,21 +173,21 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		},
 		{
 			name:        "ioc outcome checked",
-			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSide, Outcome: reversion.IOCOutcomeFilled, HoldVol: 1.25, FundingRate: 0.001, VolUSDT24h: 60_000_000},
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideWithFR, Outcome: reversion.IOCOutcomeFilled, HoldVol: 1.25, VolUSDT24h: 60_000_000},
 			messagePart: "IOC outcome checked",
 			keys:        []string{"orderId", "outcome", "holdVol", "fundingRate", "volusdt24h"},
 			notify:      true,
 		},
 		{
 			name:        "ioc outcome checked canceled no fill",
-			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotify, Outcome: reversion.IOCOutcomeCanceledNoFill, HoldVol: 0, FundingRate: 0.001, VolUSDT24h: 60_000_000},
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotifyWithFR, Outcome: reversion.IOCOutcomeCanceledNoFill, HoldVol: 0, VolUSDT24h: 60_000_000},
 			messagePart: "IOC order canceled (no fill)",
 			keys:        []string{"orderId", "outcome", "holdVol", "fundingRate", "volusdt24h"},
 			notify:      true,
 		},
 		{
 			name:        "ioc outcome checked unknown",
-			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotify, Outcome: reversion.IOCOutcomeUnknown, HoldVol: 0, Reason: "mock-err", FundingRate: 0.001, VolUSDT24h: 60_000_000},
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotifyWithFR, Outcome: reversion.IOCOutcomeUnknown, HoldVol: 0, Reason: "mock-err", VolUSDT24h: 60_000_000},
 			messagePart: "IOC outcome unknown",
 			keys:        []string{"orderId", "outcome", "holdVol", "reason", "fundingRate", "volusdt24h"},
 			notify:      true,

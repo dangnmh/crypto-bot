@@ -573,7 +573,7 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 			}
 
 			submitted := IOCSubmittedEvent{
-				BaseReversionEvent: BaseReversionEvent{ReqID: tt.reqID, Symbol: "BTC_USDT", OrderID: "ord-none"},
+				BaseReversionEvent: BaseReversionEvent{ReqID: tt.reqID, Symbol: "BTC_USDT", OrderID: "ord-none", FundingRate: 0.0055},
 				Candidate:          reversionTestCandidate(),
 			}
 			submitted.Candidate.FundingRate = 0.0055

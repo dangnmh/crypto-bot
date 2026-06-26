@@ -35,7 +35,6 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	evt := MarginModeReadyEvent{
 		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.deps.Clock.Now()),
 		Candidate:          confirmedEvt.Candidate,
-		FundingRate:        confirmedEvt.FundingRate,
 	}
 
 	return r.publishEvent(ctx, TopicReversionMarginModeReady, evt)
@@ -77,7 +76,6 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 	nextEvt := FireTimingReadyEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Candidate:          evt.Candidate,
-		FundingRate:        evt.FundingRate,
 		LatencyRTTMs:       latencyMs,
 		FireOffsetMs:       fireOffset.Milliseconds(),
 		SnapshotOffsetMs:   snapshotOffset.Milliseconds(),
