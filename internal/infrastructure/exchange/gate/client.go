@@ -208,6 +208,12 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 	}
 
 	if resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return nil, &exchange.RateLimitError{
+				Message: string(respBody),
+				Path:    path,
+			}
+		}
 		var apiErr struct {
 			Label   string `json:"label"`
 			Message string `json:"message"`
@@ -218,9 +224,17 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 			if apiErr.Detail != "" {
 				msg = apiErr.Detail
 			}
-			return nil, fmt.Errorf("gate.io api error: label=%s message=%s", apiErr.Label, msg)
+			return nil, &exchange.APIError{
+				StatusCode: resp.StatusCode,
+				Message:    fmt.Sprintf("label=%s message=%s", apiErr.Label, msg),
+				Path:       path,
+			}
 		}
-		return nil, fmt.Errorf("gate.io http error: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, &exchange.APIError{
+			StatusCode: resp.StatusCode,
+			Message:    string(respBody),
+			Path:       path,
+		}
 	}
 
 	return respBody, nil

@@ -275,11 +275,33 @@ func (g *gzipReadCloser) Close() error {
 	return err2
 }
 
+type binanceAPIErrorResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+}
+
 func handleBinanceError(ctx context.Context, statusCode int, body []byte, path string, logger *slog.Logger) error {
 	if statusCode == http.StatusTooManyRequests || statusCode == 418 {
 		return &exchange.RateLimitError{
 			Message: string(body),
 			Path:    path,
+		}
+	}
+	var errResp binanceAPIErrorResponse
+	if xjson.Unmarshal(body, &errResp) == nil && errResp.Code != 0 {
+		if errResp.Code == -4046 || strings.Contains(strings.ToLower(errResp.Msg), "no need to change") {
+			return nil
+		}
+		logger.WarnContext(ctx, "🟡 Binance Non-200 response",
+			"status", statusCode,
+			"path", path,
+			"body", string(body),
+		)
+		return &exchange.APIError{
+			StatusCode: statusCode,
+			Code:       errResp.Code,
+			Message:    errResp.Msg,
+			Path:       path,
 		}
 	}
 	bodyStr := string(body)
@@ -291,5 +313,9 @@ func handleBinanceError(ctx context.Context, statusCode int, body []byte, path s
 		"path", path,
 		"body", bodyStr,
 	)
-	return fmt.Errorf("binance API error: status=%d body=%s", statusCode, bodyStr)
+	return &exchange.APIError{
+		StatusCode: statusCode,
+		Message:    bodyStr,
+		Path:       path,
+	}
 }

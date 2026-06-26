@@ -338,8 +338,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		OrderID: id,
 	})
 	if err != nil {
-		errMsg := strings.ToLower(err.Error())
-		if strings.Contains(errMsg, "-2011") || strings.Contains(errMsg, "unknown order") || strings.Contains(errMsg, "filled") {
+		if apiErr, ok := exchange.IsAPIError(err); ok && (apiErr.Code == -2011 || strings.Contains(strings.ToLower(apiErr.Message), "unknown order") || strings.Contains(strings.ToLower(apiErr.Message), "filled")) {
 			return nil
 		}
 		return fmt.Errorf("binance cancel order: %w", err)
@@ -478,8 +477,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string
 
 	err := c.request(ctx, http.MethodPost, "/fapi/v1/marginType", params, true, nil)
 	if err != nil {
-		errMsg := strings.ToLower(err.Error())
-		if strings.Contains(errMsg, "-4046") || strings.Contains(errMsg, "no need to change") {
+		if apiErr, ok := exchange.IsAPIError(err); ok && (apiErr.Code == -4046 || strings.Contains(strings.ToLower(apiErr.Message), "no need to change")) {
 			return nil
 		}
 		return fmt.Errorf("binance switch margin mode: %w", err)

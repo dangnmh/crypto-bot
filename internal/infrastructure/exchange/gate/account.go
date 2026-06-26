@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -114,7 +115,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			Symbol: symbol,
 		})
 		if err != nil {
-			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
+			if apiErr, ok := exchange.IsAPIError(err); ok && (apiErr.StatusCode == http.StatusNotFound || strings.Contains(strings.ToLower(apiErr.Message), "not found")) {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("gate.io get position for %s: %w", symbol, err)
