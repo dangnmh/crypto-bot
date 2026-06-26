@@ -158,7 +158,6 @@ func (e CandidateFoundEvent) GetDataMap() map[string]any {
 	return map[string]any{keyFundingRate: e.Candidate.FundingRate, "side": e.Candidate.Side.String()}
 }
 
-
 type ArmMarketReadyEvent struct {
 	BaseReversionEvent
 	Candidate fundingdomain.Candidate `json:"candidate"`

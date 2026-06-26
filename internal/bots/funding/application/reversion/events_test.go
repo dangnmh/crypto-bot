@@ -1,6 +1,9 @@
 package reversion_test
 
 import (
+	"context"
+	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -8,8 +11,10 @@ import (
 	"crypto-bot/internal/bots/funding/application/reversion"
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/pkg/eventbus"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReversionEventsExposeStableMetadata(t *testing.T) {
@@ -418,7 +423,6 @@ func TestBaseReversionEvent_DeduplicateKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			evt := reversion.BaseReversionEvent{
@@ -442,3 +446,61 @@ func TestCandidateFoundEvent_DeduplicateKeyInherited(t *testing.T) {
 	assert.Equal(t, "client_id_123funding.reversion.candidate", evt.DeduplicateKey())
 }
 
+func TestReversionEvents_EventBusDeduplication(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New(slog.Default())
+	defer func() { _ = bus.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	topic := "funding.reversion.position_closed"
+	msgs, err := bus.Subscribe(ctx, topic)
+	require.NoError(t, err)
+
+	base := reversion.BaseReversionEvent{
+		ExternalID: "client_id_dup",
+		Topic:      topic,
+	}
+
+	evt1 := reversion.PositionClosedEvent{
+		BaseReversionEvent: base,
+		Reason:             "first_publish",
+	}
+	evt2 := reversion.PositionClosedEvent{
+		BaseReversionEvent: base,
+		Reason:             "second_publish",
+	}
+
+	// Publish first event
+	err = bus.Publish(topic, evt1)
+	require.NoError(t, err)
+
+	// Publish second event (duplicate)
+	err = bus.Publish(topic, evt2)
+	require.NoError(t, err)
+
+	// We should receive exactly 1 message
+	var received []string
+	select {
+	case msg := <-msgs:
+		var rec reversion.PositionClosedEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &rec))
+		received = append(received, rec.Reason)
+		msg.Ack()
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for first message")
+	}
+
+	// Wait a bit to ensure no second message comes
+	select {
+	case msg := <-msgs:
+		t.Fatalf("received unexpected duplicate message: %s", string(msg.Payload))
+	case <-time.After(100 * time.Millisecond):
+		// Success: no second message arrived
+	}
+
+	assert.Len(t, received, 1)
+	assert.Equal(t, "first_publish", received[0])
+}
