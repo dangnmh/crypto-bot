@@ -8,7 +8,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -32,6 +31,38 @@ type bitmartResponse struct {
 	Data    bitmartData `json:"data"`
 }
 
+type bitmartContractItem struct {
+	Symbol         string `json:"symbol"`
+	BaseCurrency   string `json:"base_currency"`
+	QuoteCurrency  string `json:"quote_currency"`
+	ContractSize   string `json:"contract_size"`
+	MinLeverage    string `json:"min_leverage"`
+	MaxLeverage    string `json:"max_leverage"`
+	PricePrecision string `json:"price_precision"`
+	VolPrecision   string `json:"vol_precision"`
+	MinVolume      string `json:"min_volume"`
+	MaxVolume      string `json:"max_volume"`
+	Status         string `json:"status"`
+}
+
+type bitmartContractData struct {
+	Symbols []bitmartContractItem `json:"symbols"`
+}
+
+type bitmartContractResponse struct {
+	Code    int                 `json:"code"`
+	Message string              `json:"message"`
+	Data    bitmartContractData `json:"data"`
+}
+
+// Private raw methods.
+
+func (c *Client) rawGetDetails(ctx context.Context, query map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/contract/public/details", query)
+}
+
+// Public mapper methods.
+
 // GetTickers returns 24hr ticker price change statistics.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	query := make(map[string]string)
@@ -39,7 +70,7 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		query["symbol"] = symbol
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", query)
+	body, err := c.rawGetDetails(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +119,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", nil)
+	body, err := c.rawGetDetails(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +166,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	whitelist []string,
 	blacklist []string,
 ) ([]exchange.PotentialFundingResult, error) {
-	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", nil)
+	body, err := c.rawGetDetails(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -192,56 +223,9 @@ func (c *Client) GetPotentialFundingSymbols(
 	return results, nil
 }
 
-type serverTimeResponse struct {
-	Code int `json:"code"`
-	Data struct {
-		ServerTime int64 `json:"server_time"`
-	} `json:"data"`
-}
-
-// GetServerTime returns system time from system/time.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	body, err := c.request(ctx, http.MethodGet, "/system/time", nil)
-	if err != nil {
-		return 0, err
-	}
-	var resp serverTimeResponse
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return 0, fmt.Errorf("unmarshal server time: %w", err)
-	}
-	if resp.Code != 1000 {
-		return 0, fmt.Errorf("bitmart API error: %d", resp.Code)
-	}
-	return resp.Data.ServerTime, nil
-}
-
-type bitmartContractItem struct {
-	Symbol         string `json:"symbol"`
-	BaseCurrency   string `json:"base_currency"`
-	QuoteCurrency  string `json:"quote_currency"`
-	ContractSize   string `json:"contract_size"`
-	MinLeverage    string `json:"min_leverage"`
-	MaxLeverage    string `json:"max_leverage"`
-	PricePrecision string `json:"price_precision"`
-	VolPrecision   string `json:"vol_precision"`
-	MinVolume      string `json:"min_volume"`
-	MaxVolume      string `json:"max_volume"`
-	Status         string `json:"status"`
-}
-
-type bitmartContractData struct {
-	Symbols []bitmartContractItem `json:"symbols"`
-}
-
-type bitmartContractResponse struct {
-	Code    int                 `json:"code"`
-	Message string              `json:"message"`
-	Data    bitmartContractData `json:"data"`
-}
-
 // GetContractDetails returns contracts specs.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	body, err := c.request(ctx, http.MethodGet, "/contract/public/details", nil)
+	body, err := c.rawGetDetails(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

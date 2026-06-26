@@ -2,12 +2,10 @@ package okx
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -114,16 +112,9 @@ type okxOrder struct {
 	TradeId   string `json:"tradeId"`
 }
 
-type okxSetLeverageRequest struct {
-	InstID  string `json:"instId"`
-	Lever   string `json:"lever"`
-	MgnMode string `json:"mgnMode"`
-	PosSide string `json:"posSide,omitempty"`
-}
-
 // Private raw methods invoking the OKX V5 REST API.
 
-func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) (*okxCreateOrderResult, error) {
+func (c *Client) rawCreateOrder(ctx context.Context, req okxCreateOrderRequest) (*okxCreateOrderResult, error) {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("okx marshal create order request: %w", err)
@@ -139,7 +130,7 @@ func (c *Client) createRawOrder(ctx context.Context, req okxCreateOrderRequest) 
 	return &res, nil
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, req okxCancelOrderRequest) (*okxCancelOrderResult, error) {
+func (c *Client) rawCancelOrder(ctx context.Context, req okxCancelOrderRequest) (*okxCancelOrderResult, error) {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("okx marshal cancel order request: %w", err)
@@ -155,7 +146,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req okxCancelOrderRequest) 
 	return &res, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
+func (c *Client) rawGetOpenOrders(ctx context.Context, req okxOrdersRequest) ([]okxOrder, error) {
 	params := map[string]string{
 		paramInstType: req.InstType,
 	}
@@ -172,7 +163,7 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req okxOrdersRequest) ([]
 	return ParseResponse[okxOrder](body, "open_orders")
 }
 
-func (c *Client) getRawOrderDetail(ctx context.Context, req okxOrderDetailRequest) (*okxOrder, error) {
+func (c *Client) rawGetOrderDetail(ctx context.Context, req okxOrderDetailRequest) (*okxOrder, error) {
 	params := map[string]string{
 		"instId": req.InstID,
 	}
@@ -191,18 +182,6 @@ func (c *Client) getRawOrderDetail(ctx context.Context, req okxOrderDetailReques
 		return nil, nil
 	}
 	return &resList[0], nil
-}
-
-func (c *Client) setRawLeverage(ctx context.Context, req okxSetLeverageRequest) error {
-	bodyBytes, err := xjson.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("okx marshal set leverage request: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, pathSetLeverage, nil, bodyBytes)
-	if err != nil {
-		return err
-	}
-	return ParseResponseIgnoreData(body, "change_leverage")
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
@@ -255,7 +234,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		okxReq.AttachAlgoOrds = []okxAttachAlgoOrd{algo}
 	}
 
-	res, err := c.createRawOrder(ctx, okxReq)
+	res, err := c.rawCreateOrder(ctx, okxReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -323,7 +302,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		return fmt.Errorf("cancel order failed: symbol is required")
 	}
 
-	res, err := c.cancelRawOrder(ctx, okxCancelOrderRequest{
+	res, err := c.rawCancelOrder(ctx, okxCancelOrderRequest{
 		InstID: symbol,
 		OrdID:  orderID,
 	})
@@ -371,7 +350,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	if symbol == "" {
 		return nil, fmt.Errorf("query order failed: symbol is required")
 	}
-	res, err := c.getRawOrderDetail(ctx, okxOrderDetailRequest{
+	res, err := c.rawGetOrderDetail(ctx, okxOrderDetailRequest{
 		InstID: symbol,
 		OrdID:  orderID,
 	})
@@ -390,7 +369,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 	if symbol == "" {
 		return nil, fmt.Errorf("query order by external ID failed: symbol is required")
 	}
-	res, err := c.getRawOrderDetail(ctx, okxOrderDetailRequest{
+	res, err := c.rawGetOrderDetail(ctx, okxOrderDetailRequest{
 		InstID:  symbol,
 		ClOrdID: externalOrderID,
 	})
@@ -406,7 +385,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawList, err := c.getRawOpenOrders(ctx, okxOrdersRequest{InstType: instTypeSwap, InstID: symbol})
+	rawList, err := c.rawGetOpenOrders(ctx, okxOrdersRequest{InstType: instTypeSwap, InstID: symbol})
 	if err != nil {
 		return nil, err
 	}
@@ -420,88 +399,6 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 }
 
 // ClosePosition closes one position leg using a market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	req := exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Vol:          volume,
-		Side:         closeSide,
-		Type:         exchange.OrderTypeMarket,
-		PositionMode: positionMode,
-		ReduceOnly:   true,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "okx"),
-		Leverage:     leverage,
-	}
-	_, err := c.CreateOrder(ctx, req)
-	return err
-}
-
-// CloseAllPositions closes all positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := positions[i]
-		if pos.HoldVol > 0 {
-			side := domain.SideCloseShort
-			if pos.PositionType == exchange.PositionTypeLong { // Long
-				side = domain.SideCloseLong
-			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// ChangeLeverage changes the leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	mgnMode := modeIsolated
-	if req.OpenType == exchange.OpenTypeCross {
-		mgnMode = modeCross
-	}
-
-	posSide := ""
-	if mgnMode == modeIsolated {
-		switch req.PositionType {
-		case exchange.PositionTypeLong:
-			posSide = posSideLong
-		case exchange.PositionTypeShort:
-			posSide = posSideShort
-		case exchange.PositionTypeUnknown:
-			// Default to empty posSide.
-		}
-	}
-
-	err := c.setRawLeverage(ctx, okxSetLeverageRequest{
-		InstID:  req.Symbol,
-		Lever:   fmt.Sprintf("%d", req.Leverage),
-		MgnMode: mgnMode,
-		PosSide: posSide,
-	})
-	if err != nil {
-		var apiErr *exchange.APIError
-		if errors.As(err, &apiErr) && apiErr.Code == 51000 {
-			return c.setRawLeverage(ctx, okxSetLeverageRequest{
-				InstID:  req.Symbol,
-				Lever:   fmt.Sprintf("%d", req.Leverage),
-				MgnMode: mgnMode,
-				PosSide: "",
-			})
-		}
-		return err
-	}
-	return nil
-}
-
-// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for OKX.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	return nil
-}
 
 func mapOkxOrder(o okxOrder) exchange.OrderInfo {
 	px, _ := strconv.ParseFloat(o.Px, 64)

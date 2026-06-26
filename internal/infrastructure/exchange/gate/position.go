@@ -9,15 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
-)
-
-const (
-	exchangeName       = "gate"
-	positionModeSingle = "single"
 )
 
 type gatePositionsRequest struct {
@@ -25,9 +20,9 @@ type gatePositionsRequest struct {
 	Symbol string `json:"symbol,omitempty"`
 }
 
-// Private raw methods invoking HTTP requests.
+// Private raw methods.
 
-func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
+func (c *Client) rawGetPosition(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
 	params := map[string]string{
 		paramSettle: req.Settle,
 	}
@@ -43,7 +38,7 @@ func (c *Client) getRawPosition(ctx context.Context, req gatePositionsRequest) (
 	return result, nil
 }
 
-func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
+func (c *Client) rawGetPositions(ctx context.Context, req gatePositionsRequest) ([]gatePosition, error) {
 	params := map[string]string{
 		paramSettle: req.Settle,
 	}
@@ -58,7 +53,7 @@ func (c *Client) getRawPositions(ctx context.Context, req gatePositionsRequest) 
 	return result, nil
 }
 
-func (c *Client) getRawMyTrades(ctx context.Context, settle, contract string, orderID int64) ([]gateMyTrade, error) {
+func (c *Client) rawGetMyTrades(ctx context.Context, settle, contract string, orderID int64) ([]gateMyTrade, error) {
 	params := map[string]string{
 		paramSettle: settle,
 	}
@@ -80,7 +75,7 @@ func (c *Client) getRawMyTrades(ctx context.Context, settle, contract string, or
 	return result, nil
 }
 
-func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, changeType string, startTime time.Time) ([]gateAccountBook, error) {
+func (c *Client) rawGetAccountBook(ctx context.Context, settle, contract, changeType string, startTime time.Time) ([]gateAccountBook, error) {
 	params := map[string]string{
 		paramSettle: settle,
 	}
@@ -105,12 +100,21 @@ func (c *Client) getRawAccountBook(ctx context.Context, settle, contract, change
 	return result, nil
 }
 
-// Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
+func (c *Client) rawSetPositionMode(ctx context.Context, settle string, dualMode bool) error {
+	params := map[string]string{
+		"dual_mode": strconv.FormatBool(dualMode),
+	}
+	path := fmt.Sprintf("/futures/%s/dual_mode", settle)
+	_, err := c.RawRequest(ctx, "POST", path, params, nil)
+	return err
+}
+
+// Public mapper methods.
 
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
 	if symbol != "" {
-		rawPositions, err := c.getRawPosition(ctx, gatePositionsRequest{
+		rawPositions, err := c.rawGetPosition(ctx, gatePositionsRequest{
 			Settle: gateSettleUsdt,
 			Symbol: symbol,
 		})
@@ -132,7 +136,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		return positions, nil
 	}
 
-	rawPositions, err := c.getRawPositions(ctx, gatePositionsRequest{Settle: gateSettleUsdt})
+	rawPositions, err := c.rawGetPositions(ctx, gatePositionsRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list positions: %w", err)
 	}
@@ -224,6 +228,58 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}, nil
 }
 
+// ClosePosition submits a market order to close an open position.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	orderSide := exchange.SideCloseLong
+	if closeSide == domain.SideCloseShort {
+		orderSide = exchange.SideCloseShort
+	}
+
+	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         orderSide,
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: positionMode,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "gate"),
+		Leverage:     leverage,
+	})
+	if err != nil {
+		return fmt.Errorf("gate.io close position: %w", err)
+	}
+	return nil
+}
+
+// CloseAllPositions closes all open positions for the given symbol.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	for i := range positions {
+		pos := &positions[i]
+		if pos.HoldVol > 0 {
+			var side domain.Side
+			if pos.PositionType == exchange.PositionTypeLong { // Long
+				side = domain.SideCloseLong
+			} else { // Short
+				side = domain.SideCloseShort
+			}
+			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage) // default hedge mode close
+			if posErr != nil {
+				return posErr
+			}
+		}
+	}
+	return nil
+}
+
+// SetPositionMode sets the position mode (Hedge Mode vs One-Way Mode) on Gate.io.
+func (c *Client) SetPositionMode(ctx context.Context, settle string, dualMode bool) error {
+	return c.rawSetPositionMode(ctx, settle, dualMode)
+}
+
 func (c *Client) calculateClosingTradesMetrics(closingTrades []gateMyTrade) (exitPrice, sumVol, closeFee, latestTradeTime float64) {
 	var sumPriceVol float64
 	for i := range closingTrades {
@@ -253,7 +309,7 @@ func (c *Client) getOpeningTradesMetrics(ctx context.Context, symbol string, ord
 		return
 	}
 
-	openTrades, err := c.getRawMyTrades(ctx, gateSettleUsdt, symbol, openOrderID)
+	openTrades, err := c.rawGetMyTrades(ctx, gateSettleUsdt, symbol, openOrderID)
 	if err != nil || len(openTrades) == 0 {
 		return
 	}
@@ -279,7 +335,7 @@ func (c *Client) getOpeningTradesMetrics(ctx context.Context, symbol string, ord
 }
 
 func (c *Client) getLedgerMetrics(ctx context.Context, symbol string, startTime time.Time) (fundingFee, grossPnL float64) {
-	ledgerEntries, err := c.getRawAccountBook(ctx, gateSettleUsdt, symbol, "", startTime)
+	ledgerEntries, err := c.rawGetAccountBook(ctx, gateSettleUsdt, symbol, "", startTime)
 	if err != nil {
 		return
 	}
@@ -297,7 +353,7 @@ func (c *Client) getLedgerMetrics(ctx context.Context, symbol string, startTime 
 }
 
 func (c *Client) waitAndFindClosingTrades(ctx context.Context, symbol, openingOrderID string, startTime time.Time) ([]gateMyTrade, error) {
-	trades, err := c.getRawMyTrades(ctx, gateSettleUsdt, symbol, 0)
+	trades, err := c.rawGetMyTrades(ctx, gateSettleUsdt, symbol, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -320,8 +376,6 @@ func (c *Client) waitAndFindClosingTrades(ctx context.Context, symbol, openingOr
 
 	return found, nil
 }
-
-// Helper mapping functions.
 
 // mapPosition maps a gatePosition to exchange.Position.
 func mapPosition(raw gatePosition) exchange.Position {

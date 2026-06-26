@@ -88,18 +88,6 @@ type mexcFundingRateHistory struct {
 
 // Private raw methods invoking the MEXC API.
 
-func (c *Client) rawPing(ctx context.Context) ([]byte, error) {
-	return c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/ping", nil, nil)
-}
-
-func (c *Client) getRawServerTime(ctx context.Context) (int64, error) {
-	body, err := c.rawPing(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return ParseResponse[int64](body, "server_time")
-}
-
 func (c *Client) getRawContractDetails(ctx context.Context) ([]mexcContractDetail, error) {
 	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/detail", nil, nil)
 	if err != nil {
@@ -178,17 +166,6 @@ func (c *Client) getRawFundingRateHistory(ctx context.Context, req mexcFundingRa
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
-
-// Ping checks connectivity to the MEXC API server.
-func (c *Client) Ping(ctx context.Context) error {
-	_, err := c.rawPing(ctx)
-	return err
-}
-
-// GetServerTime returns the MEXC server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	return c.getRawServerTime(ctx)
-}
 
 // GetContractDetails returns all contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {

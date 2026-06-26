@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -80,16 +79,6 @@ func (c *Client) SetClock(clk exchange.Clock) {
 	if clk != nil {
 		c.clock = clk
 	}
-}
-
-// SupportLeverageOnOrder returns true for Bitmart.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return true
-}
-
-// WarmUp pings the server to warm up HTTP connections.
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	_, _ = c.GetServerTime(ctx)
 }
 
 // request executes an unsigned GET request to the Bitmart API (for backwards compatibility with market.go).

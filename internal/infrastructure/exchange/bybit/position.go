@@ -9,13 +9,15 @@ import (
 	"strings"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 const exchangeName = "bybit"
 
-// Explicit request/response structs for account endpoints.
+// Explicit request/response structs for account/position endpoints.
 
 type bybitPositionsRequest struct {
 	Category string `json:"category"`
@@ -36,6 +38,12 @@ type bybitTransactionLogRequest struct {
 	Symbol      string `json:"symbol,omitempty"`
 	Limit       int    `json:"limit,omitempty"`
 	StartTime   int64  `json:"startTime,omitempty"`
+}
+
+type bybitSwitchPositionModeRequest struct {
+	Category string `json:"category"`
+	Symbol   string `json:"symbol"`
+	Mode     int    `json:"mode"`
 }
 
 type bybitPosition struct {
@@ -90,7 +98,7 @@ type bybitTransactionLogChange struct {
 
 // Private raw methods invoking the Bybit API.
 
-func (c *Client) getRawOpenPositions(ctx context.Context, req bybitPositionsRequest) ([]bybitPosition, error) {
+func (c *Client) rawGetOpenPositions(ctx context.Context, req bybitPositionsRequest) ([]bybitPosition, error) {
 	params := map[string]string{}
 	if req.Category != "" {
 		params["category"] = req.Category
@@ -105,7 +113,7 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req bybitPositionsRequ
 	return decodeListResponse[bybitPosition](body, "bybit get position")
 }
 
-func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
+func (c *Client) rawGetClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
 	params := map[string]string{}
 	if req.Category != "" {
 		params["category"] = req.Category
@@ -130,7 +138,7 @@ func (c *Client) getRawClosedPnL(ctx context.Context, req bybitClosedPnLRequest)
 	return &res, nil
 }
 
-func (c *Client) getRawTransactionLog(ctx context.Context, req bybitTransactionLogRequest) ([]bybitTransactionLogChange, error) {
+func (c *Client) rawGetTransactionLog(ctx context.Context, req bybitTransactionLogRequest) ([]bybitTransactionLogChange, error) {
 	params := map[string]string{}
 	if req.AccountType != "" {
 		params["accountType"] = req.AccountType
@@ -157,11 +165,35 @@ func (c *Client) getRawTransactionLog(ctx context.Context, req bybitTransactionL
 	return decodeListResponse[bybitTransactionLogChange](body, "bybit query transaction log")
 }
 
+//nolint:dupl // Structurally similar to rawSwitchPositionMode and rawSetMarginMode.
+func (c *Client) rawSwitchPositionMode(ctx context.Context, req bybitSwitchPositionModeRequest) error {
+	bodyBytes, err := xjson.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("bybit switch position mode marshal: %w", err)
+	}
+	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/switch-mode", nil, bodyBytes)
+	if err != nil {
+		return fmt.Errorf("bybit switch position mode: %w", err)
+	}
+
+	var resp bybitResponse[any]
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("bybit switch position mode json unmarshal: %w", err)
+	}
+	if resp.RetCode != 0 {
+		if resp.RetCode == 110025 || strings.Contains(strings.ToLower(resp.RetMsg), "position mode not modified") {
+			return nil
+		}
+		return fmt.Errorf("bybit switch position mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
+	}
+	return nil
+}
+
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
 
 // GetOpenPositions returns all open positions, optionally filtered by symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	rawList, err := c.getRawOpenPositions(ctx, bybitPositionsRequest{
+	rawList, err := c.rawGetOpenPositions(ctx, bybitPositionsRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,
 	})
@@ -180,9 +212,62 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
+// ClosePosition closes a single position.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	req := exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         closeSide,
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: positionMode,
+		ReduceOnly:   true,
+		Leverage:     leverage,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "bybit"),
+	}
+	_, err := c.CreateOrder(ctx, req)
+	return err
+}
+
+// CloseAllPositions closes all open positions.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	for i := range positions {
+		pos := positions[i]
+		if pos.HoldVol > 0 {
+			side := domain.SideCloseShort
+			if pos.PositionType == exchange.PositionTypeLong {
+				side = domain.SideCloseLong
+			}
+			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// SwitchPositionMode switches the position mode (Hedge vs One-Way) for Bybit.
+func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error {
+	mode := 0 // One-Way
+	if positionMode == domain.PositionModeHedge {
+		mode = 3 // Hedge
+	}
+
+	return c.rawSwitchPositionMode(ctx, bybitSwitchPositionModeRequest{
+		Category: categoryLinear,
+		Symbol:   symbol,
+		Mode:     mode,
+	})
+}
+
 // GetOrderPNL queries the most recent closed PnL ledger record from Bybit.
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
-	rawOrder, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+	rawOrder, err := c.rawGetOrder(ctx, bybitGetOrderRequest{
 		Category: categoryLinear,
 		OrderID:  orderID,
 	})
@@ -211,7 +296,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		startTimeVal = time.UnixMilli(req.StartTime)
 	}
 
-	res, err := c.getRawClosedPnL(ctx, req)
+	res, err := c.rawGetClosedPnL(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}
@@ -318,7 +403,7 @@ func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.T
 		req.StartTime = startTime.UnixMilli()
 	}
 
-	list, err := c.getRawTransactionLog(ctx, req)
+	list, err := c.rawGetTransactionLog(ctx, req)
 	if err != nil {
 		return 0, err
 	}

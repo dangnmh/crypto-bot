@@ -1,6 +1,7 @@
 package bitmart
 
 const (
+	exchangeName = "bitmart"
 	// WS topics.
 	topicTicker   = "futures/ticker"
 	topicPosition = "futures/position"

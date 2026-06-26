@@ -19,7 +19,6 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
-	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -183,17 +182,6 @@ func (c *Client) encodeParams(params map[string]any, signed bool) string {
 	return values.Encode()
 }
 
-// WarmUp maintains the connection pool via periodic pings.
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	ticker.RunImmediate(ctx, interval, func() bool {
-		err := c.request(ctx, http.MethodGet, "/fapi/v1/ping", nil, false, nil)
-		if err != nil {
-			c.logger.DebugContext(ctx, "Binance warmup connectivity check failed", slog.Any("error", err))
-		}
-		return true
-	})
-}
-
 // Latency measures round-trip time of a ping request (ms).
 func (c *Client) Latency(ctx context.Context) (int64, error) {
 	start := time.Now()
@@ -221,11 +209,6 @@ func (c *Client) KeepAliveListenKey(ctx context.Context) error {
 		return fmt.Errorf("binance keepalive user data stream: %w", err)
 	}
 	return nil
-}
-
-// SupportLeverageOnOrder returns false since Binance doesn't support setting leverage directly on orders.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return false
 }
 
 type decompressionRoundTripper struct {

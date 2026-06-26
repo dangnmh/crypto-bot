@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"net/http"
 	"strconv"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -66,31 +65,15 @@ type kucoinFillsData struct {
 
 // Private raw methods invoking the KuCoin REST API.
 
-func (c *Client) getRawOpenPositions(ctx context.Context, _ kucoinOpenPositionsRequest) ([]kucoinPosition, error) {
+func (c *Client) rawGetOpenPositions(ctx context.Context, _ kucoinOpenPositionsRequest) ([]kucoinPosition, error) {
 	body, err := c.GetOpenPositionsRaw(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-
 	return ParseResponse[[]kucoinPosition](body, "open_positions")
 }
 
-func (c *Client) getRawOrderByClientOid(ctx context.Context, clientOid string) (*kucoinOrder, error) {
-	params := map[string]string{
-		constantClientOid: clientOid,
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, pathGetOrderByClientOid, params, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ParseResponse[kucoinOrder](body, "get_order_by_client_oid")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-func (c *Client) getRawFills(ctx context.Context, orderID string) ([]kucoinFillItem, error) {
+func (c *Client) rawGetFills(ctx context.Context, orderID string) ([]kucoinFillItem, error) {
 	params := map[string]string{
 		"orderId": orderID,
 	}
@@ -105,7 +88,7 @@ func (c *Client) getRawFills(ctx context.Context, orderID string) ([]kucoinFillI
 	return res.Items, nil
 }
 
-func (c *Client) getRawPositionsHistory(ctx context.Context, symbol string, startTime time.Time) ([]kucoinPositionHistoryItem, error) {
+func (c *Client) rawGetPositionsHistory(ctx context.Context, symbol string, startTime time.Time) ([]kucoinPositionHistoryItem, error) {
 	params := make(map[string]string)
 	if symbol != "" {
 		params[paramSymbol] = symbol
@@ -128,7 +111,7 @@ func (c *Client) getRawPositionsHistory(ctx context.Context, symbol string, star
 
 // GetOpenPositions retrieves currently active futures positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	positions, err := c.getRawOpenPositions(ctx, kucoinOpenPositionsRequest{})
+	positions, err := c.rawGetOpenPositions(ctx, kucoinOpenPositionsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +150,44 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
+// ClosePosition is a helper to close a position.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	submitSide := exchange.SideCloseLong
+	if closeSide == domain.SideCloseShort {
+		submitSide = exchange.SideCloseShort
+	}
+
+	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Side:         submitSide,
+		Type:         exchange.OrderTypeMarket,
+		Vol:          volume,
+		PositionMode: positionMode,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "kucoin"),
+		Leverage:     leverage,
+	})
+	return err
+}
+
+// CloseAllPositions closes all open positions for a symbol.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	for i := range positions {
+		pos := &positions[i]
+		closeSide := domain.SideCloseLong
+		if pos.PositionType == exchange.PositionTypeShort { // Short
+			closeSide = domain.SideCloseShort
+		}
+		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+	}
+
+	return nil
+}
+
 // GetOrderPNL queries historical position records, aggregates closing fills, and returns closed trade metrics.
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	// 1. Get closing order by ID.
@@ -183,7 +204,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	// 2. Query fills for that closing order to compute total closed size.
-	fills, err := c.getRawFills(ctx, orderInfo.OrderID)
+	fills, err := c.rawGetFills(ctx, orderInfo.OrderID)
 	if err != nil {
 		return nil, fmt.Errorf("kucoin get fills for closing order %s failed: %w", orderInfo.OrderID, err)
 	}
@@ -200,7 +221,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	// 3. Query positions history to match the closed position record.
-	historyItems, err := c.getRawPositionsHistory(ctx, symbol, startTime)
+	historyItems, err := c.rawGetPositionsHistory(ctx, symbol, startTime)
 	if err != nil {
 		return nil, fmt.Errorf("query closed position history failed: %w", err)
 	}

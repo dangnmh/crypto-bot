@@ -8,7 +8,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -25,19 +24,7 @@ type gateTickersRequest struct {
 
 // Private raw methods using raw HTTP requests.
 
-func (c *Client) getRawServerTime(ctx context.Context) (*gateSystemTime, error) {
-	body, err := c.RawRequest(ctx, "GET", "/spot/time", nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	var result gateSystemTime
-	if err := xjson.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
-	}
-	return &result, nil
-}
-
-func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsRequest) ([]gateContract, error) {
+func (c *Client) rawGetContractDetails(ctx context.Context, req gateContractsRequest) ([]gateContract, error) {
 	path := fmt.Sprintf("/futures/%s/contracts", req.Settle)
 	body, err := c.RawRequest(ctx, "GET", path, nil, nil)
 	if err != nil {
@@ -50,7 +37,7 @@ func (c *Client) getRawContractDetails(ctx context.Context, req gateContractsReq
 	return result, nil
 }
 
-func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]gateFuturesTicker, error) {
+func (c *Client) rawGetTickers(ctx context.Context, req gateTickersRequest) ([]gateFuturesTicker, error) {
 	params := map[string]string{
 		paramSettle: req.Settle,
 	}
@@ -70,18 +57,9 @@ func (c *Client) getRawTickers(ctx context.Context, req gateTickersRequest) ([]g
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
 
-// GetServerTime returns the Gate.io server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	resp, err := c.getRawServerTime(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("gate.io get server time: %w", err)
-	}
-	return resp.ServerTime, nil
-}
-
 // GetContractDetails returns all contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: gateSettleUsdt})
+	contracts, err := c.rawGetContractDetails(ctx, gateContractsRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list contracts: %w", err)
 	}
@@ -133,7 +111,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 // GetTickers returns ticker data for a specific symbol or all symbols.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	rawTickers, err := c.getRawTickers(ctx, gateTickersRequest{Settle: gateSettleUsdt, Contract: symbol})
+	rawTickers, err := c.rawGetTickers(ctx, gateTickersRequest{Settle: gateSettleUsdt, Contract: symbol})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list tickers: %w", err)
 	}
@@ -203,7 +181,7 @@ func determineNeededSettleCoins(symbols []string) (needUsdt, needBtc bool) {
 }
 
 func (c *Client) fetchContracts(ctx context.Context, settle string, contractMap map[string]*gateContract) error {
-	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: settle})
+	contracts, err := c.rawGetContractDetails(ctx, gateContractsRequest{Settle: settle})
 	if err != nil {
 		return fmt.Errorf("gate.io list %s contracts: %w", settle, err)
 	}
@@ -249,7 +227,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	blacklist []string,
 ) ([]exchange.PotentialFundingResult, error) {
 	// 1. Fetch tickers for usdt settle coin
-	tickers, err := c.getRawTickers(ctx, gateTickersRequest{Settle: gateSettleUsdt})
+	tickers, err := c.rawGetTickers(ctx, gateTickersRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list tickers: %w", err)
 	}
@@ -272,7 +250,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	// 4. Fetch contracts for usdt settle coin
-	contracts, err := c.getRawContractDetails(ctx, gateContractsRequest{Settle: gateSettleUsdt})
+	contracts, err := c.rawGetContractDetails(ctx, gateContractsRequest{Settle: gateSettleUsdt})
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list contracts: %w", err)
 	}

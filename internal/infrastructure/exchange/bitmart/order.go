@@ -47,17 +47,41 @@ type bitmartOrderInfo struct {
 	UpdateTime    int64  `json:"update_time"`
 }
 
-type bitmartPosition struct {
-	Symbol         string `json:"symbol"`
-	PositionAmt    string `json:"position_amt"`
-	PositionAmount string `json:"position_amount"`
-	AvgEntryPrice  string `json:"avg_entry_price"`
-	OpenAvgPrice   string `json:"open_avg_price"`
-	UnrealizedPnL  string `json:"unrealized_pnl"`
-	Leverage       string `json:"leverage"`
-	OpenType       string `json:"open_type"`
-	PositionSide   string `json:"position_side"`
+// Private raw methods.
+
+func (c *Client) rawCreateOrder(ctx context.Context, body []byte) ([]byte, error) {
+	return c.requestFull(ctx, http.MethodPost, "/contract/private/submit-order", nil, body, true)
 }
+
+func (c *Client) rawCancelOrder(ctx context.Context, body []byte) ([]byte, error) {
+	return c.requestFull(ctx, http.MethodPost, "/contract/private/cancel-order", nil, body, true)
+}
+
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, body []byte) ([]byte, error) {
+	return c.requestFull(ctx, http.MethodPost, "/contract/private/cancel-orders", nil, body, true)
+}
+
+func (c *Client) rawGetHistoryOrder(ctx context.Context, query map[string]string) ([]bitmartOrderInfo, error) {
+	body, err := c.requestFull(ctx, http.MethodGet, "/contract/private/order-history", query, nil, true)
+	if err != nil {
+		return nil, err
+	}
+
+	var respDirect struct {
+		Code int                `json:"code"`
+		Data []bitmartOrderInfo `json:"data"`
+	}
+	if err := xjson.Unmarshal(body, &respDirect); err == nil && respDirect.Code == 1000 {
+		return respDirect.Data, nil
+	}
+	return nil, fmt.Errorf("invalid response")
+}
+
+func (c *Client) rawGetOpenOrders(ctx context.Context, query map[string]string) ([]byte, error) {
+	return c.requestFull(ctx, http.MethodGet, "/contract/private/open-orders", query, nil, true)
+}
+
+// Public mapper methods.
 
 func mapBitmartState(state int) domain.OrderState {
 	switch state {
@@ -202,7 +226,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		return exchange.CreateOrderResult{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	body, err := c.requestFull(ctx, http.MethodPost, "/contract/private/submit-order", nil, bodyBytes, true)
+	body, err := c.rawCreateOrder(ctx, bodyBytes)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -238,7 +262,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		return err
 	}
 
-	_, err = c.requestFull(ctx, http.MethodPost, "/contract/private/cancel-order", nil, bodyBytes, true)
+	_, err = c.rawCancelOrder(ctx, bodyBytes)
 	return err
 }
 
@@ -258,7 +282,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 		return err
 	}
 
-	_, err = c.requestFull(ctx, http.MethodPost, "/contract/private/cancel-orders", nil, bodyBytes, true)
+	_, err = c.rawCancelAllOpenOrders(ctx, bodyBytes)
 	return err
 }
 
@@ -273,18 +297,9 @@ func (c *Client) getRawHistoryOrder(ctx context.Context, symbol, orderID, client
 		query["client_order_id"] = clientOrderID
 	}
 
-	body, err := c.requestFull(ctx, http.MethodGet, "/contract/private/order-history", query, nil, true)
+	rawOrders, err := c.rawGetHistoryOrder(ctx, query)
 	if err != nil {
 		return nil, err
-	}
-
-	var respDirect struct {
-		Code int                `json:"code"`
-		Data []bitmartOrderInfo `json:"data"`
-	}
-	var rawOrders []bitmartOrderInfo
-	if err := xjson.Unmarshal(body, &respDirect); err == nil && respDirect.Code == 1000 {
-		rawOrders = respDirect.Data
 	}
 
 	for i := range rawOrders {
@@ -300,7 +315,11 @@ func (c *Client) getRawHistoryOrder(ctx context.Context, symbol, orderID, client
 }
 
 func (c *Client) getRawOrderWithFallback(ctx context.Context, symbol, orderID string) (*bitmartOrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, symbol, orderID)
+	query := map[string]string{
+		paramSymbol:  symbol,
+		paramOrderID: orderID,
+	}
+	raw, err := c.rawGetOrder(ctx, query)
 	if err != nil {
 		if apiErr, ok := exchange.IsAPIError(err); ok && apiErr.Code == 40035 {
 			historyRaw, historyErr := c.getRawHistoryOrder(ctx, symbol, orderID, "")
@@ -328,24 +347,18 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 		paramSymbol:       symbol,
 		"client_order_id": externalOrderID,
 	}
-	body, err := c.requestFull(ctx, http.MethodGet, "/contract/private/order", query, nil, true)
-	if err != nil {
-		if apiErr, ok := exchange.IsAPIError(err); ok && apiErr.Code == 40035 {
-			historyRaw, historyErr := c.getRawHistoryOrder(ctx, symbol, "", externalOrderID)
-			if historyErr == nil {
-				return c.mapOrderInfo(historyRaw), nil
-			}
+	raw, err := c.rawGetOrder(ctx, query)
+	if err == nil {
+		return c.mapOrderInfo(raw), nil
+	}
+
+	if apiErr, ok := exchange.IsAPIError(err); ok && apiErr.Code == 40035 {
+		historyRaw, historyErr := c.getRawHistoryOrder(ctx, symbol, "", externalOrderID)
+		if historyErr == nil {
+			return c.mapOrderInfo(historyRaw), nil
 		}
-		return nil, err
 	}
-	var resp struct {
-		Code int              `json:"code"`
-		Data bitmartOrderInfo `json:"data"`
-	}
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return nil, err
-	}
-	return c.mapOrderInfo(&resp.Data), nil
+	return nil, err
 }
 
 // GetOpenOrders retrieves all open orders.
@@ -353,7 +366,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	query := map[string]string{
 		paramSymbol: symbol,
 	}
-	body, err := c.requestFull(ctx, http.MethodGet, "/contract/private/open-orders", query, nil, true)
+	body, err := c.rawGetOpenOrders(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -384,160 +397,4 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		orders = append(orders, *c.mapOrderInfo(&rawOrders[i]))
 	}
 	return orders, nil
-}
-
-// GetOpenPositions returns all open futures positions.
-func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	query := make(map[string]string)
-	if symbol != "" {
-		query[paramSymbol] = symbol
-	}
-	body, err := c.requestFull(ctx, http.MethodGet, "/contract/private/position-v2", query, nil, true)
-	if err != nil {
-		return nil, err
-	}
-
-	rawPositions, err := unmarshalPositions(body)
-	if err != nil {
-		return nil, err
-	}
-
-	var positions []exchange.Position
-	for i := range rawPositions {
-		raw := &rawPositions[i]
-		if symbol != "" && raw.Symbol != symbol {
-			continue
-		}
-		p := mapPosition(raw)
-		if p != nil {
-			positions = append(positions, *p)
-		}
-	}
-	return positions, nil
-}
-
-func unmarshalPositions(body []byte) ([]bitmartPosition, error) {
-	var respDirect struct {
-		Code int               `json:"code"`
-		Data []bitmartPosition `json:"data"`
-	}
-
-	if err := xjson.Unmarshal(body, &respDirect); err == nil && respDirect.Code == 1000 {
-		return respDirect.Data, nil
-	}
-	return nil, fmt.Errorf("invalid response")
-}
-
-func mapPosition(raw *bitmartPosition) *exchange.Position {
-	vol := decmath.ParseFloat(raw.PositionAmt)
-	if vol == 0 {
-		vol = decmath.ParseFloat(raw.PositionAmount)
-	}
-	if vol == 0 {
-		return nil
-	}
-
-	pType := exchange.PositionTypeLong
-	if strings.EqualFold(raw.PositionSide, posSideShort) || raw.PositionSide == "2" {
-		pType = exchange.PositionTypeShort
-	}
-
-	avgPrice := decmath.ParseFloat(raw.AvgEntryPrice)
-	if avgPrice == 0 {
-		avgPrice = decmath.ParseFloat(raw.OpenAvgPrice)
-	}
-	pnl := decmath.ParseFloat(raw.UnrealizedPnL)
-
-	levVal, _ := strconv.Atoi(raw.Leverage)
-	return &exchange.Position{
-		Symbol:          raw.Symbol,
-		HoldVol:         vol,
-		PositionType:    pType,
-		OpenAvgPrice:    avgPrice,
-		HoldAvgPrice:    avgPrice,
-		CloseProfitLoss: pnl,
-		Leverage:        levVal,
-	}
-}
-
-// ClosePosition closes a position by submitting a market reduction order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	submitSide := domain.SideCloseLong
-	if closeSide == domain.SideCloseShort {
-		submitSide = domain.SideCloseShort
-	}
-
-	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Side:         submitSide,
-		Type:         domain.OrderTypeMarket,
-		Vol:          volume,
-		PositionMode: positionMode,
-		ExternalOID:  uuid.NewString(),
-		Leverage:     leverage,
-	})
-	return err
-}
-
-// CloseAllPositions closes all open positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := &positions[i]
-		closeSide := domain.SideCloseLong
-		if pos.PositionType == exchange.PositionTypeShort {
-			closeSide = domain.SideCloseShort
-		}
-		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ChangeLeverage adjusts leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	openTypeStr := openTypeIsolated
-	if req.OpenType == domain.OpenTypeCross {
-		openTypeStr = openTypeCross
-	}
-	bodyMap := map[string]any{
-		paramSymbol: req.Symbol,
-		"leverage":  strconv.Itoa(req.Leverage),
-		"open_type": openTypeStr,
-	}
-	bodyBytes, err := xjson.Marshal(bodyMap)
-	if err != nil {
-		return err
-	}
-	_, err = c.requestFull(ctx, http.MethodPost, "/contract/private/submit-leverage", nil, bodyBytes, true)
-	return err
-}
-
-// SwitchMarginMode sets margin mode (CROSS or ISOLATED). Bitmart does it per order so this is a no-op.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	return nil
-}
-
-// SwitchPositionMode switches hold mode between hedge and one-way.
-func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error {
-	modeStr := "hedge_mode"
-	if positionMode == domain.PositionModeOneWay {
-		modeStr = "one_way_mode"
-	}
-	bodyMap := map[string]any{
-		"position_mode": modeStr,
-	}
-	bodyBytes, err := xjson.Marshal(bodyMap)
-	if err != nil {
-		return err
-	}
-	_, err = c.requestFull(ctx, http.MethodPost, "/contract/private/set-position-mode", nil, bodyBytes, true)
-	return err
 }

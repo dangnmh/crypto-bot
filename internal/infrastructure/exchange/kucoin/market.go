@@ -2,14 +2,11 @@ package kucoin
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"crypto-bot/pkg/xjson"
 )
 
 type kucoinContract struct {
@@ -27,8 +24,6 @@ type kucoinContract struct {
 	NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
 	MaxLeverage             float64 `json:"maxLeverage"`
 }
-
-type kucoinServerTimeRequest struct{}
 
 type kucoinContractsRequest struct{}
 
@@ -59,14 +54,6 @@ type kucoinTicker struct {
 }
 
 // Private raw methods invoking the KuCoin REST API.
-
-func (c *Client) getRawServerTime(ctx context.Context, _ kucoinServerTimeRequest) (json.RawMessage, error) {
-	body, err := c.RawRequest(ctx, http.MethodGet, pathServerTime, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
-}
 
 func (c *Client) getRawContractDetails(ctx context.Context, _ kucoinContractsRequest) ([]kucoinContract, error) {
 	body, err := c.RawRequest(ctx, http.MethodGet, pathContracts, nil, nil)
@@ -100,26 +87,6 @@ func (c *Client) getRawTickers(ctx context.Context, _ kucoinTickersRequest) ([]k
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
-
-// GetServerTime returns the KuCoin server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	body, err := c.getRawServerTime(ctx, kucoinServerTimeRequest{})
-	if err != nil {
-		return 0, err
-	}
-
-	var numVal int64
-	if err := xjson.Unmarshal(body, &numVal); err == nil {
-		return numVal, nil
-	}
-
-	data, err := ParseResponse[int64](body, "server_time")
-	if err != nil {
-		return 0, err
-	}
-
-	return data, nil
-}
 
 // GetContractDetails returns specifications for all active Futures contracts.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {

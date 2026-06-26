@@ -6,15 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 
 	"github.com/google/uuid"
-
-	"crypto-bot/pkg/xjson"
 )
 
 type toobitResponse[T any] struct {
@@ -99,49 +97,33 @@ type toobitOrder struct {
 	UpdateTime    xjson.Number `json:"updateTime"`
 }
 
-type toobitPosition struct {
-	Symbol        string `json:"symbol"`
-	Side          string `json:"side"`
-	AvgPrice      string `json:"avgPrice"`
-	Position      string `json:"position"`
-	UnrealizedPnl string `json:"unrealizedPnl"`
-	Leverage      string `json:"leverage"`
+// Private raw methods.
+
+func (c *Client) rawCreateOrder(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodPost, "/api/v2/futures/order", params, true)
 }
 
-func mapSideAndPositionSide(side domain.Side, isHedge bool) (string, string) {
-	ordSide := sideBuy
-	posSide := posSideLong
-
-	if isHedge {
-		switch side {
-		case exchange.SideOpenLong:
-			ordSide = sideBuy
-			posSide = posSideLong
-		case exchange.SideCloseLong:
-			ordSide = sideSell
-			posSide = posSideLong
-		case exchange.SideOpenShort:
-			ordSide = sideSell
-			posSide = posSideShort
-		case exchange.SideCloseShort:
-			ordSide = sideBuy
-			posSide = posSideShort
-		default:
-			// satisfy exhaustive
-		}
-	} else {
-		switch side {
-		case exchange.SideOpenLong, exchange.SideCloseShort:
-			ordSide = sideBuy
-		case exchange.SideOpenShort, exchange.SideCloseLong:
-			ordSide = sideSell
-		default:
-			// satisfy exhaustive
-		}
-		posSide = posSideBoth
-	}
-	return ordSide, posSide
+func (c *Client) rawCancelOrder(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodDelete, "/api/v2/futures/order", params, true)
 }
+
+func (c *Client) rawCancelOrders(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodDelete, "/api/v1/futures/cancelOrderByIds", params, true)
+}
+
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodDelete, "/api/v1/futures/batchOrders", params, true)
+}
+
+func (c *Client) rawGetOrder(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/api/v1/futures/order", params, true)
+}
+
+func (c *Client) rawGetOpenOrders(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/api/v1/futures/openOrders", params, true)
+}
+
+// Public mapper methods.
 
 // CreateOrder submits a new order to the exchange.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
@@ -201,7 +183,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		params["takeProfit"] = strconv.FormatFloat(req.TakeProfitPrice, 'f', -1, 64)
 	}
 
-	body, err := c.request(ctx, http.MethodPost, "/api/v2/futures/order", params, true)
+	body, err := c.rawCreateOrder(ctx, params)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -225,7 +207,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		symbolKey:  symbol,
 		orderIDKey: orderID,
 	}
-	body, err := c.request(ctx, http.MethodDelete, "/api/v2/futures/order", params, true)
+	body, err := c.rawCancelOrder(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -241,7 +223,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 	params := map[string]string{
 		"ids": strings.Join(orderIDs, ","),
 	}
-	body, err := c.request(ctx, http.MethodDelete, "/api/v1/futures/cancelOrderByIds", params, true)
+	body, err := c.rawCancelOrders(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -254,7 +236,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	params := map[string]string{
 		symbolKey: symbol,
 	}
-	body, err := c.request(ctx, http.MethodDelete, "/api/v1/futures/batchOrders", params, true)
+	body, err := c.rawCancelAllOpenOrders(ctx, params)
 	if err != nil {
 		return err
 	}
@@ -268,7 +250,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		orderIDKey: orderID,
 		typeKey:    orderTypeLimit,
 	}
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/order", params, true)
+	body, err := c.rawGetOrder(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +267,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 		"origClientOrderId": externalOrderID,
 		typeKey:             orderTypeLimit,
 	}
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/order", params, true)
+	body, err := c.rawGetOrder(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +286,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	if symbol != "" {
 		params[symbolKey] = symbol
 	}
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/openOrders", params, true)
+	body, err := c.rawGetOpenOrders(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -320,137 +302,41 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	return infos, nil
 }
 
-type toobitPositionsRequest struct {
-	Symbol string `json:"symbol,omitempty"`
-}
+// Helper mapping functions.
 
-func (c *Client) getRawOpenPositions(ctx context.Context, req toobitPositionsRequest) ([]toobitPosition, error) {
-	params := map[string]string{}
-	if req.Symbol != "" {
-		params[symbolKey] = req.Symbol
-	}
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/positions", params, true)
-	if err != nil {
-		return nil, fmt.Errorf("toobit get raw open positions: %w", err)
-	}
-	data, err := parseResponse[[]toobitPosition](body)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}
+func mapSideAndPositionSide(side domain.Side, isHedge bool) (string, string) {
+	ordSide := sideBuy
+	posSide := posSideLong
 
-// GetOpenPositions returns all open futures positions.
-func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	data, err := c.getRawOpenPositions(ctx, toobitPositionsRequest{Symbol: symbol})
-	if err != nil {
-		return nil, err
-	}
-
-	var positions []exchange.Position
-	for i := range data {
-		raw := &data[i]
-		if symbol != "" && raw.Symbol != symbol {
-			continue
+	if isHedge {
+		switch side {
+		case exchange.SideOpenLong:
+			ordSide = sideBuy
+			posSide = posSideLong
+		case exchange.SideCloseLong:
+			ordSide = sideSell
+			posSide = posSideLong
+		case exchange.SideOpenShort:
+			ordSide = sideSell
+			posSide = posSideShort
+		case exchange.SideCloseShort:
+			ordSide = sideBuy
+			posSide = posSideShort
+		default:
+			// satisfy exhaustive
 		}
-		vol := decmath.ParseFloat(raw.Position)
-		if vol <= 0 {
-			continue
+	} else {
+		switch side {
+		case exchange.SideOpenLong, exchange.SideCloseShort:
+			ordSide = sideBuy
+		case exchange.SideOpenShort, exchange.SideCloseLong:
+			ordSide = sideSell
+		default:
+			// satisfy exhaustive
 		}
-
-		pType := exchange.PositionTypeLong
-		if raw.Side == posSideShort {
-			pType = exchange.PositionTypeShort
-		}
-
-		avgPrice := decmath.ParseFloat(raw.AvgPrice)
-		pnl := decmath.ParseFloat(raw.UnrealizedPnl)
-		levVal, _ := strconv.Atoi(raw.Leverage)
-
-		positions = append(positions, exchange.Position{
-			Symbol:          raw.Symbol,
-			HoldVol:         vol,
-			PositionType:    pType,
-			OpenAvgPrice:    avgPrice,
-			HoldAvgPrice:    avgPrice,
-			CloseProfitLoss: pnl,
-			Leverage:        levVal,
-		})
+		posSide = posSideBoth
 	}
-	return positions, nil
-}
-
-// ClosePosition closes a position by submitting a market reduction order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	submitSide := exchange.SideCloseLong
-	if closeSide == domain.SideCloseShort {
-		submitSide = exchange.SideCloseShort
-	}
-
-	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Side:         submitSide,
-		Type:         exchange.OrderTypeMarket,
-		Vol:          volume,
-		PositionMode: positionMode,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "toobit"),
-		Leverage:     leverage,
-	})
-	return err
-}
-
-// CloseAllPositions closes all open positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := &positions[i]
-		closeSide := domain.SideCloseLong
-		if pos.PositionType == exchange.PositionTypeShort {
-			closeSide = domain.SideCloseShort
-		}
-		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1, pos.Leverage)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// ChangeLeverage adjusts leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	params := map[string]string{
-		symbolKey:  req.Symbol,
-		"leverage": strconv.Itoa(req.Leverage),
-	}
-	body, err := c.request(ctx, http.MethodPost, "/api/v2/futures/leverage", params, true)
-	if err != nil {
-		return err
-	}
-	_, err = parseResponse[any](body)
-	return err
-}
-
-// SwitchMarginMode sets margin mode (CROSS or ISOLATED).
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	mgnType := "CROSS"
-	if marginMode == marginIsolated {
-		mgnType = marginIsolated
-	}
-	params := map[string]string{
-		symbolKey:    symbol,
-		"marginType": mgnType,
-	}
-	body, err := c.request(ctx, http.MethodPost, "/api/v1/futures/marginType", params, true)
-	if err != nil {
-		return err
-	}
-	_, err = parseResponse[any](body)
-	return err
+	return ordSide, posSide
 }
 
 func mapToobitSide(toobitSide, positionSide string) domain.Side {
@@ -537,35 +423,4 @@ func parseTime(n xjson.Number) int64 {
 		return 0
 	}
 	return val
-}
-
-type toobitHistoryPosition struct {
-	Symbol                string       `json:"symbol"`
-	Side                  string       `json:"side"`
-	Position              string       `json:"position"`
-	OpenValue             string       `json:"openValue"`
-	CloseValue            string       `json:"closeValue"`
-	CloseTotalQty         string       `json:"closeTotalQty"`
-	RealizedPnL           string       `json:"realizedPnL"`
-	RealizedPnlRate       string       `json:"realizedPnlRate"`
-	RealizedPnlWithoutFee string       `json:"realizedPnlWithoutFee"`
-	Status                string       `json:"status"`
-	OpenAvgPrice          string       `json:"openAvgPrice"`
-	CloseAvgPrice         string       `json:"closeAvgPrice"`
-	OpenFee               string       `json:"openFee"`
-	CloseFee              string       `json:"closeFee"`
-	OpenTime              xjson.Number `json:"openTime"`
-	CloseTime             xjson.Number `json:"closeTime"`
-	ID                    string       `json:"id"`
-}
-
-type toobitFuturesBalanceFlowRow struct {
-	ID            xjson.Number `json:"id"`
-	Coin          string       `json:"coin"`
-	FlowTypeValue int          `json:"flowTypeValue"`
-	FlowType      string       `json:"flowType"`
-	FlowName      string       `json:"flowName"`
-	Change        string       `json:"change"`
-	Total         string       `json:"total"`
-	Created       xjson.Number `json:"created"`
 }

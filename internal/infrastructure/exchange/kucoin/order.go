@@ -2,7 +2,6 @@ package kucoin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -85,7 +84,7 @@ type kucoinOrder struct {
 
 // Private raw methods invoking the KuCoin REST API.
 
-func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderRequest) (*kucoinCreateOrderResponse, error) {
+func (c *Client) rawCreateOrder(ctx context.Context, req kucoinCreateOrderRequest) (*kucoinCreateOrderResponse, error) {
 	path := pathPlaceOrder
 	if req.TriggerStopUpPrice != "" || req.TriggerStopDownPrice != "" {
 		path = "/api/v1/st-orders"
@@ -106,7 +105,7 @@ func (c *Client) createRawOrder(ctx context.Context, req kucoinCreateOrderReques
 	return &res, nil
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, req kucoinCancelOrderRequest) (*kucoinCancelOrderResponse, error) {
+func (c *Client) rawCancelOrder(ctx context.Context, req kucoinCancelOrderRequest) (*kucoinCancelOrderResponse, error) {
 	path := fmt.Sprintf("%s/%s", pathCancelOrder, req.OrderID)
 	body, err := c.RawRequest(ctx, http.MethodDelete, path, nil, nil)
 	if err != nil {
@@ -119,7 +118,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req kucoinCancelOrderReques
 	return &kucoinCancelOrderResponse{}, nil
 }
 
-func (c *Client) getRawOrder(ctx context.Context, req kucoinOrderRequest) (*kucoinOrder, error) {
+func (c *Client) rawGetOrder(ctx context.Context, req kucoinOrderRequest) (*kucoinOrder, error) {
 	body, err := c.GetOrderDetailRaw(ctx, req.OrderID, nil)
 	if err != nil {
 		return nil, err
@@ -132,7 +131,7 @@ func (c *Client) getRawOrder(ctx context.Context, req kucoinOrderRequest) (*kuco
 	return &res, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersRequest) ([]kucoinOrder, error) {
+func (c *Client) rawGetOpenOrders(ctx context.Context, req kucoinOpenOrdersRequest) ([]kucoinOrder, error) {
 	params := map[string]string{
 		paramStatus: stateLive,
 	}
@@ -163,6 +162,21 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req kucoinOpenOrdersReque
 	}
 
 	return rawList, nil
+}
+
+func (c *Client) rawGetOrderByClientOid(ctx context.Context, clientOid string) (*kucoinOrder, error) {
+	params := map[string]string{
+		constantClientOid: clientOid,
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, pathGetOrderByClientOid, params, nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponse[kucoinOrder](body, "get_order_by_client_oid")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
@@ -229,14 +243,14 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.StopPriceType = "TP"
 	}
 
-	res, err := c.createRawOrder(ctx, rawReq)
+	resp, err := c.rawCreateOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
 
 	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
 	return exchange.CreateOrderResult{
-		OrderID:       res.OrderID,
+		OrderID:       resp.OrderID,
 		TPSLSubmitted: tpslSubmitted,
 	}, nil
 }
@@ -305,7 +319,7 @@ func mapOrderType(t domain.OrderType) (string, string, bool) {
 
 // CancelOrder cancels an existing order by ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	_, err := c.cancelRawOrder(ctx, kucoinCancelOrderRequest{
+	_, err := c.rawCancelOrder(ctx, kucoinCancelOrderRequest{
 		OrderID: orderID,
 	})
 	return err
@@ -332,7 +346,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 
 // GetOrder fetches details of a specific order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, kucoinOrderRequest{
+	raw, err := c.rawGetOrder(ctx, kucoinOrderRequest{
 		OrderID: orderID,
 	})
 	if err != nil {
@@ -344,7 +358,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOrderByExternalID fetches details of a specific order by client order ID.
 func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrderByClientOid(ctx, externalOrderID)
+	raw, err := c.rawGetOrderByClientOid(ctx, externalOrderID)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +367,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 
 // GetOpenOrders returns all currently active orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawList, err := c.getRawOpenOrders(ctx, kucoinOpenOrdersRequest{
+	rawList, err := c.rawGetOpenOrders(ctx, kucoinOpenOrdersRequest{
 		Symbol: symbol,
 	})
 	if err != nil {
@@ -366,44 +380,6 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	}
 
 	return infos, nil
-}
-
-// ClosePosition is a helper to close a position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	submitSide := exchange.SideCloseLong
-	if closeSide == domain.SideCloseShort {
-		submitSide = exchange.SideCloseShort
-	}
-
-	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Side:         submitSide,
-		Type:         exchange.OrderTypeMarket,
-		Vol:          volume,
-		PositionMode: positionMode,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "kucoin"),
-		Leverage:     leverage,
-	})
-	return err
-}
-
-// CloseAllPositions closes all open positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := &positions[i]
-		closeSide := domain.SideCloseLong
-		if pos.PositionType == exchange.PositionTypeShort { // Short
-			closeSide = domain.SideCloseShort
-		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
-	}
-
-	return nil
 }
 
 // PlaceTPSL places Take Profit and Stop Loss conditional orders on KuCoin.
@@ -506,26 +482,4 @@ func (c *Client) toOrderInfo(o *kucoinOrder) *exchange.OrderInfo {
 		Side:         sideVal,
 		CreateTime:   o.CreatedAt,
 	}
-}
-
-// ChangeLeverage changes the leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	return errors.New("not implemented")
-}
-
-// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for KuCoin.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	bodyMap := map[string]any{
-		paramSymbol:  symbol,
-		"marginMode": marginMode,
-	}
-	bodyBytes, err := xjson.Marshal(bodyMap)
-	if err != nil {
-		return fmt.Errorf("kucoin marshal switch margin mode request: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, "/api/v2/position/changeMarginMode", nil, bodyBytes)
-	if err != nil {
-		return err
-	}
-	return ParseResponseIgnoreData(body, "changeMarginMode")
 }

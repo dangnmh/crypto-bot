@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -84,16 +83,6 @@ func (c *Client) SetClock(clk exchange.Clock) {
 	if clk != nil {
 		c.clock = clk
 	}
-}
-
-// SupportLeverageOnOrder returns false for Toobit.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return false
-}
-
-// WarmUp pings the server to warm up HTTP connections.
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	_, _ = c.GetServerTime(ctx)
 }
 
 // request executes a signed or unsigned request to the Toobit API.

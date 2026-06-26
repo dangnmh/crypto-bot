@@ -146,9 +146,10 @@ make destroy-all
 ssh -v -p 2222 -N -L 39373:127.0.0.1:39373 dangnmh@26.128.244.94
 export KUBECONFIG=./deploy/k8s/k3d-kubeconfig.yaml
 
-
 kubectl port-forward svc/loki-stack-grafana 3000:80
 kubectl port-forward svc/crypto-bot 3100:3100
 kubectl port-forward svc/postgresql 5432:5432
+kubectl port-forward svc/vault-ui 8200:8200
+
 
 ```

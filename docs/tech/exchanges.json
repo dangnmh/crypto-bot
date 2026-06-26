@@ -1,0 +1,822 @@
+[
+    {
+        "rank": 14,
+        "name": "BitMart",
+        "openInterest": "$3,363,420,496",
+        "volume24h": "$7,401,712,366",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 867,
+        "launched": "Mar 2018"
+    },
+    {
+        "rank": 6,
+        "name": "MEXC",
+        "openInterest": "$4,378,854,460",
+        "volume24h": "$12,708,617,326",
+        "makerFee": "0%",
+        "takerFee": "0.02%",
+        "noMarkets": 820,
+        "launched": "Apr 2018"
+    },
+    {
+        "rank": 1,
+        "name": "Binance",
+        "openInterest": "$22,265,537,699",
+        "volume24h": "$66,571,977,490",
+        "makerFee": "0.02%",
+        "takerFee": "0.04%",
+        "noMarkets": 715,
+        "launched": "Jul 2017"
+    },
+    {
+        "rank": 4,
+        "name": "Gate",
+        "openInterest": "$7,592,940,598",
+        "volume24h": "$15,988,999,467",
+        "makerFee": "0.015%",
+        "takerFee": "0.05%",
+        "noMarkets": 705,
+        "launched": "Jan 2013"
+    },
+    {
+        "rank": 17,
+        "name": "LBank",
+        "openInterest": "$26,896,382,306",
+        "volume24h": "$5,649,623,158",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 693,
+        "launched": "Oct 2016"
+    },
+    {
+        "rank": 36,
+        "name": "WEEX",
+        "openInterest": "$6,481,167,419",
+        "volume24h": "$22,332,438,916",
+        "makerFee": "0.02%",
+        "takerFee": "0.08%",
+        "noMarkets": 681,
+        "launched": "Apr 2018"
+    },
+    {
+        "rank": 24,
+        "name": "KCEX",
+        "openInterest": "$527,326,293",
+        "volume24h": "$6,616,940,888",
+        "makerFee": "0%",
+        "takerFee": "0.01%",
+        "noMarkets": 676,
+        "launched": "Aug 2021"
+    },
+    {
+        "rank": 3,
+        "name": "Bybit",
+        "openInterest": "$4,408,045,746",
+        "volume24h": "$17,489,863,658",
+        "makerFee": "0.02%",
+        "takerFee": "0.055%",
+        "noMarkets": 659,
+        "launched": "Mar 2018"
+    },
+    {
+        "rank": 8,
+        "name": "BingX",
+        "openInterest": "$3,840,373,370",
+        "volume24h": "$7,506,206,596",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 646,
+        "launched": "May 2018"
+    },
+    {
+        "rank": 11,
+        "name": "XT.COM",
+        "openInterest": "$5,557,437,193",
+        "volume24h": "$8,080,074,439",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 642,
+        "launched": "Oct 2018"
+    },
+    {
+        "rank": 79,
+        "name": "Cofinex",
+        "openInterest": "$863,811,540",
+        "volume24h": "$11,657,703,932",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 632,
+        "launched": "Mar 2022"
+    },
+    {
+        "rank": 7,
+        "name": "KuCoin",
+        "openInterest": "$5,323,754,773",
+        "volume24h": "$2,680,474,223",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 628,
+        "launched": "Aug 2017"
+    },
+    {
+        "rank": 18,
+        "name": "Toobit",
+        "openInterest": "$5,588,535,328",
+        "volume24h": "$15,401,292,800",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 615,
+        "launched": "Oct 2022"
+    },
+    {
+        "rank": 21,
+        "name": "Ourbit",
+        "openInterest": "$1,559,070,064",
+        "volume24h": "$21,065,302,309",
+        "makerFee": "0.02%",
+        "takerFee": "0.04%",
+        "noMarkets": 611,
+        "launched": "Apr 2024"
+    },
+    {
+        "rank": 28,
+        "name": "Bitunix",
+        "openInterest": "$2,153,206,778",
+        "volume24h": "$7,506,309,072",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 611,
+        "launched": "Oct 2021"
+    },
+    {
+        "rank": 5,
+        "name": "Bitget",
+        "openInterest": "$3,096,884,543",
+        "volume24h": "$11,691,760,321",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 582,
+        "launched": "Apr 2018"
+    },
+    {
+        "rank": 29,
+        "name": "OrangeX",
+        "openInterest": "$6,215,502,649",
+        "volume24h": "$18,250,581,335",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 552,
+        "launched": "Jun 2021"
+    },
+    {
+        "rank": 66,
+        "name": "Bitbaby",
+        "openInterest": "$836,001,029",
+        "volume24h": "$3,007,138,947",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 513,
+        "launched": "Nov 2024"
+    },
+    {
+        "rank": 26,
+        "name": "Zoomex",
+        "openInterest": "$413,914,166",
+        "volume24h": "$5,892,234,210",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 501,
+        "launched": "Nov 2021"
+    },
+    {
+        "rank": 34,
+        "name": "Phemex",
+        "openInterest": "$2,345,340,388",
+        "volume24h": "$1,775,381,307",
+        "makerFee": "0.01%",
+        "takerFee": "0.06%",
+        "noMarkets": 490,
+        "launched": "Nov 2019"
+    },
+    {
+        "rank": 19,
+        "name": "Pionex",
+        "openInterest": "$219,986,404",
+        "volume24h": "$13,363,457,605",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 485,
+        "launched": "Jun 2019"
+    },
+    {
+        "rank": 44,
+        "name": "Bitrue",
+        "openInterest": "$331,252,173",
+        "volume24h": "$3,378,178,863",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 464,
+        "launched": "Jul 2018"
+    },
+    {
+        "rank": 55,
+        "name": "BloFin",
+        "openInterest": "$794,106,980",
+        "volume24h": "$827,781,428",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 459,
+        "launched": "Jan 2023"
+    },
+    {
+        "rank": 2,
+        "name": "OKX",
+        "openInterest": "$5,931,316,955",
+        "volume24h": "$31,183,649,008",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 450,
+        "launched": "Jan 2017"
+    },
+    {
+        "rank": 70,
+        "name": "BYDFi",
+        "openInterest": "$62,831,253",
+        "volume24h": "$431,746,849",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 448,
+        "launched": "Apr 2020"
+    },
+    {
+        "rank": 37,
+        "name": "Hotcoin",
+        "openInterest": "$938,894,382",
+        "volume24h": "$5,790,711,614",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 437,
+        "launched": "Nov 2017"
+    },
+    {
+        "rank": 46,
+        "name": "Bitbase",
+        "openInterest": "$354,481,705",
+        "volume24h": "$5,622,042,054",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 433,
+        "launched": "Jun 2023"
+    },
+    {
+        "rank": 65,
+        "name": "Flipster",
+        "openInterest": "$17,721,049",
+        "volume24h": "$119,785,988",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 374,
+        "launched": "Dec 2020"
+    },
+    {
+        "rank": 42,
+        "name": "WhiteBIT",
+        "openInterest": "$3,903,266,574",
+        "volume24h": "$4,728,723,305",
+        "makerFee": "0.01%",
+        "takerFee": "0.055%",
+        "noMarkets": 367,
+        "launched": "Dec 2018"
+    },
+    {
+        "rank": 41,
+        "name": "YUBIT",
+        "openInterest": "$554,120,157",
+        "volume24h": "$1,979,342,158",
+        "makerFee": "0.04%",
+        "takerFee": "0.08%",
+        "noMarkets": 323,
+        "launched": "Aug 2020"
+    },
+    {
+        "rank": 80,
+        "name": "BitTap",
+        "openInterest": "$125,314,645",
+        "volume24h": "$1,933,758,901",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 303,
+        "launched": "May 2024"
+    },
+    {
+        "rank": 12,
+        "name": "Kraken",
+        "openInterest": "$279,606,376",
+        "volume24h": "$1,449,995,360",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 295,
+        "launched": "Jul 2011"
+    },
+    {
+        "rank": 16,
+        "name": "Crypto.com Exchange",
+        "openInterest": "$1,257,435,051",
+        "volume24h": "$632,346,486",
+        "makerFee": "0.05%",
+        "takerFee": "0.07%",
+        "noMarkets": 280,
+        "launched": "Nov 2019"
+    },
+    {
+        "rank": 67,
+        "name": "Coinbase International Exchange",
+        "openInterest": "$296,681,948",
+        "volume24h": "$11,096,346,822",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 244,
+        "launched": "May 2023"
+    },
+    {
+        "rank": 9,
+        "name": "HTX",
+        "openInterest": "$1,645,513,300",
+        "volume24h": "$2,490,848,980",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 238,
+        "launched": "Sep 2013"
+    },
+    {
+        "rank": 81,
+        "name": "Aivora Exchange",
+        "openInterest": "$878,143,659",
+        "volume24h": "$6,097,221,881",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 237,
+        "launched": "Oct 2024"
+    },
+    {
+        "rank": 54,
+        "name": "VOOX Exchange",
+        "openInterest": "$296,432,218",
+        "volume24h": "$13,584,861,379",
+        "makerFee": "0.04%",
+        "takerFee": "0.06%",
+        "noMarkets": 234,
+        "launched": "Apr 2023"
+    },
+    {
+        "rank": 20,
+        "name": "CoinW",
+        "openInterest": "$6,873,042,734",
+        "volume24h": "$22,261,508,082",
+        "makerFee": "0.01%",
+        "takerFee": "0.06%",
+        "noMarkets": 227,
+        "launched": "Jul 2017"
+    },
+    {
+        "rank": 57,
+        "name": "WOO X",
+        "openInterest": "--",
+        "volume24h": "$15,804,325",
+        "makerFee": "0.03%",
+        "takerFee": "0.03%",
+        "noMarkets": 213,
+        "launched": "Nov 2019"
+    },
+    {
+        "rank": 78,
+        "name": "KTX",
+        "openInterest": "$1,969,106",
+        "volume24h": "$23,965,776,611",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 213,
+        "launched": "Jan 2025"
+    },
+    {
+        "rank": 38,
+        "name": "MGBX",
+        "openInterest": "$101,157,873",
+        "volume24h": "$7,524,853,655",
+        "makerFee": "0.03%",
+        "takerFee": "0.05%",
+        "noMarkets": 208,
+        "launched": "Apr 2019"
+    },
+    {
+        "rank": 77,
+        "name": "Ju.com",
+        "openInterest": "$3,864,265",
+        "volume24h": "$25,423,594,754",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 191,
+        "launched": "Jan 2014"
+    },
+    {
+        "rank": 22,
+        "name": "Deepcoin",
+        "openInterest": "$4,138,076,016",
+        "volume24h": "$24,683,740,860",
+        "makerFee": "0.04%",
+        "takerFee": "0.06%",
+        "noMarkets": 189,
+        "launched": "Nov 2018"
+    },
+    {
+        "rank": 82,
+        "name": "SunX",
+        "openInterest": "$1,147,004,341",
+        "volume24h": "$6,328,840,577",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 181,
+        "launched": "Jul 2018"
+    },
+    {
+        "rank": 33,
+        "name": "FameEX",
+        "openInterest": "$9,395,988,545",
+        "volume24h": "$49,384,564,409",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 176,
+        "launched": "Dec 2019"
+    },
+    {
+        "rank": 76,
+        "name": "BiKing",
+        "openInterest": "$15,313,673,534",
+        "volume24h": "$45,933,623,067",
+        "makerFee": "0.04%",
+        "takerFee": "0.04%",
+        "noMarkets": 168,
+        "launched": "Dec 2017"
+    },
+    {
+        "rank": 30,
+        "name": "Tapbit",
+        "openInterest": "$5,193,013,326",
+        "volume24h": "$29,054,804,055",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 162,
+        "launched": "Oct 2021"
+    },
+    {
+        "rank": 45,
+        "name": "Websea",
+        "openInterest": "$102,579,471",
+        "volume24h": "$13,492,580,251",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 161,
+        "launched": "Aug 2023"
+    },
+    {
+        "rank": 56,
+        "name": "Koinbay",
+        "openInterest": "--",
+        "volume24h": "$7,930,162,144",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 151,
+        "launched": "Dec 2023"
+    },
+    {
+        "rank": 48,
+        "name": "AscendEX",
+        "openInterest": "$55,599,088",
+        "volume24h": "$1,704,165,159",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 144,
+        "launched": "Jul 2018"
+    },
+    {
+        "rank": 62,
+        "name": "BITmarkets",
+        "openInterest": "$137,800,134",
+        "volume24h": "$3,319,528,717",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 133,
+        "launched": "Feb 2022"
+    },
+    {
+        "rank": 25,
+        "name": "Biconomy.com",
+        "openInterest": "$33,583,295",
+        "volume24h": "$11,794,984,818",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 125,
+        "launched": "Oct 2019"
+    },
+    {
+        "rank": 72,
+        "name": "BitxEX",
+        "openInterest": "$496,236,874",
+        "volume24h": "$813,274,486",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 125,
+        "launched": "Jun 2019"
+    },
+    {
+        "rank": 68,
+        "name": "Ekbit",
+        "openInterest": "$1,469,891,202",
+        "volume24h": "$14,952,927,474",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 116,
+        "launched": "Feb 2020"
+    },
+    {
+        "rank": 71,
+        "name": "Bitcastle",
+        "openInterest": "$42,398",
+        "volume24h": "$184,580,069",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 115,
+        "launched": "Jul 2019"
+    },
+    {
+        "rank": 61,
+        "name": "Batonex",
+        "openInterest": "$239,875,404",
+        "volume24h": "$9,577,883,255",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 114,
+        "launched": "Jun 2018"
+    },
+    {
+        "rank": 51,
+        "name": "BTSE",
+        "openInterest": "$122,963,100",
+        "volume24h": "$3,317,056,624",
+        "makerFee": "0.02%",
+        "takerFee": "0.055%",
+        "noMarkets": 112,
+        "launched": "Sep 2018"
+    },
+    {
+        "rank": 31,
+        "name": "Echobit",
+        "openInterest": "$5,733,398,847",
+        "volume24h": "$24,499,376,338",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 111,
+        "launched": "Oct 2023"
+    },
+    {
+        "rank": 32,
+        "name": "CoinUp.io",
+        "openInterest": "$28,776,305",
+        "volume24h": "$20,668,693,557",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 101,
+        "launched": "Aug 2021"
+    },
+    {
+        "rank": 35,
+        "name": "BVOX",
+        "openInterest": "$5,908,400,231",
+        "volume24h": "$20,090,039,153",
+        "makerFee": "0.04%",
+        "takerFee": "0.06%",
+        "noMarkets": 97,
+        "launched": "May 2018"
+    },
+    {
+        "rank": 23,
+        "name": "BTCC",
+        "openInterest": "$12,118,444,585",
+        "volume24h": "$21,841,128,156",
+        "makerFee": "0.03%",
+        "takerFee": "0.06%",
+        "noMarkets": 92,
+        "launched": "Jun 2011"
+    },
+    {
+        "rank": 58,
+        "name": "DigiFinex",
+        "openInterest": "$9,778,658,556",
+        "volume24h": "$20,589,028,569",
+        "makerFee": "0.03%",
+        "takerFee": "0.05%",
+        "noMarkets": 88,
+        "launched": "Apr 2018"
+    },
+    {
+        "rank": 27,
+        "name": "CoinEx",
+        "openInterest": "$14,354,733",
+        "volume24h": "$30,034,006",
+        "makerFee": "0.02%",
+        "takerFee": "0.04%",
+        "noMarkets": 71,
+        "launched": "Dec 2017"
+    },
+    {
+        "rank": 49,
+        "name": "Backpack Exchange",
+        "openInterest": "$73,582,298",
+        "volume24h": "$197,879,488",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 71,
+        "launched": "Oct 2023"
+    },
+    {
+        "rank": 50,
+        "name": "BitMEX",
+        "openInterest": "$187,720,395",
+        "volume24h": "$570,658,988",
+        "makerFee": "0.1%",
+        "takerFee": "0.1%",
+        "noMarkets": 66,
+        "launched": "Apr 2014"
+    },
+    {
+        "rank": 10,
+        "name": "Deribit",
+        "openInterest": "$2,709,624,028",
+        "volume24h": "$1,708,498,456",
+        "makerFee": "0%",
+        "takerFee": "0.05%",
+        "noMarkets": 58,
+        "launched": "Jun 2016"
+    },
+    {
+        "rank": 13,
+        "name": "Bitfinex",
+        "openInterest": "$554,523,468",
+        "volume24h": "$61,489,679",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 54,
+        "launched": "Oct 2012"
+    },
+    {
+        "rank": 39,
+        "name": "Hibt",
+        "openInterest": "$90,753,766",
+        "volume24h": "$7,239,786,919",
+        "makerFee": "0.03%",
+        "takerFee": "0.05%",
+        "noMarkets": 52,
+        "launched": "May 2022"
+    },
+    {
+        "rank": 47,
+        "name": "BitradeX",
+        "openInterest": "$15,930,838",
+        "volume24h": "$2,578,056,368",
+        "makerFee": "0.04%",
+        "takerFee": "0.06%",
+        "noMarkets": 52,
+        "launched": "Apr 2022"
+    },
+    {
+        "rank": 59,
+        "name": "AstralX",
+        "openInterest": "$1,868,846,126",
+        "volume24h": "$22,807,092,757",
+        "makerFee": "0.02%",
+        "takerFee": "0.06%",
+        "noMarkets": 47,
+        "launched": "Mar 2025"
+    },
+    {
+        "rank": 69,
+        "name": "4E",
+        "openInterest": "--",
+        "volume24h": "$23,009,827,643",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 47,
+        "launched": "Aug 2023"
+    },
+    {
+        "rank": 60,
+        "name": "TruBit Pro Exchange",
+        "openInterest": "$22,663,105",
+        "volume24h": "$24,433,622,902",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 39,
+        "launched": "Jul 2020"
+    },
+    {
+        "rank": 40,
+        "name": "UZX",
+        "openInterest": "$2,866,675",
+        "volume24h": "$7,067,530,145",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 37,
+        "launched": "Apr 2023"
+    },
+    {
+        "rank": 63,
+        "name": "HitBTC",
+        "openInterest": "$12,155,944",
+        "volume24h": "$18,186,221",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 37,
+        "launched": "Dec 2013"
+    },
+    {
+        "rank": 52,
+        "name": "CoinChief",
+        "openInterest": "$54,157,393",
+        "volume24h": "$2,193,345,100",
+        "makerFee": "0.025%",
+        "takerFee": "0.06%",
+        "noMarkets": 28,
+        "launched": "Mar 2021"
+    },
+    {
+        "rank": 74,
+        "name": "Globe Derivative Exchange",
+        "openInterest": "$43,473,095",
+        "volume24h": "$32,473,798",
+        "makerFee": "0%",
+        "takerFee": "0.05%",
+        "noMarkets": 28,
+        "launched": "May 2021"
+    },
+    {
+        "rank": 53,
+        "name": "CrypFine",
+        "openInterest": "$112,995,982",
+        "volume24h": "$3,302,577,438",
+        "makerFee": "0.22%",
+        "takerFee": "0.06%",
+        "noMarkets": 27,
+        "launched": "Dec 2024"
+    },
+    {
+        "rank": 73,
+        "name": "Mandala Exchange",
+        "openInterest": "$12,168,253",
+        "volume24h": "$18,175,704",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 20,
+        "launched": "Nov 2020"
+    },
+    {
+        "rank": 75,
+        "name": "Gleec BTC",
+        "openInterest": "--",
+        "volume24h": "$18,246,173",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 20,
+        "launched": "Jan 2019"
+    },
+    {
+        "rank": 15,
+        "name": "Gemini",
+        "openInterest": "$4,590,848",
+        "volume24h": "$623,965",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 13,
+        "launched": "Oct 2015"
+    },
+    {
+        "rank": 64,
+        "name": "Delta Exchange",
+        "openInterest": "$939,890",
+        "volume24h": "$2,671,684",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 4,
+        "launched": "Aug 2018"
+    },
+    {
+        "rank": 43,
+        "name": "HashKey Global",
+        "openInterest": "$7,739,048",
+        "volume24h": "$314,753",
+        "makerFee": "0%",
+        "takerFee": "0%",
+        "noMarkets": 3,
+        "launched": "Apr 2024"
+    }
+]

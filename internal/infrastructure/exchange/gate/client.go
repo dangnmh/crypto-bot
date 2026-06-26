@@ -14,12 +14,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
-	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -238,36 +236,6 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 	}
 
 	return respBody, nil
-}
-
-// WarmUp maintaining connection pool via periodic ping requests (/spot/time).
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	c.logger.InfoContext(ctx, "🔗 Warming up Gate.io connection pool...", slog.Duration("interval", interval))
-
-	ticker.RunImmediate(ctx, interval, func() bool {
-		var result gateSystemTime
-		err := c.sendRequest(ctx, http.MethodGet, "/spot/time", nil, nil, &result)
-		if err != nil {
-			c.logger.DebugContext(ctx, "Gate.io warmup ping failed", slog.Any("error", err))
-		}
-		return true
-	})
-}
-
-// Latency measures round-trip time of fetching server time (ms).
-func (c *Client) Latency(ctx context.Context) (int64, error) {
-	start := time.Now()
-	var result gateSystemTime
-	err := c.sendRequest(ctx, http.MethodGet, "/spot/time", nil, nil, &result)
-	if err != nil {
-		return 0, err
-	}
-	return time.Since(start).Milliseconds(), nil
-}
-
-// SupportLeverageOnOrder returns false since Gate.io doesn't support setting leverage directly on orders.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return false
 }
 
 // Structs representing Gate.io Futures REST API payloads.

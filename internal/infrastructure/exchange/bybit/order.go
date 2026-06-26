@@ -3,11 +3,9 @@ package bybit
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -68,13 +66,6 @@ type bybitListOpenOrdersRequest struct {
 	Symbol   string `json:"symbol,omitempty"`
 }
 
-type bybitChangeLeverageRequest struct {
-	Category     string `json:"category"`
-	Symbol       string `json:"symbol"`
-	BuyLeverage  string `json:"buyLeverage"`
-	SellLeverage string `json:"sellLeverage"`
-}
-
 type bybitCreateOrderResult struct {
 	OrderID     string `json:"orderId"`
 	OrderLinkID string `json:"orderLinkId"`
@@ -98,7 +89,7 @@ type bybitOrder struct {
 
 // Private raw methods invoking the Bybit API.
 
-func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
+func (c *Client) rawCreateOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("bybit create order marshal: %w", err)
@@ -114,7 +105,7 @@ func (c *Client) createRawOrder(ctx context.Context, req bybitCreateOrderRequest
 	return &res, nil
 }
 
-func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
+func (c *Client) rawPlaceTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit set trading stop marshal: %w", err)
@@ -127,7 +118,7 @@ func (c *Client) placeRawTPSL(ctx context.Context, req bybitPlaceTPSLRequest) er
 	return err
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest) error {
+func (c *Client) rawCancelOrder(ctx context.Context, req bybitCancelOrderRequest) error {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit cancel order marshal: %w", err)
@@ -149,7 +140,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bybitCancelOrderRequest
 	return nil
 }
 
-func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllOpenOrdersRequest) error {
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, req bybitCancelAllOpenOrdersRequest) error {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("bybit cancel all orders marshal: %w", err)
@@ -162,7 +153,7 @@ func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req bybitCancelAllO
 	return err
 }
 
-func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*bybitOrder, error) {
+func (c *Client) rawGetOrder(ctx context.Context, req bybitGetOrderRequest) (*bybitOrder, error) {
 	params := map[string]string{}
 	if req.Category != "" {
 		params["category"] = req.Category
@@ -191,7 +182,7 @@ func (c *Client) getRawOrder(ctx context.Context, req bybitGetOrderRequest) (*by
 	return &list[0], nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRequest) ([]bybitOrder, error) {
+func (c *Client) rawGetOpenOrders(ctx context.Context, req bybitListOpenOrdersRequest) ([]bybitOrder, error) {
 	params := map[string]string{}
 	if req.Category != "" {
 		params["category"] = req.Category
@@ -207,25 +198,6 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 		return nil, err
 	}
 	return decodeListResponse[bybitOrder](body, "bybit list open orders")
-}
-
-func (c *Client) changeRawLeverage(ctx context.Context, req bybitChangeLeverageRequest) error {
-	bodyBytes, err := xjson.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("bybit change leverage marshal: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/set-leverage", nil, bodyBytes)
-	if err != nil {
-		return fmt.Errorf("bybit change leverage: %w", err)
-	}
-	var resp bybitResponse[any]
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return fmt.Errorf("bybit change leverage json unmarshal: %w", err)
-	}
-	if resp.RetCode != 0 && resp.RetCode != 110043 {
-		return fmt.Errorf("bybit change leverage error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
@@ -264,7 +236,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.Leverage = fmt.Sprintf("%d", req.Leverage)
 	}
 
-	res, err := c.createRawOrder(ctx, rawReq)
+	res, err := c.rawCreateOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -303,12 +275,12 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	}
 	rawReq.PositionIdx = positionIdx
 
-	return c.placeRawTPSL(ctx, rawReq)
+	return c.rawPlaceTPSL(ctx, rawReq)
 }
 
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	return c.cancelRawOrder(ctx, bybitCancelOrderRequest{
+	return c.rawCancelOrder(ctx, bybitCancelOrderRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,
 		OrderID:  orderID,
@@ -328,7 +300,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	return c.cancelRawAllOpenOrders(ctx, bybitCancelAllOpenOrdersRequest{
+	return c.rawCancelAllOpenOrders(ctx, bybitCancelAllOpenOrdersRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,
 	})
@@ -336,7 +308,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 
 // GetOrder queries a single order by ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+	raw, err := c.rawGetOrder(ctx, bybitGetOrderRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,
 		OrderID:  orderID,
@@ -350,7 +322,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOrderByExternalID queries a single order by external ID (orderLinkID).
 func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, orderLinkID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, bybitGetOrderRequest{
+	raw, err := c.rawGetOrder(ctx, bybitGetOrderRequest{
 		Category:    categoryLinear,
 		Symbol:      symbol,
 		OrderLinkID: orderLinkID,
@@ -364,7 +336,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, orderLinkID s
 
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawList, err := c.getRawOpenOrders(ctx, bybitListOpenOrdersRequest{
+	rawList, err := c.rawGetOpenOrders(ctx, bybitListOpenOrdersRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,
 	})
@@ -377,169 +349,6 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		orders = append(orders, mapOrderInfo(rawList[i]))
 	}
 	return orders, nil
-}
-
-// ClosePosition closes one position leg using a market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	req := exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Vol:          volume,
-		Side:         closeSide,
-		Type:         exchange.OrderTypeMarket,
-		PositionMode: positionMode,
-		ReduceOnly:   true,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "bybit"),
-		Leverage:     leverage,
-	}
-	_, err := c.CreateOrder(ctx, req)
-	return err
-}
-
-// CloseAllPositions closes all positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := &positions[i]
-		if pos.HoldVol > 0 {
-			var side domain.Side
-			if pos.PositionType == exchange.PositionTypeLong { // Long
-				side = domain.SideCloseLong
-			} else { // Short
-				side = domain.SideCloseShort
-			}
-			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1, pos.Leverage) // default hedge mode close
-			if posErr != nil {
-				return posErr
-			}
-		}
-	}
-	return nil
-}
-
-// ChangeLeverage changes the leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	leverageStr := fmt.Sprintf("%d", req.Leverage)
-	return c.changeRawLeverage(ctx, bybitChangeLeverageRequest{
-		Category:     categoryLinear,
-		Symbol:       req.Symbol,
-		BuyLeverage:  leverageStr,
-		SellLeverage: leverageStr,
-	})
-}
-
-// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Bybit.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	if strings.EqualFold(c.accountType, "unified") {
-		return c.switchUnifiedMarginMode(ctx, marginMode)
-	}
-
-	tradeMode := 1 // isolated
-	if marginMode == constantCross {
-		tradeMode = 0 // cross
-	}
-	leverageStr := fmt.Sprintf("%d", leverage)
-	params := map[string]any{
-		"category":     categoryLinear,
-		"symbol":       symbol,
-		"tradeMode":    tradeMode,
-		"buyLeverage":  leverageStr,
-		"sellLeverage": leverageStr,
-	}
-	bodyBytes, err := xjson.Marshal(params)
-	if err != nil {
-		return fmt.Errorf("bybit switch margin mode marshal: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/switch-isolated", nil, bodyBytes)
-	if err != nil {
-		return fmt.Errorf("bybit switch margin mode: %w", err)
-	}
-	var resp bybitResponse[any]
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return fmt.Errorf("bybit switch margin mode json unmarshal: %w", err)
-	}
-	if resp.RetCode != 0 {
-		if resp.RetCode == 110026 || strings.Contains(strings.ToLower(resp.RetMsg), "already") {
-			return nil
-		}
-		// Fallback for unified account
-		if resp.RetCode == 100028 || strings.Contains(strings.ToLower(resp.RetMsg), "unified account is forbidden") {
-			c.logger.InfoContext(ctx, "Bybit SwitchPositionMargin returned unified account restriction, falling back to SetMarginMode", slog.String("symbol", symbol), slog.String("marginMode", marginMode))
-			return c.switchUnifiedMarginMode(ctx, marginMode)
-		}
-		return fmt.Errorf("bybit switch margin mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
-}
-
-func (c *Client) switchUnifiedMarginMode(ctx context.Context, marginMode string) error {
-	utaMarginMode := utaMarginIsolated
-	if marginMode == constantCross {
-		utaMarginMode = utaMarginRegular
-	}
-	utaParams := map[string]any{
-		paramSetMarginMode: utaMarginMode,
-	}
-	bodyBytes, err := xjson.Marshal(utaParams)
-	if err != nil {
-		return fmt.Errorf("bybit set account margin mode marshal: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/account/set-margin-mode", nil, bodyBytes)
-	if err != nil {
-		return fmt.Errorf("bybit set account margin mode: %w", err)
-	}
-	var resp bybitResponse[any]
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return fmt.Errorf("bybit set account margin mode json unmarshal: %w", err)
-	}
-	if resp.RetCode != 0 {
-		if resp.RetCode == 110026 || strings.Contains(strings.ToLower(resp.RetMsg), "already") {
-			return nil
-		}
-		return fmt.Errorf("bybit set account margin mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return nil
-}
-
-// SwitchPositionMode switches the position mode (Hedge vs One-Way) for Bybit.
-func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error {
-	mode := 0 // One-Way
-	if positionMode == domain.PositionModeHedge {
-		mode = 3 // Hedge
-	}
-
-	params := map[string]any{
-		categoryKey: categoryLinear,
-		symbolKey:   symbol,
-		"mode":      mode,
-	}
-
-	bodyBytes, err := xjson.Marshal(params)
-	if err != nil {
-		return fmt.Errorf("bybit switch position mode marshal: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/position/switch-mode", nil, bodyBytes)
-	if err != nil {
-		return fmt.Errorf("bybit switch position mode: %w", err)
-	}
-
-	var resp bybitResponse[any]
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return fmt.Errorf("bybit switch position mode json unmarshal: %w", err)
-	}
-
-	if resp.RetCode != 0 {
-		// 110025: position mode is not modified (i.e. already in requested mode)
-		if resp.RetCode == 110025 || strings.Contains(strings.ToLower(resp.RetMsg), "already") || strings.Contains(strings.ToLower(resp.RetMsg), "not modified") {
-			return nil
-		}
-		return fmt.Errorf("bybit switch position mode error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-
-	return nil
 }
 
 // Helper mapping functions.

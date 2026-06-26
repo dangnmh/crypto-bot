@@ -2,13 +2,10 @@ package mexc
 
 import (
 	"context"
+	"crypto-bot/internal/infrastructure/exchange"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
-
-	"crypto-bot/internal/domain"
-	"crypto-bot/internal/infrastructure/exchange"
 
 	"crypto-bot/pkg/xjson"
 )
@@ -62,20 +59,9 @@ type mexcOpenOrdersRequest struct {
 	Symbol string `json:"symbol,omitempty"`
 }
 
-type mexcCloseAllPositionsRequest struct {
-	Symbol string `json:"symbol"`
-}
-
-type mexcChangeLeverageRequest struct {
-	Symbol       string `json:"symbol"`
-	Leverage     int    `json:"leverage"`
-	OpenType     int    `json:"openType"`
-	PositionType int    `json:"positionType"`
-}
-
 // Private raw methods invoking the MEXC API.
 
-func (c *Client) createRawOrder(ctx context.Context, req mexcCreateOrderRequest) (*mexcCreateOrderResponse, error) {
+func (c *Client) rawCreateOrder(ctx context.Context, req mexcCreateOrderRequest) (*mexcCreateOrderResponse, error) {
 	body, err := c.PostCtx(ctx, "/api/v1/private/order/create", req)
 	if err != nil {
 		return nil, err
@@ -87,7 +73,7 @@ func (c *Client) createRawOrder(ctx context.Context, req mexcCreateOrderRequest)
 	return &res, nil
 }
 
-func (c *Client) cancelRawOrders(ctx context.Context, req mexcCancelOrdersRequest) ([]mexcCancelOrderResult, error) {
+func (c *Client) rawCancelOrders(ctx context.Context, req mexcCancelOrdersRequest) ([]mexcCancelOrderResult, error) {
 	body, err := c.PostCtx(ctx, "/api/v1/private/order/cancel", req)
 	if err != nil {
 		return nil, err
@@ -95,7 +81,7 @@ func (c *Client) cancelRawOrders(ctx context.Context, req mexcCancelOrdersReques
 	return parseCancelOrdersResponse(body)
 }
 
-func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req mexcCancelAllOpenOrdersRequest) error {
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, req mexcCancelAllOpenOrdersRequest) error {
 	body, err := c.PostCtx(ctx, "/api/v1/private/order/cancel_all", req)
 	if err != nil {
 		return err
@@ -103,7 +89,7 @@ func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req mexcCancelAllOp
 	return ParseResponseIgnoreData(body, "cancel_all_open_orders")
 }
 
-func (c *Client) getRawOrder(ctx context.Context, req mexcGetOrderRequest) (*mexcOrder, error) {
+func (c *Client) rawGetOrder(ctx context.Context, req mexcGetOrderRequest) (*mexcOrder, error) {
 	body, err := c.GetOrderDetailRaw(ctx, req.OrderID, nil)
 	if err != nil {
 		return nil, err
@@ -115,7 +101,7 @@ func (c *Client) getRawOrder(ctx context.Context, req mexcGetOrderRequest) (*mex
 	return &data, nil
 }
 
-func (c *Client) getRawOrderByExOrderID(ctx context.Context, req mexcGetOrderByExternalRequest) (*mexcOrder, error) {
+func (c *Client) rawGetOrderByExOrderID(ctx context.Context, req mexcGetOrderByExternalRequest) (*mexcOrder, error) {
 	path := fmt.Sprintf("/api/v1/private/order/external/%s/%s", req.Symbol, req.ExternalOID)
 	body, err := c.RawRequest(ctx, http.MethodGet, path, nil, nil)
 	if err != nil {
@@ -128,7 +114,7 @@ func (c *Client) getRawOrderByExOrderID(ctx context.Context, req mexcGetOrderByE
 	return &data, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req mexcOpenOrdersRequest) ([]mexcOrder, error) {
+func (c *Client) rawGetOpenOrders(ctx context.Context, req mexcOpenOrdersRequest) ([]mexcOrder, error) {
 	params := map[string]string{}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
@@ -138,22 +124,6 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req mexcOpenOrdersRequest
 		return nil, err
 	}
 	return ParseResponse[[]mexcOrder](body, "get_open_orders")
-}
-
-func (c *Client) closeRawAllPositions(ctx context.Context, req mexcCloseAllPositionsRequest) error {
-	body, err := c.PostCtx(ctx, "/api/v1/private/position/close_all", req)
-	if err != nil {
-		return err
-	}
-	return ParseResponseIgnoreData(body, "close_all_positions")
-}
-
-func (c *Client) changeRawLeverage(ctx context.Context, req mexcChangeLeverageRequest) error {
-	body, err := c.PostCtx(ctx, "/api/v1/private/position/change_leverage", req)
-	if err != nil {
-		return err
-	}
-	return ParseResponseIgnoreData(body, "change_leverage")
 }
 
 func parseCancelOrdersResponse(body []byte) ([]mexcCancelOrderResult, error) {
@@ -195,7 +165,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		TakeProfitPrice: req.TakeProfitPrice,
 	}
 
-	data, err := c.createRawOrder(ctx, mexcReq)
+	data, err := c.rawCreateOrder(ctx, mexcReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -206,7 +176,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 // CancelOrders cancels one or more orders by their IDs.
 func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
-	results, err := c.cancelRawOrders(ctx, mexcCancelOrdersRequest(orderIDs))
+	results, err := c.rawCancelOrders(ctx, mexcCancelOrdersRequest(orderIDs))
 	if err != nil {
 		return err
 	}
@@ -224,7 +194,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	return c.cancelRawAllOpenOrders(ctx, mexcCancelAllOpenOrdersRequest{Symbol: symbol})
+	return c.rawCancelAllOpenOrders(ctx, mexcCancelAllOpenOrdersRequest{Symbol: symbol})
 }
 
 // CancelOrder cancels a single order by its ID.
@@ -234,7 +204,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 
 // GetOrder queries a single order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
+	raw, err := c.rawGetOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +213,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOrderByExternalID queries a single order by client order ID.
 func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
-	raw, err := c.getRawOrderByExOrderID(ctx, mexcGetOrderByExternalRequest{
+	raw, err := c.rawGetOrderByExOrderID(ctx, mexcGetOrderByExternalRequest{
 		Symbol:      symbol,
 		ExternalOID: externalOrderID,
 	})
@@ -255,7 +225,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 
 // GetOpenOrders returns all open orders, optionally filtered by symbol.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	rawOrders, err := c.getRawOpenOrders(ctx, mexcOpenOrdersRequest{Symbol: symbol})
+	rawOrders, err := c.rawGetOpenOrders(ctx, mexcOpenOrdersRequest{Symbol: symbol})
 	if err != nil {
 		return nil, err
 	}
@@ -265,56 +235,4 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		orders[i] = *rawOrders[i].toOrderInfo()
 	}
 	return orders, nil
-}
-
-// CloseAllPositions closes all positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	return c.closeRawAllPositions(ctx, mexcCloseAllPositionsRequest{Symbol: symbol})
-}
-
-// ClosePosition closes one position leg using a reduce-only market order.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	req := mexcCreateOrderRequest{
-		Symbol:       symbol,
-		Vol:          volume,
-		Side:         int(closeSide),
-		Type:         int(exchange.OrderTypeMarket),
-		PositionMode: int(positionMode),
-		ReduceOnly:   true,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "mexc"),
-		Leverage:     leverage,
-	}
-	_, err := c.createRawOrder(ctx, req)
-	return err
-}
-
-// ChangeLeverage changes the leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	mexcReq := mexcChangeLeverageRequest{
-		Symbol:       req.Symbol,
-		Leverage:     req.Leverage,
-		OpenType:     int(req.OpenType),
-		PositionType: int(req.PositionType),
-	}
-	return c.changeRawLeverage(ctx, mexcReq)
-}
-
-// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for MEXC.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	openType := 1 // Isolated
-	if marginMode == "CROSS" {
-		openType = 2 // Cross
-	}
-
-	positionType := 1 // Long
-	if side == domain.SideOpenShort || side == domain.SideCloseShort {
-		positionType = 2 // Short
-	}
-
-	return c.changeRawLeverage(ctx, mexcChangeLeverageRequest{
-		Symbol:       symbol,
-		Leverage:     leverage,
-		OpenType:     openType,
-		PositionType: positionType,
-	})
 }

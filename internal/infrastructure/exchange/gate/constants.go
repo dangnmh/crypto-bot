@@ -1,7 +1,8 @@
 package gate
 
 const (
-	gateTifIOC = "ioc"
+	exchangeName = "gate"
+	gateTifIOC   = "ioc"
 
 	gateOrderStatusFinished = "finished"
 	gateOrderStatusOpen     = "open"

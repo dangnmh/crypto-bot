@@ -12,10 +12,6 @@ import (
 
 // Explicit request/response structs for market data endpoints.
 
-type okxServerTimeResponse struct {
-	Ts string `json:"ts"`
-}
-
 type okxInstrumentsRequest struct {
 	InstType string `json:"instType"`
 }
@@ -58,18 +54,6 @@ type okxFundingRate struct {
 }
 
 // Private raw methods invoking the OKX V5 REST API.
-
-func (c *Client) getRawServerTime(ctx context.Context) (*okxServerTimeResponse, error) {
-	body, err := c.RawRequest(ctx, http.MethodGet, pathServerTime, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ParseResponseFirst[okxServerTimeResponse](body, "server_time")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
 
 func (c *Client) getRawContractDetails(ctx context.Context, req okxInstrumentsRequest) ([]okxInstrument, error) {
 	params := map[string]string{
@@ -115,19 +99,6 @@ func (c *Client) getRawFundingRate(ctx context.Context, req okxFundingRateReques
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
-
-// GetServerTime returns the OKX server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	res, err := c.getRawServerTime(ctx)
-	if err != nil {
-		return 0, err
-	}
-	val, err := strconv.ParseInt(res.Ts, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse server time: %w", err)
-	}
-	return val, nil
-}
 
 // GetContractDetails returns specifications for all swap/futures contracts.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {

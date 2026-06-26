@@ -17,7 +17,6 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
-	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -97,19 +96,6 @@ func (c *Client) SetClock(clk exchange.Clock) {
 	if clk != nil {
 		c.clock = clk
 	}
-}
-
-// WarmUp pre-establishes connection pool and maintains it via periodic public calls.
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	c.logger.InfoContext(ctx, "🔗 Warming up OKX connection pool...", slog.Duration("interval", interval))
-
-	ticker.RunImmediate(ctx, interval, func() bool {
-		_, err := c.GetCtx(ctx, pathServerTime, nil)
-		if err != nil {
-			c.logger.DebugContext(ctx, "Warmup server time call failed", slog.Any("error", err))
-		}
-		return true
-	})
 }
 
 // Get makes a signed GET request.
@@ -220,11 +206,6 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return time.Since(start).Milliseconds(), nil
-}
-
-// SupportLeverageOnOrder returns false since OKX doesn't support setting leverage directly on orders.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return false
 }
 
 func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {

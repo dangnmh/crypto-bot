@@ -16,7 +16,6 @@ import (
 
 // Explicit request/response structs for market data endpoints.
 
-type binanceServerTimeRequest struct{}
 type binanceContractDetailsRequest struct{}
 
 type binanceVolumes24hRequest struct {
@@ -32,15 +31,6 @@ type binanceMarkPricesRequest struct {
 }
 
 // Private raw methods invoking the Binance API directly.
-
-func (c *Client) getRawServerTime(ctx context.Context, _ binanceServerTimeRequest) (*checkServerTimeResponse, error) {
-	var resp checkServerTimeResponse
-	err := c.request(ctx, http.MethodGet, "/fapi/v1/time", nil, false, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("binance check server time: %w", err)
-	}
-	return &resp, nil
-}
 
 func (c *Client) getRawContractDetails(ctx context.Context, _ binanceContractDetailsRequest) (*exchangeInformationResponse, error) {
 	var resp exchangeInformationResponse
@@ -121,15 +111,6 @@ func (c *Client) getRawMarkPrices(ctx context.Context, req binanceMarkPricesRequ
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
-
-// GetServerTime returns the Binance server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	resp, err := c.getRawServerTime(ctx, binanceServerTimeRequest{})
-	if err != nil {
-		return 0, err
-	}
-	return resp.ServerTime, nil
-}
 
 // GetContractDetails returns all USD-M futures contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {

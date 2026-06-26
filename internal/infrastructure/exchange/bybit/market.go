@@ -9,13 +9,9 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
-
-type bybitServerTimeRequest struct{}
 
 type bybitInstrumentInfoRequest struct {
 	Category string `json:"category"`
@@ -78,25 +74,6 @@ type bybitTickerList struct {
 
 // Private raw methods invoking the Bybit SDK.
 
-func (c *Client) getRawServerTime(ctx context.Context, _ bybitServerTimeRequest) (int64, error) {
-	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/time", nil, nil)
-	if err != nil {
-		return 0, fmt.Errorf("bybit get server time: %w", err)
-	}
-	var resp struct {
-		RetCode int    `json:"retCode"`
-		RetMsg  string `json:"retMsg"`
-		Time    int64  `json:"time"`
-	}
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return 0, fmt.Errorf("bybit get server time json unmarshal: %w", err)
-	}
-	if resp.RetCode != 0 {
-		return 0, fmt.Errorf("bybit get server time error: retCode=%d, retMsg=%s", resp.RetCode, resp.RetMsg)
-	}
-	return resp.Time, nil
-}
-
 func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentInfoRequest) (*bybitInstrumentsInfoResult, error) {
 	params := map[string]string{}
 	if req.Category != "" {
@@ -150,11 +127,6 @@ func (c *Client) getRawFundingRate(ctx context.Context, symbol string) (*bybitTi
 }
 
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
-
-// GetServerTime returns the Bybit server timestamp in milliseconds.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	return c.getRawServerTime(ctx, bybitServerTimeRequest{})
-}
 
 // GetContractDetails returns all contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {

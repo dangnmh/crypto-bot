@@ -14,12 +14,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
-	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -87,22 +85,6 @@ func (c *Client) SetClock(clk exchange.Clock) {
 	if clk != nil {
 		c.clock = clk
 	}
-}
-
-// WarmUp maintains the connection pool.
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	ticker.RunImmediate(ctx, interval, func() bool {
-		_, err := c.GetServerTime(ctx)
-		if err != nil {
-			c.logger.Debug("Bybit warmup ping failed", slog.Any("error", err))
-		}
-		return true
-	})
-}
-
-// SupportLeverageOnOrder returns true since Bybit V5 supports set-leverage inside create order request.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return true
 }
 
 func (c *Client) signRequest(method string, bodyBytes []byte, queryString string) (string, string) {

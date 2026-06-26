@@ -9,7 +9,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -38,23 +37,6 @@ type toobitFundingRate struct {
 	FundingRateFloor string       `json:"fundingRateFloor"`
 }
 
-type serverTimeResponse struct {
-	ServerTime int64 `json:"serverTime"`
-}
-
-// GetServerTime returns the server millisecond timestamp.
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/time", nil, false)
-	if err != nil {
-		return 0, err
-	}
-	var resp serverTimeResponse
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return 0, fmt.Errorf("unmarshal server time: %w", err)
-	}
-	return resp.ServerTime, nil
-}
-
 type toobitExchangeInfo struct {
 	Contracts []toobitContract `json:"contracts"`
 	Symbols   []toobitContract `json:"symbols"` // fallback
@@ -77,9 +59,29 @@ type toobitFilter struct {
 	MinPrice   string `json:"minPrice,omitempty"`
 }
 
+// Private raw methods.
+
+func (c *Client) rawGetExchangeInfo(ctx context.Context) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/api/v1/exchangeInfo", nil, false)
+}
+
+func (c *Client) rawGetTickers(ctx context.Context, symbol string) ([]byte, error) {
+	query := make(map[string]string)
+	if symbol != "" {
+		query["symbol"] = symbol
+	}
+	return c.request(ctx, http.MethodGet, "/quote/v1/contract/ticker/24hr", query, false)
+}
+
+func (c *Client) rawGetFundingRates(ctx context.Context) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/api/v1/futures/fundingRate", nil, false)
+}
+
+// Public mapper methods.
+
 // GetContractDetails returns contracts specs.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/exchangeInfo", nil, false)
+	body, err := c.rawGetExchangeInfo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +154,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 // GetTickers returns 24hr ticker price change statistics for all or a specific symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	query := make(map[string]string)
-	if symbol != "" {
-		query["symbol"] = symbol
-	}
-
-	body, err := c.request(ctx, http.MethodGet, "/quote/v1/contract/ticker/24hr", query, false)
+	body, err := c.rawGetTickers(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +193,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/futures/fundingRate", nil, false)
+	body, err := c.rawGetFundingRates(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +221,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 
 		rate, _ := strconv.ParseFloat(item.Rate, 64)
 		results = append(results, exchange.FundingRateResult{
-			Symbol:     sym, // return matching the requested symbol format
+			Symbol:     sym,
 			Rate:       rate,
 			SettleTime: ts,
 		})

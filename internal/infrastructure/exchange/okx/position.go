@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 )
 
@@ -55,7 +57,7 @@ type okxClosedPositionsRequest struct {
 
 // Private raw methods invoking the OKX V5 REST API.
 
-func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsRequest) ([]okxPosition, error) {
+func (c *Client) rawGetOpenPositions(ctx context.Context, req okxPositionsRequest) ([]okxPosition, error) {
 	params := map[string]string{
 		paramInstType: req.InstType,
 	}
@@ -69,7 +71,7 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsReques
 	return ParseResponse[okxPosition](body, "open_positions")
 }
 
-func (c *Client) getRawClosedPositions(ctx context.Context, req okxClosedPositionsRequest) ([]okxClosedPosition, error) {
+func (c *Client) rawGetClosedPositions(ctx context.Context, req okxClosedPositionsRequest) ([]okxClosedPosition, error) {
 	params := map[string]string{
 		paramInstType: req.InstType,
 	}
@@ -93,7 +95,7 @@ func (c *Client) getRawClosedPositions(ctx context.Context, req okxClosedPositio
 
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	positions, err := c.getRawOpenPositions(ctx, okxPositionsRequest{
+	positions, err := c.rawGetOpenPositions(ctx, okxPositionsRequest{
 		InstType: instTypeSwap,
 		InstID:   symbol,
 	})
@@ -128,6 +130,45 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return openPositions, nil
 }
 
+// ClosePosition closes one position leg using a market order.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	req := exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         closeSide,
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: positionMode,
+		ReduceOnly:   true,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "okx"),
+		Leverage:     leverage,
+	}
+	_, err := c.CreateOrder(ctx, req)
+	return err
+}
+
+// CloseAllPositions closes all positions for a symbol.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	for i := range positions {
+		pos := positions[i]
+		if pos.HoldVol > 0 {
+			side := domain.SideCloseShort
+			if pos.PositionType == exchange.PositionTypeLong { // Long
+				side = domain.SideCloseLong
+			}
+			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // GetOrderPNL queries the historical closed position metrics from OKX.
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
@@ -150,7 +191,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		req.Begin = strconv.FormatInt(orderInfo.CreateTime-1000, 10)
 	}
 
-	positions, err := c.getRawClosedPositions(ctx, req)
+	positions, err := c.rawGetClosedPositions(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}

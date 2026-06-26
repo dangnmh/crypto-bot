@@ -10,13 +10,14 @@ import (
 	"strconv"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 )
 
 const exchangeName = "binance"
 
-// Explicit request/response structs for account endpoints.
+// Explicit request/response structs for account/position endpoints.
 
 type binancePositionsRequest struct {
 	Symbol     string
@@ -38,7 +39,7 @@ type binanceIncomeHistoryRequest struct {
 
 // Private raw methods invoking the Binance API directly.
 
-func (c *Client) getRawOpenPositions(ctx context.Context, req binancePositionsRequest) ([]positionRiskItem, error) {
+func (c *Client) rawGetOpenPositions(ctx context.Context, req binancePositionsRequest) ([]positionRiskItem, error) {
 	params := make(map[string]any)
 	if req.Symbol != "" {
 		params["symbol"] = req.Symbol
@@ -55,7 +56,7 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req binancePositionsRe
 	return resp, nil
 }
 
-func (c *Client) getRawAccountTrades(ctx context.Context, req binanceAccountTradeListRequest) ([]userTradeItem, error) {
+func (c *Client) rawGetAccountTrades(ctx context.Context, req binanceAccountTradeListRequest) ([]userTradeItem, error) {
 	params := make(map[string]any)
 	params["symbol"] = req.Symbol
 	if req.Limit > 0 {
@@ -73,7 +74,7 @@ func (c *Client) getRawAccountTrades(ctx context.Context, req binanceAccountTrad
 	return resp, nil
 }
 
-func (c *Client) getRawIncomeHistory(ctx context.Context, req binanceIncomeHistoryRequest) ([]incomeHistoryItem, error) {
+func (c *Client) rawGetIncomeHistory(ctx context.Context, req binanceIncomeHistoryRequest) ([]incomeHistoryItem, error) {
 	params := make(map[string]any)
 	if req.Symbol != "" {
 		params["symbol"] = req.Symbol
@@ -100,7 +101,7 @@ func (c *Client) getRawIncomeHistory(ctx context.Context, req binanceIncomeHisto
 
 // GetOpenPositions returns all open positions for a symbol.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	resp, err := c.getRawOpenPositions(ctx, binancePositionsRequest{
+	resp, err := c.rawGetOpenPositions(ctx, binancePositionsRequest{
 		Symbol: symbol,
 	})
 	if err != nil {
@@ -141,6 +142,45 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	}
 
 	return positions, nil
+}
+
+// ClosePosition closes a single position.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	req := exchange.SubmitOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         closeSide,
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: positionMode,
+		ReduceOnly:   true,
+		Leverage:     leverage,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "binance"),
+	}
+	_, err := c.CreateOrder(ctx, req)
+	return err
+}
+
+// CloseAllPositions closes all open positions for a symbol.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	for i := range positions {
+		pos := positions[i]
+		if pos.HoldVol > 0 {
+			side := domain.SideCloseShort
+			if pos.PositionType == exchange.PositionTypeLong {
+				side = domain.SideCloseLong
+			}
+			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 type aggregatedTradeResults struct {
@@ -188,7 +228,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 
 	isOpenLong := (orderInfo.Side == exchange.SideOpenLong)
 
-	items, err := c.getRawAccountTrades(ctx, req)
+	items, err := c.rawGetAccountTrades(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +349,7 @@ func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.T
 		return 0, nil
 	}
 
-	resp, err := c.getRawIncomeHistory(ctx, binanceIncomeHistoryRequest{
+	resp, err := c.rawGetIncomeHistory(ctx, binanceIncomeHistoryRequest{
 		Symbol:     symbol,
 		IncomeType: "FUNDING_FEE",
 		StartTime:  startTime.UnixMilli(),

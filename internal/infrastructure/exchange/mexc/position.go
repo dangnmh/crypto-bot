@@ -3,15 +3,15 @@ package mexc
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/samber/lo"
 
 	"crypto-bot/pkg/xjson"
 )
-
-const exchangeName = "mexc"
 
 type mexcPositionsRequest struct {
 	Symbol string `json:"symbol,omitempty"`
@@ -49,9 +49,13 @@ type mexcHistoryPositionsRequest struct {
 	PageSize  int    `json:"page_size"`
 }
 
+type mexcCloseAllPositionsRequest struct {
+	Symbol string `json:"symbol"`
+}
+
 // Private raw methods invoking the MEXC API.
 
-func (c *Client) getRawOpenPositions(ctx context.Context, req mexcPositionsRequest) ([]mexcPosition, error) {
+func (c *Client) rawGetOpenPositions(ctx context.Context, req mexcPositionsRequest) ([]mexcPosition, error) {
 	params := map[string]string{}
 	if req.Symbol != "" {
 		params[paramSymbol] = req.Symbol
@@ -64,7 +68,7 @@ func (c *Client) getRawOpenPositions(ctx context.Context, req mexcPositionsReque
 	return ParseResponse[[]mexcPosition](body, "open_positions")
 }
 
-func (c *Client) getRawHistoryPositions(ctx context.Context, req mexcHistoryPositionsRequest) ([]mexcHistoryPosRow, error) {
+func (c *Client) rawGetHistoryPositions(ctx context.Context, req mexcHistoryPositionsRequest) ([]mexcHistoryPosRow, error) {
 	histParams := map[string]string{
 		pageNumKey:  fmt.Sprintf("%d", req.PageNum),
 		pageSizeKey: fmt.Sprintf("%d", req.PageSize),
@@ -95,11 +99,19 @@ func (c *Client) getRawHistoryPositions(ctx context.Context, req mexcHistoryPosi
 	return histResp.Data, nil
 }
 
+func (c *Client) rawCloseAllPositions(ctx context.Context, req mexcCloseAllPositionsRequest) error {
+	body, err := c.PostCtx(ctx, "/api/v1/private/position/close_all", req)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "close_all_positions")
+}
+
 // Public mapper methods implementing the exchange.AccountProvider & exchange.ClosedPnLProvider interfaces.
 
 // GetOpenPositions returns all open positions.
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	rawPos, err := c.getRawOpenPositions(ctx, mexcPositionsRequest{Symbol: symbol})
+	rawPos, err := c.rawGetOpenPositions(ctx, mexcPositionsRequest{Symbol: symbol})
 	if err != nil {
 		return nil, err
 	}
@@ -111,13 +123,34 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
+// CloseAllPositions closes all positions for a symbol.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	return c.rawCloseAllPositions(ctx, mexcCloseAllPositionsRequest{Symbol: symbol})
+}
+
+// ClosePosition closes one position leg using a reduce-only market order.
+func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	req := mexcCreateOrderRequest{
+		Symbol:       symbol,
+		Vol:          volume,
+		Side:         int(closeSide),
+		Type:         int(exchange.OrderTypeMarket),
+		PositionMode: int(positionMode),
+		ReduceOnly:   true,
+		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "mexc"),
+		Leverage:     leverage,
+	}
+	_, err := c.rawCreateOrder(ctx, req)
+	return err
+}
+
 // GetOrderPNL queries the historical closed position metrics from MEXC.
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	if orderID == "" {
 		return nil, fmt.Errorf("orderID is required")
 	}
 
-	orderInfo, err := c.getRawOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
+	orderInfo, err := c.rawGetOrder(ctx, mexcGetOrderRequest{OrderID: orderID})
 	if err != nil {
 		return nil, fmt.Errorf("mexc get order by ID %s details failed: %w", orderID, err)
 	}
@@ -142,7 +175,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		req.StartTime = orderInfo.CreateTime - 1000 // 1 second in milliseconds
 	}
 
-	histData, err := c.getRawHistoryPositions(ctx, req)
+	histData, err := c.rawGetHistoryPositions(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("query closed pnl failed: %w", err)
 	}

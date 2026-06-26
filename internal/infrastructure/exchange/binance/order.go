@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -57,14 +56,9 @@ type binanceListOpenOrdersRequest struct {
 	Symbol string
 }
 
-type binanceChangeLeverageRequest struct {
-	Symbol   string
-	Leverage int64
-}
-
 // Private raw methods invoking the Binance API directly.
 
-func (c *Client) createRawOrder(ctx context.Context, req binanceCreateOrderRequest) (*binanceOrder, error) {
+func (c *Client) rawCreateOrder(ctx context.Context, req binanceCreateOrderRequest) (*binanceOrder, error) {
 	params := make(map[string]any)
 	params["symbol"] = req.Symbol
 	params["side"] = req.Side
@@ -96,7 +90,7 @@ func (c *Client) createRawOrder(ctx context.Context, req binanceCreateOrderReque
 	return &resp, nil
 }
 
-func (c *Client) placeRawAlgoOrder(ctx context.Context, req binancePlaceAlgoOrderRequest) (*binanceOrder, error) {
+func (c *Client) rawPlaceAlgoOrder(ctx context.Context, req binancePlaceAlgoOrderRequest) (*binanceOrder, error) {
 	params := make(map[string]any)
 	params["algoType"] = req.AlgoType
 	params["symbol"] = req.Symbol
@@ -117,7 +111,7 @@ func (c *Client) placeRawAlgoOrder(ctx context.Context, req binancePlaceAlgoOrde
 	return &resp, nil
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, req binanceCancelOrderRequest) (*binanceOrder, error) {
+func (c *Client) rawCancelOrder(ctx context.Context, req binanceCancelOrderRequest) (*binanceOrder, error) {
 	params := make(map[string]any)
 	params["symbol"] = req.Symbol
 	params["orderId"] = req.OrderID
@@ -130,7 +124,7 @@ func (c *Client) cancelRawOrder(ctx context.Context, req binanceCancelOrderReque
 	return &resp, nil
 }
 
-func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req binanceCancelAllOpenOrdersRequest) (any, error) {
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, req binanceCancelAllOpenOrdersRequest) (any, error) {
 	params := make(map[string]any)
 	params["symbol"] = req.Symbol
 
@@ -142,7 +136,7 @@ func (c *Client) cancelRawAllOpenOrders(ctx context.Context, req binanceCancelAl
 	return resp, nil
 }
 
-func (c *Client) getRawOrder(ctx context.Context, req binanceQueryOrderRequest) (*binanceOrder, error) {
+func (c *Client) rawGetOrder(ctx context.Context, req binanceQueryOrderRequest) (*binanceOrder, error) {
 	params := make(map[string]any)
 	params["symbol"] = req.Symbol
 	if req.OrderID > 0 {
@@ -159,7 +153,7 @@ func (c *Client) getRawOrder(ctx context.Context, req binanceQueryOrderRequest) 
 	return &resp, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, req binanceListOpenOrdersRequest) ([]binanceOrder, error) {
+func (c *Client) rawGetOpenOrders(ctx context.Context, req binanceListOpenOrdersRequest) ([]binanceOrder, error) {
 	params := make(map[string]any)
 	if req.Symbol != "" {
 		params["symbol"] = req.Symbol
@@ -171,19 +165,6 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req binanceListOpenOrders
 		return nil, fmt.Errorf("binance current open orders: %w", err)
 	}
 	return resp, nil
-}
-
-func (c *Client) changeRawLeverage(ctx context.Context, req binanceChangeLeverageRequest) (*changeLeverageResponse, error) {
-	params := make(map[string]any)
-	params["symbol"] = req.Symbol
-	params["leverage"] = req.Leverage
-
-	var resp changeLeverageResponse
-	err := c.request(ctx, http.MethodPost, "/fapi/v1/leverage", params, true, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("binance change leverage: %w", err)
-	}
-	return &resp, nil
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
@@ -242,7 +223,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.NewClientOrderId = req.ExternalOID
 	}
 
-	resp, err := c.createRawOrder(ctx, rawReq)
+	resp, err := c.rawCreateOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -322,7 +303,7 @@ func (c *Client) placeAlgoOrder(ctx context.Context, symbol, side, algoType stri
 		rawReq.PositionSide = posSide
 	}
 
-	_, err := c.placeRawAlgoOrder(ctx, rawReq)
+	_, err := c.rawPlaceAlgoOrder(ctx, rawReq)
 	return err
 }
 
@@ -333,7 +314,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 		return fmt.Errorf("invalid orderID type for binance: %w", err)
 	}
 
-	_, err = c.cancelRawOrder(ctx, binanceCancelOrderRequest{
+	_, err = c.rawCancelOrder(ctx, binanceCancelOrderRequest{
 		Symbol:  symbol,
 		OrderID: id,
 	})
@@ -360,7 +341,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	_, err := c.cancelRawAllOpenOrders(ctx, binanceCancelAllOpenOrdersRequest{
+	_, err := c.rawCancelAllOpenOrders(ctx, binanceCancelAllOpenOrdersRequest{
 		Symbol: symbol,
 	})
 	return err
@@ -373,7 +354,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		return nil, fmt.Errorf("binance invalid order ID format %q: %w", orderID, err)
 	}
 
-	resp, err := c.getRawOrder(ctx, binanceQueryOrderRequest{
+	resp, err := c.rawGetOrder(ctx, binanceQueryOrderRequest{
 		Symbol:  symbol,
 		OrderID: id,
 	})
@@ -387,7 +368,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 
 // GetOrderByExternalID queries order status by client order ID.
 func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
-	resp, err := c.getRawOrder(ctx, binanceQueryOrderRequest{
+	resp, err := c.rawGetOrder(ctx, binanceQueryOrderRequest{
 		Symbol:            symbol,
 		OrigClientOrderId: externalOrderID,
 	})
@@ -401,7 +382,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 
 // GetOpenOrders returns all open orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	resp, err := c.getRawOpenOrders(ctx, binanceListOpenOrdersRequest{
+	resp, err := c.rawGetOpenOrders(ctx, binanceListOpenOrdersRequest{
 		Symbol: symbol,
 	})
 	if err != nil {
@@ -414,75 +395,6 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	}
 
 	return orders, nil
-}
-
-// ClosePosition closes a single position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	req := exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Vol:          volume,
-		Side:         closeSide,
-		Type:         exchange.OrderTypeMarket,
-		PositionMode: positionMode,
-		ReduceOnly:   true,
-		Leverage:     leverage,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "binance"),
-	}
-	_, err := c.CreateOrder(ctx, req)
-	return err
-}
-
-// CloseAllPositions closes all open positions for a symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := positions[i]
-		if pos.HoldVol > 0 {
-			side := domain.SideCloseShort
-			if pos.PositionType == exchange.PositionTypeLong {
-				side = domain.SideCloseLong
-			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// ChangeLeverage adjusts leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	_, err := c.changeRawLeverage(ctx, binanceChangeLeverageRequest{
-		Symbol:   req.Symbol,
-		Leverage: int64(req.Leverage),
-	})
-	return err
-}
-
-// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Binance.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	var mode = "ISOLATED"
-	if marginMode == "CROSS" {
-		mode = "CROSSED"
-	}
-
-	params := make(map[string]any)
-	params["symbol"] = symbol
-	params["marginType"] = mode
-
-	err := c.request(ctx, http.MethodPost, "/fapi/v1/marginType", params, true, nil)
-	if err != nil {
-		if apiErr, ok := exchange.IsAPIError(err); ok && (apiErr.Code == -4046 || strings.Contains(strings.ToLower(apiErr.Message), "no need to change")) {
-			return nil
-		}
-		return fmt.Errorf("binance switch margin mode: %w", err)
-	}
-	return nil
 }
 
 func mapBinanceOrder(raw *binanceOrder) exchange.OrderInfo {

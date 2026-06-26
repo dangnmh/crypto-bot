@@ -10,26 +10,12 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
 )
 
-// Explicit request/response structs for order endpoints.
-
-type gateChangeLeverageRequest struct {
-	Symbol             string `json:"symbol"`
-	Leverage           string `json:"leverage"`
-	CrossLeverageLimit string `json:"cross_leverage_limit,omitempty"`
-}
-
-type gatePositionCrossModeRequest struct {
-	Mode     string `json:"mode"`
-	Contract string `json:"contract"`
-}
-
 // Private raw methods invoking raw HTTP requests.
 
-func (c *Client) createRawOrder(ctx context.Context, settle string, order gateFuturesOrder) (*gateFuturesOrder, error) {
+func (c *Client) rawCreateOrder(ctx context.Context, settle string, order gateFuturesOrder) (*gateFuturesOrder, error) {
 	bodyBytes, err := xjson.Marshal(order)
 	if err != nil {
 		return nil, fmt.Errorf("gate marshal order: %w", err)
@@ -46,13 +32,13 @@ func (c *Client) createRawOrder(ctx context.Context, settle string, order gateFu
 	return &result, nil
 }
 
-func (c *Client) cancelRawOrder(ctx context.Context, settle, orderID string) error {
+func (c *Client) rawCancelOrder(ctx context.Context, settle, orderID string) error {
 	path := fmt.Sprintf("/futures/%s/orders/%s", settle, orderID)
 	_, err := c.RawRequest(ctx, "DELETE", path, nil, nil)
 	return err
 }
 
-func (c *Client) cancelRawAllOpenOrders(ctx context.Context, settle, symbol string) error {
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, settle, symbol string) error {
 	params := map[string]string{
 		paramContract: symbol,
 	}
@@ -61,7 +47,7 @@ func (c *Client) cancelRawAllOpenOrders(ctx context.Context, settle, symbol stri
 	return err
 }
 
-func (c *Client) getRawOrder(ctx context.Context, settle, orderID string) (*gateFuturesOrder, error) {
+func (c *Client) rawGetOrder(ctx context.Context, settle, orderID string) (*gateFuturesOrder, error) {
 	params := map[string]string{
 		paramSettle: settle,
 	}
@@ -76,11 +62,11 @@ func (c *Client) getRawOrder(ctx context.Context, settle, orderID string) (*gate
 	return &result, nil
 }
 
-func (c *Client) getRawOpenOrders(ctx context.Context, settle, symbol string) ([]gateFuturesOrder, error) {
-	return c.getRawOrdersByStatus(ctx, settle, symbol, "open")
+func (c *Client) rawGetOpenOrders(ctx context.Context, settle, symbol string) ([]gateFuturesOrder, error) {
+	return c.rawGetOrdersByStatus(ctx, settle, symbol, "open")
 }
 
-func (c *Client) getRawOrdersByStatus(ctx context.Context, settle, symbol, status string) ([]gateFuturesOrder, error) {
+func (c *Client) rawGetOrdersByStatus(ctx context.Context, settle, symbol, status string) ([]gateFuturesOrder, error) {
 	params := map[string]string{
 		paramSettle:   settle,
 		paramContract: symbol,
@@ -101,7 +87,7 @@ func (c *Client) getRawOrdersByStatus(ctx context.Context, settle, symbol, statu
 	return result, nil
 }
 
-func (c *Client) getRawOrdersTimerange(ctx context.Context, settle, symbol string, fromTime time.Time) ([]gateFuturesOrderTimerange, error) {
+func (c *Client) rawGetOrdersTimerange(ctx context.Context, settle, symbol string, fromTime time.Time) ([]gateFuturesOrderTimerange, error) {
 	params := map[string]string{
 		paramContract: symbol,
 	}
@@ -120,32 +106,12 @@ func (c *Client) getRawOrdersTimerange(ctx context.Context, settle, symbol strin
 	return result, nil
 }
 
-func (c *Client) changeRawLeverage(ctx context.Context, settle string, req gateChangeLeverageRequest) error {
-	params := map[string]string{
-		"leverage": req.Leverage,
-	}
-	if req.CrossLeverageLimit != "" {
-		params["cross_leverage_limit"] = req.CrossLeverageLimit
-	}
-
-	path := fmt.Sprintf("/futures/%s/positions/%s/leverage", settle, req.Symbol)
-	_, err := c.RawRequest(ctx, "POST", path, params, nil)
-	if err != nil {
-		dualPath := fmt.Sprintf("/futures/%s/dual_comp/positions/%s/leverage", settle, req.Symbol)
-		_, errDual := c.RawRequest(ctx, "POST", dualPath, params, nil)
-		if errDual != nil {
-			return fmt.Errorf("gate.io update leverage error (standard: %s, dual: %w)", err.Error(), errDual)
-		}
-	}
-	return nil
-}
-
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	order := c.mapSubmitOrder(req)
-	resp, err := c.createRawOrder(ctx, gateSettleUsdt, order)
+	resp, err := c.rawCreateOrder(ctx, gateSettleUsdt, order)
 	if err != nil {
 		return exchange.CreateOrderResult{}, fmt.Errorf("gate.io create order: %w", err)
 	}
@@ -156,7 +122,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	err := c.cancelRawOrder(ctx, gateSettleUsdt, orderID)
+	err := c.rawCancelOrder(ctx, gateSettleUsdt, orderID)
 	if err != nil {
 		return fmt.Errorf("gate.io cancel order: %w", err)
 	}
@@ -166,7 +132,7 @@ func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error 
 // CancelOrders cancels multiple orders.
 func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 	for _, id := range orderIDs {
-		err := c.cancelRawOrder(ctx, gateSettleUsdt, id)
+		err := c.rawCancelOrder(ctx, gateSettleUsdt, id)
 		if err != nil {
 			return fmt.Errorf("gate.io cancel bulk order %s: %w", id, err)
 		}
@@ -176,7 +142,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders cancels all open orders for a given symbol.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	err := c.cancelRawAllOpenOrders(ctx, gateSettleUsdt, symbol)
+	err := c.rawCancelAllOpenOrders(ctx, gateSettleUsdt, symbol)
 	if err != nil {
 		return fmt.Errorf("gate.io cancel all open orders for %s: %w", symbol, err)
 	}
@@ -185,10 +151,10 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 
 // GetOrder retrieves detailed information about a specific order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	resp, err := c.getRawOrder(ctx, gateSettleUsdt, orderID)
+	resp, err := c.rawGetOrder(ctx, gateSettleUsdt, orderID)
 	if err != nil {
 		// Fallback to checking orders within recent time range if not found by ID directly
-		orders, openErr := c.getRawOrdersTimerange(ctx, gateSettleUsdt, symbol, time.Time{})
+		orders, openErr := c.rawGetOrdersTimerange(ctx, gateSettleUsdt, symbol, time.Time{})
 		if openErr == nil {
 			for i := range orders {
 				if strconv.FormatInt(orders[i].Id, 10) == orderID {
@@ -216,14 +182,14 @@ func (c *Client) GetOrderByExternalIDWithTime(ctx context.Context, symbol, exter
 		targetText = "t-" + targetText
 	}
 
-	resp, err := c.getRawOrder(ctx, gateSettleUsdt, targetText)
+	resp, err := c.rawGetOrder(ctx, gateSettleUsdt, targetText)
 	if err == nil && resp != nil {
 		mapped := mapOrderInfo(*resp)
 		return &mapped, nil
 	}
 
 	// Fallback 1: Query finished orders list first
-	finishedOrders, fallback1Err := c.getRawOrdersByStatus(ctx, gateSettleUsdt, symbol, "finished")
+	finishedOrders, fallback1Err := c.rawGetOrdersByStatus(ctx, gateSettleUsdt, symbol, "finished")
 	if fallback1Err == nil {
 		for i := range finishedOrders {
 			if finishedOrders[i].Text == externalOrderID || finishedOrders[i].Text == targetText {
@@ -234,7 +200,7 @@ func (c *Client) GetOrderByExternalIDWithTime(ctx context.Context, symbol, exter
 	}
 
 	// Fallback 2: checking orders within recent time range (historical/timerange)
-	orders, fallbackErr := c.getRawOrdersTimerange(ctx, gateSettleUsdt, symbol, startTime)
+	orders, fallbackErr := c.rawGetOrdersTimerange(ctx, gateSettleUsdt, symbol, startTime)
 	if fallbackErr == nil {
 		for i := range orders {
 			if orders[i].Text == externalOrderID || orders[i].Text == targetText {
@@ -252,7 +218,7 @@ func (c *Client) GetOrderByExternalIDWithTime(ctx context.Context, symbol, exter
 
 // GetOpenOrders retrieves all currently open/active orders.
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	resp, err := c.getRawOpenOrders(ctx, gateSettleUsdt, symbol)
+	resp, err := c.rawGetOpenOrders(ctx, gateSettleUsdt, symbol)
 	if err != nil {
 		return nil, fmt.Errorf("gate.io list open orders for %s: %w", symbol, err)
 	}
@@ -262,112 +228,6 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 		orders = append(orders, mapOrderInfo(resp[i]))
 	}
 	return orders, nil
-}
-
-// ClosePosition submits a market order to close an open position.
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	orderSide := exchange.SideCloseLong
-	if closeSide == domain.SideCloseShort {
-		orderSide = exchange.SideCloseShort
-	}
-
-	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Vol:          volume,
-		Side:         orderSide,
-		Type:         exchange.OrderTypeMarket,
-		PositionMode: positionMode,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "gate"),
-		Leverage:     leverage,
-	})
-	if err != nil {
-		return fmt.Errorf("gate.io close position: %w", err)
-	}
-	return nil
-}
-
-// CloseAllPositions closes all open positions for the given symbol.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
-	for i := range positions {
-		pos := &positions[i]
-		if pos.HoldVol > 0 {
-			var side domain.Side
-			if pos.PositionType == exchange.PositionTypeLong { // Long
-				side = domain.SideCloseLong
-			} else { // Short
-				side = domain.SideCloseShort
-			}
-			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage) // default hedge mode close
-			if posErr != nil {
-				return posErr
-			}
-		}
-	}
-	return nil
-}
-
-// ChangeLeverage changes the leverage for a symbol.
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	var leverageStr string
-	var crossLimitStr string
-
-	if req.OpenType == exchange.OpenTypeCross {
-		leverageStr = "0"
-		crossLimitStr = fmt.Sprintf("%d", req.Leverage)
-	} else {
-		leverageStr = fmt.Sprintf("%d", req.Leverage)
-		crossLimitStr = ""
-	}
-
-	return c.changeRawLeverage(ctx, gateSettleUsdt, gateChangeLeverageRequest{
-		Symbol:             req.Symbol,
-		Leverage:           leverageStr,
-		CrossLeverageLimit: crossLimitStr,
-	})
-}
-
-// SetPositionMode sets the position mode (Hedge Mode vs One-Way Mode) on Gate.io.
-func (c *Client) SetPositionMode(ctx context.Context, settle string, dualMode bool) error {
-	params := map[string]string{
-		"dual_mode": strconv.FormatBool(dualMode),
-	}
-	path := fmt.Sprintf("/futures/%s/dual_mode", settle)
-	_, err := c.RawRequest(ctx, "POST", path, params, nil)
-	return err
-}
-
-// SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Gate.io.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
-	settle := gateSettleUsdt
-	modeStr := gateMarginModeIsolated
-	if marginMode == gateMarginModeCross {
-		modeStr = gateMarginModeCross
-	}
-
-	body := gatePositionCrossModeRequest{
-		Contract: symbol,
-		Mode:     modeStr,
-	}
-	bodyBytes, err := xjson.Marshal(&body)
-	if err != nil {
-		return err
-	}
-
-	path := fmt.Sprintf("/futures/%s/positions/cross_mode", settle)
-	_, err = c.RawRequest(ctx, "POST", path, nil, bodyBytes)
-	if err != nil {
-		dualPath := fmt.Sprintf("/futures/%s/dual_comp/positions/cross_mode", settle)
-		_, errDual := c.RawRequest(ctx, "POST", dualPath, nil, bodyBytes)
-		if errDual != nil {
-			return fmt.Errorf("gate.io update margin mode error (standard: %s, dual: %w)", err.Error(), errDual)
-		}
-	}
-	return nil
 }
 
 // Helper mapping functions.

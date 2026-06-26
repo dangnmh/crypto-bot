@@ -129,100 +129,101 @@ Create a new directory: `internal/infrastructure/exchange/<your_exchange_name_lo
 
 Inside this folder, you will implement the REST API client and the WebSocket subscription adapter.
 
-### 1. REST Client (`client.go`, `market.go`, `order.go`, `account.go`)
-Your REST client must satisfy the `exchange.Client` interface:
+### 1. REST Client (Standard 6-File Layout)
 
+To maintain a clean and standardized codebase, each exchange REST client must be structured into exactly **6 files**:
+1. **`client.go`**: Main client initialization and struct, connection constructor, custom HTTP request signers/headers, and shared helper methods.
+2. **`system.go`**: Connectivity, features, and status checking:
+   - `GetServerTime(ctx context.Context) (int64, error)`
+   - `SupportLeverageOnOrder() bool` (returns true if leverage can be passed directly with order placement payloads)
+   - `WarmUp(ctx context.Context, interval time.Duration)` (pings the API to keep connections hot)
+3. **`market.go`**: Statistics, tickers, and details queries:
+   - `GetTickers(ctx context.Context, symbol string) ([]Ticker, error)`
+   - `GetContractDetails(ctx context.Context) ([]ContractDetail, error)`
+   - `GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error)`
+4. **`order.go`**: Order executions, details, and cancellations:
+   - `CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error)`
+   - `CancelOrder(ctx context.Context, symbol, orderID string) error`
+   - `CancelOrders(ctx context.Context, orderIDs []string) error`
+   - `CancelAllOpenOrders(ctx context.Context, symbol string) error`
+   - `GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)`
+   - `GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error)`
+   - `GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)`
+5. **`trade.go`**: Configuration updates and leverage/margin setups:
+   - `ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error`
+   - `SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error`
+6. **`position.go`**: Position operations and query helpers:
+   - `GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)`
+   - `ClosePosition(ctx context.Context, symbol, closeSide, volume, mode)`
+   - `CloseAllPositions(ctx context.Context, symbol string) error`
+
+---
+
+### 2. The Raw Request Wrapper Rule
+
+Every direct HTTP request to an exchange API endpoint **must** be encapsulated within a private `rawDoSomething` function (camelCase, using the `raw` prefix).
+
+- **Strict Correlation:** If you call 10 different API routes in the client, you must define exactly 10 raw functions.
+- **Separation of Concerns:**
+  - **Raw functions** set query parameters, build/sign payload bodies, make the low-level HTTP call, and unmarshal/decode raw JSON responses to exchange-specific internal Go structures.
+  - **Public mapper methods** (those implementing the `exchange.Client` interface) call the raw functions and focus on mapping exchange structs to standard bot-domain structures.
+
+#### Example: Gate.io System Time Wrapper (`system.go`)
 ```go
-type Client struct {
-	// dependencies like HTTP client, baseURL, api keys, logger, etc.
+// Private raw methods.
+
+func (c *Client) rawGetServerTime(ctx context.Context) (*gateSystemTime, error) {
+	body, err := c.RawRequest(ctx, "GET", "/spot/time", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var result gateSystemTime
+	if err := xjson.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal gate response: %w", err)
+	}
+	return &result, nil
+}
+
+// Public mapper methods.
+
+// GetServerTime returns current Unix server time from Gate.io.
+func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
+	timeResp, err := c.rawGetServerTime(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return timeResp.ServerTime, nil
 }
 ```
 
-Implement the required interfaces from [exchange/interfaces.go](file:///home/four/projects/crypto-bot/internal/infrastructure/exchange/interfaces.go):
-* **`MarketDataProvider`**:
-  * `GetTickers(ctx context.Context, symbol string) ([]Ticker, error)`
-  * `GetContractDetails(ctx context.Context) ([]ContractDetail, error)`
-  * `GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error)`
-  * `GetServerTime(ctx context.Context) (int64, error)`
-* **`OrderExecutor`**:
-  * `CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error)`
-    * **TP/SL Support check:** Verify if the exchange's Create Order API natively supports specifying Take Profit and Stop Loss prices.
-    * If TP/SL is **not** supported during order creation: Return `TPSLSubmitted: false` in the `CreateOrderResult`, and implement the `TPSLProvider` interface to configure them after the order execution.
-    * If TP/SL is supported during order creation: Submit them with the order and return `TPSLSubmitted: true`.
-  * `CancelOrder(ctx context.Context, symbol, orderID string) error`
-  * `CancelOrders(ctx context.Context, orderIDs []string) error`
-  * `CancelAllOpenOrders(ctx context.Context, symbol string) error`
-  * `GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)`
-  * `GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error)`
-  * `GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)`
-  * `GetOpenPositions(ctx context.Context, symbol string) ([]Position, error)`
-  * `ClosePosition(ctx context.Context, symbol, closeSide, volume, mode)`
-  * `CloseAllPositions(ctx context.Context, symbol string) error`
-  * `ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error`
-    * **Leverage support check:** If the Create Order API does not support specifying leverage, ensure `ChangeLeverage` is fully implemented to adjust the leverage using the exchange's account endpoints.
-  * `SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error`
-    * **Margin mode handling:** If margin mode switching uses the same API as `ChangeLeverage`, implement it by calling the same underlying endpoint/method. If it is not supported or not required for the exchange, return `nil` (no-op) and do nothing.
-  * `SupportLeverageOnOrder() bool`
-    * **Leverage placement check:** Return `true` if the exchange supports setting leverage directly on a per-order basis via the order placement API. Return `false` if leverage is set via account/position settings, in which case `ChangeLeverage` must be used.
-  * `WarmUp(ctx context.Context, interval time.Duration)`
-    * **Warm-up execution:** Perform initial connectivity checks or server time syncing (e.g., pinging/calling `/ping` endpoints).
-* **Helpers**: Use generic HTTP response parsers like `ParseResponse[T]` or `ParseResponseFirst[T]` to avoid JSON unmarshaling boilerplates.
-* **Error Wrapping**: Ensure API errors from the exchange are mapped to appropriate types like `*exchange.APIError` or `*exchange.OrderRejectedError` using helper mappings.
-* **Raw Requests (`exchange.RawRequest` & helper patterns)**:
-  * The REST Client **must** implement the `exchange.RawRequest` interface to support debugging and raw endpoint inspection:
-    ```go
-    type RawRequest interface {
-    	GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error)
-    	GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error)
-    	GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
-    	GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
-    	GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error)
-    	GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error)
-    	GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error)
-    }
-    ```
-  * Always implement a low-level helper `RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error)` to execute signed or unsigned queries to the API, and delegate to it.
-  * Always implement a private raw endpoint helper `getRawOpenPositions(ctx context.Context, req YourPositionsRequest) ([]YourPosition, error)` to fetch raw positions directly before parsing them into the domain type in `GetOpenPositions`.
-  
-  **Example Client RawRequest & Raw Open Positions Implementation:**
-  ```go
-  // RawRequest executes a signed or unsigned HTTP request to the exchange API.
-  func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
-      // 1. Build and sign query params/body
-      // 2. Perform HTTP request via c.httpClient
-      // 3. Return raw response bytes
-  }
+---
 
-  type okxPositionsRequest struct {
-      InstType string `json:"instType"`
-      InstID   string `json:"instId,omitempty"`
-  }
+### 3. Implementing the RawRequest Interface
 
-  func (c *Client) getRawOpenPositions(ctx context.Context, req okxPositionsRequest) ([]okxPosition, error) {
-      params := make(map[string]string)
-      params["instType"] = req.InstType
-      if req.InstID != "" {
-          params["instId"] = req.InstID
-      }
-      body, err := c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions", params, nil)
-      if err != nil {
-          return nil, fmt.Errorf("failed to get raw open positions: %w", err)
-      }
-      var resp okxPositionsResponse
-      if err := json.Unmarshal(body, &resp); err != nil {
-          return nil, err
-      }
-      return resp.Data, nil
-  }
-  
-  // Implementing exchange.RawRequest interface methods...
-  func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-      return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions", params, nil)
-  }
-  ```
+The REST Client **must** also implement the `exchange.RawRequest` interface to support raw diagnostic calls for debugging:
+
+```go
+type RawRequest interface {
+	GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error)
+	GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error)
+	GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error)
+}
+```
+
+Delegate these interface implementations directly to the client's `RawRequest` utility:
+
+```go
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v5/account/positions", params, nil)
+}
+```
 
 
-### 2. WebSocket Subscription Adapter (`ws_adapter.go`)
+### 4. WebSocket Subscription Adapter (`ws_adapter.go`)
 Implement the `ws.ExchangeAdapter` interface from [ws/interfaces.go](file:///home/four/projects/crypto-bot/internal/infrastructure/ws/interfaces.go):
 
 * **Ping Configuration**: `GetPingConfig() (payload any, interval time.Duration)`

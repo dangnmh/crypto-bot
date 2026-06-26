@@ -1,6 +1,7 @@
 package toobit
 
 const (
+	exchangeName                 = "toobit"
 	successCode                  = "success"
 	symbolKey                    = "symbol"
 	orderIDKey                   = "orderId"

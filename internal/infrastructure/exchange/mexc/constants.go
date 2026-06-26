@@ -15,4 +15,6 @@ const (
 	channelKline  = "kline"
 
 	opLogin = "login"
+
+	exchangeName = "mexc"
 )
