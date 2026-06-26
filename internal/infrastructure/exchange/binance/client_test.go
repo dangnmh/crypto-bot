@@ -560,6 +560,33 @@ func TestClient_PlaceTPSL(t *testing.T) {
 		})
 		assert.Error(t, err)
 	})
+
+	t.Run("Ignore -4509 error on Take Profit and Stop Loss", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			w.Header().Set("Content-Type", "application/json")
+			if q.Get("type") == "TAKE_PROFIT_MARKET" || q.Get("type") == "STOP_MARKET" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"code": -4509, "msg": "Time in Force (TIF) GTE can only be used with open positions. Please ensure that positions are available."}`))
+			} else {
+				_, _ = w.Write([]byte(`{"code": 200, "msg": "success"}`))
+			}
+		}))
+		defer server.Close()
+
+		client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+		err := client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+			Symbol:          "BTCUSDT",
+			Side:            exchange.SideOpenLong,
+			TakeProfitPrice: 55000.0,
+			StopLossPrice:   45000.0,
+			PositionMode:    1,
+		})
+		require.NoError(t, err)
+	})
 }
 
 func TestClient_GetOrderPNL(t *testing.T) {

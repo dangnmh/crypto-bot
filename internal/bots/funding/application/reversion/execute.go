@@ -3,6 +3,7 @@ package reversion
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -222,7 +223,11 @@ func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger,
 				}
 				go func(m *message.Message) {
 					if err := handler(ctx, m); err != nil {
-						logger.ErrorContext(ctx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+						if errors.Is(err, ErrFRBelowThreshold) || errors.Is(err, ErrFRSignFlip) {
+							logger.InfoContext(ctx, "Handler execution skipped (expected abort)", slog.String("topic", topic), slog.Any("error", err))
+						} else {
+							logger.ErrorContext(ctx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+						}
 					}
 					m.Ack()
 				}(msg)

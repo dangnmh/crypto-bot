@@ -39,7 +39,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 			slog.Float64("new", fundingRate*100),
 		)
 		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, ReversionReason("FR sign flip"))
-		return fmt.Errorf("FR sign flip")
+		return ErrFRSignFlip
 	}
 
 	if math.Abs(fundingRate) < c.Config.MinFundingRate {
@@ -49,7 +49,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 			slog.Float64("min", c.Config.MinFundingRate*100),
 		)
 		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, ReversionReason("FR below threshold"))
-		return fmt.Errorf("FR below threshold")
+		return ErrFRBelowThreshold
 	}
 
 	r.log.InfoContext(ctx, "FR OK", slog.String("symbol", c.Symbol), slog.Float64("fr", fundingRate*100))

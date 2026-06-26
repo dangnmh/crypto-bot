@@ -259,33 +259,39 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 	}
 
 	if req.TakeProfitPrice > 0 {
-		err := c.placeAlgoOrder(ctx, req.Symbol, tpSide, "TAKE_PROFIT_MARKET", req.TakeProfitPrice, req.PositionMode, tpPosSide)
-		if err != nil {
-			c.logger.ErrorContext(ctx, "Failed to place Take Profit algo order",
-				slog.Any("error", err),
-				slog.String("symbol", req.Symbol),
-				slog.Float64("takeProfitPrice", req.TakeProfitPrice))
-			return fmt.Errorf("binance place TP order: %w", err)
+		if err := c.placeOneTPSLOrder(ctx, req.Symbol, tpSide, "TAKE_PROFIT_MARKET", req.TakeProfitPrice, req.PositionMode, tpPosSide, "TP"); err != nil {
+			return err
 		}
-		c.logger.InfoContext(ctx, "Successfully placed Take Profit algo order",
-			slog.String("symbol", req.Symbol),
-			slog.Float64("takeProfitPrice", req.TakeProfitPrice))
 	}
 
 	if req.StopLossPrice > 0 {
-		err := c.placeAlgoOrder(ctx, req.Symbol, slSide, "STOP_MARKET", req.StopLossPrice, req.PositionMode, slPosSide)
-		if err != nil {
-			c.logger.ErrorContext(ctx, "Failed to place Stop Loss algo order",
-				slog.Any("error", err),
-				slog.String("symbol", req.Symbol),
-				slog.Float64("stopLossPrice", req.StopLossPrice))
-			return fmt.Errorf("binance place SL order: %w", err)
+		if err := c.placeOneTPSLOrder(ctx, req.Symbol, slSide, "STOP_MARKET", req.StopLossPrice, req.PositionMode, slPosSide, "SL"); err != nil {
+			return err
 		}
-		c.logger.InfoContext(ctx, "Successfully placed Stop Loss algo order",
-			slog.String("symbol", req.Symbol),
-			slog.Float64("stopLossPrice", req.StopLossPrice))
 	}
 
+	return nil
+}
+
+func (c *Client) placeOneTPSLOrder(ctx context.Context, symbol, side, orderType string, price float64, posMode domain.PositionMode, posSide, label string) error {
+	err := c.placeAlgoOrder(ctx, symbol, side, orderType, price, posMode, posSide)
+	if err != nil {
+		if apiErr, ok := exchange.IsAPIError(err); ok && (apiErr.Code == -4509 || strings.Contains(strings.ToLower(apiErr.Message), "tif gte") || strings.Contains(strings.ToLower(apiErr.Message), "open positions")) {
+			c.logger.InfoContext(ctx, fmt.Sprintf("Ignoring binance place %s order error (no open position)", label),
+				slog.Any("error", err),
+				slog.String("symbol", symbol),
+				slog.Float64("price", price))
+			return nil
+		}
+		c.logger.ErrorContext(ctx, fmt.Sprintf("Failed to place %s algo order", label),
+			slog.Any("error", err),
+			slog.String("symbol", symbol),
+			slog.Float64("price", price))
+		return fmt.Errorf("binance place %s order: %w", label, err)
+	}
+	c.logger.InfoContext(ctx, fmt.Sprintf("Successfully placed %s algo order", label),
+		slog.String("symbol", symbol),
+		slog.Float64("price", price))
 	return nil
 }
 
