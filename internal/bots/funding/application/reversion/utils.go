@@ -425,8 +425,14 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 	}
 
 	if pos.HoldVol > 0 {
+		base := nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now())
+		if base.OrderID == "" {
+			if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
+				base.OrderID = resolved
+			}
+		}
 		evt := OrderFilledEvent{
-			BaseReversionEvent: nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
+			BaseReversionEvent: base,
 			Side:               side,
 			CloseSide:          closeSide,
 			FillPrice:          fillPrice,
@@ -516,6 +522,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 			return nil, err
 		}
 
+		evt.OrderID = orderID
 		evt.EntryPrice = closedInfo.EntryPrice
 		evt.ClosePrice = closedInfo.ExitPrice
 		evt.CloseVol = closedInfo.ClosedSize
@@ -526,6 +533,12 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		evt.NetProfit = closedInfo.NetPnl
 		evt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
 		evt.HoldDurationMs = closedInfo.DurationMs
+	}
+
+	if evt.OrderID == "" {
+		if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
+			evt.OrderID = resolved
+		}
 	}
 
 	return &evt, nil
