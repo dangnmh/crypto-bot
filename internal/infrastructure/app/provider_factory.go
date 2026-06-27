@@ -21,11 +21,14 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
+	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
 	pkgws "crypto-bot/pkg/ws"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -202,6 +205,18 @@ func DefaultProviderFactories() []ProviderFactory {
 			},
 		},
 		SimpleProviderFactory{
+			name: exchange.ExchangeWeex,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeWeex]
+				client := exchange.Client(weex.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+				adapter := weex.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase)
+				if concreteClient, ok := client.(*weex.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeWeex, exchange.ExchangeWeex, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
 			name: exchange.ExchangeBitmart,
 			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBitmart]
@@ -282,6 +297,15 @@ func newWSPool(
 	if extractor := adapter.GetChannelExtractor(); extractor != nil {
 		appendCommonOpt(pkgws.WithChannelExtractor(extractor))
 	}
+	type CustomPingHandlerProvider interface {
+		GetCustomPingHandler() func(*websocket.Conn, []byte) bool
+	}
+	if cph, ok := adapter.(CustomPingHandlerProvider); ok {
+		if handler := cph.GetCustomPingHandler(); handler != nil {
+			appendCommonOpt(pkgws.WithCustomPingHandler(handler))
+		}
+	}
+
 	if hook := adapter.GetAuthHook(apiKey, apiSecret); hook != nil {
 		privateOpts = append(privateOpts, pkgws.WithOnConnected(hook))
 	}
@@ -316,6 +340,13 @@ func newWSPool(
 	}
 	if up, ok := adapter.(PrivateURLProvider); ok {
 		privateOpts = append(privateOpts, pkgws.WithURLFunc(up.GetPrivateURLFunc(ctx)))
+	}
+
+	type HeadersProvider interface {
+		HandshakeHeaders() (http.Header, error)
+	}
+	if hp, ok := adapter.(HeadersProvider); ok {
+		privateOpts = append(privateOpts, pkgws.WithHeadersFunc(hp.HandshakeHeaders))
 	}
 
 	return pkgws.NewPoolWithURLs(

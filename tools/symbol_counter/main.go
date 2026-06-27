@@ -85,7 +85,7 @@ func main() {
 		"hyperliquid":   hyperliquid.NewClient(ctx, httpPool, "https://api.hyperliquid.xyz", "", "", logCfg),
 		"deepcoin":      deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg),
 		"toobit":        toobit.NewClient(httpPool, "https://api.toobit.com", "", "", logCfg),
-		"weex":          weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg),
+		"weex":          weex.NewClient(httpPool, "https://api-contract.weex.com", "", "", "", logCfg),
 		"batonex":       batonex.NewClient(httpPool, "https://api.batonex.com", logCfg),
 		"zoomex":        zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg),
 		"bitmart":       bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg),

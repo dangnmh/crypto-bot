@@ -1,6 +1,7 @@
 package xjson
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -16,10 +17,14 @@ func (n *Number) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	var val any
-	if err := json.Unmarshal(data, &val); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&val); err != nil {
 		return err
 	}
 	switch v := val.(type) {
+	case json.Number:
+		*n = Number(v.String())
 	case float64:
 		*n = Number(strconv.FormatFloat(v, 'f', -1, 64))
 	case string:
@@ -59,6 +64,13 @@ func (n Number) Int64() (int64, error) {
 		return 0, nil
 	}
 	return strconv.ParseInt(string(n), 10, 64)
+}
+
+func (n Number) Int() (int, error) {
+	if n == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(string(n))
 }
 
 // String returns the raw string representation.

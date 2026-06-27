@@ -1093,3 +1093,42 @@ func TestClient_LogSpecialEvents(t *testing.T) {
 
 	c.Close()
 }
+
+func TestClient_HandshakeHeaders(t *testing.T) {
+	t.Parallel()
+
+	headerChan := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		val := r.Header.Get("X-Custom-Header")
+		headerChan <- val
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err == nil {
+			conn.Close()
+		}
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	headersFunc := func() (http.Header, error) {
+		h := http.Header{}
+		h.Set("X-Custom-Header", "custom-val")
+		return h, nil
+	}
+
+	c := ws.NewClient(wsURL(srv), nil, ws.WithHeadersFunc(headersFunc))
+	defer c.Close()
+
+	go c.Connect(ctx)
+
+	select {
+	case val := <-headerChan:
+		assert.Equal(t, "custom-val", val)
+	case <-time.After(1 * time.Second):
+		t.Fatal("handshake headers not received")
+	}
+}

@@ -149,6 +149,7 @@ To maintain a clean and standardized codebase, each exchange REST client must be
    - `GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error)`
    - `GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error)`
    - `GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error)`
+   - `GetOrderPNL(ctx context.Context, symbol, orderID string) (*ClosedPnLInfo, error)`
 5. **`trade.go`**: Configuration updates and leverage/margin setups:
    - `ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error`
    - `SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error`
@@ -237,6 +238,17 @@ Implement the `ws.ExchangeAdapter` interface from [ws/interfaces.go](file:///hom
   * `ParseTicker([]byte) (symbol, *PriceData, error)`
   * `ParsePosition([]byte) (*exchange.PersonalPositionUpdate, error)`
   * `ParseOrder([]byte) (*WsOrderDeal, error)`
+
+### 5. Implementing GetOrderPNL
+
+The `GetOrderPNL` method in `order.go` calculates the closed PnL metrics for a given order. Note that the order is always an **open** order; there is no need to handle the case where it is a close order. To implement this function:
+
+- **Step 1: Get Order Details**: Query the exchange for the details of the open order by calling `GetOrder(ctx, symbol, orderID)`. This retrieves metadata such as order state, filled volume, and creation time (`CreateTime`).
+- **Step 2: Retrieve Trades or Position History**: Fetch personal trade history (e.g., `/capi/v3/userTrades` or equivalent) or position history for the specified symbol. Set the query's `startTime` parameter exactly to the order's creation time (`orderInfo.CreateTime`). Do not use any buffer for the `startTime`.
+- **Step 3: Construct Entry and Exit Prices**: Extract trade records from the history retrieved in Step 2:
+  - Aggregate and calculate the entry and exit prices using the trade records by summing open/close trades and their respective fees.
+  - Since the order is always an open order, there is no need to handle the case where it is a close order.
+- **Step 4: Fetch Funding Fees**: Retrieve the funding fee (holding fee) using the symbol and setting the start time exactly to the order's creation time (`orderInfo.CreateTime`).
 
 ---
 

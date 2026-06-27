@@ -97,7 +97,7 @@ func main() {
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
 	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", "", "", logCfg)
-	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", logCfg)
+	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", "", "", "", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	bitunixClient := bitunix.NewClient(httpPool, "https://fapi.bitunix.com", logCfg)
 	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)

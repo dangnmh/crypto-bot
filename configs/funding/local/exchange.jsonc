@@ -121,6 +121,17 @@
         "privateURL": "wss://openapi-ws-v2.bitmart.com/user?protocol=1.1",
         "maxPairsPerWSConn": 20
       }
+    },
+    "weex": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api-contract.weex.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws-contract.weex.com/v3/ws/public",
+        "privateURL": "wss://ws-contract.weex.com/v3/ws/private",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }

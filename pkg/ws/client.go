@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -35,13 +36,15 @@ type Client struct {
 	closeOnce     sync.Once
 
 	// Hooks
-	onConnected      func(*Client) // Used for custom authentication logic immediately after dial
-	onReady          func(*Client) // Called after each successful connection is ready
-	pingPayload      any           // Payload to send periodically. If nil, no ping is sent.
-	pingPeriod       time.Duration
-	channelExtractor func([]byte) string // Extracts routing key (channel/topic) from raw JSON
-	urlFunc          func() (string, error)
-	preprocessor     func([]byte) ([]byte, error)
+	onConnected       func(*Client) // Used for custom authentication logic immediately after dial
+	onReady           func(*Client) // Called after each successful connection is ready
+	pingPayload       any           // Payload to send periodically. If nil, no ping is sent.
+	pingPeriod        time.Duration
+	channelExtractor  func([]byte) string // Extracts routing key (channel/topic) from raw JSON
+	urlFunc           func() (string, error)
+	preprocessor      func([]byte) ([]byte, error)
+	headersFunc       func() (http.Header, error)
+	customPingHandler func(*websocket.Conn, []byte) bool
 }
 
 // ClientOption configures the generic WebSocket client.
@@ -51,6 +54,13 @@ type ClientOption func(*Client)
 func WithChannelExtractor(extractor func([]byte) string) ClientOption {
 	return func(c *Client) {
 		c.channelExtractor = extractor
+	}
+}
+
+// WithCustomPingHandler sets a callback to handle custom server-initiated pings.
+func WithCustomPingHandler(handler func(*websocket.Conn, []byte) bool) ClientOption {
+	return func(c *Client) {
+		c.customPingHandler = handler
 	}
 }
 
@@ -88,6 +98,13 @@ func WithURLFunc(urlFunc func() (string, error)) ClientOption {
 func WithPreprocessor(preprocessor func([]byte) ([]byte, error)) ClientOption {
 	return func(c *Client) {
 		c.preprocessor = preprocessor
+	}
+}
+
+// WithHeadersFunc sets a function to dynamically generate HTTP headers before dial.
+func WithHeadersFunc(headersFunc func() (http.Header, error)) ClientOption {
+	return func(c *Client) {
+		c.headersFunc = headersFunc
 	}
 }
 
@@ -184,7 +201,15 @@ func (c *Client) dial() error {
 		}
 		c.url = u
 	}
-	conn, resp, err := websocket.DefaultDialer.Dial(c.url, nil)
+	var headers http.Header
+	if c.headersFunc != nil {
+		h, err := c.headersFunc()
+		if err != nil {
+			return fmt.Errorf("dynamic ws headers gen: %w", err)
+		}
+		headers = h
+	}
+	conn, resp, err := websocket.DefaultDialer.Dial(c.url, headers)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
@@ -267,6 +292,15 @@ func (c *Client) readLoop(ctx context.Context) {
 
 // processMessage parses and dispatches a single WebSocket message.
 func (c *Client) processMessage(data []byte) {
+	if c.customPingHandler != nil {
+		c.mu.Lock()
+		conn := c.conn
+		c.mu.Unlock()
+		if conn != nil && c.customPingHandler(conn, data) {
+			return
+		}
+	}
+
 	if strings.ToLower(strings.TrimSpace(string(data))) == "ping" {
 		c.mu.Lock()
 		if c.conn != nil {
@@ -276,27 +310,7 @@ func (c *Client) processMessage(data []byte) {
 		return
 	}
 
-	// Log special events like notice, error or connection warnings
-	var eventHeader struct {
-		Event string `json:"event"`
-		Code  string `json:"code"`
-		Msg   string `json:"msg"`
-	}
-	if err := json.Unmarshal(data, &eventHeader); err == nil && eventHeader.Event != "" {
-		switch eventHeader.Event {
-		case "error", "channel-conn-count-error":
-			c.logger.Error("🔴 WebSocket event error received",
-				slog.String("event", eventHeader.Event),
-				slog.String("code", eventHeader.Code),
-				slog.String("msg", eventHeader.Msg),
-			)
-		case "notice":
-			c.logger.Warn("🟡 WebSocket notice received",
-				slog.String("code", eventHeader.Code),
-				slog.String("msg", eventHeader.Msg),
-			)
-		}
-	}
+	c.handleEventLog(data)
 	if c.channelExtractor == nil {
 		c.mu.Lock()
 		gh := c.globalHandler
@@ -395,4 +409,27 @@ func (c *Client) markReady() {
 		close(c.ready)
 		c.logger.Info("🟢 WS Client ready")
 	})
+}
+
+func (c *Client) handleEventLog(data []byte) {
+	var eventHeader struct {
+		Event string `json:"event"`
+		Code  string `json:"code"`
+		Msg   string `json:"msg"`
+	}
+	if err := json.Unmarshal(data, &eventHeader); err == nil && eventHeader.Event != "" {
+		switch eventHeader.Event {
+		case "error", "channel-conn-count-error":
+			c.logger.Error("🔴 WebSocket event error received",
+				slog.String("event", eventHeader.Event),
+				slog.String("code", eventHeader.Code),
+				slog.String("msg", eventHeader.Msg),
+			)
+		case "notice":
+			c.logger.Warn("🟡 WebSocket notice received",
+				slog.String("code", eventHeader.Code),
+				slog.String("msg", eventHeader.Msg),
+			)
+		}
+	}
 }

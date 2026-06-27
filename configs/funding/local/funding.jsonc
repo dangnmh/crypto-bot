@@ -44,10 +44,16 @@
   //   "exchange": "toobit",
   //   "simulateSettle": "2026-06-25T17:50:00.000+07:00"
   // },
+  // {
+  //   "symbol": "PORTALUSDT",
+  //   "marginUSDT": 3,
+  //   "exchange": "bitmart",
+  //   "simulateSettle": "2026-06-26T22:15:00.000+07:00"
+  // }
   {
-    "symbol": "PORTALUSDT",
+    "symbol": "AGLDUSDT",
     "marginUSDT": 3,
-    "exchange": "bitmart",
-    "simulateSettle": "2026-06-26T22:15:00.000+07:00"
+    "exchange": "weex",
+    "simulateSettle": "2026-06-27T16:55:00.000+07:00"
   }
 ]

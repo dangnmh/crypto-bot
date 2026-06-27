@@ -40,7 +40,7 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
-      "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close,
+      "postSettleTimeout": "3s" // Force close if reversion lifecycle does not terminally close
       // "minVol24USD": 1000000,
       // "minFundingRate": 0.3
     },
@@ -105,6 +105,12 @@
       "postSettleTimeout": "300s"
     },
     "bitmart": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "300s"
+    },
+    "weex": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",

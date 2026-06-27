@@ -122,6 +122,7 @@ const (
 	DeepcoinName    = "deepcoin"
 	ToobitName      = "toobit"
 	BitmartName     = "bitmart"
+	WeexName        = "weex"
 )
 
 type ExchangeSpec struct {
@@ -141,6 +142,7 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	KucoinName:      {RequiresPassphrase: true},
 	OkxName:         {RequiresPassphrase: true},
 	DeepcoinName:    {RequiresPassphrase: true},
+	WeexName:        {RequiresPassphrase: true},
 	BybitName: {
 		Validate: func(cfg APIConfig) error {
 			if !IsSupportedBybitAccountType(cfg.AccountType) {

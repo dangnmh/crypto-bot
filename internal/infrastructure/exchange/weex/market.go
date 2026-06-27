@@ -3,14 +3,12 @@ package weex
 import (
 	"context"
 	"fmt"
-	"io"
+	"math"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -42,43 +40,66 @@ type weexPremiumIndex struct {
 	CollectCycle        xjson.Number `json:"collectCycle"`
 }
 
-func (c *Client) request(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {
-	reqURL, err := url.Parse(c.baseURL + path)
+type weexSymbol struct {
+	Symbol            string       `json:"symbol"`
+	BaseAsset         string       `json:"baseAsset"`
+	QuoteAsset        string       `json:"quoteAsset"`
+	MarginAsset       string       `json:"marginAsset"`
+	PricePrecision    int          `json:"pricePrecision"`
+	QuantityPrecision int          `json:"quantityPrecision"`
+	MinOrderSize      xjson.Number `json:"minOrderSize"`
+	MaxLeverage       int          `json:"maxLeverage"`
+}
+
+type weexExchangeInfo struct {
+	Symbols []weexSymbol `json:"symbols"`
+}
+
+// GetContractDetails returns the contract specifications for all symbols.
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+	body, err := c.request(ctx, http.MethodGet, "/capi/v3/market/exchangeInfo", nil, nil, false)
 	if err != nil {
-		return nil, fmt.Errorf("parse url: %w", err)
+		return nil, err
 	}
 
-	if len(query) > 0 {
-		q := reqURL.Query()
-		for k, v := range query {
-			q.Set(k, v)
+	resp, err := parseResponse[weexExchangeInfo](body)
+	if err != nil {
+		return nil, err
+	}
+
+	details := make([]exchange.ContractDetail, 0, len(resp.Symbols))
+	for i := range resp.Symbols {
+		s := &resp.Symbols[i]
+
+		displayName := s.Symbol
+
+		minVol, _ := s.MinOrderSize.Float64()
+		priceUnit := math.Pow10(-s.PricePrecision)
+		volUnit := int(minVol)
+		if volUnit == 0 {
+			volUnit = 1
 		}
-		reqURL.RawQuery = q.Encode()
+
+		details = append(details, exchange.ContractDetail{
+			Symbol:        strings.ToUpper(s.Symbol),
+			DisplayName:   displayName,
+			DisplayNameEn: displayName,
+			BaseCoin:      strings.ToUpper(s.BaseAsset),
+			QuoteCoin:     strings.ToUpper(s.QuoteAsset),
+			SettleCoin:    strings.ToUpper(s.MarginAsset),
+			ContractSize:  1.0,
+			MinLeverage:   1,
+			MaxLeverage:   s.MaxLeverage,
+			PriceScale:    s.PricePrecision,
+			VolScale:      s.QuantityPrecision,
+			PriceUnit:     priceUnit,
+			VolUnit:       volUnit,
+			MinVol:        int(minVol),
+			State:         1,
+		})
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP %s %s: %w", method, path, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	return body, nil
+	return details, nil
 }
 
 // GetTickers returns 24hr ticker price change statistics.
@@ -88,14 +109,14 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		query["symbol"] = strings.ToUpper(symbol)
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/capi/v3/market/ticker/24hr", query)
+	body, err := c.request(ctx, http.MethodGet, "/capi/v3/market/ticker/24hr", query, nil, false)
 	if err != nil {
 		return nil, err
 	}
 
-	var rawList []weexTicker
-	if err := xjson.Unmarshal(body, &rawList); err != nil {
-		return nil, fmt.Errorf("unmarshal tickers: %w", err)
+	rawList, err := parseResponse[[]weexTicker](body)
+	if err != nil {
+		return nil, err
 	}
 
 	tickers := make([]exchange.Ticker, 0, len(rawList))
@@ -128,14 +149,14 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
-	body, err := c.request(ctx, http.MethodGet, "/capi/v3/market/premiumIndex", nil)
+	body, err := c.request(ctx, http.MethodGet, "/capi/v3/market/premiumIndex", nil, nil, false)
 	if err != nil {
 		return nil, err
 	}
 
-	var rawList []weexPremiumIndex
-	if err := xjson.Unmarshal(body, &rawList); err != nil {
-		return nil, fmt.Errorf("unmarshal funding rates: %w", err)
+	rawList, err := parseResponse[[]weexPremiumIndex](body)
+	if err != nil {
+		return nil, err
 	}
 
 	// Index rates by standardized symbol name

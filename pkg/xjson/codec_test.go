@@ -102,6 +102,7 @@ func TestNumber(t *testing.T) {
 		expected  xjson.Number
 	}{
 		{"raw int", `123`, false, xjson.Number("123")},
+		{"large raw int", `765676066931998959`, false, xjson.Number("765676066931998959")},
 		{"raw float", `123.45`, false, xjson.Number("123.45")},
 		{"string int", `"123"`, false, xjson.Number("123")},
 		{"string float", `"123.45"`, false, xjson.Number("123.45")},
