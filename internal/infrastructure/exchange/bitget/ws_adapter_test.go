@@ -20,7 +20,7 @@ func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 	adapter := bitget.NewWsAdapter()
 	extractor := adapter.GetChannelExtractor()
 
-	assert.Equal(t, "tickers", extractor([]byte(`{"arg":{"channel":"ticker","instId":"BTCUSDT"}}`)))
+	assert.Equal(t, "ticker", extractor([]byte(`{"arg":{"channel":"ticker","instId":"BTCUSDT"}}`)))
 	assert.Equal(t, "kline", extractor([]byte(`{"arg":{"channel":"candle1m","instId":"BTCUSDT"}}`)))
 	assert.Equal(t, "depth", extractor([]byte(`{"arg":{"channel":"books","instId":"BTCUSDT"}}`)))
 	assert.Equal(t, "personal.order", extractor([]byte(`{"arg":{"channel":"orders"}}`)))

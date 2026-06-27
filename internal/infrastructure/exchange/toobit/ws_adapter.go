@@ -13,6 +13,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
@@ -29,17 +30,14 @@ type WsAdapter struct {
 	cancelKeep   context.CancelFunc
 	cancelKeepMu sync.Mutex
 	clock        exchange.Clock
-
-	// Price merging state
-	mu     sync.Mutex
-	prices map[string]*store.PriceData
+	priceCache   *infraws.PriceCache
 }
 
 // NewWsAdapter creates a new WsAdapter.
 func NewWsAdapter(privateURL string) *WsAdapter {
 	return &WsAdapter{
 		privateURL: privateURL,
-		prices:     make(map[string]*store.PriceData),
+		priceCache: infraws.NewPriceCache(),
 		clock:      exchange.RealClock{},
 	}
 }
@@ -215,7 +213,6 @@ func (a *WsAdapter) handleBookTicker(sym string, rawData json.RawMessage) (strin
 	if err := xjson.Unmarshal(rawData, &bt); err != nil {
 		return "", nil, fmt.Errorf("unmarshal bookTicker data: %w", err)
 	}
-
 	if sym == "" {
 		sym = bt.Symbol
 	}
@@ -223,22 +220,8 @@ func (a *WsAdapter) handleBookTicker(sym string, rawData json.RawMessage) (strin
 		return "", nil, fmt.Errorf("no symbol found in bookTicker payload")
 	}
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pd, exists := a.prices[sym]
-	if !exists {
-		pd = &store.PriceData{
-			Symbol: sym,
-		}
-		a.prices[sym] = pd
-	}
-	pd.BestBid = decmath.ParseFloat(bt.Bid)
-	pd.BestAsk = decmath.ParseFloat(bt.Ask)
-	pd.FairPrice = 0.5 * (pd.BestBid + pd.BestAsk)
-	pd.UpdatedAt = a.clock.Now()
-	pdCopy := *pd
-
-	return sym, &pdCopy, nil
+	pd := a.priceCache.UpdateDepthAndMidPrice(sym, decmath.ParseFloat(bt.Bid), decmath.ParseFloat(bt.Ask))
+	return sym, pd, nil
 }
 
 // handleRealtimes parses and merges realtimes data.
@@ -258,26 +241,8 @@ func (a *WsAdapter) handleRealtimes(sym string, rawData json.RawMessage) (string
 		return "", nil, fmt.Errorf("no symbol found in realtimes payload")
 	}
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pd, exists := a.prices[sym]
-	if !exists {
-		pd = &store.PriceData{
-			Symbol: sym,
-		}
-		a.prices[sym] = pd
-	}
-	pd.LastPrice = decmath.ParseFloat(rt.LastPrice)
-	pd.Volume24 = decmath.ParseFloat(rt.Volume)
-	pd.UpdatedAt = a.clock.Now()
-	if pd.BestBid == 0 && pd.BestAsk == 0 {
-		pd.BestBid = pd.LastPrice
-		pd.BestAsk = pd.LastPrice
-		pd.FairPrice = pd.LastPrice
-	}
-	pdCopy := *pd
-
-	return sym, &pdCopy, nil
+	pd := a.priceCache.UpdateTicker(sym, decmath.ParseFloat(rt.LastPrice), 0, decmath.ParseFloat(rt.Volume))
+	return sym, pd, nil
 }
 
 // ParseTicker unmarshals and merges bookTicker and realtimes streams.

@@ -40,7 +40,7 @@ func TestWsAdapter_AuthHookAndSubscription(t *testing.T) {
 	assert.Nil(t, hook)
 
 	extractor := adapter.GetChannelExtractor()
-	assert.Equal(t, "tickers", extractor([]byte(`{"channel": "allMids"}`)))
+	assert.Equal(t, "ticker", extractor([]byte(`{"channel": "allMids"}`)))
 	assert.Equal(t, "depth", extractor([]byte(`{"channel": "l2Book"}`)))
 	assert.Equal(t, "kline", extractor([]byte(`{"channel": "candle"}`)))
 	assert.Equal(t, "personal.order", extractor([]byte(`{"channel": "user"}`)))

@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	infraws "crypto-bot/internal/infrastructure/ws"
 	pkgws "crypto-bot/pkg/ws"
 	"crypto-bot/pkg/xjson"
 
@@ -30,10 +30,7 @@ type WsAdapter struct {
 	apiSecret  string
 	passphrase string
 	clock      exchange.Clock
-
-	// Price cache for tickers
-	mu     sync.Mutex
-	prices map[string]*store.PriceData
+	priceCache *infraws.PriceCache
 }
 
 // NewWsAdapter creates a new WsAdapter.
@@ -42,7 +39,7 @@ func NewWsAdapter(apiKey, apiSecret, passphrase string) *WsAdapter {
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
 		passphrase: passphrase,
-		prices:     make(map[string]*store.PriceData),
+		priceCache: infraws.NewPriceCache(),
 		clock:      exchange.RealClock{},
 	}
 }
@@ -277,23 +274,8 @@ func (a *WsAdapter) parseDepth(data []byte) (string, *store.PriceData, error) {
 		ask, _ = strconv.ParseFloat(payload.Asks[0][0], 64)
 	}
 
-	a.mu.Lock()
-	pd, exists := a.prices[sym]
-	if !exists {
-		pd = &store.PriceData{Symbol: sym}
-		a.prices[sym] = pd
-	}
-	if bid > 0 {
-		pd.BestBid = bid
-	}
-	if ask > 0 {
-		pd.BestAsk = ask
-	}
-	pd.UpdatedAt = time.Now()
-	snapshot := *pd
-	a.mu.Unlock()
-
-	return sym, &snapshot, nil
+	pd := a.priceCache.UpdateDepth(sym, bid, ask)
+	return sym, pd, nil
 }
 
 func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
@@ -329,28 +311,8 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 	vol24, _ := payload.Data[0].Volume24.Float64()
 
 	sym := strings.ToUpper(payload.Symbol)
-	a.mu.Lock()
-	pd, exists := a.prices[sym]
-	if !exists {
-		pd = &store.PriceData{Symbol: sym}
-		a.prices[sym] = pd
-	}
-	pd.LastPrice = lastPrice
-	if pd.BestBid == 0 {
-		pd.BestBid = lastPrice
-	}
-	if pd.BestAsk == 0 {
-		pd.BestAsk = lastPrice
-	}
-	if fairPrice > 0 {
-		pd.FairPrice = fairPrice
-	}
-	pd.Volume24 = vol24
-	pd.UpdatedAt = time.Now()
-	snapshot := *pd
-	a.mu.Unlock()
-
-	return sym, &snapshot, nil
+	pd := a.priceCache.UpdateTicker(sym, lastPrice, fairPrice, vol24)
+	return sym, pd, nil
 }
 
 type weexWsPositionItem struct {

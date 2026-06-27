@@ -13,6 +13,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 	"crypto-bot/pkg/xjson"
@@ -34,10 +35,7 @@ type WsAdapter struct {
 	apiSecret     string
 	apiPassphrase string
 	clock         exchange.Clock
-
-	// Price merging state
-	mu     sync.Mutex
-	prices map[string]*store.PriceData
+	priceCache    *infraws.PriceCache
 
 	// Auth sync state
 	authMu        sync.Mutex
@@ -50,7 +48,7 @@ func NewWsAdapter(privateURL, apiPassphrase string) *WsAdapter {
 	return &WsAdapter{
 		privateURL:    privateURL,
 		apiPassphrase: apiPassphrase,
-		prices:        make(map[string]*store.PriceData),
+		priceCache:    infraws.NewPriceCache(),
 		clock:         exchange.RealClock{},
 		authenticated: make(chan struct{}),
 	}
@@ -291,18 +289,9 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 
 	stdSym := detail.Symbol
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	pd, exists := a.prices[stdSym]
-	if !exists {
-		pd = &store.PriceData{
-			Symbol: stdSym,
-		}
-		a.prices[stdSym] = pd
-	}
-
+	var last, bid, ask, vol float64
 	if detail.LastPrice != "" {
-		pd.LastPrice = decmath.ParseFloat(detail.LastPrice)
+		last = decmath.ParseFloat(detail.LastPrice)
 	}
 
 	bidPrice := detail.BidPrice
@@ -310,7 +299,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 		bidPrice = detail.BestBidPrice
 	}
 	if bidPrice != "" {
-		pd.BestBid = decmath.ParseFloat(bidPrice)
+		bid = decmath.ParseFloat(bidPrice)
 	}
 
 	askPrice := detail.AskPrice
@@ -318,25 +307,20 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 		askPrice = detail.BestAskPrice
 	}
 	if askPrice != "" {
-		pd.BestAsk = decmath.ParseFloat(askPrice)
+		ask = decmath.ParseFloat(askPrice)
 	}
-
-	if pd.LastPrice == 0 && pd.BestBid > 0 && pd.BestAsk > 0 {
-		pd.LastPrice = 0.5 * (pd.BestBid + pd.BestAsk)
-	}
-	pd.FairPrice = 0.5 * (pd.BestBid + pd.BestAsk)
 
 	volStr := detail.Volume24
 	if volStr == "" {
 		volStr = detail.Volume24h
 	}
 	if volStr != "" {
-		pd.Volume24 = decmath.ParseFloat(volStr)
+		vol = decmath.ParseFloat(volStr)
 	}
-	pd.UpdatedAt = a.clock.Now()
 
-	pdCopy := *pd
-	return stdSym, &pdCopy, nil
+	a.priceCache.UpdateDepthAndMidPrice(stdSym, bid, ask)
+	pd := a.priceCache.UpdateTicker(stdSym, last, 0, vol)
+	return stdSym, pd, nil
 }
 
 type wsPositionDetail struct {

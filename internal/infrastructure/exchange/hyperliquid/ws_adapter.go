@@ -103,7 +103,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 
 		switch channel {
 		case channelAllMids:
-			return "tickers"
+			return "ticker"
 		case channelL2Book:
 			return "depth"
 		case channelCandle:
