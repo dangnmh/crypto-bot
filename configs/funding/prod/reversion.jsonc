@@ -39,7 +39,8 @@
       "okx": true,
       "gate": true,
       "toobit": true,
-      "bitmart": true
+      "bitmart": true,
+      "weex": true,
     }
   },
   "exchanges": {
