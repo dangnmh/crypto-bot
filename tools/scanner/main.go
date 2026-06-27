@@ -28,6 +28,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
+	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -104,6 +105,7 @@ func main() {
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
 	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
+	xtClient := xt.NewClient(httpPool, "https://fapi.xt.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -128,6 +130,7 @@ func main() {
 		"coinw":         coinwClient,
 		"krakenfutures": kfClient,
 		"bitunix":       bitunixClient,
+		"xt":            xtClient,
 	}
 
 	// Filter clients based on user flag
@@ -175,6 +178,8 @@ func main() {
 				displayName = "CoinW"
 			case "krakenfutures":
 				displayName = "Kraken Futures"
+			case "xt":
+				displayName = "XT.com"
 			}
 			scanList = append(scanList, displayName)
 		}

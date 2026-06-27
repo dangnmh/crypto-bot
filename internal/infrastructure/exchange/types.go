@@ -46,6 +46,7 @@ const (
 	ExchangeCoinw         = "coinw"
 	ExchangeKrakenFutures = "krakenfutures"
 	ExchangeBitunix       = "bitunix"
+	ExchangeXt            = "xt"
 )
 
 // Side constants — delegate to domain.

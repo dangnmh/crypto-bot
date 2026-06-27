@@ -28,6 +28,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
+	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
 )
@@ -92,6 +93,7 @@ func main() {
 		"coinw":         coinw.NewClient(httpPool, "https://api.coinw.com", logCfg),
 		"krakenfutures": krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg),
 		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", logCfg),
+		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", logCfg),
 	}
 
 	var results []Result
