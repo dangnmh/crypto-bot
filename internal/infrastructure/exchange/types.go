@@ -61,6 +61,10 @@ const (
 	ExchangeCoinex        = "coinex"
 	ExchangeOrangex       = "orangex"
 	ExchangeTapbit        = "tapbit"
+	ExchangeWhitebit      = "whitebit"
+	ExchangeDydx          = "dydx"
+	ExchangeAster         = "aster"
+	ExchangeBitmex        = "bitmex"
 )
 
 // Side constants — delegate to domain.

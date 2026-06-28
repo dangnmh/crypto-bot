@@ -14,16 +14,19 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bitfinex"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
+	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
+	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
@@ -35,6 +38,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
+	"crypto-bot/internal/infrastructure/exchange/whitebit"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
@@ -115,6 +119,10 @@ func main() {
 	deribitClient := deribit.NewClient(httpPool, "https://www.deribit.com", logCfg)
 	coinexClient := coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg)
 	bitfinexClient := bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg)
+	whitebitClient := whitebit.NewClient(httpPool, "https://whitebit.com", logCfg)
+	dydxClient := dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg)
+	asterClient := aster.NewClient(httpPool, "https://fapi.asterdex.com", logCfg)
+	bitmexClient := bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg)
 	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
@@ -152,6 +160,10 @@ func main() {
 		"deribit":       deribitClient,
 		"coinex":        coinexClient,
 		"bitfinex":      bitfinexClient,
+		"whitebit":      whitebitClient,
+		"dydx":          dydxClient,
+		"aster":         asterClient,
+		"bitmex":        bitmexClient,
 	}
 
 	// Filter clients based on user flag

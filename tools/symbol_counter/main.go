@@ -11,18 +11,21 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitfinex"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
+	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
+	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
@@ -35,6 +38,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
+	"crypto-bot/internal/infrastructure/exchange/whitebit"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
@@ -108,6 +112,10 @@ func main() {
 		"deribit":       deribit.NewClient(httpPool, "https://www.deribit.com", logCfg),
 		"coinex":        coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg),
 		"bitfinex":      bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg),
+		"whitebit":      whitebit.NewClient(httpPool, "https://whitebit.com", logCfg),
+		"dydx":          dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg),
+		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", logCfg),
+		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
 	}
 
 	var results []Result
