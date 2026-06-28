@@ -28,6 +28,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/lbank"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
+	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/xt"
@@ -98,6 +99,7 @@ func main() {
 		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", logCfg),
 		"htx":           htx.NewClient(httpPool, "https://api.hbdm.com", logCfg),
 		"lbank":         lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg),
+		"orangex":       orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", logCfg),
 	}
 
 	var results []Result
