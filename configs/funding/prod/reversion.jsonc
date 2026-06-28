@@ -125,7 +125,7 @@
     "xt": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "100ms",
+      "bufferTime": "0ms",
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,

@@ -40,6 +40,8 @@ const (
 	channelTicker     = "ticker"
 	channelPosition   = "personal.position"
 	channelOrder      = "personal.order"
+	paramStartTime    = "startTime"
+	paramLimit        = "limit"
 )
 
 // Client is the XT.com REST API client.

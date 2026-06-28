@@ -557,8 +557,16 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	exitPrice := xjson.ToFloat64(matchedItem.ClosePrice)
 	grossPnL := xjson.ToFloat64(matchedItem.CloseProfit)
 	fee := xjson.ToFloat64(matchedItem.TotalFee)
-	fundingFee := xjson.ToFloat64(matchedItem.TotalFundFee)
 	closedSize := xjson.ToFloat64(matchedItem.ClosePositionSize)
+	fundingFee := xjson.ToFloat64(matchedItem.TotalFundFee)
+
+	flowFundingFee, found, err := c.getFundingFee(ctx, symbol, orderInfo.CreateTime)
+	if err != nil {
+		c.logger.Error("Failed to fetch funding fee from bills, falling back to position history", "error", err)
+	}
+	if found {
+		fundingFee = flowFundingFee
+	}
 
 	pnlRate := 0.0
 	if entryPrice > 0 {
@@ -587,9 +595,9 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 
 func (c *Client) fetchMatchedPositionHistory(ctx context.Context, sym string, createTime int64, expectedSide string) (*xtHistoryPosition, error) {
 	posHistoryBytes, err := c.request(ctx, "GET", "/future/trade/v1/position/list-history", map[string]string{
-		paramSymbol: sym,
-		"startTime": strconv.FormatInt(createTime, 10),
-		"limit":     "50",
+		paramSymbol:    sym,
+		paramStartTime: strconv.FormatInt(createTime, 10),
+		paramLimit:     "50",
 	}, nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("fetch position history: %w", err)
@@ -630,4 +638,54 @@ func absInt64(n int64) int64 {
 		return -n
 	}
 	return n
+}
+
+func (c *Client) getFundingFee(ctx context.Context, symbol string, orderCreateTime int64) (float64, bool, error) {
+	if orderCreateTime == 0 {
+		return 0, false, nil
+	}
+
+	sym := strings.ToLower(symbol)
+	if !strings.Contains(sym, "_") {
+		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
+			sym = before + "_usdt"
+		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
+			sym = before + "_usdc"
+		}
+	}
+
+	params := map[string]string{
+		paramSymbol:    sym,
+		paramStartTime: strconv.FormatInt(orderCreateTime, 10),
+		"endTime":      strconv.FormatInt(orderCreateTime+60000, 10),
+		paramLimit:     "50",
+	}
+
+	bodyBytes, err := c.GetBalanceBillsRaw(ctx, params)
+	if err != nil {
+		return 0, false, fmt.Errorf("fetch balance bills: %w", err)
+	}
+
+	var resp xtBalanceBillsResponse
+	if err := xjson.Unmarshal(bodyBytes, &resp); err != nil {
+		return 0, false, fmt.Errorf("unmarshal balance bills response: %w", err)
+	}
+
+	if resp.ReturnCode != 0 {
+		return 0, false, fmt.Errorf("balance bills API error: code=%d, msg=%s", resp.ReturnCode, resp.MsgInfo)
+	}
+
+	for _, item := range resp.Result.Items {
+		if strings.EqualFold(item.Type, "FUND") && strings.EqualFold(toStandardSymbol(item.Symbol), toStandardSymbol(symbol)) {
+			val, err := item.Amount.Float64()
+			if err != nil {
+				return 0, false, fmt.Errorf("parse amount: %w", err)
+			}
+			// Negate the value because negative in bills means payment,
+			// which matches positive in TotalFundFee convention.
+			return -val, true, nil
+		}
+	}
+
+	return 0, false, nil
 }

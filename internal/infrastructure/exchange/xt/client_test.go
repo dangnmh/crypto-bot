@@ -108,6 +108,33 @@ func TestClient_GetOrderPNL(t *testing.T) {
 			return
 		}
 
+		if r.URL.Path == "/future/user/v1/balance/bills" {
+			assert.Equal(t, "1782570000000", r.URL.Query().Get("startTime"))
+			assert.Equal(t, "1782570060000", r.URL.Query().Get("endTime"))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"returnCode": 0,
+				"msgInfo": "success",
+				"result": {
+					"hasNext": false,
+					"hasPrev": false,
+					"items": [
+						{
+							"afterAmount": 12.6249,
+							"amount": -0.2722,
+							"coin": "usdt",
+							"createdTime": 1782570010000,
+							"id": 1234567,
+							"side": "SUB",
+							"symbol": "btc_usdt",
+							"type": "FUND"
+						}
+					]
+				}
+			}`))
+			return
+		}
+
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
@@ -125,7 +152,27 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, 1.5, pnl.ClosedSize)
 	assert.Equal(t, 1500.0, pnl.GrossPnL)
 	assert.Equal(t, 4.5, pnl.Fee)
-	assert.Equal(t, -2.5, pnl.FundingFee) // sumFunding is 2.5, so fundingFee is -2.5 (credit received, increasing profit)
-	// netPnL = grossPnL + fee - fundingFee = 1500 + 4.5 - (-2.5) = 1507.0
-	assert.Equal(t, 1507.0, pnl.NetPnl)
+	assert.Equal(t, 0.2722, pnl.FundingFee)
+	// netPnL = grossPnL + fee - fundingFee = 1500 + 4.5 - 0.2722 = 1504.2278
+	assert.Equal(t, 1504.2278, pnl.NetPnl)
+}
+
+func TestClient_GetBalanceBills(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/future/user/v1/balance/bills", r.URL.Path)
+		assert.Equal(t, "btc_usdt", r.URL.Query().Get("symbol"))
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success","result":{"hasNext":false,"hasPrev":false,"items":[]}}`))
+	}))
+	defer server.Close()
+
+	client := xt.NewClient(server.Client(), server.URL, "my-api-key", "my-api-secret", config.LoggingConfig{})
+
+	res, err := client.GetBalanceBillsRaw(context.Background(), map[string]string{"symbol": "btc_usdt"})
+	require.NoError(t, err)
+	assert.Contains(t, string(res), `"msgInfo":"success"`)
 }

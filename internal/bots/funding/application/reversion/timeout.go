@@ -204,10 +204,10 @@ func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) e
 }
 
 func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEvent, closeEvt PositionClosedEvent) {
-	sleepCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
+	sleepCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 35*time.Second)
 	defer cancel()
 
-	if err := r.deps.Clock.Sleep(sleepCtx, 10*time.Second); err != nil {
+	if err := r.deps.Clock.Sleep(sleepCtx, 30*time.Second); err != nil {
 		return
 	}
 
