@@ -18,6 +18,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
@@ -104,6 +105,7 @@ func main() {
 		"orangex":       orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", logCfg),
 		"pionex":        pionex.NewClient(httpPool, "https://api.pionex.com", logCfg),
 		"deribit":       deribit.NewClient(httpPool, "https://www.deribit.com", logCfg),
+		"coinex":        coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg),
 	}
 
 	var results []Result
