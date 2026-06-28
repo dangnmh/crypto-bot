@@ -21,6 +21,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
+	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
@@ -109,6 +110,7 @@ func main() {
 	lbankClient := lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg)
 	orangexClient := orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", logCfg)
 	pionexClient := pionex.NewClient(httpPool, "https://api.pionex.com", logCfg)
+	deribitClient := deribit.NewClient(httpPool, "https://www.deribit.com", logCfg)
 	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
@@ -143,6 +145,7 @@ func main() {
 		"lbank":         lbankClient,
 		"orangex":       orangexClient,
 		"pionex":        pionexClient,
+		"deribit":       deribitClient,
 	}
 
 	// Filter clients based on user flag
