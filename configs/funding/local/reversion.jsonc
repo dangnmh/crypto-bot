@@ -32,7 +32,8 @@
   "scanners": {
     "configured": true,
     "schedule": {
-      "mexc": false
+      "mexc": false,
+      "xt": false
     }
   },
   "exchanges": {
@@ -121,6 +122,12 @@
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
+    },
+    "xt": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "10s"
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

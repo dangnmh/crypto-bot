@@ -138,6 +138,8 @@ vault kv put secret/crypto-bot \
   TOOBIT_API_SECRET="toobit_api_secret_from_vault" \
   BITMART_API_KEY="bitmart_api_key_from_vault" \
   BITMART_API_SECRET="bitmart_api_secret_from_vault" \
+  XT_API_KEY="xt_api_key_from_vault" \
+  XT_API_SECRET="xt_api_secret_from_vault" \
   BITMART_API_PASSPHRASE="bitmart_api_passphrase_from_vault" \
   WEEX_API_KEY="weex_api_key_from_vault" \
   WEEX_API_SECRET="weex_api_secret_from_vault" \

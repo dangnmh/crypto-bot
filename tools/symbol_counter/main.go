@@ -104,7 +104,7 @@ func main() {
 		"coinw":         coinw.NewClient(httpPool, "https://api.coinw.com", logCfg),
 		"krakenfutures": krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg),
 		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", "", "", logCfg),
-		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", logCfg),
+		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg),
 		"htx":           htx.NewClient(httpPool, "https://api.hbdm.com", logCfg),
 		"lbank":         lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg),
 		"orangex":       orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", logCfg),

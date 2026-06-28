@@ -127,7 +127,7 @@ func main() {
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
 	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
-	xtClient := xt.NewClient(httpPool, "https://fapi.xt.com", logCfg)
+	xtClient := xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)

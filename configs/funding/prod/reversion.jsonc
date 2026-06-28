@@ -41,7 +41,8 @@
       "toobit": true,
       "bitmart": true,
       "weex": true,
-      "bitunix": true
+      "bitunix": true,
+      "xt": true
     }
   },
   "exchanges": {
@@ -89,7 +90,7 @@
       "bufferTime": "300ms",
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
-      "minFundingRate": 0.5,
+      "minFundingRate": 0.5
     },
     "bitmart": {
       "takeProfitPct": 1,
@@ -112,6 +113,16 @@
       "marginUSD": 5
     },
     "bitunix": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "100ms",
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 3,
+      "marginUSD": 5
+    },
+    "xt": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "100ms",

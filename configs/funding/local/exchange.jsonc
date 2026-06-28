@@ -143,6 +143,17 @@
         "privateURL": "wss://fapi.bitunix.com/private/",
         "maxPairsPerWSConn": 20
       }
+    },
+    "xt": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://fapi.xt.com"
+      },
+      "websocket": {
+        "publicURL": "wss://fstream.xt.com/ws/market",
+        "privateURL": "wss://fstream.xt.com/ws/user",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }

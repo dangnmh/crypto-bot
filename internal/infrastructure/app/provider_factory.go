@@ -23,6 +23,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
+	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
@@ -235,6 +236,18 @@ func DefaultProviderFactories() []ProviderFactory {
 					adapter.SetClient(concreteClient)
 				}
 				return buildProvider(ctx, exchange.ExchangeBitmart, exchange.ExchangeBitmart, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeXt,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeXt]
+				client := exchange.Client(xt.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				adapter := xt.NewWsAdapter()
+				if concreteClient, ok := client.(*xt.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeXt, exchange.ExchangeXt, cfg, apiCfg, client, adapter), nil
 			},
 		},
 	}

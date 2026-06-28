@@ -56,10 +56,16 @@
   //   "exchange": "weex",
   //   "simulateSettle": "2026-06-27T16:55:00.000+07:00"
   // },
+  //   {
+  //     "symbol": "POWRUSDT",
+  //     "marginUSDT": 3,
+  //     "exchange": "bitunix",
+  //     "simulateSettle": "2026-06-28T13:40:00.000+07:00"
+  //   },
   {
     "symbol": "POWRUSDT",
     "marginUSDT": 3,
-    "exchange": "bitunix",
-    "simulateSettle": "2026-06-28T13:40:00.000+07:00"
-  }
+    "exchange": "xt",
+    "simulateSettle": "2026-06-28T16:50:00.000+07:00"
+  },
 ]
