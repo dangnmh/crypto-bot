@@ -35,9 +35,9 @@ func (c *Client) rawGetServerTime(ctx context.Context) (*serverTimeResponse, err
 
 // Public mapper methods.
 
-// SupportLeverageOnOrder returns true for Bitmart.
+// SupportLeverageOnOrder returns false for Bitmart since leverage must be configured on the account first.
 func (c *Client) SupportLeverageOnOrder() bool {
-	return true
+	return false
 }
 
 // WarmUp pings the server to warm up HTTP connections.

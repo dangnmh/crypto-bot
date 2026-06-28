@@ -450,7 +450,7 @@ func TestClient_Helpers(t *testing.T) {
 	t.Parallel()
 
 	client := bitmart.NewClient(nil, "https://api-cloud-v2.bitmart.com", "key", "secret", "passphrase", config.LoggingConfig{})
-	assert.True(t, client.SupportLeverageOnOrder())
+	assert.False(t, client.SupportLeverageOnOrder())
 
 	client.SetClock(exchange.RealClock{})
 
