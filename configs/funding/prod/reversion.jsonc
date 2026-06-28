@@ -67,7 +67,7 @@
     "kucoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms",
+      "bufferTime": "-150ms", // -200ms dont get funding fee
       "postSettleTimeout": "0.5s"
     },
     "okx": {
