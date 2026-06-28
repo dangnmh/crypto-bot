@@ -13,6 +13,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
+	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
@@ -82,6 +83,14 @@ func DefaultProviderFactories() []ProviderFactory {
 				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeMexc]
 				client := exchange.Client(mexc.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
 				return buildProvider(ctx, exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, mexc.NewWsAdapter()), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeBitunix,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBitunix]
+				client := exchange.Client(bitunix.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				return buildProvider(ctx, exchange.ExchangeBitunix, exchange.ExchangeBitunix, cfg, apiCfg, client, bitunix.NewWsAdapter()), nil
 			},
 		},
 		SimpleProviderFactory{

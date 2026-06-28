@@ -49,11 +49,17 @@
   //   "marginUSDT": 3,
   //   "exchange": "bitmart",
   //   "simulateSettle": "2026-06-26T22:15:00.000+07:00"
-  // }
+  // },
+  // {
+  //   "symbol": "AGLDUSDT",
+  //   "marginUSDT": 3,
+  //   "exchange": "weex",
+  //   "simulateSettle": "2026-06-27T16:55:00.000+07:00"
+  // },
   {
-    "symbol": "AGLDUSDT",
+    "symbol": "POWRUSDT",
     "marginUSDT": 3,
-    "exchange": "weex",
-    "simulateSettle": "2026-06-27T16:55:00.000+07:00"
+    "exchange": "bitunix",
+    "simulateSettle": "2026-06-28T13:40:00.000+07:00"
   }
 ]

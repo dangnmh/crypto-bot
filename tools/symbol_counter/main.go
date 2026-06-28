@@ -92,7 +92,7 @@ func main() {
 		"bitmart":       bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg),
 		"coinw":         coinw.NewClient(httpPool, "https://api.coinw.com", logCfg),
 		"krakenfutures": krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg),
-		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", logCfg),
+		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", "", "", logCfg),
 		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", logCfg),
 	}
 

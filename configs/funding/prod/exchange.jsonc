@@ -94,6 +94,17 @@
         "privateURL": "wss://ws-contract.weex.com/v3/ws/private",
         "maxPairsPerWSConn": 20
       }
+    },
+    "bitunix": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://fapi.bitunix.com"
+      },
+      "websocket": {
+        "publicURL": "wss://fapi.bitunix.com/public/",
+        "privateURL": "wss://fapi.bitunix.com/private/",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }
