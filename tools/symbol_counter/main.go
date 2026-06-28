@@ -14,6 +14,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
+	"crypto-bot/internal/infrastructure/exchange/bitfinex"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
@@ -106,6 +107,7 @@ func main() {
 		"pionex":        pionex.NewClient(httpPool, "https://api.pionex.com", logCfg),
 		"deribit":       deribit.NewClient(httpPool, "https://www.deribit.com", logCfg),
 		"coinex":        coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg),
+		"bitfinex":      bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg),
 	}
 
 	var results []Result
