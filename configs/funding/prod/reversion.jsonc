@@ -87,7 +87,7 @@
     "toobit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "400ms",
+      "bufferTime": "500ms", // 400ms dont get funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.5
@@ -95,7 +95,7 @@
     "bitmart": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-50ms",
+      "bufferTime": "0ms", // -50ms fill bad price
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -115,7 +115,7 @@
     "bitunix": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "100ms",
+      "bufferTime": "200ms", // 100ms dont get funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -125,7 +125,7 @@
     "xt": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms",
+      "bufferTime": "-50ms", // -0ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
