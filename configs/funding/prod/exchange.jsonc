@@ -112,7 +112,7 @@
         "baseURL": "https://fapi.xt.com"
       },
       "websocket": {
-        "publicURL": "wss://fstream.x.group/ws/market",
+        "publicURL": "wss://fstream.xt.com/ws/market",
         "privateURL": "wss://fstream.xt.com/ws/user",
         "maxPairsPerWSConn": 20
       }
