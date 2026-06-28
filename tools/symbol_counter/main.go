@@ -21,9 +21,11 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
+	"crypto-bot/internal/infrastructure/exchange/lbank"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
@@ -94,6 +96,8 @@ func main() {
 		"krakenfutures": krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg),
 		"bitunix":       bitunix.NewClient(httpPool, "https://fapi.bitunix.com", "", "", logCfg),
 		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", logCfg),
+		"htx":           htx.NewClient(httpPool, "https://api.hbdm.com", logCfg),
+		"lbank":         lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg),
 	}
 
 	var results []Result

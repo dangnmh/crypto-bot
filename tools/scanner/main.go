@@ -22,8 +22,10 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
+	"crypto-bot/internal/infrastructure/exchange/lbank"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
@@ -101,6 +103,8 @@ func main() {
 	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", "", "", "", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	bitunixClient := bitunix.NewClient(httpPool, "https://fapi.bitunix.com", "", "", logCfg)
+	htxClient := htx.NewClient(httpPool, "https://api.hbdm.com", logCfg)
+	lbankClient := lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg)
 	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
@@ -131,6 +135,8 @@ func main() {
 		"krakenfutures": kfClient,
 		"bitunix":       bitunixClient,
 		"xt":            xtClient,
+		"htx":           htxClient,
+		"lbank":         lbankClient,
 	}
 
 	// Filter clients based on user flag
