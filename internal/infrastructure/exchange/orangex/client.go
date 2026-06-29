@@ -2,9 +2,6 @@ package orangex
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,8 +14,6 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/xjson"
-
-	"github.com/google/uuid"
 
 	transportlog "github.com/dangnmh/transport"
 )
@@ -201,48 +196,15 @@ type authResult struct {
 }
 
 func (c *Client) refreshToken(ctx context.Context) error {
-	timestampMs := c.clock.Now().UnixMilli()
-	timestampStr := fmt.Sprintf("%d", timestampMs)
-	nonce := uuid.New().String()
-	stringToSign := fmt.Sprintf("%s\n%s\n%s\n", c.apiKey, timestampStr, nonce)
-
-	h := hmac.New(sha256.New, []byte(c.apiSecret))
-	h.Write([]byte(stringToSign))
-	signature := hex.EncodeToString(h.Sum(nil))
-
 	params := authParams{
-		GrantType: "client_signature",
-		ClientID:  c.apiKey,
-		Timestamp: timestampMs,
-		Nonce:     nonce,
-		Signature: signature,
-	}
-
-	respBytes, err := c.postRPC(ctx, "/public/auth", "/public/auth", params, false)
-	if err == nil {
-		var envelope orangexRPCResponse[authResult]
-		if err := xjson.Unmarshal(respBytes, &envelope); err == nil && envelope.Error == nil {
-			c.tokenVal = envelope.Result.AccessToken
-			c.tokenExpiry = c.clock.Now().Unix() + envelope.Result.ExpiresIn
-			return nil
-		} else if envelope.Error != nil {
-			c.logger.WarnContext(ctx, "OrangeX client_signature auth error", "code", envelope.Error.Code, "message", envelope.Error.Message)
-		}
-	} else {
-		c.logger.WarnContext(ctx, "OrangeX client_signature request failed", "error", err)
-	}
-
-	// Fallback to client_credentials
-	c.logger.InfoContext(ctx, "Trying client_credentials authentication fallback...")
-	fallbackParams := authParams{
 		GrantType:    "client_credentials",
 		ClientID:     c.apiKey,
 		ClientSecret: c.apiSecret,
 	}
 
-	respBytes, err = c.postRPC(ctx, "/public/auth", "/public/auth", fallbackParams, false)
+	respBytes, err := c.postRPC(ctx, "/public/auth", "/public/auth", params, false)
 	if err != nil {
-		return fmt.Errorf("auth post (client_credentials): %w", err)
+		return fmt.Errorf("auth post: %w", err)
 	}
 
 	var envelope orangexRPCResponse[authResult]
