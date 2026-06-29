@@ -137,7 +137,7 @@ func matchAndFilter(
 	rate, _ := strconv.ParseFloat(item.FundingRate, 64)
 
 	return exchange.PotentialFundingResult{
-		Symbol:     stdSym,
+		Symbol:     item.TickerID,
 		Rate:       rate,
 		SettleTime: item.NextFundingRateTimestamp,
 		Volume24h:  vol24h,

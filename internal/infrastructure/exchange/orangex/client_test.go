@@ -110,7 +110,7 @@ func TestClient_MarketData(t *testing.T) {
 	}
 
 	potSymbols, err := client.GetPotentialFundingSymbols(ctx, 1000000.0, 0.0, nil, nil)
-	if err != nil || len(potSymbols) != 1 || potSymbols[0].Symbol != "BTCUSDT" {
+	if err != nil || len(potSymbols) != 1 || potSymbols[0].Symbol != "BTC-USDT-PERPETUAL" {
 		t.Fatalf("GetPotentialFundingSymbols failed: %v, symbols=%+v", err, potSymbols)
 	}
 }
