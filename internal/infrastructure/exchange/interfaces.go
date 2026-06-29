@@ -117,3 +117,8 @@ type PotentialFundingResult struct {
 	Volume24h  float64 `json:"volume24h"`
 	Price      float64 `json:"price"`
 }
+
+// BackgroundTaskRunner is implemented by clients needing persistent background execution.
+type BackgroundTaskRunner interface {
+	StartBackgroundTasks(ctx context.Context)
+}

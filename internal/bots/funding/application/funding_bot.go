@@ -10,6 +10,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/pkg/version"
@@ -110,6 +111,10 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 			defer s.bgWg.Done()
 			p.Client.WarmUp(ctx, 4*time.Second)
 		}(prov)
+
+		if runner, ok := prov.Client.(exchange.BackgroundTaskRunner); ok {
+			runner.StartBackgroundTasks(ctx)
+		}
 
 		s.bgWg.Add(1)
 		go func(p *app.ExchangeProvider) {
