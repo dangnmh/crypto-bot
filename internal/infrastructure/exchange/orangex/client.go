@@ -187,11 +187,12 @@ func (c *Client) GetAccessToken(ctx context.Context) (string, error) {
 }
 
 type authParams struct {
-	GrantType string `json:"grant_type"`
-	ClientID  string `json:"client_id"`
-	Timestamp int64  `json:"timestamp"`
-	Nonce     string `json:"nonce"`
-	Signature string `json:"signature"`
+	GrantType    string `json:"grant_type"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret,omitempty"`
+	Timestamp    int64  `json:"timestamp,omitempty"`
+	Nonce        string `json:"nonce,omitempty"`
+	Signature    string `json:"signature,omitempty"`
 }
 
 type authResult struct {
@@ -218,8 +219,30 @@ func (c *Client) refreshToken(ctx context.Context) error {
 	}
 
 	respBytes, err := c.postRPC(ctx, "/public/auth", "/public/auth", params, false)
+	if err == nil {
+		var envelope orangexRPCResponse[authResult]
+		if err := xjson.Unmarshal(respBytes, &envelope); err == nil && envelope.Error == nil {
+			c.tokenVal = envelope.Result.AccessToken
+			c.tokenExpiry = c.clock.Now().Unix() + envelope.Result.ExpiresIn
+			return nil
+		} else if envelope.Error != nil {
+			c.logger.WarnContext(ctx, "OrangeX client_signature auth error", "code", envelope.Error.Code, "message", envelope.Error.Message)
+		}
+	} else {
+		c.logger.WarnContext(ctx, "OrangeX client_signature request failed", "error", err)
+	}
+
+	// Fallback to client_credentials
+	c.logger.InfoContext(ctx, "Trying client_credentials authentication fallback...")
+	fallbackParams := authParams{
+		GrantType:    "client_credentials",
+		ClientID:     c.apiKey,
+		ClientSecret: c.apiSecret,
+	}
+
+	respBytes, err = c.postRPC(ctx, "/public/auth", "/public/auth", fallbackParams, false)
 	if err != nil {
-		return fmt.Errorf("auth post: %w", err)
+		return fmt.Errorf("auth post (client_credentials): %w", err)
 	}
 
 	var envelope orangexRPCResponse[authResult]
