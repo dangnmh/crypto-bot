@@ -7,9 +7,7 @@ import (
 	"crypto-bot/pkg/xjson"
 )
 
-type serverTimeResult struct {
-	ServerTime int64 `json:"server_time"`
-}
+type serverTimeResult xjson.Number
 
 func (c *Client) rawGetServerTime(ctx context.Context) (*serverTimeResult, error) {
 	respBytes, err := c.postRPC(ctx, "/public/time", "/public/time", nil, false)
@@ -31,7 +29,7 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.ServerTime, nil
+	return xjson.ToInt64(xjson.Number(*res)) * 1000, nil
 }
 
 func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {

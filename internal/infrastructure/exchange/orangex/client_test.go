@@ -29,7 +29,7 @@ func setupMockServer() *httptest.Server {
 		case "/public/auth":
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"access_token":"mock_tok","expires_in":3600}}`))
 		case "/public/time":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"server_time":1719600000000}}`))
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"1719600000"}`))
 		case "/public/tickers":
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","best_bid_price":"60000","best_ask_price":"60005","last_price":"60002","volume_24h":"10"}]}`))
 		case "/public/get_instruments":

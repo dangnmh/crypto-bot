@@ -61,6 +61,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 					"GET|/public/time",
 					"GET|/public/coin_gecko_contracts",
 					"GET|/public/tickers",
+					"POST|/api/v1/public/get_instruments",
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
@@ -96,7 +97,7 @@ type orangexRPCRequest struct {
 
 type orangexRPCResponse[T any] struct {
 	JsonRpc string        `json:"jsonrpc"`
-	ID      any           `json:"id"`
+	ID      xjson.Number  `json:"id"`
 	Result  T             `json:"result"`
 	Error   *orangexError `json:"error,omitempty"`
 }
@@ -133,7 +134,7 @@ func (c *Client) postRPC(ctx context.Context, path, method string, params any, s
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Authorization", "bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -188,7 +189,7 @@ func (c *Client) GetAccessToken(ctx context.Context) (string, error) {
 type authParams struct {
 	GrantType string `json:"grant_type"`
 	ClientID  string `json:"client_id"`
-	Timestamp string `json:"timestamp"`
+	Timestamp int64  `json:"timestamp"`
 	Nonce     string `json:"nonce"`
 	Signature string `json:"signature"`
 }
@@ -199,9 +200,10 @@ type authResult struct {
 }
 
 func (c *Client) refreshToken(ctx context.Context) error {
-	timestamp := fmt.Sprintf("%d", c.clock.Now().UnixMilli())
+	timestampMs := c.clock.Now().UnixMilli()
+	timestampStr := fmt.Sprintf("%d", timestampMs)
 	nonce := uuid.New().String()
-	stringToSign := fmt.Sprintf("%s\n%s\n%s\n", c.apiKey, timestamp, nonce)
+	stringToSign := fmt.Sprintf("%s\n%s\n%s\n", c.apiKey, timestampStr, nonce)
 
 	h := hmac.New(sha256.New, []byte(c.apiSecret))
 	h.Write([]byte(stringToSign))
@@ -210,7 +212,7 @@ func (c *Client) refreshToken(ctx context.Context) error {
 	params := authParams{
 		GrantType: "client_signature",
 		ClientID:  c.apiKey,
-		Timestamp: timestamp,
+		Timestamp: timestampMs,
 		Nonce:     nonce,
 		Signature: signature,
 	}
