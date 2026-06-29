@@ -54,16 +54,16 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 		pType := exchange.PositionTypeLong
-		if p.Direction == "sell" {
+		if p.Direction == dirSell {
 			pType = exchange.PositionTypeShort
 		}
 		out = append(out, exchange.Position{
-			Symbol:          p.InstrumentName,
-			PositionType:    pType,
-			OpenAvgPrice:    xjson.ToFloat64(p.AveragePrice),
-			HoldAvgPrice:    xjson.ToFloat64(p.AveragePrice),
-			HoldVol:         sizeVal,
-			Leverage:        int(xjson.ToFloat64(p.Leverage)),
+			Symbol:       p.InstrumentName,
+			PositionType: pType,
+			OpenAvgPrice: xjson.ToFloat64(p.AveragePrice),
+			HoldAvgPrice: xjson.ToFloat64(p.AveragePrice),
+			HoldVol:      sizeVal,
+			Leverage:     int(xjson.ToFloat64(p.Leverage)),
 		})
 	}
 	return out, nil
@@ -71,9 +71,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
 	params := map[string]any{
-		"instrument_name": symbol,
-		"type":            "market",
-		"amount":          volume,
+		paramInstrument: symbol,
+		paramType:       typeMarket,
+		paramAmount:     volume,
 	}
 	_, err := c.postRPC(ctx, "/private/close_position", "/private/close_position", params, true)
 	return err
@@ -85,7 +85,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		return err
 	}
 	for _, p := range positions {
-		side := domain.SideCloseLong
+		var side domain.Side
 		if p.PositionType == exchange.PositionTypeLong {
 			side = domain.SideCloseLong
 		} else {

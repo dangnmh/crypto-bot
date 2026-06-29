@@ -17,6 +17,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/xjson"
+
 	"github.com/google/uuid"
 
 	transportlog "github.com/dangnmh/transport"
@@ -63,7 +64,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{"access_token", "client_secret", "signature", "Authorization"}),
+			transportlog.LogOptionRedactSensitiveKeys([]string{paramAccessToken, "client_secret", "signature", "Authorization"}),
 			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
@@ -109,9 +110,9 @@ func (e *orangexError) Error() string {
 	return fmt.Sprintf("OrangeX error %d: %s", e.Code, e.Message)
 }
 
-func (c *Client) postRPC(ctx context.Context, path string, method string, params any, signed bool) ([]byte, error) {
+func (c *Client) postRPC(ctx context.Context, path, method string, params any, signed bool) ([]byte, error) {
 	reqBody := orangexRPCRequest{
-		JsonRpc: "2.0",
+		JsonRpc: rpcVersion,
 		ID:      time.Now().UnixNano(),
 		Method:  method,
 		Params:  params,
@@ -259,7 +260,7 @@ func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]s
 }
 
 func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
-	p := map[string]string{"order_id": orderID}
+	p := map[string]string{paramOrderID: orderID}
 	return c.RawRequest(ctx, "POST", "/private/get_order_state", p, nil)
 }
 

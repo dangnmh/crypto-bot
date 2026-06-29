@@ -25,7 +25,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 }
 
 func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
-	return "PING", 5 * time.Second
+	return pingMsg, 5 * time.Second
 }
 
 func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
@@ -43,7 +43,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 		if err := xjson.Unmarshal(msg, &wrapper); err != nil {
 			return ""
 		}
-		if wrapper.Method == "subscription" {
+		if wrapper.Method == methodSubscription {
 			return wrapper.Params.Channel
 		}
 		return ""
@@ -59,11 +59,11 @@ type wsRequest struct {
 
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	req := wsRequest{
-		JsonRpc: "2.0",
+		JsonRpc: rpcVersion,
 		ID:      time.Now().UnixNano(),
 		Method:  "/public/subscribe",
 		Params: map[string]any{
-			"channels": []string{fmt.Sprintf("ticker.%s.raw", symbol)},
+			paramChannels: []string{fmt.Sprintf("ticker.%s.raw", symbol)},
 		},
 	}
 	return a.pool.SubscribePublic(ctx, symbol, req)
@@ -71,11 +71,11 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	req := wsRequest{
-		JsonRpc: "2.0",
+		JsonRpc: rpcVersion,
 		ID:      time.Now().UnixNano(),
 		Method:  "/public/unsubscribe",
 		Params: map[string]any{
-			"channels": []string{fmt.Sprintf("ticker.%s.raw", symbol)},
+			paramChannels: []string{fmt.Sprintf("ticker.%s.raw", symbol)},
 		},
 	}
 	return a.pool.UnsubscribePublic(ctx, symbol, req)
@@ -87,12 +87,12 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 		return err
 	}
 	req := wsRequest{
-		JsonRpc: "2.0",
+		JsonRpc: rpcVersion,
 		ID:      time.Now().UnixNano(),
 		Method:  "/private/subscribe",
 		Params: map[string]any{
-			"access_token": token,
-			"channels":     []string{"user.changes.perpetual.PERPETUAL.raw"},
+			paramAccessToken: token,
+			paramChannels:    []string{"user.changes.perpetual.PERPETUAL.raw"},
 		},
 	}
 	return a.pool.SendPrivate(ctx, req)
@@ -121,7 +121,7 @@ func (a *WsAdapter) ParseTicker(msg []byte) (string, *store.PriceData, error) {
 	if err := xjson.Unmarshal(msg, &payload); err != nil {
 		return "", nil, err
 	}
-	if payload.Method != "subscription" {
+	if payload.Method != methodSubscription {
 		return "", nil, fmt.Errorf("unexpected method: %s", payload.Method)
 	}
 
@@ -150,12 +150,12 @@ func (a *WsAdapter) ParsePosition(msg []byte) (*exchange.PersonalPositionUpdate,
 	if err := xjson.Unmarshal(msg, &payload); err != nil {
 		return nil, err
 	}
-	if payload.Method != "subscription" || len(payload.Params.Data.Positions) == 0 {
+	if payload.Method != methodSubscription || len(payload.Params.Data.Positions) == 0 {
 		return nil, nil
 	}
 	p := payload.Params.Data.Positions[0]
 	pType := exchange.PositionTypeLong
-	if p.Side == "sell" || p.Side == "short" {
+	if p.Side == dirSell || p.Side == "short" {
 		pType = exchange.PositionTypeShort
 	}
 	holdVol := xjson.ToFloat64(p.Size)

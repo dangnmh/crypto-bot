@@ -16,16 +16,16 @@ type createOrderResult struct {
 }
 
 type orangexOrder struct {
-	OrderID            string       `json:"order_id"`
-	OrderState         string       `json:"order_state"`
-	Amount             xjson.Number `json:"amount"`
-	Price              xjson.Number `json:"price"`
-	FilledAmount       xjson.Number `json:"filled_amount"`
-	AveragePrice       xjson.Number `json:"average_price"`
-	CreationTimestamp  int64        `json:"creation_timestamp"`
-	InstrumentName     string       `json:"instrument_name"`
-	Direction          string       `json:"direction"`
-	CustomOrderID      string       `json:"custom_order_id"`
+	OrderID           string       `json:"order_id"`
+	OrderState        string       `json:"order_state"`
+	Amount            xjson.Number `json:"amount"`
+	Price             xjson.Number `json:"price"`
+	FilledAmount      xjson.Number `json:"filled_amount"`
+	AveragePrice      xjson.Number `json:"average_price"`
+	CreationTimestamp int64        `json:"creation_timestamp"`
+	InstrumentName    string       `json:"instrument_name"`
+	Direction         string       `json:"direction"`
+	CustomOrderID     string       `json:"custom_order_id"`
 }
 
 type userTrade struct {
@@ -82,34 +82,35 @@ func (c *Client) rawGetOrderState(ctx context.Context, orderID, customOrderID st
 }
 
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	posSide := "LONG"
-	method := "/private/buy"
+	var posSide, method string
 
 	switch req.Side {
 	case domain.SideOpenLong:
-		posSide = "LONG"
-		method = "/private/buy"
+		posSide = posSideLong
+		method = pathBuy
 	case domain.SideCloseLong:
-		posSide = "LONG"
-		method = "/private/sell"
+		posSide = posSideLong
+		method = pathSell
 	case domain.SideOpenShort:
-		posSide = "SHORT"
-		method = "/private/sell"
+		posSide = posSideShort
+		method = pathSell
 	case domain.SideCloseShort:
-		posSide = "SHORT"
-		method = "/private/buy"
+		posSide = posSideShort
+		method = pathBuy
+	default:
+		return exchange.CreateOrderResult{}, fmt.Errorf("unsupported order side: %v", req.Side)
 	}
 
 	orderType := "limit"
 	if req.Type == domain.OrderTypeMarket {
-		orderType = "market"
+		orderType = typeMarket
 	}
 
 	params := map[string]any{
-		"instrument_name": req.Symbol,
-		"amount":          req.Vol,
-		"type":            orderType,
-		"position_side":   posSide,
+		paramInstrument: req.Symbol,
+		paramAmount:     req.Vol,
+		paramType:       orderType,
+		"position_side": posSide,
 	}
 
 	if req.Price > 0 {
@@ -143,7 +144,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 }
 
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	params := map[string]string{"order_id": orderID}
+	params := map[string]string{paramOrderID: orderID}
 	_, err := c.postRPC(ctx, "/private/cancel", "/private/cancel", params, true)
 	return err
 }
@@ -158,7 +159,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 }
 
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	params := map[string]string{"instrument_name": symbol}
+	params := map[string]string{paramInstrument: symbol}
 	_, err := c.postRPC(ctx, "/private/cancel_all_by_instrument", "/private/cancel_all_by_instrument", params, true)
 	return err
 }
@@ -188,7 +189,7 @@ func mapOrder(o *orangexOrder) *exchange.OrderInfo {
 		state = domain.OrderStateCanceled
 	}
 	side := domain.SideOpenLong
-	if o.Direction == "sell" {
+	if o.Direction == dirSell {
 		side = domain.SideOpenShort
 	}
 	return &exchange.OrderInfo{
@@ -206,7 +207,7 @@ func mapOrder(o *orangexOrder) *exchange.OrderInfo {
 }
 
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
-	params := map[string]string{"instrument_name": symbol}
+	params := map[string]string{paramInstrument: symbol}
 	resp, err := c.postRPC(ctx, "/private/get_open_orders_by_instrument", "/private/get_open_orders_by_instrument", params, true)
 	if err != nil {
 		return nil, err
