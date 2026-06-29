@@ -3,6 +3,7 @@ package xt
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -588,7 +589,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		Fee:        fee,
 		FundingFee: fundingFee,
 		DurationMs: matchedItem.CloseTime - matchedItem.OpenTime,
-		NetPnl:     grossPnL + fee - fundingFee,
+		NetPnl:     grossPnL + fee + fundingFee,
 		PnLRate:    pnlRate,
 	}, nil
 }
@@ -681,9 +682,8 @@ func (c *Client) getFundingFee(ctx context.Context, symbol string, orderCreateTi
 			if err != nil {
 				return 0, false, fmt.Errorf("parse amount: %w", err)
 			}
-			// Negate the value because negative in bills means payment,
-			// which matches positive in TotalFundFee convention.
-			return -val, true, nil
+
+			return -math.Abs(val), true, nil
 		}
 	}
 
