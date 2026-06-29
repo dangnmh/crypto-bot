@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/xjson"
 )
 
@@ -142,4 +143,117 @@ func matchAndFilter(
 		Volume24h:  vol24h,
 		Price:      price,
 	}, true
+}
+
+type orangexTicker struct {
+	InstrumentName string       `json:"instrument_name"`
+	BestBidPrice   xjson.Number `json:"best_bid_price"`
+	BestAskPrice   xjson.Number `json:"best_ask_price"`
+	LastPrice      xjson.Number `json:"last_price"`
+	Volume24h      xjson.Number `json:"volume_24h"`
+}
+
+type orangexInstrument struct {
+	InstrumentName string       `json:"instrument_name"`
+	BaseCurrency   string       `json:"base_currency"`
+	QuoteCurrency  string       `json:"quote_currency"`
+	TickSize       xjson.Number `json:"tick_size"`
+	MinTradeAmount xjson.Number `json:"min_trade_amount"`
+	ContractSize   xjson.Number `json:"contract_size"`
+	FundingRate    xjson.Number `json:"funding_rate"`
+	NextFunding    int64        `json:"next_funding_rate_timestamp"`
+}
+
+func (c *Client) rawGetTickers(ctx context.Context, instrument string) ([]orangexTicker, error) {
+	params := map[string]string{}
+	if instrument != "" {
+		params["instrument_name"] = instrument
+	}
+	resp, err := c.postRPC(ctx, "/public/tickers", "/public/tickers", params, false)
+	if err != nil {
+		return nil, err
+	}
+	var envelope orangexRPCResponse[[]orangexTicker]
+	if err := xjson.Unmarshal(resp, &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Error != nil {
+		return nil, envelope.Error
+	}
+	return envelope.Result, nil
+}
+
+func (c *Client) rawGetInstruments(ctx context.Context, kind string) ([]orangexInstrument, error) {
+	params := map[string]string{
+		"kind": kind,
+	}
+	resp, err := c.postRPC(ctx, "/public/get_instruments", "/public/get_instruments", params, false)
+	if err != nil {
+		return nil, err
+	}
+	var envelope orangexRPCResponse[[]orangexInstrument]
+	if err := xjson.Unmarshal(resp, &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Error != nil {
+		return nil, envelope.Error
+	}
+	return envelope.Result, nil
+}
+
+func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	res, err := c.rawGetTickers(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+	var out []exchange.Ticker
+	for _, t := range res {
+		out = append(out, exchange.Ticker{
+			Symbol:    t.InstrumentName,
+			Bid1:      xjson.ToFloat64(t.BestBidPrice),
+			Ask1:      xjson.ToFloat64(t.BestAskPrice),
+			LastPrice: xjson.ToFloat64(t.LastPrice),
+			Volume24:  xjson.ToFloat64(t.Volume24h),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
+	res, err := c.rawGetInstruments(ctx, "perpetual")
+	if err != nil {
+		return nil, err
+	}
+	var out []exchange.ContractDetail
+	for _, inst := range res {
+		out = append(out, exchange.ContractDetail{
+			Symbol:     inst.InstrumentName,
+			PriceScale: decmath.DecimalPlaces(inst.TickSize.String()),
+			VolScale:   decmath.DecimalPlaces(inst.MinTradeAmount.String()),
+		})
+	}
+	return out, nil
+}
+
+func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
+	res, err := c.rawGetInstruments(ctx, "perpetual")
+	if err != nil {
+		return nil, err
+	}
+	var out []exchange.FundingRateResult
+	symMap := make(map[string]bool)
+	for _, s := range symbols {
+		symMap[s] = true
+	}
+	for _, inst := range res {
+		if len(symbols) > 0 && !symMap[inst.InstrumentName] {
+			continue
+		}
+		out = append(out, exchange.FundingRateResult{
+			Symbol:     inst.InstrumentName,
+			Rate:       xjson.ToFloat64(inst.FundingRate),
+			SettleTime: inst.NextFunding,
+		})
+	}
+	return out, nil
 }
