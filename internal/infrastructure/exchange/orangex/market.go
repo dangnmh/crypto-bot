@@ -19,6 +19,7 @@ type orangexContract struct {
 	BaseCurrency             string `json:"base_currency"`
 	TargetCurrency           string `json:"target_currency"`
 	LastPrice                string `json:"last_price"`
+	BaseVolume               string `json:"base_volume"`
 	TargetVolume             string `json:"target_volume"`
 	ProductType              string `json:"product_type"`
 	FundingRate              string `json:"funding_rate"`
@@ -125,7 +126,13 @@ func matchAndFilter(
 		return exchange.PotentialFundingResult{}, false
 	}
 
+	price, _ := strconv.ParseFloat(item.LastPrice, 64)
 	vol24h, _ := strconv.ParseFloat(item.TargetVolume, 64)
+	if vol24h == 0 {
+		baseVol, _ := strconv.ParseFloat(item.BaseVolume, 64)
+		vol24h = baseVol * price
+	}
+
 	if minVol24h > 0 && vol24h < minVol24h {
 		return exchange.PotentialFundingResult{}, false
 	}
@@ -133,7 +140,6 @@ func matchAndFilter(
 		return exchange.PotentialFundingResult{}, false
 	}
 
-	price, _ := strconv.ParseFloat(item.LastPrice, 64)
 	rate, _ := strconv.ParseFloat(item.FundingRate, 64)
 
 	return exchange.PotentialFundingResult{
