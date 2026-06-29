@@ -95,7 +95,7 @@
     "bitmart": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms", // -50ms fill bad price
+      "bufferTime": "50ms", // 0ms fill bad price
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
