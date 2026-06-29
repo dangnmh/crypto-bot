@@ -202,19 +202,45 @@ func (c *Client) rawGetInstruments(ctx context.Context, kind string) ([]orangexI
 }
 
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	res, err := c.rawGetTickers(ctx, symbol)
+	if symbol != "" {
+		res, err := c.rawGetTickers(ctx, symbol)
+		if err != nil {
+			return nil, err
+		}
+		var out []exchange.Ticker
+		for _, t := range res {
+			out = append(out, exchange.Ticker{
+				Symbol:    t.InstrumentName,
+				Bid1:      xjson.ToFloat64(t.BestBidPrice),
+				Ask1:      xjson.ToFloat64(t.BestAskPrice),
+				LastPrice: xjson.ToFloat64(t.LastPrice),
+				Volume24:  xjson.ToFloat64(t.Volume24h),
+			})
+		}
+		return out, nil
+	}
+
+	// If symbol is empty, fetch all perpetual instruments first
+	instruments, err := c.rawGetInstruments(ctx, "perpetual")
 	if err != nil {
 		return nil, err
 	}
+
 	var out []exchange.Ticker
-	for _, t := range res {
-		out = append(out, exchange.Ticker{
-			Symbol:    t.InstrumentName,
-			Bid1:      xjson.ToFloat64(t.BestBidPrice),
-			Ask1:      xjson.ToFloat64(t.BestAskPrice),
-			LastPrice: xjson.ToFloat64(t.LastPrice),
-			Volume24:  xjson.ToFloat64(t.Volume24h),
-		})
+	for _, inst := range instruments {
+		res, err := c.rawGetTickers(ctx, inst.InstrumentName)
+		if err != nil {
+			continue // Skip failing tickers to avoid breaking the sync loop
+		}
+		for _, t := range res {
+			out = append(out, exchange.Ticker{
+				Symbol:    t.InstrumentName,
+				Bid1:      xjson.ToFloat64(t.BestBidPrice),
+				Ask1:      xjson.ToFloat64(t.BestAskPrice),
+				LastPrice: xjson.ToFloat64(t.LastPrice),
+				Volume24:  xjson.ToFloat64(t.Volume24h),
+			})
+		}
 	}
 	return out, nil
 }
