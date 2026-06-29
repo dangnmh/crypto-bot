@@ -115,7 +115,7 @@
     "bitunix": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "200ms", // 100ms dont get funding fee
+      "bufferTime": "300ms", // 200ms dont get funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
