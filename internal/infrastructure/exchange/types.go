@@ -65,6 +65,12 @@ const (
 	ExchangeDydx          = "dydx"
 	ExchangeAster         = "aster"
 	ExchangeBitmex        = "bitmex"
+	ExchangeHashkey       = "hashkey"
+	ExchangePhemex        = "phemex"
+	ExchangeWoo           = "woo"
+	ExchangeBlofin        = "blofin"
+	ExchangeDigifinex     = "digifinex"
+	ExchangeBydfi         = "bydfi"
 )
 
 // Side constants — delegate to domain.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"sort"
@@ -17,29 +18,40 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
+	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitfinex"
+	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
+	"crypto-bot/internal/infrastructure/exchange/blofin"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	"crypto-bot/internal/infrastructure/exchange/bydfi"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
+	"crypto-bot/internal/infrastructure/exchange/cryptocom"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
+	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
+	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
+	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
+	"crypto-bot/internal/infrastructure/exchange/woo"
 	"crypto-bot/internal/infrastructure/exchange/xt"
+	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -102,9 +114,9 @@ func main() {
 	gateClient := gate.NewClient(httpPool, "https://api.gateio.ws/api/v4", "", "", logCfg)
 	bybitClient := bybit.NewClient(httpPool, "https://api.bybit.com", "", "", "standard", logCfg)
 	okxClient := okx.NewClient(httpPool, "https://www.okx.com", "", "", "", logCfg)
-	// hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
-	// bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
-	// bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
+	hlClient := hyperliquid.NewClient(context.Background(), httpPool, "https://api.hyperliquid.xyz", "", "", logCfg)
+	bitgetClient := bitget.NewClient(httpPool, "https://api.bitget.com", "", "", "", logCfg)
+	bingxClient := bingx.NewClient(httpPool, "https://open-api.bingx.com", "", "", logCfg)
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
@@ -123,27 +135,34 @@ func main() {
 	dydxClient := dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg)
 	asterClient := aster.NewClient(httpPool, "https://fapi.asterdex.com", logCfg)
 	bitmexClient := bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg)
-	// zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
+	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
 	coinwClient := coinw.NewClient(httpPool, "https://api.coinw.com", logCfg)
 	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
 	xtClient := xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg)
+	hashkeyClient := hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default())
+	cryptocomClient := cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default())
+	wooClient := woo.NewClient(httpPool, "https://api.woox.io", slog.Default())
+	phemexClient := phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default())
+	blofinClient := blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default())
+	digifinexClient := digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default())
+	bydfiClient := bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default())
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
 	defer cancel()
 
 	allClients := map[string]ScannerClient{
-		"mexc":    mexcClient,
-		"gate":    gateClient,
-		"bybit":   bybitClient,
-		"okx":     okxClient,
-		"kucoin":  kucoinClient,
-		"binance": binanceClient,
-		// "hyperliquid": hlClient,
-		// "bitget":      bitgetClient,
-		// "bingx":       bingxClient,
-		// "zoomex":        zoomexClient,
+		"mexc":          mexcClient,
+		"gate":          gateClient,
+		"bybit":         bybitClient,
+		"okx":           okxClient,
+		"kucoin":        kucoinClient,
+		"binance":       binanceClient,
+		"hyperliquid":   hlClient,
+		"bitget":        bitgetClient,
+		"bingx":         bingxClient,
+		"zoomex":        zoomexClient,
 		"deepcoin":      deepcoinClient,
 		"toobit":        toobitClient,
 		"weex":          weexClient,
@@ -164,6 +183,13 @@ func main() {
 		"dydx":          dydxClient,
 		"aster":         asterClient,
 		"bitmex":        bitmexClient,
+		"hashkey":       hashkeyClient,
+		"cryptocom":     cryptocomClient,
+		"woo":           wooClient,
+		"phemex":        phemexClient,
+		"blofin":        blofinClient,
+		"digifinex":     digifinexClient,
+		"bydfi":         bydfiClient,
 	}
 
 	// Filter clients based on user flag

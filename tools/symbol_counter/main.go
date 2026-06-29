@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"sync"
@@ -20,13 +21,18 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
+	"crypto-bot/internal/infrastructure/exchange/blofin"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
+	"crypto-bot/internal/infrastructure/exchange/bydfi"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
+	"crypto-bot/internal/infrastructure/exchange/cryptocom"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
+	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
@@ -35,10 +41,12 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
+	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
+	"crypto-bot/internal/infrastructure/exchange/woo"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
@@ -116,6 +124,13 @@ func main() {
 		"dydx":          dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg),
 		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", logCfg),
 		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
+		"hashkey":       hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),
+		"cryptocom":     cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default()),
+		"woo":           woo.NewClient(httpPool, "https://api.woox.io", slog.Default()),
+		"phemex":        phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default()),
+		"blofin":        blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default()),
+		"digifinex":     digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default()),
+		"bydfi":         bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default()),
 	}
 
 	var results []Result

@@ -152,8 +152,8 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, 1.5, pnl.ClosedSize)
 	assert.Equal(t, 1500.0, pnl.GrossPnL)
 	assert.Equal(t, 4.5, pnl.Fee)
-	assert.Equal(t, 0.2722, pnl.FundingFee)
-	// netPnL = grossPnL + fee - fundingFee = 1500 + 4.5 - 0.2722 = 1504.2278
+	assert.Equal(t, -0.2722, pnl.FundingFee)
+	// netPnL = grossPnL + fee + fundingFee = 1500 + 4.5 + (-0.2722) = 1504.2278
 	assert.Equal(t, 1504.2278, pnl.NetPnl)
 }
 
