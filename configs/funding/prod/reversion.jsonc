@@ -61,7 +61,7 @@
     "binance": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms",
+      "bufferTime": "-100ms", // -200ms fill bad price
       "postSettleTimeout": "0.5s"
     },
     "kucoin": {
