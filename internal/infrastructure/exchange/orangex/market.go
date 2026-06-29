@@ -268,23 +268,35 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 }
 
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
-	res, err := c.rawGetInstruments(ctx, "perpetual")
+	body, err := c.request(ctx, "/public/coin_gecko_contracts")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("orangex get funding rates: %w", err)
 	}
+
+	var resp orangexResponse
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal funding rates: %w", err)
+	}
+
 	var out []exchange.FundingRateResult
 	symMap := make(map[string]bool)
 	for _, s := range symbols {
 		symMap[s] = true
 	}
-	for _, inst := range res {
-		if len(symbols) > 0 && !symMap[inst.InstrumentName] {
+
+	for i := range resp.Result {
+		item := &resp.Result[i]
+		if !strings.EqualFold(item.ProductType, "perpetual") {
 			continue
 		}
+		if len(symbols) > 0 && !symMap[item.TickerID] {
+			continue
+		}
+		rate, _ := strconv.ParseFloat(item.FundingRate, 64)
 		out = append(out, exchange.FundingRateResult{
-			Symbol:     inst.InstrumentName,
-			Rate:       xjson.ToFloat64(inst.FundingRate),
-			SettleTime: inst.NextFunding,
+			Symbol:     item.TickerID,
+			Rate:       rate,
+			SettleTime: item.NextFundingRateTimestamp,
 		})
 	}
 	return out, nil
