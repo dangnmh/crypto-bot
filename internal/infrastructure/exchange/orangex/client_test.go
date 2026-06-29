@@ -35,7 +35,7 @@ func setupMockServer() *httptest.Server {
 		case "/public/get_instruments":
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","base_currency":"BTC","quote_currency":"USDT","tick_size":"0.1","min_trade_amount":"0.001","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000000}]}`))
 		case "/public/coin_gecko_contracts":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"ticker_id":"BTC-USDT-PERPETUAL","product_type":"perpetual","target_currency":"USDT","target_volume":"10000000.0","last_price":"60000.0","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000}]}`))
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"ticker_id":"BTC-USDT-PERPETUAL","product_type":"perpetual","target_currency":"USDT","target_volume":"10000000.0","last_price":"60000.0","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000,"base_volume":"166.666","bid":"59999.0","ask":"60001.0","high":"61000.0","low":"59000.0","open_interest":"5.0","index_price":"60000.5","index_name":"BTC-USDT","index_currency":"BTC","start_timestamp":1719600000,"end_timestamp":1719600000,"next_funding_rate":"0.0002","contract_type":"Quanto","contract_price":"60000.0","contract_price_currency":"USDT"}]}`))
 		case "/private/buy", "/private/sell":
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order":{"order_id":"ord123"}}}`))
 		case "/private/get_order_state":
@@ -84,7 +84,7 @@ func TestClient_GetAccessToken(t *testing.T) {
 	}
 }
 
-func TestClient_MarketData(t *testing.T) {
+func TestClient_GetTickers(t *testing.T) {
 	t.Parallel()
 	srv := setupMockServer()
 	defer srv.Close()
@@ -98,16 +98,65 @@ func TestClient_MarketData(t *testing.T) {
 	if err != nil || len(tickers) != 1 || tickers[0].LastPrice != 60002.0 {
 		t.Fatalf("GetTickers failed: %v, tickers=%+v", err, tickers)
 	}
+	if tickers[0].AmountUSDT24 != 10.0*60002.0 {
+		t.Fatalf("AmountUSDT24 for single symbol not set correctly: got %f, want %f", tickers[0].AmountUSDT24, 10.0*60002.0)
+	}
+
+	allTickers, err := client.GetTickers(ctx, "")
+	if err != nil || len(allTickers) != 1 {
+		t.Fatalf("GetTickers (all) failed: %v, tickers=%+v", err, allTickers)
+	}
+	if allTickers[0].Symbol != "BTC-USDT-PERPETUAL" ||
+		allTickers[0].LastPrice != 60000.0 ||
+		allTickers[0].Bid1 != 59999.0 ||
+		allTickers[0].Ask1 != 60001.0 ||
+		allTickers[0].Volume24 != 166.666 ||
+		allTickers[0].AmountUSDT24 != 10000000.0 {
+		t.Fatalf("GetTickers values mapped incorrectly: %+v", allTickers[0])
+	}
+}
+
+func TestClient_GetContractDetails(t *testing.T) {
+	t.Parallel()
+	srv := setupMockServer()
+	defer srv.Close()
+
+	client := orangex.NewClient(nil, srv.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(stubClock{now: time.Unix(1719600000, 0)})
+
+	ctx := context.Background()
 
 	details, err := client.GetContractDetails(ctx)
 	if err != nil || len(details) != 1 || details[0].PriceScale != 1 {
 		t.Fatalf("GetContractDetails failed: %v, details=%+v", err, details)
 	}
+}
+
+func TestClient_GetFundingRates(t *testing.T) {
+	t.Parallel()
+	srv := setupMockServer()
+	defer srv.Close()
+
+	client := orangex.NewClient(nil, srv.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(stubClock{now: time.Unix(1719600000, 0)})
+
+	ctx := context.Background()
 
 	rates, err := client.GetFundingRates(ctx, []string{"BTC-USDT-PERPETUAL"})
 	if err != nil || len(rates) != 1 || rates[0].Rate != 0.0001 {
 		t.Fatalf("GetFundingRates failed: %v, rates=%+v", err, rates)
 	}
+}
+
+func TestClient_GetPotentialFundingSymbols(t *testing.T) {
+	t.Parallel()
+	srv := setupMockServer()
+	defer srv.Close()
+
+	client := orangex.NewClient(nil, srv.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(stubClock{now: time.Unix(1719600000, 0)})
+
+	ctx := context.Background()
 
 	potSymbols, err := client.GetPotentialFundingSymbols(ctx, 1000000.0, 0.0, nil, nil)
 	if err != nil || len(potSymbols) != 1 || potSymbols[0].Symbol != "BTC-USDT-PERPETUAL" {

@@ -53,10 +53,10 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
 				BlackListPaths: []string{
-					"GET|/public/time",
-					"GET|/public/coin_gecko_contracts",
-					"GET|/public/tickers",
+					"POST|/api/v1/public/time",
+					"GET|/api/v1/public/coin_gecko_contracts",
 					"POST|/api/v1/public/get_instruments",
+					"POST|/api/v1/public/auth",
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),

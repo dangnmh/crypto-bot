@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -15,15 +14,29 @@ import (
 )
 
 type orangexContract struct {
-	TickerID                 string `json:"ticker_id"`
-	BaseCurrency             string `json:"base_currency"`
-	TargetCurrency           string `json:"target_currency"`
-	LastPrice                string `json:"last_price"`
-	BaseVolume               string `json:"base_volume"`
-	TargetVolume             string `json:"target_volume"`
-	ProductType              string `json:"product_type"`
-	FundingRate              string `json:"funding_rate"`
-	NextFundingRateTimestamp int64  `json:"next_funding_rate_timestamp"`
+	TickerID                 string       `json:"ticker_id"`
+	BaseCurrency             string       `json:"base_currency"`
+	TargetCurrency           string       `json:"target_currency"`
+	LastPrice                xjson.Number `json:"last_price"`
+	BaseVolume               xjson.Number `json:"base_volume"`
+	TargetVolume             xjson.Number `json:"target_volume"`
+	Bid                      xjson.Number `json:"bid"`
+	Ask                      xjson.Number `json:"ask"`
+	High                     xjson.Number `json:"high"`
+	Low                      xjson.Number `json:"low"`
+	ProductType              string       `json:"product_type"`
+	OpenInterest             xjson.Number `json:"open_interest"`
+	IndexPrice               xjson.Number `json:"index_price"`
+	IndexName                string       `json:"index_name"`
+	IndexCurrency            string       `json:"index_currency"`
+	StartTimestamp           int64        `json:"start_timestamp"`
+	EndTimestamp             int64        `json:"end_timestamp"`
+	FundingRate              xjson.Number `json:"funding_rate"`
+	NextFundingRate          xjson.Number `json:"next_funding_rate"`
+	NextFundingRateTimestamp int64        `json:"next_funding_rate_timestamp"`
+	ContractType             string       `json:"contract_type"`
+	ContractPrice            xjson.Number `json:"contract_price"`
+	ContractPriceCurrency    string       `json:"contract_price_currency"`
 }
 
 type orangexResponse struct {
@@ -126,10 +139,10 @@ func matchAndFilter(
 		return exchange.PotentialFundingResult{}, false
 	}
 
-	price, _ := strconv.ParseFloat(item.LastPrice, 64)
-	vol24h, _ := strconv.ParseFloat(item.TargetVolume, 64)
+	price := xjson.ToFloat64(item.LastPrice)
+	vol24h := xjson.ToFloat64(item.TargetVolume)
 	if vol24h == 0 {
-		baseVol, _ := strconv.ParseFloat(item.BaseVolume, 64)
+		baseVol := xjson.ToFloat64(item.BaseVolume)
 		vol24h = baseVol * price
 	}
 
@@ -140,7 +153,7 @@ func matchAndFilter(
 		return exchange.PotentialFundingResult{}, false
 	}
 
-	rate, _ := strconv.ParseFloat(item.FundingRate, 64)
+	rate := xjson.ToFloat64(item.FundingRate)
 
 	return exchange.PotentialFundingResult{
 		Symbol:     item.TickerID,
@@ -215,12 +228,15 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		}
 		var out []exchange.Ticker
 		for _, t := range res {
+			lastVal := xjson.ToFloat64(t.LastPrice)
+			volVal := xjson.ToFloat64(t.Volume24h)
 			out = append(out, exchange.Ticker{
-				Symbol:    t.InstrumentName,
-				Bid1:      xjson.ToFloat64(t.BestBidPrice),
-				Ask1:      xjson.ToFloat64(t.BestAskPrice),
-				LastPrice: xjson.ToFloat64(t.LastPrice),
-				Volume24:  xjson.ToFloat64(t.Volume24h),
+				Symbol:       t.InstrumentName,
+				Bid1:         xjson.ToFloat64(t.BestBidPrice),
+				Ask1:         xjson.ToFloat64(t.BestAskPrice),
+				LastPrice:    lastVal,
+				Volume24:     volVal,
+				AmountUSDT24: volVal * lastVal,
 			})
 		}
 		return out, nil
@@ -243,15 +259,32 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		if !strings.EqualFold(item.ProductType, "perpetual") {
 			continue
 		}
-		price, _ := strconv.ParseFloat(item.LastPrice, 64)
-		vol, _ := strconv.ParseFloat(item.TargetVolume, 64)
+		price := xjson.ToFloat64(item.LastPrice)
+		baseVol := xjson.ToFloat64(item.BaseVolume)
+		quoteVol := xjson.ToFloat64(item.TargetVolume)
+		if quoteVol == 0 && baseVol > 0 {
+			quoteVol = baseVol * price
+		}
+		if baseVol == 0 && quoteVol > 0 && price > 0 {
+			baseVol = quoteVol / price
+		}
+
+		bidVal := xjson.ToFloat64(item.Bid)
+		if bidVal == 0 {
+			bidVal = price
+		}
+		askVal := xjson.ToFloat64(item.Ask)
+		if askVal == 0 {
+			askVal = price
+		}
 
 		out = append(out, exchange.Ticker{
-			Symbol:    item.TickerID,
-			Bid1:      price,
-			Ask1:      price,
-			LastPrice: price,
-			Volume24:  vol,
+			Symbol:       item.TickerID,
+			Bid1:         bidVal,
+			Ask1:         askVal,
+			LastPrice:    price,
+			Volume24:     baseVol,
+			AmountUSDT24: quoteVol,
 		})
 	}
 	return out, nil
@@ -298,7 +331,7 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		if len(symbols) > 0 && !symMap[item.TickerID] {
 			continue
 		}
-		rate, _ := strconv.ParseFloat(item.FundingRate, 64)
+		rate := xjson.ToFloat64(item.FundingRate)
 		out = append(out, exchange.FundingRateResult{
 			Symbol:     item.TickerID,
 			Rate:       rate,
