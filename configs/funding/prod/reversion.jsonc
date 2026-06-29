@@ -42,7 +42,8 @@
       "bitmart": true,
       "weex": true,
       "bitunix": true,
-      "xt": true
+      "xt": true,
+      "orangex": true
     }
   },
   "exchanges": {
@@ -131,6 +132,12 @@
       "minFundingRate": 0.3,
       "leverage": 3,
       "marginUSD": 5
+    },
+    "orangex": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "300s"
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
