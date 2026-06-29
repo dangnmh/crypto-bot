@@ -220,27 +220,33 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return out, nil
 	}
 
-	// If symbol is empty, fetch all perpetual instruments first
-	instruments, err := c.rawGetInstruments(ctx, "perpetual")
+	// If symbol is empty, use the batch coin_gecko_contracts API to get last prices in one call, avoiding rate limits.
+	body, err := c.request(ctx, "/public/coin_gecko_contracts")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("orangex get coin gecko contracts: %w", err)
+	}
+
+	var resp orangexResponse
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal orangex contracts: %w", err)
 	}
 
 	var out []exchange.Ticker
-	for _, inst := range instruments {
-		res, err := c.rawGetTickers(ctx, inst.InstrumentName)
-		if err != nil {
-			continue // Skip failing tickers to avoid breaking the sync loop
+	for i := range resp.Result {
+		item := &resp.Result[i]
+		if !strings.EqualFold(item.ProductType, "perpetual") {
+			continue
 		}
-		for _, t := range res {
-			out = append(out, exchange.Ticker{
-				Symbol:    t.InstrumentName,
-				Bid1:      xjson.ToFloat64(t.BestBidPrice),
-				Ask1:      xjson.ToFloat64(t.BestAskPrice),
-				LastPrice: xjson.ToFloat64(t.LastPrice),
-				Volume24:  xjson.ToFloat64(t.Volume24h),
-			})
-		}
+		price, _ := strconv.ParseFloat(item.LastPrice, 64)
+		vol, _ := strconv.ParseFloat(item.TargetVolume, 64)
+
+		out = append(out, exchange.Ticker{
+			Symbol:    item.TickerID,
+			Bid1:      price,
+			Ask1:      price,
+			LastPrice: price,
+			Volume24:  vol,
+		})
 	}
 	return out, nil
 }
