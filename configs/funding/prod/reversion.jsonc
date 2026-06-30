@@ -90,13 +90,15 @@
       "stopLossPct": 2,
       "bufferTime": "500ms", // 400ms dont get funding fee
       "postSettleTimeout": "0.5s",
-      "minVol24USD": 1000000,
-      "minFundingRate": 0.5
+      "minVol24USD": 5000000,
+      "minFundingRate": 0.8,
+      "leverage": 5,
+      "marginUSD": 100
     },
     "bitmart": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "100ms", // 50ms fill bad price
+      "bufferTime": "0ms", // 50ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -118,10 +120,6 @@
       "stopLossPct": 2,
       "bufferTime": "250ms", // 200ms dont get funding fee 300ms paid funding fee
       "postSettleTimeout": "0.5s",
-      "minVol24USD": 1000000,
-      "minFundingRate": 0.3,
-      "leverage": 3,
-      "marginUSD": 5
     },
     "xt": {
       "takeProfitPct": 1,

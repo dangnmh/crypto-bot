@@ -1092,6 +1092,62 @@
     {
       "collapsed": false,
       "gridPos": {
+        "x": 16,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      },
+      "id": 30,
+      "title": "Win Rate by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, COUNT(CASE WHEN net_profit > 0 THEN 1 END) AS wins FROM reversion_trade_reports WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
         "x": 0,
         "y": 44,
         "w": 8,
