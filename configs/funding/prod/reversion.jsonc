@@ -89,10 +89,10 @@
       "stopLossPct": 2,
       "bufferTime": "500ms", // 400ms dont get funding fee
       "postSettleTimeout": "0.5s",
-      "minVol24USD": 5000000,
+      "minVol24USD": 10000000,
       "minFundingRate": 0.8,
-      "leverage": 5,
-      "marginUSD": 100
+      "leverage": 8,
+      "marginUSD": 500
     },
     "bitmart": {
       "takeProfitPct": 1,
