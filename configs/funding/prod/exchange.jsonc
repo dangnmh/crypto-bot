@@ -96,7 +96,7 @@
       }
     },
     "bitunix": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://fapi.bitunix.com"
       },
