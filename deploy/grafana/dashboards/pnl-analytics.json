@@ -1150,7 +1150,7 @@
       "gridPos": {
         "x": 0,
         "y": 44,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "id": 24,
@@ -1204,9 +1204,9 @@
     {
       "collapsed": false,
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 44,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "id": 25,
@@ -1236,6 +1236,118 @@
           },
           "mappings": [],
           "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "id": 31,
+      "title": "Complete Trade by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, COUNT(*) AS count FROM reversion_trade_reports WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 18,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "id": 32,
+      "title": "Trade by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, COUNT(*) AS count FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
         },
         "overrides": []
       },
