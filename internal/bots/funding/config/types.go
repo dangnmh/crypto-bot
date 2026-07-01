@@ -91,6 +91,7 @@ type ExchangeReversionConfig struct {
 	MarginUSD         float64        `json:"marginUSD"`
 	MinVol24USD       float64        `json:"minVol24USD"`
 	MinFundingRate    float64        `json:"minFundingRate"`
+	MaxCandidateTrade int            `json:"maxCandidateTrade"`
 }
 
 type BlacklistConfig map[string][]string

@@ -12,7 +12,8 @@
     "leverage": 5,
     "marginUSD": 3,
     "minVol24USD": 1000000,
-    "minFundingRate": 0
+    "minFundingRate": 0,
+    "maxCandidateTrade": 1
   },
   "sync": {
     "time": "60s",

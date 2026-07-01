@@ -717,3 +717,66 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 		assert.Empty(t, opportunities) // Skipped because it's a SHORT candidate and config is LONG
 	})
 }
+
+func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+
+	settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
+
+	// Mock GetPotentialFundingSymbols to return 3 symbols
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]exchange.PotentialFundingResult{
+		{Symbol: "SOL_USDT", Rate: 0.003, SettleTime: settleTime, Volume24h: 1000000},
+		{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: settleTime, Volume24h: 2000000},
+		{Symbol: "ETH_USDT", Rate: 0.004, SettleTime: settleTime, Volume24h: 1500000},
+	}, nil)
+
+	// Mock GetTickers
+	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
+		{Symbol: "BTC_USDT", LastPrice: 50000, AmountUSDT24: 2000000},
+		{Symbol: "ETH_USDT", LastPrice: 3000, AmountUSDT24: 1500000},
+		{Symbol: "SOL_USDT", LastPrice: 100, AmountUSDT24: 1000000},
+	}, nil)
+
+	// Mock GetContractDetails
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1},
+		{Symbol: "ETH_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1},
+		{Symbol: "SOL_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1},
+	}, nil)
+
+	// Configure total marginUSD = 11 and maxCandidateTrade = 2
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD:       1000000,
+					MarginUSD:         11.0,
+					MaxCandidateTrade: 2,
+				},
+			},
+		},
+	}
+
+	scanner := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+
+	// We have maxCandidateTrade = 2, so it must return 2 opportunities (BTC_USDT and ETH_USDT) sorted by funding rate
+	require.Len(t, opportunities, 2)
+	assert.Equal(t, "BTC_USDT", opportunities[0].Candidate.Symbol)
+	assert.Equal(t, "ETH_USDT", opportunities[1].Candidate.Symbol)
+
+	// Allocated margin: int(11.0 / 2) = 5.0
+	assert.Equal(t, 5.0, opportunities[0].Candidate.Config.MarginUSDT)
+	assert.Equal(t, 5.0, opportunities[1].Candidate.Config.MarginUSDT)
+}

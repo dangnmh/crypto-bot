@@ -66,6 +66,16 @@ func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath string
 	}
 	cfg.Reversion = reversionCfg
 
+	if cfg.Reversion.Default.MaxCandidateTrade <= 0 {
+		cfg.Reversion.Default.MaxCandidateTrade = 1
+	}
+	for name, exch := range cfg.Reversion.Exchanges {
+		if exch.MaxCandidateTrade <= 0 {
+			exch.MaxCandidateTrade = cfg.Reversion.Default.MaxCandidateTrade
+			cfg.Reversion.Exchanges[name] = exch
+		}
+	}
+
 	if cfg.Reversion.Sync.FundingSync <= 0 {
 		cfg.Reversion.Sync.FundingSync = types.Duration(30 * time.Second)
 	}
@@ -164,7 +174,7 @@ func newValidator() *validator.Validate {
 	return validate
 }
 
-func mergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
+func MergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
 	if src.TakeProfitPct > 0 {
 		dest.TakeProfitPct = src.TakeProfitPct
 	}
@@ -189,6 +199,9 @@ func mergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeRev
 	if src.MinFundingRate > 0 {
 		dest.MinFundingRate = src.MinFundingRate
 	}
+	if src.MaxCandidateTrade > 0 {
+		dest.MaxCandidateTrade = src.MaxCandidateTrade
+	}
 }
 
 func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
@@ -198,7 +211,7 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 
 	// Override with exchange-specific settings if present
 	if specific, exists := d.Exchanges[exchName]; exists {
-		mergeExchangeReversionConfig(&exchConfig, specific)
+		MergeExchangeReversionConfig(&exchConfig, specific)
 	}
 
 	if sc.MaxPriceDiffPercent == 0 {

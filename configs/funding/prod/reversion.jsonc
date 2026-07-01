@@ -12,7 +12,8 @@
     "leverage": 6,
     "marginUSD": 5,
     "minVol24USD": 5000000,
-    "minFundingRate": 0.8
+    "minFundingRate": 0.8,
+    "maxCandidateTrade": 1
   },
   "sync": {
     "time": "60s",
@@ -88,12 +89,13 @@
     "toobit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "400ms", // 500ms paid funding fee
+      "bufferTime": "450ms", // 500ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 10000000,
       "minFundingRate": 0.8,
       "leverage": 8,
-      "marginUSD": 500
+      "marginUSD": 500,
+      "maxCandidateTrade": 2
     },
     "bitmart": {
       "takeProfitPct": 1,
@@ -119,7 +121,7 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "250ms", // 200ms dont get funding fee 300ms paid funding fee
-      "postSettleTimeout": "0.5s",
+      "postSettleTimeout": "0.5s"
     },
     "xt": {
       "takeProfitPct": 1,

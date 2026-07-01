@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -487,28 +488,70 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		}
 	}
 
-	return selectBestOpportunity(opportunities), nil
+	return s.selectBestOpportunities(opportunities), nil
 }
 
-func selectBestOpportunity(opportunities []ScanOpportunity) []ScanOpportunity {
+func (s *ScheduleScanner) selectBestOpportunities(opportunities []ScanOpportunity) []ScanOpportunity {
 	if len(opportunities) == 0 {
 		return nil
 	}
 
-	bestIdx := 0
-	for i := 1; i < len(opportunities); i++ {
-		rateI := math.Abs(opportunities[i].Candidate.FundingRate)
-		rateBest := math.Abs(opportunities[bestIdx].Candidate.FundingRate)
-		if rateI > rateBest {
-			bestIdx = i
-		} else if rateI == rateBest {
-			if opportunities[i].Candidate.AmountUSDT24 > opportunities[bestIdx].Candidate.AmountUSDT24 {
-				bestIdx = i
+	// 1. Resolve configuration values for s.exchange
+	totalMarginUSD := 0.0
+	maxCandidate := 1 // default fallback
+
+	var exchConfig config.ExchangeReversionConfig
+	if s.cfg.Reversion != nil {
+		exchConfig = s.cfg.Reversion.Default
+		if specific, exists := s.cfg.Reversion.Exchanges[s.exchange]; exists {
+			config.MergeExchangeReversionConfig(&exchConfig, specific)
+		}
+	}
+	if exchConfig.MarginUSD > 0 {
+		totalMarginUSD = exchConfig.MarginUSD
+	}
+	if exchConfig.MaxCandidateTrade > 0 {
+		maxCandidate = exchConfig.MaxCandidateTrade
+	}
+
+	if totalMarginUSD <= 0 {
+		for i := range s.cfg.Symbols {
+			sym := &s.cfg.Symbols[i]
+			if strings.EqualFold(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
+				totalMarginUSD = sym.MarginUSDT
+				break
 			}
 		}
 	}
+	if totalMarginUSD <= 0 {
+		totalMarginUSD = 3.0 // hard fallback
+	}
 
-	return []ScanOpportunity{opportunities[bestIdx]}
+	// 2. Sort opportunities by absolute funding rate descending, tie-breaking by 24h volume descending
+	sort.Slice(opportunities, func(i, j int) bool {
+		rateI := math.Abs(opportunities[i].Candidate.FundingRate)
+		rateJ := math.Abs(opportunities[j].Candidate.FundingRate)
+		if rateI != rateJ {
+			return rateI > rateJ
+		}
+		return opportunities[i].Candidate.AmountUSDT24 > opportunities[j].Candidate.AmountUSDT24
+	})
+
+	// 3. Limit to maxCandidate config
+	numToTrade := min(len(opportunities), maxCandidate)
+	if numToTrade == 0 {
+		return nil
+	}
+
+	// 4. Divide budget evenly and assign integer margin to candidate configurations
+	allocatedMargin := float64(int(totalMarginUSD / float64(numToTrade)))
+	selected := opportunities[:numToTrade]
+
+	for i := range selected {
+		selected[i].Candidate.Config.MarginUSDT = allocatedMargin
+	}
+
+	return selected
 }
 
 func (s *ScheduleScanner) processResult(
