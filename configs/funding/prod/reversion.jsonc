@@ -41,7 +41,7 @@
       "toobit": true,
       "bitmart": true,
       "weex": true,
-      "bitunix": true,
+      "bitunix": false, // exchange restricted
       "xt": true
     }
   },
