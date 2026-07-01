@@ -95,7 +95,7 @@
       "minFundingRate": 0.8,
       "leverage": 8,
       "marginUSD": 500,
-      "maxCandidateTrade": 2
+      "maxCandidateTrade": 3
     },
     "bitmart": {
       "takeProfitPct": 1,
