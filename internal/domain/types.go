@@ -237,6 +237,13 @@ const (
 	OpenTypeCross    OpenType = 2
 )
 
+type MarginMode string
+
+const (
+	MarginModeIsolated MarginMode = "ISOLATED"
+	MarginModeCross    MarginMode = "CROSS"
+)
+
 // ──────────────────────────────────────────────────────────────────────
 // PositionMode — position mode setting
 // ──────────────────────────────────────────────────────────────────────.

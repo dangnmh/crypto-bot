@@ -243,7 +243,11 @@ func (c *Client) heartbeat(ctx context.Context) {
 			if strPayload, ok := c.pingPayload.(string); ok {
 				err = c.conn.WriteMessage(websocket.TextMessage, []byte(strPayload))
 			} else {
-				err = c.conn.WriteJSON(c.pingPayload)
+				var data []byte
+				data, err = json.Marshal(c.pingPayload)
+				if err == nil {
+					err = c.conn.WriteMessage(websocket.TextMessage, data)
+				}
 			}
 			if err != nil {
 				c.logger.WarnContext(ctx, "🟡 Heartbeat ping failed", slog.Any("error", err))
@@ -292,6 +296,9 @@ func (c *Client) readLoop(ctx context.Context) {
 
 // processMessage parses and dispatches a single WebSocket message.
 func (c *Client) processMessage(data []byte) {
+	if strings.ToLower(strings.TrimSpace(string(data))) == "pong" {
+		return
+	}
 	if c.customPingHandler != nil {
 		c.mu.Lock()
 		conn := c.conn
@@ -348,7 +355,11 @@ func (c *Client) SendJSON(msg any) error {
 	if c.conn == nil {
 		return nil
 	}
-	return c.conn.WriteJSON(msg)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.conn.WriteMessage(websocket.TextMessage, data)
 }
 
 // OnMessage registers a handler for a specific channel.

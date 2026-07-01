@@ -76,7 +76,7 @@ func (s *stubClient) ClosePosition(ctx context.Context, symbol string, closeSide
 func (s *stubClient) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
 	return nil
 }
-func (s *stubClient) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (s *stubClient) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	return nil
 }
 func (s *stubClient) WarmUp(ctx context.Context, interval time.Duration) {}
@@ -190,7 +190,7 @@ func (s *stubClientNoClosedPnL) ClosePosition(ctx context.Context, symbol string
 func (s *stubClientNoClosedPnL) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
 	return nil
 }
-func (s *stubClientNoClosedPnL) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (s *stubClientNoClosedPnL) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	return nil
 }
 func (s *stubClientNoClosedPnL) WarmUp(ctx context.Context, interval time.Duration) {}

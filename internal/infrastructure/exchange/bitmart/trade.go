@@ -38,6 +38,6 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // SwitchMarginMode sets margin mode (CROSS or ISOLATED). Bitmart does it per order so this is a no-op.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	return nil
 }

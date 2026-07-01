@@ -3,6 +3,9 @@ package orangex
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -26,6 +29,7 @@ type orangexOrder struct {
 	InstrumentName    string       `json:"instrument_name"`
 	Direction         string       `json:"direction"`
 	CustomOrderID     string       `json:"custom_order_id"`
+	PositionSide      string       `json:"position_side"`
 }
 
 type userTrade struct {
@@ -181,16 +185,33 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 }
 
 func mapOrder(o *orangexOrder) *exchange.OrderInfo {
-	state := domain.OrderStateNew
+	state := exchange.OrderStateNew
 	switch o.OrderState {
 	case "filled":
-		state = domain.OrderStateFilled
+		state = exchange.OrderStateFilled
 	case "canceled":
-		state = domain.OrderStateCanceled
+		state = exchange.OrderStateCanceled
 	}
-	side := domain.SideOpenLong
-	if o.Direction == dirSell {
-		side = domain.SideOpenShort
+	var side domain.Side
+	switch strings.ToUpper(o.PositionSide) {
+	case posSideLong:
+		if o.Direction == dirBuy {
+			side = domain.SideOpenLong
+		} else {
+			side = domain.SideCloseLong
+		}
+	case posSideShort:
+		if o.Direction == dirSell {
+			side = domain.SideOpenShort
+		} else {
+			side = domain.SideCloseShort
+		}
+	default:
+		// Fallback to existing logic if position_side is not set/unknown
+		side = domain.SideOpenLong
+		if o.Direction == dirSell {
+			side = domain.SideOpenShort
+		}
 	}
 	return &exchange.OrderInfo{
 		OrderID:      o.OrderID,
@@ -226,9 +247,15 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	return out, nil
 }
 
-func (c *Client) rawGetUserTradesByOrder(ctx context.Context, orderID string) ([]userTrade, error) {
-	params := map[string]string{"order_id": orderID}
-	resp, err := c.postRPC(ctx, "/private/get_user_trades_by_order", "/private/get_user_trades_by_order", params, true)
+func (c *Client) rawGetUserTradesByInstrument(ctx context.Context, symbol string, startTimestamp int64) ([]userTrade, error) {
+	params := map[string]any{
+		"instrument_name": symbol,
+		paramCount:        100,
+	}
+	if startTimestamp > 0 {
+		params["start_timestamp"] = startTimestamp
+	}
+	resp, err := c.postRPC(ctx, "/private/get_user_trades_by_instrument", "/private/get_user_trades_by_instrument", params, true)
 	if err != nil {
 		return nil, err
 	}
@@ -242,65 +269,234 @@ func (c *Client) rawGetUserTradesByOrder(ctx context.Context, orderID string) ([
 	return envelope.Result.Trades, nil
 }
 
+type aggregatedTradesResult struct {
+	openQty         float64
+	openPriceVol    float64
+	openFee         float64
+	closeQty        float64
+	closePriceVol   float64
+	closeFee        float64
+	closeLatestTime int64
+	isLong          bool
+}
+
+func matchClosingTrades(closingTrades []userTrade, openQty float64) (closeQty, closePriceVol, closeFee float64, closeLatestTime int64) {
+	for _, t := range closingTrades {
+		needed := openQty - closeQty
+		if needed <= 0 {
+			break
+		}
+		amt := xjson.ToFloat64(t.Amount)
+		price := xjson.ToFloat64(t.Price)
+		fee := xjson.ToFloat64(t.Fee)
+
+		if amt <= needed {
+			closeQty += amt
+			closePriceVol += price * amt
+			closeFee += fee
+			if t.Timestamp > closeLatestTime {
+				closeLatestTime = t.Timestamp
+			}
+		} else {
+			closePriceVol += price * needed
+			closeFee += fee * (needed / amt)
+			closeQty = openQty
+			if t.Timestamp > closeLatestTime {
+				closeLatestTime = t.Timestamp
+			}
+			break
+		}
+	}
+	return
+}
+
+func aggregateTrades(orderInfo *exchange.OrderInfo, trades []userTrade) (aggregatedTradesResult, error) {
+	var openTrades []userTrade
+	var potentialCloseTrades []userTrade
+
+	for _, t := range trades {
+		if t.OrderID == orderInfo.OrderID {
+			openTrades = append(openTrades, t)
+		} else {
+			potentialCloseTrades = append(potentialCloseTrades, t)
+		}
+	}
+
+	if len(openTrades) == 0 {
+		return aggregatedTradesResult{}, fmt.Errorf("no opening trades found for order %s", orderInfo.OrderID)
+	}
+
+	var res aggregatedTradesResult
+	openDir := openTrades[0].Direction
+	res.isLong = (openDir == dirBuy)
+
+	var openLatestTime int64
+	for _, t := range openTrades {
+		amt := xjson.ToFloat64(t.Amount)
+		price := xjson.ToFloat64(t.Price)
+		fee := xjson.ToFloat64(t.Fee)
+		res.openQty += amt
+		res.openPriceVol += price * amt
+		res.openFee += fee
+		if t.Timestamp > openLatestTime {
+			openLatestTime = t.Timestamp
+		}
+	}
+
+	closeDir := dirSell
+	if openDir == dirSell {
+		closeDir = dirBuy
+	}
+
+	switch orderInfo.Side {
+	case domain.SideOpenLong:
+		closeDir = dirSell
+	case domain.SideOpenShort:
+		closeDir = dirBuy
+	case domain.SideCloseLong, domain.SideCloseShort, domain.SideUnknown:
+		// Not opening sides
+	}
+
+	var closingTrades []userTrade
+	for _, t := range potentialCloseTrades {
+		isCloseTrade := (t.Direction == closeDir)
+		if isCloseTrade && t.Timestamp >= openLatestTime {
+			closingTrades = append(closingTrades, t)
+		}
+	}
+
+	sort.Slice(closingTrades, func(i, j int) bool {
+		return closingTrades[i].Timestamp < closingTrades[j].Timestamp
+	})
+
+	res.closeQty, res.closePriceVol, res.closeFee, res.closeLatestTime = matchClosingTrades(closingTrades, res.openQty)
+
+	if res.closeQty == 0 {
+		return aggregatedTradesResult{}, fmt.Errorf("no closing trades found for symbol %s and opening order %s", orderInfo.Symbol, orderInfo.OrderID)
+	}
+
+	return res, nil
+}
+
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("get order details: %w", err)
 	}
 
-	if orderInfo.State == domain.OrderStateCanceled && orderInfo.DealVol == 0 {
+	if orderInfo.State == exchange.OrderStateCanceled && orderInfo.DealVol == 0 {
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,
 		}, nil
 	}
 
-	trades, err := c.rawGetUserTradesByOrder(ctx, orderID)
+	trades, err := c.rawGetUserTradesByInstrument(ctx, symbol, orderInfo.CreateTime)
 	if err != nil {
 		return nil, err
 	}
 
-	totalQty := 0.0
-	totalFee := 0.0
-	sumPriceQty := 0.0
-	lastTime := int64(0)
+	agg, err := aggregateTrades(orderInfo, trades)
+	if err != nil {
+		return nil, err
+	}
 
-	for _, t := range trades {
-		qty := xjson.ToFloat64(t.Amount)
-		price := xjson.ToFloat64(t.Price)
-		totalQty += qty
-		totalFee += xjson.ToFloat64(t.Fee)
-		sumPriceQty += price * qty
-		if t.Timestamp > lastTime {
-			lastTime = t.Timestamp
+	entryPrice := agg.openPriceVol / agg.openQty
+	exitPrice := agg.closePriceVol / agg.closeQty
+	closedSize := agg.closeQty
+	totalFee := agg.openFee + agg.closeFee
+
+	grossPnL := 0.0
+	if agg.isLong {
+		grossPnL = (exitPrice - entryPrice) * closedSize
+	} else {
+		grossPnL = (entryPrice - exitPrice) * closedSize
+	}
+	fundingFee, err := c.getFundingFee(ctx, orderInfo.CreateTime)
+	if err != nil {
+		c.logger.Debug("Failed to fetch funding fee from transaction log", "error", err)
+		fundingFee = 0.0
+	}
+	netPnL := grossPnL - totalFee - fundingFee
+
+	pnlRate := 0.0
+	if entryPrice > 0 {
+		if agg.isLong {
+			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
+		} else {
+			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
 		}
 	}
 
-	if totalQty == 0 {
-		return nil, fmt.Errorf("no trades found for order %s", orderID)
-	}
-
-	averagePrice := sumPriceQty / totalQty
 	durationMs := int64(0)
-	if orderInfo.CreateTime > 0 && lastTime > orderInfo.CreateTime {
-		durationMs = lastTime - orderInfo.CreateTime
+	if agg.closeLatestTime > orderInfo.CreateTime {
+		durationMs = agg.closeLatestTime - orderInfo.CreateTime
 	}
-
-	// Gross PnL
-	grossPnL := 0.0
-	netPnL := 0.0 - totalFee
-	pnlRate := 0.0
 
 	return &exchange.ClosedPnLInfo{
 		Exchange:   exchangeName,
 		Symbol:     symbol,
-		EntryPrice: averagePrice,
-		ExitPrice:  averagePrice,
-		ClosedSize: totalQty,
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: closedSize,
 		GrossPnL:   grossPnL,
 		Fee:        totalFee,
+		FundingFee: fundingFee,
 		NetPnl:     netPnL,
 		PnLRate:    pnlRate,
 		DurationMs: durationMs,
 	}, nil
+}
+
+type orangexLogItem struct {
+	ID         string       `json:"id"`
+	Type       string       `json:"type"`
+	Change     xjson.Number `json:"change"`
+	CoinType   string       `json:"coin_type"`
+	AssetType  string       `json:"asset_type"`
+	CreateTime xjson.Number `json:"create_time"`
+}
+
+type orangexTransactionLogResult struct {
+	Total int              `json:"total"`
+	Logs  []orangexLogItem `json:"logs"`
+}
+
+type orangexTransactionLogResponse struct {
+	JsonRpc string                      `json:"jsonrpc"`
+	Result  orangexTransactionLogResult `json:"result"`
+}
+
+func (c *Client) getFundingFee(ctx context.Context, orderCreateTime int64) (float64, error) {
+	if orderCreateTime == 0 {
+		return 0, nil
+	}
+
+	params := map[string]string{
+		paramCurrency: "USDT",
+		"start_time":  strconv.FormatInt(orderCreateTime, 10),
+		paramCount:    "50",
+	}
+
+	bodyBytes, err := c.GetTransactionLogRaw(ctx, params)
+	if err != nil {
+		return 0, fmt.Errorf("fetch transaction log: %w", err)
+	}
+
+	var resp orangexTransactionLogResponse
+	if err := xjson.Unmarshal(bodyBytes, &resp); err != nil {
+		return 0, fmt.Errorf("unmarshal transaction log response: %w", err)
+	}
+
+	var totalFunding float64
+	for _, item := range resp.Result.Logs {
+		if strings.EqualFold(item.Type, "perpetual_funding") {
+			val := xjson.ToFloat64(item.Change)
+			// Negate the value because negative change in logs (payment) matches
+			// positive in internal sign convention (TotalFee/HoldFee)
+			totalFunding += -val
+		}
+	}
+
+	return totalFunding, nil
 }

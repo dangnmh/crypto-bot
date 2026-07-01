@@ -116,13 +116,13 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Bybit.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	if strings.EqualFold(c.accountType, "unified") {
-		return c.switchUnifiedMarginMode(ctx, marginMode)
+		return c.switchUnifiedMarginMode(ctx, string(marginMode))
 	}
 
 	tradeMode := 1 // isolated
-	if marginMode == constantCross {
+	if marginMode == domain.MarginModeCross {
 		tradeMode = 0 // cross
 	}
 	leverageStr := fmt.Sprintf("%d", leverage)

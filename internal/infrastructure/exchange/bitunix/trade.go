@@ -73,9 +73,9 @@ func (c *Client) rawChangeLeverage(ctx context.Context, symbol string, leverage 
 }
 
 // SwitchMarginMode changes the margin mode for a symbol (Isolated vs Cross).
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	modeStr := "ISOLATION"
-	if strings.EqualFold(marginMode, "CROSS") {
+	if marginMode == domain.MarginModeCross {
 		modeStr = "CROSS"
 	}
 

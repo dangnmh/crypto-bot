@@ -20,7 +20,7 @@ type positionResult struct {
 
 func (c *Client) rawGetPositions(ctx context.Context, currency, kind string) ([]positionResult, error) {
 	params := map[string]string{
-		"currency": currency,
+		paramCurrency: currency,
 	}
 	if kind != "" {
 		params["kind"] = kind
@@ -40,7 +40,7 @@ func (c *Client) rawGetPositions(ctx context.Context, currency, kind string) ([]
 }
 
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	res, err := c.rawGetPositions(ctx, "USDT", "perpetual")
+	res, err := c.rawGetPositions(ctx, "PERPETUAL", "perpetual")
 	if err != nil {
 		return nil, err
 	}

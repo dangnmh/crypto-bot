@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -60,7 +60,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),
-			transportlog.LogOptionRedactSensitiveKeys([]string{paramAccessToken, "client_secret", "signature", "Authorization"}),
+			transportlog.LogOptionRedactSensitiveKeys([]string{paramAccessToken, paramClientSecret, "signature", "Authorization"}),
 			transportlog.LogOptionQueryParams(true),
 		)
 		clientCopy.Transport = rt
@@ -106,10 +106,16 @@ func (e *orangexError) Error() string {
 	return fmt.Sprintf("OrangeX error %d: %s", e.Code, e.Message)
 }
 
+var requestID atomic.Int64
+
+func nextRequestID() int64 {
+	return requestID.Add(1)
+}
+
 func (c *Client) postRPC(ctx context.Context, path, method string, params any, signed bool) ([]byte, error) {
 	reqBody := orangexRPCRequest{
 		JsonRpc: rpcVersion,
-		ID:      time.Now().UnixNano(),
+		ID:      nextRequestID(),
 		Method:  method,
 		Params:  params,
 	}
@@ -144,7 +150,7 @@ func (c *Client) postRPC(ctx context.Context, path, method string, params any, s
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized {
+		if resp.StatusCode == http.StatusUnauthorized && signed {
 			c.tokenMu.Lock()
 			c.tokenExpiry = 0 // Invalidate cache
 			c.tokenMu.Unlock()
@@ -197,7 +203,7 @@ type authResult struct {
 
 func (c *Client) refreshToken(ctx context.Context) error {
 	params := authParams{
-		GrantType:    "client_credentials",
+		GrantType:    grantClientCredentials,
 		ClientID:     c.apiKey,
 		ClientSecret: c.apiSecret,
 	}
@@ -256,5 +262,9 @@ func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]stri
 }
 
 func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	return c.RawRequest(ctx, "POST", "/private/get_user_trades_by_order", params, nil)
+	return c.RawRequest(ctx, "POST", "/private/get_user_trades_by_instrument", params, nil)
+}
+
+func (c *Client) GetTransactionLogRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, "POST", "/private/get_transaction_log", params, nil)
 }

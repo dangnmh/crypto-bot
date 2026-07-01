@@ -134,8 +134,12 @@
     "orangex": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "300s"
+      "bufferTime": "0ms",
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 3,
+      "marginUSD": 5
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

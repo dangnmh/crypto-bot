@@ -58,9 +58,9 @@ func (c *Client) rawSwitchMarginMode(ctx context.Context, req binanceSwitchMargi
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Binance.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	var mode = "ISOLATED"
-	if marginMode == "CROSS" {
+	if marginMode == domain.MarginModeCross {
 		mode = "CROSSED"
 	}
 

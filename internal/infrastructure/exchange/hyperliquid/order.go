@@ -349,11 +349,11 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Hyperliquid.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	if c.exchange == nil {
 		return fmt.Errorf("trading is disabled: exchange signer is not configured")
 	}
-	isCross := marginMode == "CROSS"
+	isCross := marginMode == domain.MarginModeCross
 	_, err := c.changeRawLeverage(ctx, hyperliquidUpdateLeverageRequest{
 		Leverage: leverage,
 		Symbol:   symbol,

@@ -297,10 +297,29 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	}
 	var out []exchange.ContractDetail
 	for _, inst := range res {
+		contractSize := xjson.ToFloat64(inst.ContractSize)
+		if contractSize <= 0 {
+			contractSize = 1.0
+		}
+		priceUnit := xjson.ToFloat64(inst.TickSize)
+		minVolVal := xjson.ToFloat64(inst.MinTradeAmount)
+
 		out = append(out, exchange.ContractDetail{
-			Symbol:     inst.InstrumentName,
-			PriceScale: decmath.DecimalPlaces(inst.TickSize.String()),
-			VolScale:   decmath.DecimalPlaces(inst.MinTradeAmount.String()),
+			Symbol:        inst.InstrumentName,
+			DisplayName:   inst.InstrumentName,
+			DisplayNameEn: inst.InstrumentName,
+			BaseCoin:      inst.BaseCurrency,
+			QuoteCoin:     inst.QuoteCurrency,
+			SettleCoin:    inst.QuoteCurrency,
+			ContractSize:  contractSize,
+			MinLeverage:   1,
+			MaxLeverage:   100,
+			PriceUnit:     priceUnit,
+			MinVol:        int(minVolVal),
+			VolUnit:       int(minVolVal),
+			PriceScale:    decmath.DecimalPlaces(inst.TickSize.String()),
+			VolScale:      decmath.DecimalPlaces(inst.MinTradeAmount.String()),
+			State:         1,
 		})
 	}
 	return out, nil

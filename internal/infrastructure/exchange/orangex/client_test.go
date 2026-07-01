@@ -2,8 +2,11 @@ package orangex_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,37 +25,95 @@ func (s stubClock) Now() time.Time {
 }
 
 func setupMockServer() *httptest.Server {
+	handlers := map[string]func(w http.ResponseWriter, r *http.Request){
+		"/public/auth": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"access_token":"mock_tok","expires_in":3600}}`))
+		},
+		"/public/time": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"1719600000"}`))
+		},
+		"/public/tickers": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","best_bid_price":"60000","best_ask_price":"60005","last_price":"60002","volume_24h":"10"}]}`))
+		},
+		"/public/get_instruments": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","base_currency":"BTC","quote_currency":"USDT","tick_size":"0.1","min_trade_amount":"0.001","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000000}]}`))
+		},
+		"/public/coin_gecko_contracts": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"ticker_id":"BTC-USDT-PERPETUAL","product_type":"perpetual","target_currency":"USDT","target_volume":"10000000.0","last_price":"60000.0","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000,"base_volume":"166.666","bid":"59999.0","ask":"60001.0","high":"61000.0","low":"59000.0","open_interest":"5.0","index_price":"60000.5","index_name":"BTC-USDT","index_currency":"BTC","start_timestamp":1719600000,"end_timestamp":1719600000,"next_funding_rate":"0.0002","contract_type":"Quanto","contract_price":"60000.0","contract_price_currency":"USDT"}]}`))
+		},
+		"/private/buy": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order":{"order_id":"ord123"}}}`))
+		},
+		"/private/sell": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order":{"order_id":"ord123"}}}`))
+		},
+		"/private/get_order_state": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order_id":"ord123","order_state":"filled","amount":"1.0","price":"60000.0","filled_amount":"1.0","average_price":"60000.0","creation_timestamp":1719600000000,"instrument_name":"BTC-USDT-PERPETUAL","direction":"buy","custom_order_id":"cust123"}}`))
+		},
+		"/private/cancel": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
+		},
+		"/private/cancel_all_by_instrument": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
+		},
+		"/private/get_open_orders_by_instrument": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"order_id":"ord123","order_state":"untriggered","amount":"1.0","price":"60000.0","filled_amount":"0.0","average_price":"0.0","creation_timestamp":1719600000000,"instrument_name":"BTC-USDT-PERPETUAL","direction":"buy","custom_order_id":"cust123"}]}`))
+		},
+		"/private/get_positions": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","direction":"buy","size":"1.0","average_price":"60000.0","leverage":"10","margin":"6000.0"}]}`))
+		},
+		"/private/close_position": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order":{"order_id":"ordclose"}}}`))
+		},
+		"/private/adjust_perpetual_leverage": func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req struct {
+				Params struct {
+					InstrumentName string `json:"instrument_name"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(bodyBytes, &req)
+			if req.Params.InstrumentName == "ERROR-5147" {
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","error":{"code":5147,"message":"Unsupported operation on current position mode"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
+		},
+		"/private/adjust_perpetual_margin_type": func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req struct {
+				Params struct {
+					MarginType string `json:"margin_type"`
+				} `json:"params"`
+			}
+			_ = json.Unmarshal(bodyBytes, &req)
+			if req.Params.MarginType != "isolate" && req.Params.MarginType != "cross" {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params: missing or invalid margin_type"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
+		},
+		"/private/get_user_trades_by_instrument": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"trades":[
+				{"amount":"1.0","direction":"buy","fee":"1.2","fee_coin_type":"USDT","instrument_name":"BTC-USDT-PERPETUAL","order_id":"ord123","price":"60000.0","timestamp":1719600001000},
+				{"amount":"1.0","direction":"sell","fee":"1.3","fee_coin_type":"USDT","instrument_name":"BTC-USDT-PERPETUAL","order_id":"ordclose","price":"61000.0","timestamp":1719600005000}
+			],"has_more":false}}`))
+		},
+		"/private/get_transaction_log": func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"total":1,"logs":[
+				{"id":"818164928862748672","type":"perpetual_funding","change":"-0.0145","coin_type":"USDT","asset_type":"PERPETUAL","create_time":"1719600000500"}
+			]}}`))
+		},
+	}
+
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-
-		switch r.URL.Path {
-		case "/public/auth":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"access_token":"mock_tok","expires_in":3600}}`))
-		case "/public/time":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"1719600000"}`))
-		case "/public/tickers":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","best_bid_price":"60000","best_ask_price":"60005","last_price":"60002","volume_24h":"10"}]}`))
-		case "/public/get_instruments":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","base_currency":"BTC","quote_currency":"USDT","tick_size":"0.1","min_trade_amount":"0.001","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000000}]}`))
-		case "/public/coin_gecko_contracts":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"ticker_id":"BTC-USDT-PERPETUAL","product_type":"perpetual","target_currency":"USDT","target_volume":"10000000.0","last_price":"60000.0","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000,"base_volume":"166.666","bid":"59999.0","ask":"60001.0","high":"61000.0","low":"59000.0","open_interest":"5.0","index_price":"60000.5","index_name":"BTC-USDT","index_currency":"BTC","start_timestamp":1719600000,"end_timestamp":1719600000,"next_funding_rate":"0.0002","contract_type":"Quanto","contract_price":"60000.0","contract_price_currency":"USDT"}]}`))
-		case "/private/buy", "/private/sell":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order":{"order_id":"ord123"}}}`))
-		case "/private/get_order_state":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order_id":"ord123","order_state":"filled","amount":"1.0","price":"60000.0","filled_amount":"1.0","average_price":"60000.0","creation_timestamp":1719600000000,"instrument_name":"BTC-USDT-PERPETUAL","direction":"buy","custom_order_id":"cust123"}}`))
-		case "/private/cancel", "/private/cancel_all_by_instrument":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
-		case "/private/get_open_orders_by_instrument":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"order_id":"ord123","order_state":"untriggered","amount":"1.0","price":"60000.0","filled_amount":"0.0","average_price":"0.0","creation_timestamp":1719600000000,"instrument_name":"BTC-USDT-PERPETUAL","direction":"buy","custom_order_id":"cust123"}]}`))
-		case "/private/get_positions":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","direction":"buy","size":"1.0","average_price":"60000.0","leverage":"10","margin":"6000.0"}]}`))
-		case "/private/close_position":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"order":{"order_id":"ordclose"}}}`))
-		case "/private/adjust_perpetual_leverage", "/private/adjust_perpetual_margin_type":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
-		case "/private/get_user_trades_by_order":
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"trades":[{"amount":"1.0","direction":"buy","fee":"1.2","fee_coin_type":"USDT","instrument_name":"BTC-USDT-PERPETUAL","order_id":"ord123","price":"60000.0","timestamp":1719600001000}],"has_more":false}}`))
+		if handler, ok := handlers[r.URL.Path]; ok {
+			handler(w, r)
+			return
 		}
+		w.WriteHeader(http.StatusNotFound)
 	}))
 }
 
@@ -129,6 +190,15 @@ func TestClient_GetContractDetails(t *testing.T) {
 	details, err := client.GetContractDetails(ctx)
 	if err != nil || len(details) != 1 || details[0].PriceScale != 1 {
 		t.Fatalf("GetContractDetails failed: %v, details=%+v", err, details)
+	}
+	if details[0].PriceUnit != 0.1 {
+		t.Errorf("expected PriceUnit 0.1, got %f", details[0].PriceUnit)
+	}
+	if details[0].ContractSize != 1.0 {
+		t.Errorf("expected ContractSize 1.0, got %f", details[0].ContractSize)
+	}
+	if details[0].MinVol != 0 {
+		t.Errorf("expected MinVol 0, got %d", details[0].MinVol)
 	}
 }
 
@@ -241,11 +311,22 @@ func TestClient_PositionAndMargin(t *testing.T) {
 	}
 
 	err = client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
-		Symbol:   "BTC-USDT-PERPETUAL",
-		Leverage: 5,
+		Symbol:       "BTC-USDT-PERPETUAL",
+		Leverage:     5,
+		PositionType: exchange.PositionTypeShort,
 	})
 	if err != nil {
 		t.Fatalf("ChangeLeverage failed: %v", err)
+	}
+
+	// Test ChangeLeverage returning error 5147, which should be ignored (nil returned)
+	err = client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
+		Symbol:       "ERROR-5147",
+		Leverage:     5,
+		PositionType: exchange.PositionTypeShort,
+	})
+	if err != nil {
+		t.Fatalf("expected ChangeLeverage to ignore error 5147, got: %v", err)
 	}
 
 	err = client.SwitchMarginMode(ctx, "BTC-USDT-PERPETUAL", "isolated", 5, domain.SideOpenLong)
@@ -265,8 +346,29 @@ func TestClient_PnLAndWarmup(t *testing.T) {
 	ctx := context.Background()
 
 	pnl, err := client.GetOrderPNL(ctx, "BTC-USDT-PERPETUAL", "ord123")
-	if err != nil || pnl.Fee != 1.2 || pnl.NetPnl != -1.2 {
-		t.Fatalf("GetOrderPNL failed: %v, pnl=%+v", err, pnl)
+	if err != nil {
+		t.Fatalf("GetOrderPNL failed: %v", err)
+	}
+	if pnl.EntryPrice != 60000.0 {
+		t.Errorf("expected EntryPrice 60000.0, got %f", pnl.EntryPrice)
+	}
+	if pnl.ExitPrice != 61000.0 {
+		t.Errorf("expected ExitPrice 61000.0, got %f", pnl.ExitPrice)
+	}
+	if pnl.ClosedSize != 1.0 {
+		t.Errorf("expected ClosedSize 1.0, got %f", pnl.ClosedSize)
+	}
+	if pnl.Fee != 2.5 {
+		t.Errorf("expected Fee 2.5, got %f", pnl.Fee)
+	}
+	if pnl.NetPnl != 997.4855 {
+		t.Errorf("expected NetPnl 997.4855, got %f", pnl.NetPnl)
+	}
+	if pnl.FundingFee != 0.0145 {
+		t.Errorf("expected FundingFee 0.0145, got %f", pnl.FundingFee)
+	}
+	if pnl.DurationMs != 5000 {
+		t.Errorf("expected DurationMs 5000, got %d", pnl.DurationMs)
 	}
 
 	client.WarmUp(ctx, time.Second)
@@ -318,5 +420,19 @@ func TestClient_Errors(t *testing.T) {
 	_, err = client.GetServerTime(ctx)
 	if err == nil {
 		t.Error("expected error for InternalServerError status")
+	}
+}
+
+func TestClient_GetTransactionLog(t *testing.T) {
+	t.Parallel()
+	server := setupMockServer()
+	defer server.Close()
+	client := orangex.NewClient(server.Client(), server.URL, "my-api-key", "my-api-secret", config.LoggingConfig{})
+	res, err := client.GetTransactionLogRaw(context.Background(), map[string]string{"currency": "USDT"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(res), `"logs"`) {
+		t.Errorf("expected response to contain logs, got %s", string(res))
 	}
 }
