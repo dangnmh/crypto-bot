@@ -69,7 +69,7 @@
     "kucoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms", // -150ms paid funding fee
+      "bufferTime": "-250ms", // -200ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
     "okx": {
@@ -126,7 +126,7 @@
     "xt": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-450ms", // -400ms paid funding fee
+      "bufferTime": "-500ms", // -450ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
