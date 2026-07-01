@@ -54,6 +54,21 @@ resource "kubernetes_config_map_v1" "grafana_dashboard_pnl" {
   }
 }
 
+# Deploy Kubernetes ConfigMap for Grafana Funding Stats Dashboard
+resource "kubernetes_config_map_v1" "grafana_dashboard_funding_stats" {
+  metadata {
+    name      = "grafana-dashboard-funding-stats"
+    namespace = "default"
+    labels = {
+      grafana_dashboard = "1"
+    }
+  }
+
+  data = {
+    "funding-stats.json" = file("${path.module}/../grafana/dashboards/funding-stats.json")
+  }
+}
+
 # 4. Deploy Kubernetes ConfigMap for Grafana PostgreSQL Datasource
 resource "kubernetes_config_map_v1" "grafana_datasource_postgres" {
   metadata {
