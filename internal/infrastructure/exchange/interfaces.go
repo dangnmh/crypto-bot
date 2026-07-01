@@ -37,7 +37,7 @@ type OrderExecutor interface {
 	ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
-	SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error
+	SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error
 }
 
 // TPSLProvider is an optional interface that exchange REST clients can implement
@@ -116,4 +116,9 @@ type PotentialFundingResult struct {
 	SettleTime int64   `json:"settleTime"`
 	Volume24h  float64 `json:"volume24h"`
 	Price      float64 `json:"price"`
+}
+
+// BackgroundTaskRunner is implemented by clients needing persistent background execution.
+type BackgroundTaskRunner interface {
+	StartBackgroundTasks(ctx context.Context)
 }

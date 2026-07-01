@@ -43,9 +43,9 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginModeReadyEvent) error {
 	r.log.Info("handleMarginModeReady", slog.String("symbol", evt.Symbol))
 
-	marginMode := "ISOLATED"
+	marginMode := shared.MarginModeIsolated
 	if evt.Candidate.Config.ParsedOpenType == 2 {
-		marginMode = "CROSS"
+		marginMode = shared.MarginModeCross
 	}
 
 	err := r.deps.Client.SwitchMarginMode(ctx, evt.Symbol, marginMode, evt.Candidate.Config.Leverage, evt.Candidate.Side)

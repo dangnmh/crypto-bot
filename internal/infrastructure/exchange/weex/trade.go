@@ -33,9 +33,9 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // SwitchMarginMode sets margin mode (CROSS or ISOLATED).
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	mgnType := marginTypeCross
-	if marginMode == marginTypeIsolated {
+	if marginMode == domain.MarginModeIsolated {
 		mgnType = marginTypeIsolated
 	}
 	body := map[string]any{

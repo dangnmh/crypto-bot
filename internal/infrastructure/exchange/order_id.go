@@ -35,6 +35,8 @@ func ExternalOrderID(symbol string, settleTime time.Time, exchange string) strin
 	maxLen := 32
 	if strings.EqualFold(exchange, "gate") {
 		maxLen = 28
+	} else if strings.EqualFold(exchange, "orangex") {
+		maxLen = 30
 	}
 
 	if len(upperID) > maxLen {

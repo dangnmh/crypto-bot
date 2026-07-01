@@ -67,7 +67,7 @@ func (s *stubClient) ClosePosition(_ context.Context, _ string, _ domain.Side, _
 func (s *stubClient) ChangeLeverage(_ context.Context, _ exchange.ChangeLeverageRequest) error {
 	return nil
 }
-func (s *stubClient) SwitchMarginMode(_ context.Context, _, _ string, _ int, _ domain.Side) error {
+func (s *stubClient) SwitchMarginMode(_ context.Context, _ string, _ domain.MarginMode, _ int, _ domain.Side) error {
 	return nil
 }
 func (s *stubClient) WarmUp(_ context.Context, _ time.Duration) {}

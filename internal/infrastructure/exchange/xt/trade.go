@@ -60,7 +60,7 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 func (c *Client) SwitchMarginMode(
 	ctx context.Context,
 	symbol string,
-	marginMode string,
+	marginMode domain.MarginMode,
 	leverage int,
 	side domain.Side,
 ) error {
@@ -75,7 +75,7 @@ func (c *Client) SwitchMarginMode(
 
 	// Map marginMode to CROSSED / ISOLATED
 	var pt string
-	if strings.EqualFold(marginMode, modeIsolated) {
+	if marginMode == domain.MarginModeIsolated {
 		pt = modeIsolated
 	} else {
 		pt = modeCrossed

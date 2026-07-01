@@ -1,0 +1,25 @@
+package orangex
+
+const (
+	rpcVersion             = "2.0"
+	paramInstrument        = "instrument_name"
+	paramAmount            = "amount"
+	paramType              = "type"
+	paramOrderID           = "order_id"
+	paramCount             = "count"
+	paramCurrency          = "currency"
+	paramAccessToken       = "access_token"
+	paramChannels          = "channels"
+	methodSubscription     = "subscription"
+	typeMarket             = "market"
+	dirSell                = "sell"
+	dirBuy                 = "buy"
+	posSideLong            = "LONG"
+	posSideShort           = "SHORT"
+	pingMsg                = "PING"
+	pathBuy                = "/private/buy"
+	pathSell               = "/private/sell"
+	userChangesChannel     = "user.changes.perpetual.PERPETUAL.raw"
+	paramClientSecret      = "client_secret"
+	grantClientCredentials = "client_credentials"
+)

@@ -145,14 +145,15 @@ func (p *Pool) Close() {
 }
 
 // getOrCreatePublicClientIdx returns the index of an available public client or creates a new one.
+// The boolean return value indicates whether a new client connection was spawned.
 // Callers must hold p.mu.Lock().
-func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context, targetURL string) (int, error) {
+func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context, targetURL string) (int, bool, error) {
 	if targetURL == "" {
 		targetURL = p.publicURL
 	}
 	for i, count := range p.clientSubCount {
 		if count < p.maxPairs && p.publicClients[i].url == targetURL {
-			return i, nil
+			return i, false, nil
 		}
 	}
 
@@ -169,10 +170,10 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context, targetURL string)
 	p.logger.InfoContext(ctx, "🌊 Spawning new public WS connection", slog.Int("pool_idx", idx), slog.String("url", targetURL))
 	go newClient.Connect(ctx)
 	if err := newClient.WaitReady(ctx); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
-	return idx, nil
+	return idx, true, nil
 }
 
 func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
@@ -201,9 +202,10 @@ func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg any) error
 func (p *Pool) SubscribePublicWithURL(ctx context.Context, targetURL, topic string, msg any) error {
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
+	var newlySpawned bool
 	if !exists {
 		var err error
-		idx, err = p.getOrCreatePublicClientIdx(ctx, targetURL)
+		idx, newlySpawned, err = p.getOrCreatePublicClientIdx(ctx, targetURL)
 		if err != nil {
 			p.mu.Unlock()
 			return err
@@ -224,6 +226,13 @@ func (p *Pool) SubscribePublicWithURL(ctx context.Context, targetURL, topic stri
 		return ctx.Err()
 	default:
 	}
+
+	if newlySpawned {
+		// If the connection was newly spawned, replayPublicSubscriptions has already
+		// sent or is about to send the subscription message on ready.
+		return nil
+	}
+
 	return client.SendJSON(msg)
 }
 

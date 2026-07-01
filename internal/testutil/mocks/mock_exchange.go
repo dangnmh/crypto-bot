@@ -700,7 +700,7 @@ func (c *MockClientSupportLeverageOnOrderCall) DoAndReturn(f func() bool) *MockC
 }
 
 // SwitchMarginMode mocks base method.
-func (m *MockClient) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (m *MockClient) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SwitchMarginMode", ctx, symbol, marginMode, leverage, side)
 	ret0, _ := ret[0].(error)
@@ -726,13 +726,13 @@ func (c *MockClientSwitchMarginModeCall) Return(arg0 error) *MockClientSwitchMar
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockClientSwitchMarginModeCall) Do(f func(context.Context, string, string, int, domain.Side) error) *MockClientSwitchMarginModeCall {
+func (c *MockClientSwitchMarginModeCall) Do(f func(context.Context, string, domain.MarginMode, int, domain.Side) error) *MockClientSwitchMarginModeCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockClientSwitchMarginModeCall) DoAndReturn(f func(context.Context, string, string, int, domain.Side) error) *MockClientSwitchMarginModeCall {
+func (c *MockClientSwitchMarginModeCall) DoAndReturn(f func(context.Context, string, domain.MarginMode, int, domain.Side) error) *MockClientSwitchMarginModeCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

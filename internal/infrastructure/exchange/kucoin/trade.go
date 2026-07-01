@@ -34,9 +34,9 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for KuCoin.
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol, marginMode string, leverage int, side domain.Side) error {
+func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
 	return c.rawSwitchMarginMode(ctx, kucoinSwitchMarginModeRequest{
 		Symbol:     symbol,
-		MarginMode: marginMode,
+		MarginMode: string(marginMode),
 	})
 }

@@ -126,7 +126,7 @@ func main() {
 	bitunixClient := bitunix.NewClient(httpPool, "https://fapi.bitunix.com", "", "", logCfg)
 	htxClient := htx.NewClient(httpPool, "https://api.hbdm.com", logCfg)
 	lbankClient := lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg)
-	orangexClient := orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", logCfg)
+	orangexClient := orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", "", "", logCfg)
 	pionexClient := pionex.NewClient(httpPool, "https://api.pionex.com", logCfg)
 	deribitClient := deribit.NewClient(httpPool, "https://www.deribit.com", logCfg)
 	coinexClient := coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg)

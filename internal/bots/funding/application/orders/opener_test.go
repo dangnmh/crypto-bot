@@ -35,6 +35,10 @@ func TestExternalOrderID(t *testing.T) {
 	idGate := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "gate")
 	assert.Equal(t, "09062026180401GATEALONGANDVE", idGate)
 	assert.Equal(t, 28, len(idGate))
+
+	idOrangex := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "orangex")
+	assert.Equal(t, "09062026180401ORANGEXALONGANDV", idOrangex)
+	assert.Equal(t, 30, len(idOrangex))
 }
 
 func TestOrderResultIsSuccess(t *testing.T) {

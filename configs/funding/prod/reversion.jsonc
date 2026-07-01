@@ -42,7 +42,8 @@
       "bitmart": true,
       "weex": true,
       "bitunix": false, // exchange restricted
-      "xt": true
+      "xt": true,
+      "orangex": true
     }
   },
   "exchanges": {
@@ -124,6 +125,16 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-400ms", // -350ms paid funding fee
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 3,
+      "marginUSD": 5
+    },
+    "orangex": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "0ms",
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,

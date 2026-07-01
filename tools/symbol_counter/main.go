@@ -115,7 +115,7 @@ func main() {
 		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg),
 		"htx":           htx.NewClient(httpPool, "https://api.hbdm.com", logCfg),
 		"lbank":         lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg),
-		"orangex":       orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", logCfg),
+		"orangex":       orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", "", "", logCfg),
 		"pionex":        pionex.NewClient(httpPool, "https://api.pionex.com", logCfg),
 		"deribit":       deribit.NewClient(httpPool, "https://www.deribit.com", logCfg),
 		"coinex":        coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg),

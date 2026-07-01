@@ -21,6 +21,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
+	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/xt"
@@ -84,6 +85,21 @@ func DefaultProviderFactories() []ProviderFactory {
 				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeMexc]
 				client := exchange.Client(mexc.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
 				return buildProvider(ctx, exchange.ExchangeMexc, exchange.ExchangeMexc, cfg, apiCfg, client, mexc.NewWsAdapter()), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeOrangex,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeOrangex]
+				client := orangex.NewClient(
+					cfg.HTTPClient,
+					apiCfg.Future.BaseURL,
+					apiCfg.APIKey,
+					apiCfg.APISecret,
+					cfg.SystemConfig.Logging,
+				)
+				adapter := orangex.NewWsAdapter(client)
+				return buildProvider(ctx, exchange.ExchangeOrangex, exchange.ExchangeOrangex, cfg, apiCfg, client, adapter), nil
 			},
 		},
 		SimpleProviderFactory{

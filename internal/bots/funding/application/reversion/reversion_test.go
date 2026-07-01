@@ -231,7 +231,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}, nil)
 
 	// 3. FireIOC expectations
-	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", "ISOLATED", 0, gomock.Any()).Return(nil)
+	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 0, gomock.Any()).Return(nil)
 	createOrderCalled := make(chan struct{})
 	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
@@ -448,7 +448,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		{Symbol: "BTC_USDT", Rate: 0.001},
 	}, nil)
 
-	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", "ISOLATED", 0, gomock.Any()).Return(nil)
+	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 0, gomock.Any()).Return(nil)
 	createOrderCalled := make(chan struct{})
 	// Capture the ExternalOID that is passed to CreateOrder
 	var capturedExtOID string
@@ -683,7 +683,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	}, nil)
 
 	// 3. FireIOC expectations (we assert CreateOrder receives Leverage = 10, and ChangeLeverage is NOT called)
-	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", "ISOLATED", 10, gomock.Any()).Return(nil)
+	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 10, gomock.Any()).Return(nil)
 	createOrderCalled := make(chan struct{})
 	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 		assert.Equal(t, 10, req.Leverage)
