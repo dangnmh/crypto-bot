@@ -43,7 +43,9 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 					OnStatus:       []int{0},
 					WhiteListPaths: []string{"*"}, // match all paths
-					BlackListPaths: []string{},    // match everything cleanly
+					BlackListPaths: []string{
+						"POST|/info",
+					}, // match everything cleanly
 				}),
 				transportlog.LogOptionRedactSensitive(true),
 				transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey"}),

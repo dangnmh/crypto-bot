@@ -72,6 +72,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 		engine,
 		n,
 		revStrat,
+		nil,
 		bootstrapTestLogger(),
 	)
 	require.NotNil(t, bot)

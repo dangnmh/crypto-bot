@@ -50,6 +50,8 @@ func Module(paths ConfigPaths) fx.Option {
 			provideEngine,
 			persistence.InitDatabase,
 			provideTradeReportRepository,
+			provideSymbolFundingReportRepository,
+			provideStatsReportJob,
 			provideGoCache,
 			provideReversionStrategy,
 			provideBot,
@@ -197,17 +199,33 @@ func provideTradeReportRepository(db *gorm.DB) domain.TradeReportRepository {
 	return persistence.NewGormTradeReportRepository(db)
 }
 
+func provideSymbolFundingReportRepository(db *gorm.DB) domain.SymbolFundingReportRepository {
+	return persistence.NewGormSymbolFundingReportRepository(db)
+}
+
+func provideStatsReportJob(
+	cfg *fundingconfig.Config,
+	sysCfg *fundingconfig.SystemConfig,
+	httpClient *http.Client,
+	repo domain.SymbolFundingReportRepository,
+	n notifier.Notifier,
+	log *slog.Logger,
+) *application.StatsReportJob {
+	return application.NewStatsReportJob(cfg, sysCfg, httpClient, repo, n, log)
+}
+
 func provideBot(
 	cfg *fundingconfig.Config,
 	sysCfg *fundingconfig.SystemConfig,
 	engine *infraapp.Engine,
 	n notifier.Notifier,
 	reversionStrategy *reversion.Strategy,
+	statsReporter *application.StatsReportJob,
 	log *slog.Logger,
 ) infraapp.Bot {
 	return application.NewFundingBot(
 		cfg, sysCfg, engine, n,
-		[]strategy.BackgroundStrategy{reversionStrategy},
+		[]strategy.BackgroundStrategy{reversionStrategy, statsReporter},
 		log.With("bot", "funding"),
 	)
 }

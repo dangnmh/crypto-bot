@@ -154,6 +154,9 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 
 	// Initialize all background strategies globally exactly once
 	for _, st := range s.strategies {
+		if st == nil {
+			continue
+		}
 		if err := st.Start(ctx, s.stores); err != nil {
 			s.log.ErrorContext(ctx, "Failed to start global strategy", slog.Any("error", err))
 			return err
@@ -251,6 +254,14 @@ func (s *FundingBot) Run(ctx context.Context) error {
 
 // Stop implements the app.Bot interface. It executes any explicit teardown.
 func (s *FundingBot) Stop(ctx context.Context) error {
+	for _, st := range s.strategies {
+		if st == nil {
+			continue
+		}
+		if err := st.Stop(ctx); err != nil {
+			s.log.ErrorContext(ctx, "Failed to stop global strategy", slog.Any("error", err))
+		}
+	}
 	s.bgWg.Wait()
 	return nil
 }
