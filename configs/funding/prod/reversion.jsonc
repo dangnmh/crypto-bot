@@ -41,7 +41,7 @@
       "toobit": true,
       "bitmart": true,
       "weex": true,
-      "bitunix": true,
+      "bitunix": false, // exchange restricted
       "xt": true,
       "orangex": true
     }
@@ -88,17 +88,17 @@
     "toobit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "500ms", // 400ms dont get funding fee
+      "bufferTime": "400ms", // 500ms paid funding fee
       "postSettleTimeout": "0.5s",
-      "minVol24USD": 5000000,
+      "minVol24USD": 10000000,
       "minFundingRate": 0.8,
-      "leverage": 5,
-      "marginUSD": 100
+      "leverage": 8,
+      "marginUSD": 500
     },
     "bitmart": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms", // 50ms paid funding fee
+      "bufferTime": "-100ms", // -50ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -124,7 +124,7 @@
     "xt": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms", // -150ms paid funding fee
+      "bufferTime": "-400ms", // -350ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
