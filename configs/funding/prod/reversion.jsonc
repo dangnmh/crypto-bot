@@ -36,14 +36,14 @@
       "mexc": true,
       "binance": true,
       "bybit": true,
-      "kucoin": true,
+      "kucoin": false, // negative pnl
       "okx": true,
       "gate": true,
       "toobit": true,
-      "bitmart": true,
+      "bitmart": false, // negative pnl
       "weex": true,
       "bitunix": false, // exchange restricted
-      "xt": true,
+      "xt": false, // negative pnl
       "orangex": true
     }
   },

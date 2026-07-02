@@ -34,7 +34,7 @@
       }
     },
     "kucoin": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api-futures.kucoin.com"
       },
@@ -74,7 +74,7 @@
       }
     },
     "bitmart": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api-cloud-v2.bitmart.com"
       },
@@ -107,7 +107,7 @@
       }
     },
     "xt": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://fapi.xt.com"
       },
