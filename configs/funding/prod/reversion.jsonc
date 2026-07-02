@@ -52,7 +52,12 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-100ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
-      "postSettleTimeout": "0.5s" // Force close if reversion lifecycle does not terminally close
+      "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
+      "minVol24USD": 10000000,
+      "minFundingRate": 0.8,
+      "leverage": 10,
+      "marginUSD": 300,
+      "maxCandidateTrade": 3
     },
     "bybit": {
       "takeProfitPct": 1,
