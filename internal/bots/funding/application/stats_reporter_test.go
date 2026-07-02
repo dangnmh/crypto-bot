@@ -30,7 +30,17 @@ func (m *mockScannerClient) GetPotentialFundingSymbols(
 	whitelist []string,
 	blacklist []string,
 ) ([]exchange.PotentialFundingResult, error) {
-	return m.results, m.err
+	if m.err != nil {
+		return nil, m.err
+	}
+	var filtered []exchange.PotentialFundingResult
+	for _, r := range m.results {
+		if minVol24h > 0 && r.Volume24h < minVol24h {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered, nil
 }
 
 type mockReportRepository struct {
@@ -141,7 +151,7 @@ func TestStatsReportJob_Tick(t *testing.T) {
 	assert.Equal(t, "mexc", saved.Exchange)
 	assert.Equal(t, "TAIKO-USDT", saved.Symbol)
 	assert.Equal(t, "TAIKO", saved.NormalizedSymbol)
-	assert.Equal(t, decmath.CeilToScale(r1.Rate, 1), saved.FundingRate)
+	assert.Equal(t, decmath.RoundToScale(r1.Rate, 3), saved.FundingRate)
 	assert.Equal(t, 15000000.0, saved.Volume24h)
 	assert.True(t, math.Abs(float64(saved.SettleTime.UnixMilli()-r1.SettleTime)) < 1000)
 }

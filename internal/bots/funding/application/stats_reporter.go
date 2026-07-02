@@ -225,7 +225,8 @@ func (j *StatsReportJob) CollectStats(ctx context.Context) {
 }
 
 func (j *StatsReportJob) scanExchange(ctx context.Context, exchName string, client ScannerClient, now time.Time) []domain.SymbolFundingReport {
-	results, err := client.GetPotentialFundingSymbols(ctx, 0, 0, nil, nil)
+	// Condition 4: 24h volume at least 10M USDT
+	results, err := client.GetPotentialFundingSymbols(ctx, 10000000, 0, nil, nil)
 	if err != nil {
 		j.log.DebugContext(ctx, "Failed to query public symbols from exchange",
 			slog.String("exchange", exchName),
@@ -253,17 +254,12 @@ func (j *StatsReportJob) scanExchange(ctx context.Context, exchName string, clie
 			continue
 		}
 
-		// Condition 4: 24h volume at least 10M USDT
-		if r.Volume24h < 10000000.0 {
-			continue
-		}
-
 		exchMatches = append(exchMatches, domain.SymbolFundingReport{
 			Timestamp:        now,
 			Exchange:         exchName,
 			Symbol:           r.Symbol,
 			NormalizedSymbol: reversion.GetNormalizedSymbol(r.Symbol),
-			FundingRate:      decmath.CeilToScale(r.Rate, 1),
+			FundingRate:      decmath.RoundToScale(r.Rate, 3),
 			Volume24h:        r.Volume24h,
 			SettleTime:       settleTime,
 		})
