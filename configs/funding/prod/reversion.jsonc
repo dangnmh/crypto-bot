@@ -93,8 +93,8 @@
       "postSettleTimeout": "0.5s",
       "minVol24USD": 10000000,
       "minFundingRate": 0.8,
-      "leverage": 8,
-      "marginUSD": 500,
+      "leverage": 10,
+      "marginUSD": 550,
       "maxCandidateTrade": 3
     },
     "bitmart": {
@@ -126,7 +126,7 @@
     "xt": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-500ms", // -450ms paid funding fee
+      "bufferTime": "-550ms", // -500ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
