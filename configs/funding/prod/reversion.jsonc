@@ -33,17 +33,17 @@
   "scanners": {
     "configured": false,
     "schedule": {
+      "kucoin": false, // negative pnl
+      "bitmart": false, // negative pnl
+      "bitunix": false, // exchange restricted
+      "okx": false, // no funding oppotunity
+      "xt": false, // negative pnl
+      "gate": true,
+      "toobit": true,
+      "weex": true,
       "mexc": true,
       "binance": true,
       "bybit": true,
-      "kucoin": false, // negative pnl
-      "okx": true,
-      "gate": true,
-      "toobit": true,
-      "bitmart": false, // negative pnl
-      "weex": true,
-      "bitunix": false, // exchange restricted
-      "xt": false, // negative pnl
       "orangex": true
     }
   },

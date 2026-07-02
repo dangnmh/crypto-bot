@@ -44,7 +44,7 @@
       }
     },
     "okx": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://openapi.okx.com"
       },
