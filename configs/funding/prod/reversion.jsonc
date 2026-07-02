@@ -51,13 +51,13 @@
     "mexc": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-100ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "bufferTime": "-70ms", // -100ms dont paid funding fee Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 10000000,
       "minFundingRate": 0.8,
-      "leverage": 10,
-      "marginUSD": 300,
-      "maxCandidateTrade": 3
+      "leverage": 2,
+      "marginUSD": 100,
+      "maxCandidateTrade": 1
     },
     "bybit": {
       "takeProfitPct": 1,
@@ -68,7 +68,7 @@
     "binance": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-150ms", // -200ms fill bad price -100ms paid funding fee
+      "bufferTime": "-200ms", // -200ms fill bad price -150ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
     "kucoin": {
@@ -141,7 +141,7 @@
     "orangex": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms",
+      "bufferTime": "100ms", // 0ms dont paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
