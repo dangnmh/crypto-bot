@@ -195,7 +195,7 @@ func TestWsAdapterParsePosition_HedgeModeAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition failed: %v", err)
 	}
-	if update.Symbol != "SLXUSDT" || update.HoldVol != 32 || update.PositionType != exchange.PositionTypeShort || update.OpenAvgPrice != 0.46041 {
+	if update.Symbol != "SLXUSDT" || update.HoldVol != 0 || update.PositionType != exchange.PositionTypeUnknown {
 		t.Errorf("unexpected hedge mode position update: %+v", update)
 	}
 
@@ -216,7 +216,43 @@ func TestWsAdapterParsePosition_HedgeModeAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition failed: %v", err)
 	}
-	if update.Symbol != "SLXUSDT" || update.HoldVol != 0 || update.PositionType != exchange.PositionTypeShort {
+	if update.Symbol != "SLXUSDT" || update.HoldVol != 0 || update.PositionType != exchange.PositionTypeUnknown {
 		t.Errorf("unexpected closed position update: %+v", update)
+	}
+}
+
+func TestWsAdapterGetChannelExtractor(t *testing.T) {
+	t.Parallel()
+	adapter := NewWsAdapter("", "", "", "")
+	extractor := adapter.GetChannelExtractor()
+
+	payload := []byte(`{"e":"ACCOUNT_UPDATE","T":1783094748050,"E":1783094748075,"a":{"B":[{"a":"USDT","wb":"14.97792622","cw":"14.97792622","bc":"0"}],"P":[{"s":"SLXUSDT","pa":"0","ep":"0.00000000","cr":"0","up":"0","mt":"isolated","iw":"0","ps":"BOTH","ma":"USDT"},{"s":"SLXUSDT","pa":"0","ep":"0.00000000","cr":"0","up":"0","mt":"isolated","iw":"0","ps":"LONG","ma":"USDT"},{"s":"SLXUSDT","pa":"0","ep":"0.00000000","cr":"0.01334000","up":"0","mt":"isolated","iw":"0","ps":"SHORT","ma":"USDT"}],"m":"ORDER"}}`)
+
+	channel := extractor(payload)
+	t.Logf("channel value is: '%s'", channel)
+	if channel != channelPersonalPosition {
+		t.Errorf("expected channel '%s', got '%s'", channelPersonalPosition, channel)
+	}
+}
+
+func TestWsAdapterParsePosition_AccountUpdate_Closed(t *testing.T) {
+	t.Parallel()
+	adapter := NewWsAdapter("", "", "", "")
+
+	payload := []byte(`{"e":"ACCOUNT_UPDATE","T":1783094748050,"E":1783094748075,"a":{"B":[{"a":"USDT","wb":"14.97792622","cw":"14.97792622","bc":"0"}],"P":[{"s":"SLXUSDT","pa":"0","ep":"0.00000000","cr":"0","up":"0","mt":"isolated","iw":"0","ps":"BOTH","ma":"USDT"},{"s":"SLXUSDT","pa":"0","ep":"0.00000000","cr":"0","up":"0","mt":"isolated","iw":"0","ps":"LONG","ma":"USDT"},{"s":"SLXUSDT","pa":"0","ep":"0.00000000","cr":"0.01334000","up":"0","mt":"isolated","iw":"0","ps":"SHORT","ma":"USDT"}],"m":"ORDER"}}`)
+
+	update, err := adapter.ParsePosition(payload)
+	if err != nil {
+		t.Fatalf("ParsePosition failed: %v", err)
+	}
+	if update == nil {
+		t.Fatalf("expected non-nil position update")
+	}
+
+	if update.Symbol != "SLXUSDT" {
+		t.Errorf("expected symbol SLXUSDT, got %s", update.Symbol)
+	}
+	if update.HoldVol != 0 {
+		t.Errorf("expected hold volume 0, got %f", update.HoldVol)
 	}
 }

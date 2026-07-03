@@ -58,6 +58,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 					"GET|/fapi/v3/premiumIndex",
 					"GET|/fapi/v3/exchangeInfo",
 					"POST|/fapi/v3/listenKey",
+					"GET|/fapi/v3/leverageBracket",
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),

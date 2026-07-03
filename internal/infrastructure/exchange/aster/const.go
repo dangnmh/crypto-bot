@@ -42,5 +42,7 @@ const (
 	eventOrderTradeUpdate = "ORDER_TRADE_UPDATE"
 	eventAccountUpdate    = "ACCOUNT_UPDATE"
 
+	channelPersonalPosition = "personal.position"
+
 	valTrue = "true"
 )

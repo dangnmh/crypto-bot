@@ -82,8 +82,9 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	return nil
 }
 
+// GetPingConfig returns application ping and interval.
 func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
-	return "ping", 3 * time.Minute
+	return nil, 0
 }
 
 func (a *WsAdapter) GetCustomPingHandler() func(*websocket.Conn, []byte) bool {
@@ -114,7 +115,8 @@ func (a *WsAdapter) HandshakeHeaders() (http.Header, error) {
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
 		var msg struct {
-			Event string `json:"e"`
+			Event     string `json:"e"`
+			EventTime int64  `json:"E"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return ""
@@ -126,27 +128,27 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			return "personal.order"
 		}
 		if msg.Event == eventAccountUpdate {
-			return "personal.position"
+			return channelPersonalPosition
 		}
 		return ""
 	}
 }
 
 type wsBookTicker struct {
-	Symbol   string `json:"s"`
-	BidPrice string `json:"b"`
-	BidQty   string `json:"B"`
-	AskPrice string `json:"a"`
-	AskQty   string `json:"A"`
-	Time     int64  `json:"T"`
+	Symbol   string       `json:"s"`
+	BidPrice xjson.Number `json:"b"`
+	BidQty   xjson.Number `json:"B"`
+	AskPrice xjson.Number `json:"a"`
+	AskQty   xjson.Number `json:"A"`
+	Time     int64        `json:"T"`
 }
 
 type ws24hrTicker struct {
-	Event     string `json:"e"`
-	Symbol    string `json:"s"`
-	LastPrice string `json:"c"`
-	Volume    string `json:"v"`
-	Time      int64  `json:"E"`
+	Event     string       `json:"e"`
+	Symbol    string       `json:"s"`
+	LastPrice xjson.Number `json:"c"`
+	Volume    xjson.Number `json:"v"`
+	Time      int64        `json:"E"`
 }
 
 func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
@@ -164,8 +166,8 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 			return "", nil, err
 		}
 		symbol := strings.ToUpper(book.Symbol)
-		bid, _ := strconv.ParseFloat(book.BidPrice, 64)
-		ask, _ := strconv.ParseFloat(book.AskPrice, 64)
+		bid, _ := book.BidPrice.Float64()
+		ask, _ := book.AskPrice.Float64()
 
 		pd := a.priceCache.UpdateDepth(symbol, bid, ask)
 		return symbol, pd, nil
@@ -177,8 +179,8 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 			return "", nil, err
 		}
 		symbol := strings.ToUpper(stat.Symbol)
-		last, _ := strconv.ParseFloat(stat.LastPrice, 64)
-		vol, _ := strconv.ParseFloat(stat.Volume, 64)
+		last, _ := stat.LastPrice.Float64()
+		vol, _ := stat.Volume.Float64()
 
 		pd := a.priceCache.UpdateTicker(symbol, last, 0, vol)
 		return symbol, pd, nil
@@ -199,40 +201,6 @@ type asterWsAccountUpdate struct {
 			UnrealizedPnL string `json:"up"`
 		} `json:"P"`
 	} `json:"a"`
-}
-
-func findTargetPosition(positions []struct {
-	Symbol        string `json:"s"`
-	PositionAmt   string `json:"pa"`
-	EntryPrice    string `json:"ep"`
-	Side          string `json:"ps"`
-	UnrealizedPnL string `json:"up"`
-}) struct {
-	Symbol        string `json:"s"`
-	PositionAmt   string `json:"pa"`
-	EntryPrice    string `json:"ep"`
-	Side          string `json:"ps"`
-	UnrealizedPnL string `json:"up"`
-} {
-	pos := positions[0]
-	foundActive := false
-	for _, item := range positions {
-		amt, _ := strconv.ParseFloat(item.PositionAmt, 64)
-		if amt != 0 {
-			pos = item
-			foundActive = true
-			break
-		}
-	}
-	if !foundActive {
-		for _, item := range positions {
-			if strings.EqualFold(item.Side, "LONG") || strings.EqualFold(item.Side, "SHORT") {
-				pos = item
-				break
-			}
-		}
-	}
-	return pos
 }
 
 func mapPositionTypeAndAmt(side string, amt float64) (exchange.PositionType, float64) {
@@ -269,7 +237,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		return nil, nil
 	}
 
-	pos := findTargetPosition(msg.Update.Positions)
+	pos := msg.Update.Positions[0]
 	amtRaw, _ := strconv.ParseFloat(pos.PositionAmt, 64)
 	entry, _ := strconv.ParseFloat(pos.EntryPrice, 64)
 	upVal, _ := strconv.ParseFloat(pos.UnrealizedPnL, 64)

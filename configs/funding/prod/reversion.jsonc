@@ -45,7 +45,8 @@
       "mexc": true,
       "bybit": true,
       "orangex": true,
-      "bitget": true
+      "bitget": true,
+      "aster": true,
     }
   },
   "exchanges": {
@@ -158,8 +159,12 @@
     "aster": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "0.5s"
+      "bufferTime": "50ms",
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 3,
+      "marginUSD": 5
     },
     "bitget": {
       "takeProfitPct": 1,

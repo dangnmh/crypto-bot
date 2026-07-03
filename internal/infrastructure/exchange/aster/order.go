@@ -425,7 +425,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return nil, fmt.Errorf("query order detail: %w", err)
 	}
 
-	trades, err := c.rawGetUserTrades(ctx, symbol, orderInfo.UpdateTime)
+	trades, err := c.rawGetUserTrades(ctx, symbol, orderInfo.CreateTime)
 	if err != nil {
 		return nil, fmt.Errorf("query trades: %w", err)
 	}
@@ -459,7 +459,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		}
 	}
 
-	fundingFee, _ := c.fetchFundingFee(ctx, symbol, orderInfo.UpdateTime)
+	fundingFee, _ := c.fetchFundingFee(ctx, symbol, orderInfo.CreateTime)
 
 	totalFee := totalFee1 + totalFee2
 

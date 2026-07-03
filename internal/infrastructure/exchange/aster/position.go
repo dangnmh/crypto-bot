@@ -74,7 +74,6 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 }
 
 func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	// In Hedge Mode, close long = SELL with LONG positionSide, close short = BUY with SHORT positionSide
 	sideStr := sideSell
 	posSideStr := posSideLong
 
@@ -84,12 +83,17 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 	}
 
 	params := map[string]string{
-		paramSymbol:       symbol,
-		paramSide:         sideStr,
-		paramPositionSide: posSideStr,
-		paramType:         typeMarket,
-		paramQuantity:     strconv.FormatFloat(volume, 'f', -1, 64),
-		paramReduceOnly:   valTrue,
+		paramSymbol:   symbol,
+		paramSide:     sideStr,
+		paramType:     typeMarket,
+		paramQuantity: strconv.FormatFloat(volume, 'f', -1, 64),
+	}
+
+	if positionMode == domain.PositionModeHedge {
+		params[paramPositionSide] = posSideStr
+	} else {
+		params[paramPositionSide] = posSideBoth
+		params[paramReduceOnly] = valTrue
 	}
 
 	_, err := c.rawCreateOrder(ctx, params)
