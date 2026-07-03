@@ -36,7 +36,7 @@ func setupMockServer() *httptest.Server {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","best_bid_price":"60000","best_ask_price":"60005","last_price":"60002","volume_24h":"10"}]}`))
 		},
 		"/public/get_instruments": func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","base_currency":"BTC","quote_currency":"USDT","tick_size":"0.1","min_trade_amount":"0.001","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000000}]}`))
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"instrument_name":"BTC-USDT-PERPETUAL","base_currency":"BTC","quote_currency":"USDT","tick_size":"0.1","min_trade_amount":"0.001","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000000,"leverage":75}]}`))
 		},
 		"/public/coin_gecko_contracts": func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":[{"ticker_id":"BTC-USDT-PERPETUAL","product_type":"perpetual","target_currency":"USDT","target_volume":"10000000.0","last_price":"60000.0","funding_rate":"0.0001","next_funding_rate_timestamp":1719600000,"base_volume":"166.666","bid":"59999.0","ask":"60001.0","high":"61000.0","low":"59000.0","open_interest":"5.0","index_price":"60000.5","index_name":"BTC-USDT","index_currency":"BTC","start_timestamp":1719600000,"end_timestamp":1719600000,"next_funding_rate":"0.0002","contract_type":"Quanto","contract_price":"60000.0","contract_price_currency":"USDT"}]}`))
@@ -199,6 +199,9 @@ func TestClient_GetContractDetails(t *testing.T) {
 	}
 	if details[0].MinVol != 0 {
 		t.Errorf("expected MinVol 0, got %d", details[0].MinVol)
+	}
+	if details[0].MaxLeverage != 75 {
+		t.Errorf("expected MaxLeverage 75, got %d", details[0].MaxLeverage)
 	}
 }
 

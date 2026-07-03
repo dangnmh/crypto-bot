@@ -181,6 +181,7 @@ type orangexInstrument struct {
 	ContractSize   xjson.Number `json:"contract_size"`
 	FundingRate    xjson.Number `json:"funding_rate"`
 	NextFunding    int64        `json:"next_funding_rate_timestamp"`
+	Leverage       int          `json:"leverage"`
 }
 
 func (c *Client) rawGetTickers(ctx context.Context, instrument string) ([]orangexTicker, error) {
@@ -296,13 +297,19 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		return nil, err
 	}
 	var out []exchange.ContractDetail
-	for _, inst := range res {
+	for i := range res {
+		inst := &res[i]
 		contractSize := xjson.ToFloat64(inst.ContractSize)
 		if contractSize <= 0 {
 			contractSize = 1.0
 		}
 		priceUnit := xjson.ToFloat64(inst.TickSize)
 		minVolVal := xjson.ToFloat64(inst.MinTradeAmount)
+
+		maxLeverage := 100
+		if inst.Leverage > 0 {
+			maxLeverage = inst.Leverage
+		}
 
 		out = append(out, exchange.ContractDetail{
 			Symbol:        inst.InstrumentName,
@@ -313,7 +320,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			SettleCoin:    inst.QuoteCurrency,
 			ContractSize:  contractSize,
 			MinLeverage:   1,
-			MaxLeverage:   100,
+			MaxLeverage:   maxLeverage,
 			PriceUnit:     priceUnit,
 			MinVol:        int(minVolVal),
 			VolUnit:       int(minVolVal),

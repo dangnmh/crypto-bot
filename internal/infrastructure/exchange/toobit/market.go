@@ -139,9 +139,9 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		if len(raw.RiskLimits) > 0 {
 			highestLev := 0.0
 			for _, rl := range raw.RiskLimits {
-				lev, _ := rl.MaxLeverage.Int64()
-				if float64(lev) > highestLev {
-					highestLev = float64(lev)
+				lev, _ := rl.MaxLeverage.Float64()
+				if lev > highestLev {
+					highestLev = lev
 				}
 			}
 			if highestLev > 0 {

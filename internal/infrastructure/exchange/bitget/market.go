@@ -41,6 +41,8 @@ type bitgetInstrument struct {
 	VolumePlace  string `json:"volumePlace"`
 	MinTradeNum  string `json:"minTradeNum"`
 	PriceEndStep string `json:"priceEndStep"`
+	MinLever     string `json:"minLever"`
+	MaxLever     string `json:"maxLever"`
 }
 
 type rawTicker struct {
@@ -179,6 +181,19 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			priceScale = decmath.DecimalPlaces(inst.PriceEndStep)
 		}
 
+		minLeverage := 1
+		if inst.MinLever != "" {
+			if l, err := strconv.Atoi(inst.MinLever); err == nil {
+				minLeverage = l
+			}
+		}
+		maxLeverage := 100
+		if inst.MaxLever != "" {
+			if l, err := strconv.Atoi(inst.MaxLever); err == nil {
+				maxLeverage = l
+			}
+		}
+
 		details = append(details, exchange.ContractDetail{
 			Symbol:           inst.Symbol,
 			DisplayName:      inst.Symbol,
@@ -188,8 +203,8 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			QuoteCoin:        inst.QuoteCoin,
 			SettleCoin:       inst.SettleCoin,
 			ContractSize:     1.0, // Defaults to 1 for generic USDT margin linear futures.
-			MinLeverage:      1,
-			MaxLeverage:      100, // Safe default since max leverage tier query is distinct.
+			MinLeverage:      minLeverage,
+			MaxLeverage:      maxLeverage,
 			PriceScale:       priceScale,
 			VolScale:         volScale,
 			PriceUnit:        priceUnit,

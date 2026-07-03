@@ -58,7 +58,9 @@ func TestClient_GetContractDetails(t *testing.T) {
 					"pricePlace": "1",
 					"volumePlace": "3",
 					"minTradeNum": "0.001",
-					"priceEndStep": "0.1"
+					"priceEndStep": "0.1",
+					"minLever": "2",
+					"maxLever": "125"
 				}
 			]
 		}`))
@@ -74,7 +76,8 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, 1, details[0].PriceScale)
 	assert.Equal(t, 3, details[0].VolScale)
 	assert.Equal(t, 0.1, details[0].PriceUnit)
-	assert.Equal(t, 100, details[0].MaxLeverage)
+	assert.Equal(t, 2, details[0].MinLeverage)
+	assert.Equal(t, 125, details[0].MaxLeverage)
 }
 
 func TestClient_GetTickers(t *testing.T) {
