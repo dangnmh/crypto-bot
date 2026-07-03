@@ -35,6 +35,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
+	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
@@ -43,10 +44,11 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
+	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
-	"crypto-bot/internal/infrastructure/exchange/woo"
+	"crypto-bot/internal/infrastructure/exchange/woox"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
@@ -122,11 +124,14 @@ func main() {
 		"bitfinex":      bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg),
 		"whitebit":      whitebit.NewClient(httpPool, "https://whitebit.com", logCfg),
 		"dydx":          dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg),
-		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", logCfg),
+		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),
 		"cryptocom":     cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default()),
-		"woo":           woo.NewClient(httpPool, "https://api.woox.io", slog.Default()),
+		"ju":            ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
+		"echobit":       ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
+		"sunx":          sunx.NewClient(httpPool, "https://api.sunx.io", logCfg),
+		"woox":          woox.NewClient(httpPool, "https://api.woox.io", slog.Default()),
 		"phemex":        phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default()),
 		"blofin":        blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default()),
 		"digifinex":     digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default()),

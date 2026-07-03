@@ -38,6 +38,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
+	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
@@ -46,10 +47,11 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
+	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
-	"crypto-bot/internal/infrastructure/exchange/woo"
+	"crypto-bot/internal/infrastructure/exchange/woox"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/pkg/httpclient"
@@ -85,9 +87,9 @@ func main() {
 	var exchangesFlag string
 	flag.StringVar(&exchangesFlag, "exchanges", "", "Comma-separated list of exchanges to scan (e.g. binance,bybit,okx). If empty, scans all.")
 	var minFundingRate float64
-	flag.Float64Var(&minFundingRate, "minFundingRate", 0.3, "Minimum absolute funding rate (in percent) to filter. E.g. 0.1 for 0.1%")
+	flag.Float64Var(&minFundingRate, "minFundingRate", 0.7, "Minimum absolute funding rate (in percent) to filter. E.g. 0.1 for 0.1%")
 	var minVol float64
-	flag.Float64Var(&minVol, "minVol", 1000000.0, "Minimum 24h volume (in USDT) to filter pairs. E.g. 1000000 for 1M USDT")
+	flag.Float64Var(&minVol, "minVol", 10_000_000.0, "Minimum 24h volume (in USDT) to filter pairs. E.g. 1000000 for 1M USDT")
 	flag.Parse()
 
 	// Parse targeted exchanges if provided
@@ -133,7 +135,7 @@ func main() {
 	bitfinexClient := bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg)
 	whitebitClient := whitebit.NewClient(httpPool, "https://whitebit.com", logCfg)
 	dydxClient := dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg)
-	asterClient := aster.NewClient(httpPool, "https://fapi.asterdex.com", logCfg)
+	asterClient := aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg)
 	bitmexClient := bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg)
 	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
@@ -142,11 +144,13 @@ func main() {
 	xtClient := xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg)
 	hashkeyClient := hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default())
 	cryptocomClient := cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default())
-	wooClient := woo.NewClient(httpPool, "https://api.woox.io", slog.Default())
+	wooxClient := woox.NewClient(httpPool, "https://api.woox.io", slog.Default())
 	phemexClient := phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default())
 	blofinClient := blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default())
 	digifinexClient := digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default())
 	bydfiClient := bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default())
+	juClient := ju.NewClient(httpPool, "https://api.jucoin.com", logCfg)
+	sunxClient := sunx.NewClient(httpPool, "https://api.sunx.io", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -185,11 +189,14 @@ func main() {
 		"bitmex":        bitmexClient,
 		"hashkey":       hashkeyClient,
 		"cryptocom":     cryptocomClient,
-		"woo":           wooClient,
+		"woox":          wooxClient,
 		"phemex":        phemexClient,
 		"blofin":        blofinClient,
 		"digifinex":     digifinexClient,
 		"bydfi":         bydfiClient,
+		"ju":            juClient,
+		"echobit":       juClient,
+		"sunx":          sunxClient,
 	}
 
 	// Filter clients based on user flag
@@ -239,6 +246,14 @@ func main() {
 				displayName = "Kraken Futures"
 			case "xt":
 				displayName = "XT.com"
+			case "woo", "woox":
+				displayName = "WOO X"
+			case "ju":
+				displayName = "Ju.com"
+			case "echobit":
+				displayName = "Echobit"
+			case "sunx":
+				displayName = "SunX"
 			}
 			scanList = append(scanList, displayName)
 		}

@@ -1,4 +1,4 @@
-package woo
+package woox
 
 import (
 	"log/slog"
