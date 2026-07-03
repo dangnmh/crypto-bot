@@ -60,6 +60,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 						"GET|/deepcoin/market/time",
 						"GET|/deepcoin/market/tickers",
 						"GET|/deepcoin/market/instruments",
+						"GET|/deepcoin/trade/funding-rate",
+						"GET|/deepcoin/trade/fund-rate/current-funding-rate",
 					},
 				}),
 				transportlog.LogOptionRedactSensitive(true),

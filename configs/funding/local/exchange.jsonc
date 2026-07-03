@@ -82,7 +82,7 @@
       }
     },
     "bitget": {
-      "enable": false,
+      "enable": true,
       "future": {
         "baseURL": "https://api.bitget.com"
       },

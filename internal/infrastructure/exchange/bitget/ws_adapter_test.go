@@ -17,7 +17,7 @@ import (
 func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 	t.Parallel()
 
-	adapter := bitget.NewWsAdapter()
+	adapter := bitget.NewWsAdapter("pass")
 	extractor := adapter.GetChannelExtractor()
 
 	assert.Equal(t, "ticker", extractor([]byte(`{"arg":{"channel":"ticker","instId":"BTCUSDT"}}`)))
@@ -26,12 +26,20 @@ func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 	assert.Equal(t, "personal.order", extractor([]byte(`{"arg":{"channel":"orders"}}`)))
 	assert.Equal(t, "personal.position", extractor([]byte(`{"arg":{"channel":"positions"}}`)))
 	assert.Equal(t, "personal.position", extractor([]byte(`{"arg":{"channel":"positions-history"}}`)))
+
+	// Test user's exact BIRBUSDT raw message routing
+	userRaw := []byte(`{"action":"snapshot","arg":{"instType":"USDT-FUTURES","channel":"ticker","instId":"BIRBUSDT"},"data":[{"instId":"BIRBUSDT","lastPr":"0.07623","bidPr":"0.07615","askPr":"0.0762","bidSz":"1863","askSz":"1290","open24h":"0.08453","high24h":"0.10126","low24h":"0.07447","change24h":"-0.09819","fundingRate":"-0.006439","nextFundingTime":"1783080000000","markPrice":"0.07628","indexPrice":"0.0774530536255575","holdingAmount":"23439001","baseVolume":"381989307","quoteVolume":"33328445.00488","openUtc":"0.09095","symbolType":"1","symbol":"BIRBUSDT","deliveryPrice":"0","ts":"1783066672529"}],"ts":1783066672529}`)
+	assert.Equal(t, "ticker", extractor(userRaw))
+
+	// Test user's exact subscribe confirmation message (should return "")
+	subConfirmRaw := []byte(`{"event":"subscribe","arg":{"instType":"USDT-FUTURES","channel":"positions-history","instId":"default"}}`)
+	assert.Equal(t, "", extractor(subConfirmRaw))
 }
 
 func TestWsAdapter_ParseTicker(t *testing.T) {
 	t.Parallel()
 
-	adapter := bitget.NewWsAdapter()
+	adapter := bitget.NewWsAdapter("pass")
 	raw := []byte(`{
 		"arg": {"channel": "ticker", "instId": "BTCUSDT"},
 		"data": [
@@ -52,12 +60,29 @@ func TestWsAdapter_ParseTicker(t *testing.T) {
 	assert.Equal(t, 50000.0, pd.BestBid)
 	assert.Equal(t, 50001.0, pd.BestAsk)
 	assert.Equal(t, 1000.0, pd.Volume24)
+
+	// Test case with actual User payload for BIRBUSDT
+	userRaw := []byte(`{"action":"snapshot","arg":{"instType":"USDT-FUTURES","channel":"ticker","instId":"BIRBUSDT"},"data":[{"instId":"BIRBUSDT","lastPr":"0.07623","bidPr":"0.07615","askPr":"0.0762","bidSz":"1863","askSz":"1290","open24h":"0.08453","high24h":"0.10126","low24h":"0.07447","change24h":"-0.09819","fundingRate":"-0.006439","nextFundingTime":"1783080000000","markPrice":"0.07628","indexPrice":"0.0774530536255575","holdingAmount":"23439001","baseVolume":"381989307","quoteVolume":"33328445.00488","openUtc":"0.09095","symbolType":"1","symbol":"BIRBUSDT","deliveryPrice":"0","ts":"1783066672529"}],"ts":1783066672529}`)
+	symbolUser, pdUser, errUser := adapter.ParseTicker(userRaw)
+	require.NoError(t, errUser)
+	assert.Equal(t, "BIRBUSDT", symbolUser)
+	assert.Equal(t, 0.07623, pdUser.LastPrice)
+	assert.Equal(t, 0.07615, pdUser.BestBid)
+	assert.Equal(t, 0.0762, pdUser.BestAsk)
+	assert.Equal(t, 381989307.0, pdUser.Volume24)
+
+	// Test control event (unsubscribe confirmation) skipping (should return "", nil, nil)
+	unsubRaw := []byte(`{"event":"unsubscribe","arg":{"instType":"USDT-FUTURES","channel":"ticker","instId":"BIRBUSDT"}}`)
+	symbolUnsub, pdUnsub, errUnsub := adapter.ParseTicker(unsubRaw)
+	require.NoError(t, errUnsub)
+	assert.Empty(t, symbolUnsub)
+	assert.Nil(t, pdUnsub)
 }
 
 func TestWsAdapter_ParsePosition(t *testing.T) {
 	t.Parallel()
 
-	adapter := bitget.NewWsAdapter()
+	adapter := bitget.NewWsAdapter("pass")
 	raw := []byte(`{
 		"arg": {"channel": "positions"},
 		"data": [
@@ -108,49 +133,47 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, exchange.PositionTypeShort, updateFallback.PositionType)
 
 	// Test positions-history parsing (total closed positions)
-	rawHistory := []byte(`{
-		"arg": {"channel": "positions-history", "instType": "USDT-FUTURES", "instId": "default"},
-		"data": [
-			{
-				"posId": "1",
-				"instId": "BTCUSDT",
-				"marginCoin": "USDT",
-				"marginMode": "crossed",
-				"holdSide": "short",
-				"posMode": "one_way_mode",
-				"openPriceAvg": "20000.0",
-				"closePriceAvg": "26221.0",
-				"openSize": "0.010",
-				"closeSize": "0.010",
-				"achievedProfits": "-62.21000000",
-				"settleFee": "-0.02277989",
-				"openFee": "-0.12000000",
-				"closeFee": "-0.15732600",
-				"cTime": "1696907951177",
-				"uTime": "1697090609976"
-			}
-		]
-	}`)
+	rawHistory := []byte(`{"action":"update","arg":{"instType":"USDT-FUTURES","channel":"positions-history","instId":"default"},"data":[{"posId":"1456862048120639491","instId":"BIRBUSDT","marginCoin":"USDT","marginMode":"fixed","holdSide":"short","posMode":"hedge_mode","openPriceAvg":"0.07637","closePriceAvg":"0.07651","openSize":"196","closeSize":"196","achievedProfits":"-0.02679000","settleFee":"0","openFee":"-0.00898111","closeFee":"-0.00899718","cTime":"1783068900136","uTime":"1783068926572"}],"ts":1783068926581}`)
 
 	updateHistory, err := adapter.ParsePosition(rawHistory)
 	require.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", updateHistory.Symbol)
+	assert.Equal(t, "BIRBUSDT", updateHistory.Symbol)
 	assert.Equal(t, 0.0, updateHistory.HoldVol)
 	assert.Equal(t, exchange.PositionTypeShort, updateHistory.PositionType)
-	assert.Equal(t, 20000.0, updateHistory.OpenAvgPrice)
-	assert.Equal(t, 20000.0, updateHistory.HoldAvgPrice)
-	assert.Equal(t, 0.010, updateHistory.CloseVol)
-	assert.Equal(t, 26221.0, updateHistory.CloseAvgPrice)
-	assert.Equal(t, -62.21000000, updateHistory.CloseProfitLoss)
-	assert.InDelta(t, -0.277326, updateHistory.Fee, 1e-9) // openFee + closeFee = -0.12 + -0.157326 = -0.277326
-	assert.Equal(t, -0.02277989, updateHistory.HoldFee)
-	assert.Equal(t, int64(1697090609976), updateHistory.UpdateTime)
+	assert.Equal(t, 0.07637, updateHistory.OpenAvgPrice)
+	assert.Equal(t, 0.07637, updateHistory.HoldAvgPrice)
+	assert.Equal(t, 196.0, updateHistory.CloseVol)
+	assert.Equal(t, 0.07651, updateHistory.CloseAvgPrice)
+	assert.Equal(t, -0.02679000, updateHistory.CloseProfitLoss)
+	assert.InDelta(t, -0.01797829, updateHistory.Fee, 1e-9) // openFee + closeFee = -0.00898111 + -0.00899718 = -0.01797829
+	assert.Equal(t, 0.0, updateHistory.HoldFee)
+	assert.Equal(t, int64(1783068926572), updateHistory.UpdateTime)
+
+	// Test empty positions list (should return nil, nil without error)
+	rawEmptyPos := []byte(`{
+		"arg": {"channel": "positions"},
+		"data": []
+	}`)
+	updateEmptyPos, errEmptyPos := adapter.ParsePosition(rawEmptyPos)
+	require.NoError(t, errEmptyPos)
+	assert.Nil(t, updateEmptyPos)
+
+	// Test empty positions-history list (should return nil, nil without error)
+	rawEmptyHistory := []byte(`{"action":"snapshot","arg":{"instType":"USDT-FUTURES","channel":"positions-history","instId":"default"},"data":[],"ts":1783066903146}`)
+	updateEmptyHistory, errEmptyHistory := adapter.ParsePosition(rawEmptyHistory)
+	require.NoError(t, errEmptyHistory)
+	assert.Nil(t, updateEmptyHistory)
+	// Test control event (subscribe confirmation) skipping (should return nil, nil)
+	rawConfirm := []byte(`{"event":"subscribe","arg":{"instType":"USDT-FUTURES","channel":"positions-history","instId":"default"}}`)
+	updateConfirm, errConfirm := adapter.ParsePosition(rawConfirm)
+	require.NoError(t, errConfirm)
+	assert.Nil(t, updateConfirm)
 }
 
 func TestWsAdapter_OtherMethods(t *testing.T) {
 	t.Parallel()
 
-	adapter := bitget.NewWsAdapter()
+	adapter := bitget.NewWsAdapter("pass")
 
 	// 1. GetPingConfig
 	pingMsg, interval := adapter.GetPingConfig()
@@ -188,7 +211,7 @@ func TestWsAdapter_OtherMethods(t *testing.T) {
 func TestWsAdapter_SubscriptionsAndAdditionalFeatures(t *testing.T) {
 	t.Parallel()
 
-	adapter := bitget.NewWsAdapter()
+	adapter := bitget.NewWsAdapter("pass")
 
 	// Using a dummy pool with a pre-canceled context so that pool methods return immediately without trying to connect.
 	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
@@ -253,7 +276,7 @@ func TestWsAdapter_LoginSync(t *testing.T) {
 
 	t.Run("Success Login Closes Authenticated Channel", func(t *testing.T) {
 		t.Parallel()
-		adapter := bitget.NewWsAdapter()
+		adapter := bitget.NewWsAdapter("pass")
 		extractor := adapter.GetChannelExtractor()
 
 		// GetAuthHook with key returns non-nil hook
@@ -285,7 +308,7 @@ func TestWsAdapter_LoginSync(t *testing.T) {
 
 	t.Run("Empty APIKey Closes Authenticated Channel Immediately", func(t *testing.T) {
 		t.Parallel()
-		adapter := bitget.NewWsAdapter()
+		adapter := bitget.NewWsAdapter("pass")
 
 		hook := adapter.GetAuthHook("", "")
 		assert.Nil(t, hook)

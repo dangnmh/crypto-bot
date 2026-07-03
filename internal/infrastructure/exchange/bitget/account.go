@@ -3,30 +3,29 @@ package bitget
 import (
 	"context"
 	"fmt"
-	"math"
 	"strconv"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 const exchangeName = "bitget"
 
 type bitgetPosition struct {
-	Symbol           string `json:"symbol"`
-	InstID           string `json:"instId"`
-	HoldSide         string `json:"holdSide"`
-	MarginMode       string `json:"marginMode"`
-	Leverage         string `json:"leverage"`
-	Total            string `json:"total"`
-	Available        string `json:"available"`
-	Locked           string `json:"locked"`
-	OpenPriceAvg     string `json:"openPriceAvg"`
-	MarginSize       string `json:"marginSize"`
-	UnrealizedPL     string `json:"unrealizedPL"`
-	LiquidationPrice string `json:"liquidationPrice"`
-	AchievedProfits  string `json:"achievedProfits"`
+	Symbol           string       `json:"symbol"`
+	InstID           string       `json:"instId"`
+	HoldSide         string       `json:"holdSide"`
+	MarginMode       string       `json:"marginMode"`
+	Leverage         xjson.Number `json:"leverage"`
+	Total            xjson.Number `json:"total"`
+	Available        xjson.Number `json:"available"`
+	Locked           xjson.Number `json:"locked"`
+	OpenPriceAvg     xjson.Number `json:"openPriceAvg"`
+	MarginSize       xjson.Number `json:"marginSize"`
+	UnrealizedPL     xjson.Number `json:"unrealizedPL"`
+	LiquidationPrice xjson.Number `json:"liquidationPrice"`
+	AchievedProfits  xjson.Number `json:"achievedProfits"`
 }
 
 type bitgetOpenPositionsRequest struct {
@@ -43,21 +42,21 @@ type bitgetHistoryPositionsRequest struct {
 }
 
 type bitgetHistoryPosition struct {
-	PositionID    string `json:"positionId"`
-	MarginCoin    string `json:"marginCoin"`
-	Symbol        string `json:"symbol"`
-	HoldSide      string `json:"holdSide"`
-	OpenAvgPrice  string `json:"openAvgPrice"`
-	CloseAvgPrice string `json:"closeAvgPrice"`
-	OpenTotalPos  string `json:"openTotalPos"`
-	CloseTotalPos string `json:"closeTotalPos"`
-	PnL           string `json:"pnl"`
-	NetProfit     string `json:"netProfit"`
-	TotalFunding  string `json:"totalFunding"`
-	OpenFee       string `json:"openFee"`
-	CloseFee      string `json:"closeFee"`
-	CTime         string `json:"ctime"`
-	UTime         string `json:"utime"`
+	PositionID    string       `json:"positionId"`
+	MarginCoin    string       `json:"marginCoin"`
+	Symbol        string       `json:"symbol"`
+	HoldSide      string       `json:"holdSide"`
+	OpenAvgPrice  xjson.Number `json:"openAvgPrice"`
+	CloseAvgPrice xjson.Number `json:"closeAvgPrice"`
+	OpenTotalPos  xjson.Number `json:"openTotalPos"`
+	CloseTotalPos xjson.Number `json:"closeTotalPos"`
+	PnL           xjson.Number `json:"pnl"`
+	NetProfit     xjson.Number `json:"netProfit"`
+	TotalFunding  xjson.Number `json:"totalFunding"`
+	OpenFee       xjson.Number `json:"openFee"`
+	CloseFee      xjson.Number `json:"closeFee"`
+	CTime         xjson.Number `json:"ctime"`
+	UTime         xjson.Number `json:"utime"`
 }
 
 type bitgetHistoryPositionResponse struct {
@@ -134,19 +133,19 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			continue
 		}
 
-		holdVol, _ := strconv.ParseFloat(pos.Total, 64)
+		holdVol := xjson.ToFloat64(pos.Total)
 		if holdVol <= 0 {
 			continue
 		}
 
-		avgPx, _ := strconv.ParseFloat(pos.OpenPriceAvg, 64)
+		avgPx := xjson.ToFloat64(pos.OpenPriceAvg)
 
 		posType := exchange.PositionTypeLong // Long.
 		if pos.HoldSide == posSideShort {
 			posType = exchange.PositionTypeShort
 		}
 
-		lev, _ := strconv.Atoi(pos.Leverage)
+		lev := int(xjson.ToInt64(pos.Leverage))
 
 		openPositions = append(openPositions, exchange.Position{
 			Symbol:       posSym,
@@ -174,7 +173,6 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 			Symbol:   symbol,
 		}, nil
 	}
-	orderTime := orderInfo.UpdateTime
 
 	var startTime time.Time
 	if orderInfo.CreateTime > 0 {
@@ -199,32 +197,19 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return nil, fmt.Errorf("query closed pnl failed: no history position records found for symbol %s", symbol)
 	}
 
-	var matchedPos *bitgetHistoryPosition
-	for i := range res.List {
-		p := &res.List[i]
-		pCloseTime := decmath.ParseInt64(p.UTime)
-		// Check if the record close time matches the order update time within a 10s tolerance window
-		if math.Abs(float64(pCloseTime-orderTime)) <= 10000 {
-			matchedPos = p
-			break
-		}
-	}
+	matchedPos := &res.List[0]
 
-	if matchedPos == nil {
-		return nil, fmt.Errorf("query closed pnl failed: no matching history position record found for order update time %d", orderTime)
-	}
+	entryPrice := xjson.ToFloat64(matchedPos.OpenAvgPrice)
+	exitPrice := xjson.ToFloat64(matchedPos.CloseAvgPrice)
+	closedSize := xjson.ToFloat64(matchedPos.CloseTotalPos)
+	grossPnL := xjson.ToFloat64(matchedPos.PnL)
+	netPnl := xjson.ToFloat64(matchedPos.NetProfit)
+	fundingFee := xjson.ToFloat64(matchedPos.TotalFunding)
+	openFee := xjson.ToFloat64(matchedPos.OpenFee)
+	closeFee := xjson.ToFloat64(matchedPos.CloseFee)
 
-	entryPrice := decmath.ParseFloat(matchedPos.OpenAvgPrice)
-	exitPrice := decmath.ParseFloat(matchedPos.CloseAvgPrice)
-	closedSize := decmath.ParseFloat(matchedPos.CloseTotalPos)
-	grossPnL := decmath.ParseFloat(matchedPos.PnL)
-	netPnl := decmath.ParseFloat(matchedPos.NetProfit)
-	fundingFee := decmath.ParseFloat(matchedPos.TotalFunding)
-	openFee := decmath.ParseFloat(matchedPos.OpenFee)
-	closeFee := decmath.ParseFloat(matchedPos.CloseFee)
-
-	ctime := decmath.ParseInt64(matchedPos.CTime)
-	utime := decmath.ParseInt64(matchedPos.UTime)
+	ctime := xjson.ToInt64(matchedPos.CTime)
+	utime := xjson.ToInt64(matchedPos.UTime)
 	duration := max(utime-ctime, 0)
 
 	pnlRate := 0.0

@@ -41,6 +41,7 @@ const (
 	posSideShort  = "short"
 	posSideNet    = "net"
 	stateLive     = "live"
+	stateInit     = "init"
 	stateFilled   = "filled"
 	stateCanceled = "canceled"
 	statePartFill = "partially_filled"

@@ -179,8 +179,8 @@ func DefaultProviderFactories() []ProviderFactory {
 			name: exchange.ExchangeBitget,
 			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
 				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeBitget]
-				client := exchange.Client(bitget.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, "", cfg.SystemConfig.Logging))
-				adapter := bitget.NewWsAdapter()
+				client := exchange.Client(bitget.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+				adapter := bitget.NewWsAdapter(apiCfg.APIPassphrase)
 				return buildProvider(ctx, exchange.ExchangeBitget, exchange.ExchangeBitget, cfg, apiCfg, client, adapter), nil
 			},
 		},

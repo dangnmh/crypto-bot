@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -70,18 +71,7 @@ func (c *Client) getRawServerTime(ctx context.Context, _ bitgetServerTimeRequest
 		return nil, err
 	}
 
-	var resp struct {
-		Code string          `json:"code"`
-		Msg  string          `json:"msg"`
-		Data json.RawMessage `json:"data"`
-	}
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse server time response: %w", err)
-	}
-	if resp.Code != "00000" {
-		return nil, toAPIError(0, resp.Msg, "server_time")
-	}
-	return resp.Data, nil
+	return ParseResponse[json.RawMessage](body, "server_time")
 }
 
 func (c *Client) getRawContractDetails(ctx context.Context, req bitgetContractsRequest) ([]bitgetInstrument, error) {
@@ -138,14 +128,25 @@ func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 
-	var strVal string
-	if err := xjson.Unmarshal(data, &strVal); err == nil {
-		val, err := strconv.ParseInt(strVal, 10, 64)
-		if err == nil {
+	// Try parsing as object {"serverTime": "..."}
+	var timeObj struct {
+		ServerTime xjson.Number `json:"serverTime"`
+	}
+	if err := xjson.Unmarshal(data, &timeObj); err == nil && timeObj.ServerTime != "" {
+		if val, err := timeObj.ServerTime.Int64(); err == nil {
 			return val, nil
 		}
 	}
 
+	// Fallback: parse as direct string value
+	var strVal string
+	if err := xjson.Unmarshal(data, &strVal); err == nil {
+		if val, err := strconv.ParseInt(strVal, 10, 64); err == nil {
+			return val, nil
+		}
+	}
+
+	// Fallback: parse as direct numeric value
 	var numVal int64
 	if err := xjson.Unmarshal(data, &numVal); err == nil {
 		return numVal, nil
@@ -179,6 +180,10 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 		if priceScale <= 0 && inst.PriceEndStep != "" {
 			priceScale = decmath.DecimalPlaces(inst.PriceEndStep)
+		}
+
+		if priceUnit >= 1.0 && priceScale > 0 {
+			priceUnit *= math.Pow10(-priceScale)
 		}
 
 		minLeverage := 1

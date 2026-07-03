@@ -3,14 +3,12 @@ package bitget
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
-	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
@@ -25,12 +23,14 @@ type WsAdapter struct {
 	pool          *pkgws.Pool
 	authenticated chan struct{}
 	authMu        sync.Mutex
+	passphrase    string
 }
 
 // NewWsAdapter creates a new Bitget WsAdapter.
-func NewWsAdapter() *WsAdapter {
+func NewWsAdapter(passphrase string) *WsAdapter {
 	return &WsAdapter{
 		authenticated: make(chan struct{}),
+		passphrase:    passphrase,
 	}
 }
 
@@ -111,9 +111,8 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
 		sig := SignRequest(apiSecret, ts, "GET", "/user/verify", "")
 
-		// Bitget WS login passphrase defaults to empty or standard if env is set,
-		// let's grab it from client configuration if available or pass os env.
-		passphrase := os.Getenv("BITGET_PASSPHRASE")
+		// Use configured passphrase injected during initialization
+		passphrase := a.passphrase
 
 		msg := map[string]any{
 			"op": opLogin,
@@ -137,18 +136,22 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			return msgPong
 		}
 
-		if event, err := jsonparser.GetString(data, "event"); err == nil && event == opLogin {
-			code, _ := jsonparser.GetString(data, "code")
-			if code == "0" || code == "" {
-				a.authMu.Lock()
-				select {
-				case <-a.authenticated:
-				default:
-					close(a.authenticated)
+		if event, err := jsonparser.GetString(data, "event"); err == nil {
+			if event == opLogin {
+				code, _ := jsonparser.GetString(data, "code")
+				if code == "0" || code == "" {
+					a.authMu.Lock()
+					select {
+					case <-a.authenticated:
+					default:
+						close(a.authenticated)
+					}
+					a.authMu.Unlock()
 				}
-				a.authMu.Unlock()
+				return opLogin
 			}
-			return opLogin
+			// Skip other control events (subscribe, unsubscribe, error, etc.)
+			return ""
 		}
 
 		channel, err := jsonparser.GetString(data, "arg", "channel")
@@ -177,6 +180,10 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 
 // ParseTicker parses ticker feed into store.PriceData.
 func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
+	if _, err := jsonparser.GetString(data, "event"); err == nil {
+		return "", nil, nil
+	}
+
 	instID, err := jsonparser.GetString(data, "arg", fieldInstId)
 	if err != nil {
 		return "", nil, err
@@ -228,27 +235,35 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 }
 
 type bitgetHistoryPositionWs struct {
-	PosID           string `json:"posId"`
-	InstID          string `json:"instId"`
-	MarginCoin      string `json:"marginCoin"`
-	MarginMode      string `json:"marginMode"`
-	HoldSide        string `json:"holdSide"`
-	PosMode         string `json:"posMode"`
-	OpenPriceAvg    string `json:"openPriceAvg"`
-	ClosePriceAvg   string `json:"closePriceAvg"`
-	OpenSize        string `json:"openSize"`
-	CloseSize       string `json:"closeSize"`
-	AchievedProfits string `json:"achievedProfits"`
-	SettleFee       string `json:"settleFee"`
-	OpenFee         string `json:"openFee"`
-	CloseFee        string `json:"closeFee"`
-	CTime           string `json:"cTime"`
-	UTime           string `json:"uTime"`
+	PosID           string       `json:"posId"`
+	InstID          string       `json:"instId"`
+	MarginCoin      string       `json:"marginCoin"`
+	MarginMode      string       `json:"marginMode"`
+	HoldSide        string       `json:"holdSide"`
+	PosMode         string       `json:"posMode"`
+	OpenPriceAvg    xjson.Number `json:"openPriceAvg"`
+	ClosePriceAvg   xjson.Number `json:"closePriceAvg"`
+	OpenSize        xjson.Number `json:"openSize"`
+	CloseSize       xjson.Number `json:"closeSize"`
+	AchievedProfits xjson.Number `json:"achievedProfits"`
+	SettleFee       xjson.Number `json:"settleFee"`
+	OpenFee         xjson.Number `json:"openFee"`
+	CloseFee        xjson.Number `json:"closeFee"`
+	CTime           xjson.Number `json:"cTime"`
+	UTime           xjson.Number `json:"uTime"`
 }
 
 // ParsePosition parses positions feed into PersonalPositionUpdate.
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
+	if _, err := jsonparser.GetString(data, "event"); err == nil {
+		return nil, nil
+	}
+
 	channel, _ := jsonparser.GetString(data, "arg", "channel")
+
+	if channel != channelPositions && channel != channelPositionsHistory {
+		return nil, fmt.Errorf("invalid position channel: %s", channel)
+	}
 
 	dataNode, _, _, err := jsonparser.Get(data, "data")
 	if err != nil {
@@ -257,19 +272,22 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	if channel == channelPositionsHistory {
 		var dataArr []bitgetHistoryPositionWs
-		if err := xjson.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+		if err := xjson.Unmarshal(dataNode, &dataArr); err != nil {
 			return nil, fmt.Errorf("parse history position data: %w", err)
+		}
+		if len(dataArr) == 0 {
+			return nil, nil
 		}
 
 		p := &dataArr[0]
-		openPx, _ := strconv.ParseFloat(p.OpenPriceAvg, 64)
-		closePx, _ := strconv.ParseFloat(p.ClosePriceAvg, 64)
-		closeVol, _ := strconv.ParseFloat(p.CloseSize, 64)
-		realized, _ := strconv.ParseFloat(p.AchievedProfits, 64)
-		settleFee, _ := strconv.ParseFloat(p.SettleFee, 64)
-		openFee, _ := strconv.ParseFloat(p.OpenFee, 64)
-		closeFee, _ := strconv.ParseFloat(p.CloseFee, 64)
-		uTime := decmath.ParseInt64(p.UTime)
+		openPx := xjson.ToFloat64(p.OpenPriceAvg)
+		closePx := xjson.ToFloat64(p.ClosePriceAvg)
+		closeVol := xjson.ToFloat64(p.CloseSize)
+		realized := xjson.ToFloat64(p.AchievedProfits)
+		settleFee := xjson.ToFloat64(p.SettleFee)
+		openFee := xjson.ToFloat64(p.OpenFee)
+		closeFee := xjson.ToFloat64(p.CloseFee)
+		uTime := xjson.ToInt64(p.UTime)
 
 		posType := exchange.PositionTypeLong // long
 		if p.HoldSide == posSideShort {
@@ -293,16 +311,19 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	var dataArr []bitgetPosition
-	if err := xjson.Unmarshal(dataNode, &dataArr); err != nil || len(dataArr) == 0 {
+	if err := xjson.Unmarshal(dataNode, &dataArr); err != nil {
 		return nil, fmt.Errorf("parse position data: %w", err)
+	}
+	if len(dataArr) == 0 {
+		return nil, nil
 	}
 
 	p := &dataArr[0]
-	posVal, _ := strconv.ParseFloat(p.Total, 64)
-	leverVal, _ := strconv.Atoi(p.Leverage)
-	avgPx, _ := strconv.ParseFloat(p.OpenPriceAvg, 64)
-	liqPx, _ := strconv.ParseFloat(p.LiquidationPrice, 64)
-	realized, _ := strconv.ParseFloat(p.AchievedProfits, 64)
+	posVal := xjson.ToFloat64(p.Total)
+	leverVal := int(xjson.ToInt64(p.Leverage))
+	avgPx := xjson.ToFloat64(p.OpenPriceAvg)
+	liqPx := xjson.ToFloat64(p.LiquidationPrice)
+	realized := xjson.ToFloat64(p.AchievedProfits)
 
 	posType := exchange.PositionTypeLong // long
 	if p.HoldSide == posSideShort {

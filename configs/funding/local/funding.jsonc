@@ -75,9 +75,15 @@
   //   "simulateSettle": "2026-07-01T17:10:00.000+07:00"
   // },
   {
-    "symbol": "SLXUSDT",
+    "symbol": "BIRBUSDT",
     "marginUSDT": 3,
-    "exchange": "aster",
-    "simulateSettle": "2026-07-03T14:10:00.000+07:00"
+    "exchange": "bitget",
+    "simulateSettle": "2026-07-03T17:35:00.000+07:00"
   },
+  // {
+  //   "symbol": "SLXUSDT",
+  //   "marginUSDT": 3,
+  //   "exchange": "aster",
+  //   "simulateSettle": "2026-07-03T14:10:00.000+07:00"
+  // },
 ]

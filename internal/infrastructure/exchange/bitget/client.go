@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -56,7 +57,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 					OnStatus:       []int{0},
 					WhiteListPaths: []string{"*"},
-					BlackListPaths: []string{},
+					BlackListPaths: []string{
+						"GET|/api/v2/public/time",
+						"GET|/api/v2/mix/market/current-fund-rate",
+						"GET|/api/v2/mix/market/contracts",
+						"GET|/api/v2/mix/market/tickers",
+					},
 				}),
 				transportlog.LogOptionRedactSensitive(true),
 				transportlog.LogOptionRedactSensitiveKeys([]string{headerKey, headerPassphrase}),
@@ -233,4 +239,74 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 // SupportLeverageOnOrder returns false since Bitget doesn't support setting leverage directly on orders.
 func (c *Client) SupportLeverageOnOrder() bool {
 	return false
+}
+
+// RawRequest executes a signed or unsigned request to the Bitget API returning raw bytes.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	if method == http.MethodPost {
+		var bodyVal any
+		if len(body) > 0 {
+			var temp map[string]any
+			if err := xjson.Unmarshal(body, &temp); err == nil {
+				bodyVal = temp
+			} else {
+				bodyVal = body
+			}
+		}
+		return c.PostCtx(ctx, path, bodyVal)
+	}
+	return c.GetCtx(ctx, path, query)
+}
+
+// GetFundingRateRaw fetches raw funding rates.
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, pathFundingRate, params, nil)
+}
+
+// GetTickersRaw fetches raw tickers.
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, pathTickers, params, nil)
+}
+
+// GetOpenPositionsRaw fetches raw positions.
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, pathOpenPositions, params, nil)
+}
+
+// GetHistoryPositionsRaw fetches raw history positions.
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, pathHistoryPositions, params, nil)
+}
+
+// GetOrderDetailRaw fetches raw order detail.
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	p := make(map[string]string)
+	maps.Copy(p, params)
+	p["orderId"] = orderID
+	return c.RawRequest(ctx, http.MethodGet, pathGetOrder, p, nil)
+}
+
+// GetHistoryOrdersRaw fetches raw history orders.
+func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.RawRequest(ctx, http.MethodGet, "/api/v2/mix/order/orders-history", params, nil)
+}
+
+// GetOrderPNLRaw fetches raw realized pnl logs for debugging.
+func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	orderID := params["order_id"]
+	if orderID == "" {
+		orderID = params["orderId"]
+	}
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required")
+	}
+	if orderID == "" {
+		return nil, fmt.Errorf("order_id is required")
+	}
+	info, err := c.GetOrderPNL(ctx, symbol, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return xjson.Marshal(info)
 }

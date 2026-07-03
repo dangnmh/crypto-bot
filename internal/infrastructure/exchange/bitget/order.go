@@ -9,6 +9,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 type bitgetCreateOrderRequest struct {
@@ -25,6 +26,7 @@ type bitgetCreateOrderRequest struct {
 	ReduceOnly             string `json:"reduceOnly,omitempty"`
 	PresetStopSurplusPrice string `json:"presetStopSurplusPrice,omitempty"`
 	PresetStopLossPrice    string `json:"presetStopLossPrice,omitempty"`
+	Force                  string `json:"force,omitempty"`
 }
 
 type bitgetCreateOrderResponse struct {
@@ -40,31 +42,12 @@ type bitgetCancelOrderRequest struct {
 
 type bitgetCancelOrderResponse struct{}
 
-type bitgetPendingOrdersRequest struct {
-	ProductType string `json:"productType"`
-}
-
 type bitgetOpenOrdersRequest struct {
 	ProductType string `json:"productType"`
 	Symbol      string `json:"symbol,omitempty"`
 }
 
-type bitgetHistoryOrdersRequest struct {
-	ProductType string `json:"productType"`
-}
-
-type bitgetChangeLeverageRequest struct {
-	Symbol        string `json:"symbol"`
-	ProductType   string `json:"productType"`
-	MarginCoin    string `json:"marginCoin"`
-	Leverage      string `json:"leverage"`
-	LongLeverage  string `json:"longLeverage"`
-	ShortLeverage string `json:"shortLeverage"`
-}
-
-type bitgetChangeLeverageResponse struct{}
-
-type bitgetOrder struct {
+type bitgetOrderDetail struct {
 	OrderID    string `json:"orderId"`
 	ClientOid  string `json:"clientOid"`
 	Symbol     string `json:"symbol"`
@@ -78,6 +61,27 @@ type bitgetOrder struct {
 	Leverage   string `json:"leverage"`
 	CTime      string `json:"cTime"`
 	UTime      string `json:"uTime"`
+}
+
+type bitgetEntrustedOrder struct {
+	OrderID    string `json:"orderId"`
+	ClientOid  string `json:"clientOid"`
+	Symbol     string `json:"symbol"`
+	Size       string `json:"size"`
+	Price      string `json:"price"`
+	PriceAvg   string `json:"priceAvg"`
+	BaseVolume string `json:"baseVolume"`
+	Status     string `json:"status"`
+	Side       string `json:"side"`
+	PosSide    string `json:"posSide"`
+	Leverage   string `json:"leverage"`
+	CTime      string `json:"cTime"`
+	UTime      string `json:"uTime"`
+}
+
+type bitgetOrdersResponse struct {
+	EntrustedList []bitgetEntrustedOrder `json:"entrustedList"`
+	EndID         string                 `json:"endId"`
 }
 
 // Private raw methods invoking the Bitget REST API.
@@ -117,6 +121,10 @@ func (c *Client) createRawOrder(ctx context.Context, req bitgetCreateOrderReques
 		bodyMap["presetStopLossPrice"] = req.PresetStopLossPrice
 	}
 
+	if req.Force != "" {
+		bodyMap["force"] = req.Force
+	}
+
 	body, err := c.PostCtx(ctx, pathPlaceOrder, bodyMap)
 	if err != nil {
 		return nil, err
@@ -147,23 +155,9 @@ func (c *Client) cancelRawOrder(ctx context.Context, req bitgetCancelOrderReques
 	return &bitgetCancelOrderResponse{}, nil
 }
 
-func (c *Client) getRawPendingOrders(ctx context.Context, req bitgetPendingOrdersRequest) ([]bitgetOrder, error) {
-	pendingBody, err := c.GetCtx(ctx, pathPendingOrders, map[string]string{paramProductType: req.ProductType})
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[[]bitgetOrder](pendingBody, "pending_orders")
-}
+// Private raw methods invoking the Bitget REST API.
 
-func (c *Client) getRawHistoryOrders(ctx context.Context, req bitgetHistoryOrdersRequest) ([]bitgetOrder, error) {
-	historyBody, err := c.GetCtx(ctx, "/api/v2/mix/order/orders-history", map[string]string{paramProductType: req.ProductType})
-	if err != nil {
-		return nil, err
-	}
-	return ParseResponse[[]bitgetOrder](historyBody, "orders_history")
-}
-
-func (c *Client) getRawOpenOrders(ctx context.Context, req bitgetOpenOrdersRequest) ([]bitgetOrder, error) {
+func (c *Client) getRawOpenOrders(ctx context.Context, req bitgetOpenOrdersRequest) ([]bitgetEntrustedOrder, error) {
 	params := map[string]string{
 		paramProductType: req.ProductType,
 	}
@@ -176,35 +170,66 @@ func (c *Client) getRawOpenOrders(ctx context.Context, req bitgetOpenOrdersReque
 		return nil, err
 	}
 
-	return ParseResponse[[]bitgetOrder](body, "open_orders")
+	res, err := ParseResponse[bitgetOrdersResponse](body, "open_orders")
+	if err != nil {
+		return nil, err
+	}
+	return res.EntrustedList, nil
 }
 
-func (c *Client) changeRawLeverage(ctx context.Context, req bitgetChangeLeverageRequest) (*bitgetChangeLeverageResponse, error) {
-	bodyMap := map[string]any{
-		paramSymbol:      req.Symbol,
-		paramProductType: req.ProductType,
-		paramMarginCoin:  req.MarginCoin,
-		paramLeverage:    req.Leverage,
-		"longLeverage":   req.LongLeverage,
-		"shortLeverage":  req.ShortLeverage,
+func (c *Client) getRawOrderDetail(ctx context.Context, symbol, orderID, clientOid string) (*bitgetOrderDetail, error) {
+	params := map[string]string{
+		paramProductType: productTypeUsdtFutures,
+		paramSymbol:      symbol,
+	}
+	if orderID != "" {
+		params["orderId"] = orderID
+	}
+	if clientOid != "" {
+		params["clientOid"] = clientOid
 	}
 
-	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
+	body, err := c.GetCtx(ctx, pathGetOrder, params)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := ParseResponseIgnoreData(body, "change_leverage"); err != nil {
+	res, err := ParseResponse[bitgetOrderDetail](body, "order_detail")
+	if err != nil {
 		return nil, err
 	}
-	return &bitgetChangeLeverageResponse{}, nil
+	return &res, nil
+}
+
+func (c *Client) changeRawLeverage(ctx context.Context, bodyMap map[string]any) error {
+	body, err := c.PostCtx(ctx, pathSetLeverage, bodyMap)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "change_leverage")
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
+func mapOrderTypeAndForce(t domain.OrderType) (string, string) {
+	switch t {
+	case exchange.OrderTypeMarket:
+		return "market", ""
+	case exchange.OrderTypePostOnly:
+		return paramLimit, "post_only"
+	case exchange.OrderTypeIOC:
+		return paramLimit, "ioc"
+	case exchange.OrderTypeFOK:
+		return paramLimit, "fok"
+	default:
+		return paramLimit, "gtc"
+	}
+}
+
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	ordType := mapBitgetOrderType(req.Type)
+	orderType, force := mapOrderTypeAndForce(req.Type)
+
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0
 	side, tradeSide := mapBitgetOrderSide(req.Side, isHedge)
 
@@ -233,7 +258,8 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		ProductType:            productTypeUsdtFutures,
 		MarginMode:             marginMode,
 		Side:                   side,
-		OrderType:              ordType,
+		OrderType:              orderType,
+		Force:                  force,
 		Size:                   decmath.FormatFloat(req.Vol),
 		MarginCoin:             constantUsdt,
 		ClientOid:              req.ExternalOID,
@@ -318,62 +344,30 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	return nil
 }
 
-func (c *Client) findBitgetOrder(ctx context.Context, predicate func(bitgetOrder) bool) (*exchange.OrderInfo, error) {
-	// Query pending orders.
-	pendingList, err := c.getRawPendingOrders(ctx, bitgetPendingOrdersRequest{
-		ProductType: productTypeUsdtFutures,
-	})
-	if err == nil {
-		for i := range pendingList {
-			if predicate(pendingList[i]) {
-				info := mapBitgetOrder(pendingList[i])
-				return &info, nil
-			}
-		}
-	}
-
-	// Historical order detail.
-	historyList, err := c.getRawHistoryOrders(ctx, bitgetHistoryOrdersRequest{
-		ProductType: productTypeUsdtFutures,
-	})
-	if err == nil {
-		for i := range historyList {
-			if predicate(historyList[i]) {
-				info := mapBitgetOrder(historyList[i])
-				return &info, nil
-			}
-		}
-	}
-
-	return nil, nil
-}
-
 // GetOrder queries a single order by exchange order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	info, err := c.findBitgetOrder(ctx, func(o bitgetOrder) bool {
-		return o.OrderID == orderID
-	})
+	raw, err := c.getRawOrderDetail(ctx, symbol, orderID, "")
 	if err != nil {
 		return nil, err
 	}
-	if info == nil {
+	if raw == nil {
 		return nil, fmt.Errorf("order not found: %s", orderID)
 	}
-	return info, nil
+	info := mapBitgetOrderDetail(*raw)
+	return &info, nil
 }
 
 // GetOrderByExternalID queries a single order by client order ID.
 func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
-	info, err := c.findBitgetOrder(ctx, func(o bitgetOrder) bool {
-		return o.ClientOid == externalOrderID
-	})
+	raw, err := c.getRawOrderDetail(ctx, symbol, "", externalOrderID)
 	if err != nil {
 		return nil, err
 	}
-	if info == nil {
+	if raw == nil {
 		return nil, fmt.Errorf("order not found by external ID: %s", externalOrderID)
 	}
-	return info, nil
+	info := mapBitgetOrderDetail(*raw)
+	return &info, nil
 }
 
 // GetOpenOrders returns all open orders.
@@ -388,7 +382,7 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 
 	orders := make([]exchange.OrderInfo, 0, len(rawList))
 	for i := range rawList {
-		orders = append(orders, mapBitgetOrder(rawList[i]))
+		orders = append(orders, mapBitgetEntrustedOrder(rawList[i]))
 	}
 
 	return orders, nil
@@ -412,40 +406,99 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 
 // CloseAllPositions closes all positions for a symbol.
 func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
+	bodyMap := map[string]any{
+		paramSymbol:      symbol,
+		paramProductType: productTypeUsdtFutures,
+	}
+
+	body, err := c.PostCtx(ctx, "/api/v2/mix/order/close-positions", bodyMap)
 	if err != nil {
 		return err
 	}
 
-	for i := range positions {
-		pos := positions[i]
-		if pos.HoldVol > 0 {
-			side := domain.SideCloseShort
-			if pos.PositionType == exchange.PositionTypeLong { // Long
-				side = domain.SideCloseLong
-			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, 1, pos.Leverage)
-			if err != nil {
-				return err
-			}
-		}
+	var resp struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			SuccessList []struct {
+				OrderID   string `json:"orderId"`
+				ClientOid string `json:"clientOid"`
+				Symbol    string `json:"symbol"`
+			} `json:"successList"`
+			FailureList []struct {
+				OrderID   string `json:"orderId"`
+				ClientOid string `json:"clientOid"`
+				Symbol    string `json:"symbol"`
+				ErrorMsg  string `json:"errorMsg"`
+				ErrorCode string `json:"errorCode"`
+			} `json:"failureList"`
+		} `json:"data"`
 	}
+
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return fmt.Errorf("parse close positions response: %w", err)
+	}
+
+	if resp.Code != "00000" {
+		codeVal := 0
+		_, _ = fmt.Sscanf(resp.Code, "%d", &codeVal)
+		return toAPIError(codeVal, resp.Msg, "close-positions")
+	}
+
+	if len(resp.Data.FailureList) > 0 {
+		fail := resp.Data.FailureList[0]
+		return fmt.Errorf("close position failure for %s: %s (code: %s)", fail.Symbol, fail.ErrorMsg, fail.ErrorCode)
+	}
+
 	return nil
 }
 
 // ChangeLeverage changes the leverage for a symbol.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	rawReq := bitgetChangeLeverageRequest{
-		Symbol:        req.Symbol,
-		ProductType:   productTypeUsdtFutures,
-		MarginCoin:    constantUsdt,
-		Leverage:      strconv.Itoa(req.Leverage),
-		LongLeverage:  strconv.Itoa(req.Leverage),
-		ShortLeverage: strconv.Itoa(req.Leverage),
+	isCross := req.OpenType == exchange.OpenTypeCross
+
+	bodyMap := map[string]any{
+		paramSymbol:      req.Symbol,
+		paramProductType: productTypeUsdtFutures,
+		paramMarginCoin:  constantUsdt,
 	}
 
-	_, err := c.changeRawLeverage(ctx, rawReq)
-	return err
+	if isCross {
+		bodyMap[paramLeverage] = strconv.Itoa(req.Leverage)
+	} else {
+		switch req.PositionType {
+		case exchange.PositionTypeLong:
+			bodyMap[paramLeverage] = strconv.Itoa(req.Leverage)
+			bodyMap["holdSide"] = "long"
+		case exchange.PositionTypeShort:
+			bodyMap[paramLeverage] = strconv.Itoa(req.Leverage)
+			bodyMap["holdSide"] = "short"
+		default:
+			bodyMap["longLeverage"] = strconv.Itoa(req.Leverage)
+			bodyMap["shortLeverage"] = strconv.Itoa(req.Leverage)
+		}
+	}
+
+	return c.changeRawLeverage(ctx, bodyMap)
+}
+
+// SwitchPositionMode switches hold mode between hedge and one-way for Bitget.
+func (c *Client) SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error {
+	posMode := "hedge_mode"
+	if positionMode == domain.PositionModeOneWay {
+		posMode = "one_way_mode"
+	}
+
+	bodyMap := map[string]any{
+		"posMode":        posMode,
+		paramProductType: productTypeUsdtFutures,
+	}
+
+	body, err := c.PostCtx(ctx, "/api/v2/mix/account/set-position-mode", bodyMap)
+	if err != nil {
+		return err
+	}
+	return ParseResponseIgnoreData(body, "set-position-mode")
 }
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Bitget.
@@ -469,53 +522,55 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode
 	return ParseResponseIgnoreData(body, "set-margin-mode")
 }
 
-func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
-	px, _ := strconv.ParseFloat(o.Price, 64)
-	sz, _ := strconv.ParseFloat(o.Size, 64)
-	avgPx, _ := strconv.ParseFloat(o.PriceAvg, 64)
-	fillSz, _ := strconv.ParseFloat(o.BaseVolume, 64)
+func mapBitgetRawOrder(
+	orderID, clientOid, symbol, size, price, priceAvg, baseVolume, side, posSide, leverage, cTime, uTime, statusOrState string,
+) exchange.OrderInfo {
+	px, _ := strconv.ParseFloat(price, 64)
+	sz, _ := strconv.ParseFloat(size, 64)
+	avgPx, _ := strconv.ParseFloat(priceAvg, 64)
+	fillSz, _ := strconv.ParseFloat(baseVolume, 64)
 
-	cTimeVal := decmath.ParseInt64(o.CTime)
-	uTimeVal := decmath.ParseInt64(o.UTime)
+	cTimeVal := decmath.ParseInt64(cTime)
+	uTimeVal := decmath.ParseInt64(uTime)
 
 	info := exchange.OrderInfo{
-		OrderID:      o.OrderID,
-		Symbol:       o.Symbol,
+		OrderID:      orderID,
+		Symbol:       symbol,
 		Price:        px,
 		Vol:          sz,
 		DealAvgPrice: avgPx,
 		DealVol:      fillSz,
-		ExternalOID:  o.ClientOid,
+		ExternalOID:  clientOid,
 		CreateTime:   cTimeVal,
 		UpdateTime:   uTimeVal,
 		PositionMode: domain.PositionModeOneWay, // default OneWay
 	}
 
-	switch o.PosSide {
+	switch posSide {
 	case posSideLong:
 		info.PositionMode = domain.PositionModeHedge
-		if o.Side == sideBuy {
+		if side == sideBuy {
 			info.Side = exchange.SideOpenLong
 		} else {
 			info.Side = exchange.SideCloseLong
 		}
 	case posSideShort:
 		info.PositionMode = domain.PositionModeHedge
-		if o.Side == sideSell {
+		if side == sideSell {
 			info.Side = exchange.SideOpenShort
 		} else {
 			info.Side = exchange.SideCloseShort
 		}
 	default:
-		if o.Side == sideBuy {
+		if side == sideBuy {
 			info.Side = exchange.SideOpenLong
 		} else {
 			info.Side = exchange.SideOpenShort
 		}
 	}
 
-	switch o.State {
-	case "init", stateLive:
+	switch statusOrState {
+	case stateInit, stateLive:
 		info.State = exchange.OrderStateNew
 	case statePartFill:
 		info.State = exchange.OrderStatePartiallyFilled
@@ -530,19 +585,18 @@ func mapBitgetOrder(o bitgetOrder) exchange.OrderInfo {
 	return info
 }
 
-func mapBitgetOrderType(t domain.OrderType) string {
-	switch t {
-	case exchange.OrderTypeMarket:
-		return "market"
-	case exchange.OrderTypePostOnly:
-		return "post_only"
-	case exchange.OrderTypeIOC:
-		return "ioc"
-	case exchange.OrderTypeFOK:
-		return "fok"
-	default:
-		return paramLimit
-	}
+func mapBitgetOrderDetail(o bitgetOrderDetail) exchange.OrderInfo {
+	return mapBitgetRawOrder(
+		o.OrderID, o.ClientOid, o.Symbol, o.Size, o.Price, o.PriceAvg, o.BaseVolume,
+		o.Side, o.PosSide, o.Leverage, o.CTime, o.UTime, o.State,
+	)
+}
+
+func mapBitgetEntrustedOrder(o bitgetEntrustedOrder) exchange.OrderInfo {
+	return mapBitgetRawOrder(
+		o.OrderID, o.ClientOid, o.Symbol, o.Size, o.Price, o.PriceAvg, o.BaseVolume,
+		o.Side, o.PosSide, o.Leverage, o.CTime, o.UTime, o.Status,
+	)
 }
 
 func mapBitgetOrderSide(s domain.Side, isHedge bool) (string, string) {

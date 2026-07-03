@@ -139,7 +139,7 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	GateName:        {},
 	BinanceName:     {},
 	HyperliquidName: {},
-	BitgetName:      {},
+	BitgetName:      {RequiresPassphrase: true},
 	BingxName:       {},
 	ToobitName:      {},
 	BitmartName:     {RequiresPassphrase: true},

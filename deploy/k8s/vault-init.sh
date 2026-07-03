@@ -129,6 +129,7 @@ vault kv put secret/crypto-bot \
   BINANCE_API_SECRET="binance_api_secret_from_vault" \
   BITGET_API_KEY="bitget_api_key_from_vault" \
   BITGET_API_SECRET="bitget_api_secret_from_vault" \
+  BITGET_API_PASSPHRASE="bitget_api_passphrase_from_vault" \
   KUCOIN_API_KEY="kucoin_api_key_from_vault" \
   KUCOIN_API_SECRET="kucoin_api_secret_from_vault" \
   KUCOIN_API_PASSPHRASE="kucoin_api_passphrase_from_vault" \

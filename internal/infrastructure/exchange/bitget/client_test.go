@@ -2,10 +2,12 @@ package bitget_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
@@ -17,7 +19,8 @@ import (
 func TestClient_GetServerTime(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Test 1: Direct string value (backwards compatibility/some mocks)
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
 		assert.Equal(t, "/api/v2/public/time", r.URL.Path)
 
@@ -28,12 +31,33 @@ func TestClient_GetServerTime(t *testing.T) {
 			"data": "1695812285073"
 		}`))
 	}))
-	defer server.Close()
+	defer server1.Close()
 
-	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
-	ts, err := client.GetServerTime(context.Background())
+	client1 := bitget.NewClient(server1.Client(), server1.URL, "key", "secret", "pass", config.LoggingConfig{})
+	ts1, err := client1.GetServerTime(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, int64(1695812285073), ts)
+	assert.Equal(t, int64(1695812285073), ts1)
+
+	// Test 2: Actual API object payload ({"serverTime": "..."})
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v2/public/time", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "00000",
+			"msg": "success",
+			"data": {
+				"serverTime": "1695812285073"
+			}
+		}`))
+	}))
+	defer server2.Close()
+
+	client2 := bitget.NewClient(server2.Client(), server2.URL, "key", "secret", "pass", config.LoggingConfig{})
+	ts2, err := client2.GetServerTime(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(1695812285073), ts2)
 }
 
 func TestClient_GetContractDetails(t *testing.T) {
@@ -154,6 +178,14 @@ func TestClient_CreateOrder(t *testing.T) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "/api/v2/mix/order/place-order", r.URL.Path)
 
+		// Decode and verify the request fields
+		var body map[string]any
+		err := json.NewDecoder(r.Body).Decode(&body)
+		assert.NoError(t, err)
+
+		assert.Equal(t, "limit", body["orderType"])
+		assert.Equal(t, "ioc", body["force"])
+
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"code": "00000",
@@ -172,7 +204,7 @@ func TestClient_CreateOrder(t *testing.T) {
 		Vol:          1.0,
 		Price:        50000.0,
 		Side:         exchange.SideOpenLong,
-		Type:         exchange.OrderTypeLimit,
+		Type:         exchange.OrderTypeIOC,
 		PositionMode: 1,
 	}
 	res, err := client.CreateOrder(context.Background(), req)
@@ -277,45 +309,49 @@ func TestClient_GetOrder_and_GetOpenOrders(t *testing.T) {
 			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
-				"data": [
-					{
-						"orderId": "order123",
-						"clientOid": "client123",
-						"symbol": "BTCUSDT",
-						"size": "1.0",
-						"price": "50000.0",
-						"priceAvg": "50000.0",
-						"baseVolume": "1.0",
-						"state": "filled",
-						"side": "buy",
-						"posSide": "long",
-						"leverage": "20",
-						"cTime": "1695812285073",
-						"uTime": "1695812285073"
-					}
-				]
+				"data": {
+					"entrustedList": [
+						{
+							"orderId": "order123",
+							"clientOid": "client123",
+							"symbol": "BTCUSDT",
+							"size": "1.0",
+							"price": "50000.0",
+							"priceAvg": "50000.0",
+							"baseVolume": "1.0",
+							"status": "filled",
+							"side": "buy",
+							"posSide": "long",
+							"leverage": "20",
+							"cTime": "1695812285073",
+							"uTime": "1695812285073"
+						}
+					]
+				}
 			}`))
 		case "/api/v2/mix/order/orders-pending":
 			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
-				"data": [
-					{
-						"orderId": "order123",
-						"clientOid": "client123",
-						"symbol": "BTCUSDT",
-						"size": "1.0",
-						"price": "50000.0",
-						"priceAvg": "50000.0",
-						"baseVolume": "1.0",
-						"state": "filled",
-						"side": "buy",
-						"posSide": "long",
-						"leverage": "20",
-						"cTime": "1695812285073",
-						"uTime": "1695812285073"
-					}
-				]
+				"data": {
+					"entrustedList": [
+						{
+							"orderId": "order123",
+							"clientOid": "client123",
+							"symbol": "BTCUSDT",
+							"size": "1.0",
+							"price": "50000.0",
+							"priceAvg": "50000.0",
+							"baseVolume": "1.0",
+							"status": "filled",
+							"side": "buy",
+							"posSide": "long",
+							"leverage": "20",
+							"cTime": "1695812285073",
+							"uTime": "1695812285073"
+						}
+					]
+				}
 			}`))
 		}
 	}))
@@ -367,23 +403,25 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
-				"data": [
-					{
-						"orderId": "order123",
-						"clientOid": "client123",
-						"symbol": "BTCUSDT",
-						"size": "1.0",
-						"price": "50000.0",
-						"priceAvg": "50000.0",
-						"baseVolume": "1.0",
-						"state": "filled",
-						"side": "buy",
-						"posSide": "long",
-						"leverage": "20",
-						"cTime": "1695812285073",
-						"uTime": "1695812285073"
-					}
-				]
+				"data": {
+					"entrustedList": [
+						{
+							"orderId": "order123",
+							"clientOid": "client123",
+							"symbol": "BTCUSDT",
+							"size": "1.0",
+							"price": "50000.0",
+							"priceAvg": "50000.0",
+							"baseVolume": "1.0",
+							"status": "filled",
+							"side": "buy",
+							"posSide": "long",
+							"leverage": "20",
+							"cTime": "1695812285073",
+							"uTime": "1695812285073"
+						}
+					]
+				}
 			}`))
 		case "POST /api/v2/mix/order/cancel-order":
 			_, _ = w.Write([]byte(`{
@@ -417,6 +455,17 @@ func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
 					"orderId": "order1234"
 				}
 			}`))
+		case "POST /api/v2/mix/order/close-positions":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": {
+					"successList": [
+						{"orderId": "order1234", "symbol": "BTCUSDT"}
+					],
+					"failureList": []
+				}
+			}`))
 		}
 	}))
 	defer server.Close()
@@ -436,27 +485,25 @@ func TestClient_GetOrderPNL_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/api/v2/mix/order/orders-history":
+		case "/api/v2/mix/order/detail":
 			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
-				"data": [
-					{
-						"orderId": "order123",
-						"clientOid": "ext123",
-						"symbol": "BTCUSDT",
-						"size": "1.0",
-						"price": "50000.0",
-						"priceAvg": "50000.0",
-						"baseVolume": "1.0",
-						"state": "filled",
-						"side": "sell",
-						"posSide": "long",
-						"leverage": "20",
-						"cTime": "1695812285000",
-						"uTime": "1695812295000"
-					}
-				]
+				"data": {
+					"orderId": "order123",
+					"clientOid": "ext123",
+					"symbol": "BTCUSDT",
+					"size": "1.0",
+					"price": "50000.0",
+					"priceAvg": "50000.0",
+					"baseVolume": "1.0",
+					"state": "filled",
+					"side": "sell",
+					"posSide": "long",
+					"leverage": "20",
+					"cTime": "1695812285000",
+					"uTime": "1695812295000"
+				}
 			}`))
 		case "/api/v2/mix/position/history-position":
 			assert.Equal(t, "BTCUSDT", r.URL.Query().Get("symbol"))
@@ -515,7 +562,7 @@ func TestClient_GetOrderPNL_OrderNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/api/v2/mix/order/orders-history":
+		case "/api/v2/mix/order/detail":
 			_, _ = w.Write([]byte(`{
 				"code": "40012",
 				"msg": "order not found",
@@ -530,4 +577,64 @@ func TestClient_GetOrderPNL_OrderNotFound(t *testing.T) {
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
 	_, err := client.GetOrderPNL(context.Background(), "BTCUSDT", "order123")
 	assert.ErrorContains(t, err, "order not found")
+}
+
+func TestClient_RawRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":"00000","msg":"success","data":{"test":"ok"}}`))
+	}))
+	defer server.Close()
+
+	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	ctx := context.Background()
+
+	res, err := client.RawRequest(ctx, http.MethodGet, "/api/v2/mix/market/tickers", nil, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+
+	res, err = client.GetFundingRateRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+
+	res, err = client.GetTickersRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+
+	res, err = client.GetOpenPositionsRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+
+	res, err = client.GetHistoryPositionsRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+
+	res, err = client.GetOrderDetailRaw(ctx, "ord123", nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+
+	res, err = client.GetHistoryOrdersRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "success")
+}
+
+func TestClient_SwitchPositionMode(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v2/mix/account/set-position-mode", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":"00000","msg":"success"}`))
+	}))
+	defer server.Close()
+
+	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	err := client.SwitchPositionMode(context.Background(), "BTCUSDT", domain.PositionModeHedge)
+	require.NoError(t, err)
 }
