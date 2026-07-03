@@ -38,11 +38,11 @@
       "bitunix": false, // exchange restricted
       "okx": false, // no funding oppotunity
       "xt": false, // negative pnl
-      "gate": true,
+      "gate": false, // rare oppotunity, negative pnl,
+      "binance": false, // negative pnl,
       "toobit": true,
       "weex": true,
       "mexc": true,
-      "binance": true,
       "bybit": true,
       "orangex": true
     }
