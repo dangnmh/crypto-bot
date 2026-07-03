@@ -127,6 +127,17 @@
         "privateURL": "wss://api.orangex.com/ws/api/v1",
         "maxPairsPerWSConn": 20
       }
+    },
+    "aster": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://fapi.asterdex.com"
+      },
+      "websocket": {
+        "publicURL": "wss://fstream.asterdex.com/ws",
+        "privateURL": "wss://fstream.asterdex.com/ws",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }

@@ -68,10 +68,16 @@
   //   "exchange": "xt",
   //   "simulateSettle": "2026-06-28T23:50:00.000+07:00"
   // },
+  // {
+  //   "symbol": "TAC-USDT-PERPETUAL",
+  //   "marginUSDT": 3,
+  //   "exchange": "orangex",
+  //   "simulateSettle": "2026-07-01T17:10:00.000+07:00"
+  // },
   {
-    "symbol": "TAC-USDT-PERPETUAL",
+    "symbol": "SLXUSDT",
     "marginUSDT": 3,
-    "exchange": "orangex",
-    "simulateSettle": "2026-07-01T17:10:00.000+07:00"
+    "exchange": "aster",
+    "simulateSettle": "2026-07-03T14:10:00.000+07:00"
   },
 ]

@@ -148,6 +148,9 @@ vault kv put secret/crypto-bot \
   BITUNIX_API_SECRET="bitunix_api_secret_from_vault" \
   ORANGEX_API_KEY="orangex_api_key_from_vault" \
   ORANGEX_API_SECRET="orangex_api_secret_from_vault" \
+  ASTER_API_KEY="aster_api_key_from_vault" \
+  ASTER_API_SECRET="aster_api_secret_from_vault" \
+  ASTER_API_PASSPHRASE="aster_api_passphrase_from_vault" \
   DATABASE_URL="postgres://postgres:postgres@postgresql:5432/postgres?sslmode=disable" \
   TELEGRAM_CHAT_ID="telegram_chat_id_from_vault" \
   TELEGRAM_BOT_TOKEN="telegram_bot_token_from_vault"

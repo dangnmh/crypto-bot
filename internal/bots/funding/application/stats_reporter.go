@@ -49,7 +49,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
-	"crypto-bot/internal/infrastructure/exchange/woo"
+	"crypto-bot/internal/infrastructure/exchange/woox"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/internal/infrastructure/notifier"
@@ -123,11 +123,11 @@ func NewStatsReportJob(
 		"bitfinex":      bitfinex.NewClient(httpClient, "https://api-pub.bitfinex.com", logCfg),
 		"whitebit":      whitebit.NewClient(httpClient, "https://whitebit.com", logCfg),
 		"dydx":          dydx.NewClient(httpClient, "https://indexer.dydx.trade", logCfg),
-		"aster":         aster.NewClient(httpClient, "https://fapi.asterdex.com", logCfg),
+		"aster":         aster.NewClient(httpClient, "https://fapi.asterdex.com", "", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpClient, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpClient, "https://api-glb.hashkey.com", log),
 		"cryptocom":     cryptocom.NewClient(httpClient, "https://deriv-api.crypto.com/v1", log),
-		"woo":           woo.NewClient(httpClient, "https://api.woox.io", log),
+		"woox":          woox.NewClient(httpClient, "https://api.woox.io", log),
 		"phemex":        phemex.NewClient(httpClient, "https://api.phemex.com", log),
 		"blofin":        blofin.NewClient(httpClient, "https://openapi.blofin.com", log),
 		"digifinex":     digifinex.NewClient(httpClient, "https://openapi.digifinex.com", log),

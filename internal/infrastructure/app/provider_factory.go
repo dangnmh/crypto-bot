@@ -9,6 +9,7 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
 	"crypto-bot/internal/infrastructure/exchange/bitget"
@@ -264,6 +265,18 @@ func DefaultProviderFactories() []ProviderFactory {
 					adapter.SetClient(concreteClient)
 				}
 				return buildProvider(ctx, exchange.ExchangeXt, exchange.ExchangeXt, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeAster,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeAster]
+				client := exchange.Client(aster.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+				adapter := aster.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, apiCfg.WebSocket.PrivateEndpoint())
+				if concreteClient, ok := client.(*aster.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeAster, exchange.ExchangeAster, cfg, apiCfg, client, adapter), nil
 			},
 		},
 	}

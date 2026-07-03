@@ -126,6 +126,7 @@ const (
 	BitunixName     = "bitunix"
 	XtName          = "xt"
 	OrangexName     = "orangex"
+	AsterName       = "aster"
 )
 
 type ExchangeSpec struct {
@@ -149,6 +150,7 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	BitunixName:     {},
 	XtName:          {},
 	OrangexName:     {},
+	AsterName:       {RequiresPassphrase: true},
 	BybitName: {
 		Validate: func(cfg APIConfig) error {
 			if !IsSupportedBybitAccountType(cfg.AccountType) {
