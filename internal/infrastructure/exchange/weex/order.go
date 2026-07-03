@@ -320,18 +320,18 @@ func (c *Client) mapOrder(o weexOrder) exchange.OrderInfo {
 	}
 }
 
-type weexIncomeItem struct {
-	BillID     xjson.Number `json:"billId"`
-	Asset      string       `json:"asset"`
-	Symbol     string       `json:"symbol"`
-	Income     string       `json:"income"`
-	IncomeType string       `json:"incomeType"`
-	Time       int64        `json:"time"`
+type weexBillItem struct {
+	BillID       xjson.Number `json:"billId"`
+	Coin         string       `json:"coin"`
+	Symbol       string       `json:"symbol"`
+	Amount       xjson.Number `json:"amount"`
+	BusinessType string       `json:"businessType"`
+	CTime        xjson.Number `json:"ctime"`
 }
 
-type weexIncomeResponse struct {
-	HasNextPage bool             `json:"hasNextPage"`
-	Items       []weexIncomeItem `json:"items"`
+type weexBillResponse struct {
+	HasNextPage bool           `json:"hasNextPage"`
+	Items       []weexBillItem `json:"items"`
 }
 
 type weexTrade struct {
@@ -449,23 +449,23 @@ func calculatePnLRate(entryPrice, exitPrice float64, posSide string) float64 {
 
 func (c *Client) fetchFundingFee(ctx context.Context, symbol string, startTime int64) (float64, error) {
 	body := map[string]any{
-		keySymbol:    symbol,
-		"incomeType": "position_funding",
+		keySymbol:      symbol,
+		"businessType": "position_funding",
 	}
 	if startTime > 0 {
 		body["startTime"] = startTime
 	}
-	resBytes, err := c.request(ctx, http.MethodPost, "/capi/v3/account/income", nil, body, true)
+	resBytes, err := c.request(ctx, http.MethodPost, "/capi/v2/account/bills", nil, body, true)
 	if err != nil {
 		return 0, err
 	}
-	resp, err := parseResponse[weexIncomeResponse](resBytes)
+	resp, err := parseResponse[weexBillResponse](resBytes)
 	if err != nil {
 		return 0, err
 	}
 	var totalFunding float64
 	for i := range resp.Items {
-		val, _ := strconv.ParseFloat(resp.Items[i].Income, 64)
+		val, _ := resp.Items[i].Amount.Float64()
 		totalFunding += val
 	}
 	return totalFunding, nil

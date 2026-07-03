@@ -610,7 +610,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 			}`))
 			return
 		}
-		if r.URL.Path == "/capi/v3/account/income" {
+		if r.URL.Path == "/capi/v2/account/bills" {
 			_, _ = w.Write([]byte(`{
 				"code": "00000",
 				"msg": "success",
@@ -619,11 +619,11 @@ func TestClient_GetOrderPNL(t *testing.T) {
 					"items": [
 						{
 							"billId": 686960019383517338,
-							"asset": "USDT",
+							"coin": "USDT",
 							"symbol": "BTCUSDT",
-							"income": "-0.05",
-							"incomeType": "position_funding",
-							"time": 1764505701000
+							"amount": "-0.05",
+							"businessType": "position_funding",
+							"ctime": 1764505701000
 						}
 					]
 				}

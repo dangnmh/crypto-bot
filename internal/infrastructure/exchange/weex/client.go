@@ -203,9 +203,8 @@ func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]stri
 	return c.RawRequest(ctx, http.MethodGet, "/capi/v3/order/history", params, nil)
 }
 
-// GetOrderPNLRaw fetches raw order PNL (income).
 func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	return c.RawRequest(ctx, http.MethodPost, "/capi/v3/account/income", params, nil)
+	return c.RawRequest(ctx, http.MethodPost, "/capi/v2/account/bills", params, nil)
 }
 
 func buildQuery(params map[string]string) string {
