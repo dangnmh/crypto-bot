@@ -320,18 +320,18 @@ func (c *Client) mapOrder(o weexOrder) exchange.OrderInfo {
 	}
 }
 
-type weexBillItem struct {
-	BillID       xjson.Number `json:"billId"`
-	Coin         string       `json:"coin"`
-	Symbol       string       `json:"symbol"`
-	Amount       xjson.Number `json:"amount"`
-	BusinessType string       `json:"businessType"`
-	CTime        xjson.Number `json:"ctime"`
+type weexIncomeItem struct {
+	BillID     xjson.Number `json:"billId"`
+	Asset      string       `json:"asset"`
+	Symbol     string       `json:"symbol"`
+	Income     xjson.Number `json:"income"`
+	IncomeType string       `json:"incomeType"`
+	Time       xjson.Number `json:"time"`
 }
 
-type weexBillResponse struct {
-	HasNextPage bool           `json:"hasNextPage"`
-	Items       []weexBillItem `json:"items"`
+type weexIncomeResponse struct {
+	HasNextPage bool             `json:"hasNextPage"`
+	Items       []weexIncomeItem `json:"items"`
 }
 
 type weexTrade struct {
@@ -448,24 +448,31 @@ func calculatePnLRate(entryPrice, exitPrice float64, posSide string) float64 {
 }
 
 func (c *Client) fetchFundingFee(ctx context.Context, symbol string, startTime int64) (float64, error) {
-	body := map[string]any{
-		keySymbol:      symbol,
-		"businessType": "position_funding",
-	}
+	var startVal any
 	if startTime > 0 {
-		body["startTime"] = startTime
+		startVal = startTime
 	}
-	resBytes, err := c.request(ctx, http.MethodPost, "/capi/v2/account/bills", nil, body, true)
+	body := map[string]any{
+		"asset":        "",
+		keySymbol:      symbol,
+		keyIncomeType:  valPositionFunding,
+		keyStartTime:   startVal,
+		keyEndTime:     nil,
+		keyLimit:       100,
+		keyNextKeyID:   nil,
+		keyNextKeyTime: nil,
+	}
+	resBytes, err := c.request(ctx, http.MethodPost, "/capi/v3/account/income", nil, body, true)
 	if err != nil {
 		return 0, err
 	}
-	resp, err := parseResponse[weexBillResponse](resBytes)
+	resp, err := parseResponse[weexIncomeResponse](resBytes)
 	if err != nil {
 		return 0, err
 	}
 	var totalFunding float64
 	for i := range resp.Items {
-		val, _ := resp.Items[i].Amount.Float64()
+		val, _ := resp.Items[i].Income.Float64()
 		totalFunding += val
 	}
 	return totalFunding, nil

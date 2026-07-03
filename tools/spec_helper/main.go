@@ -434,7 +434,7 @@ func generateFromJSON(data []byte) {
 }
 
 func loadConfigForExchange(exchangeName string) (*sysconfig.SystemConfig, error) {
-	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding/local/main.jsonc")
+	cfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding/local/system.jsonc")
 	if err != nil {
 		return nil, err
 	}

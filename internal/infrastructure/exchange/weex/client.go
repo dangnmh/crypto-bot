@@ -204,7 +204,57 @@ func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]stri
 }
 
 func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	return c.RawRequest(ctx, http.MethodPost, "/capi/v2/account/bills", params, nil)
+	bodyMap := parseRawPNLParams(params)
+	populateDefaultIncomeParams(bodyMap)
+
+	bodyBytes, _ := json.Marshal(bodyMap)
+	return c.RawRequest(ctx, http.MethodPost, "/capi/v3/account/income", nil, bodyBytes)
+}
+
+func parseRawPNLParams(params map[string]string) map[string]any {
+	bodyMap := make(map[string]any)
+	for k, v := range params {
+		if v == valNull {
+			bodyMap[k] = nil
+			continue
+		}
+		switch k {
+		case keyStartTime, keyEndTime, keyLimit, keyNextKeyID, keyNextKeyTime:
+			if val, err := strconv.ParseInt(v, 10, 64); err == nil {
+				bodyMap[k] = val
+				continue
+			}
+		}
+		bodyMap[k] = v
+	}
+	return bodyMap
+}
+
+func populateDefaultIncomeParams(bodyMap map[string]any) {
+	if bodyMap["asset"] == nil {
+		bodyMap["asset"] = ""
+	}
+	if bodyMap[keySymbol] == nil {
+		bodyMap[keySymbol] = ""
+	}
+	if bodyMap[keyIncomeType] == nil {
+		bodyMap[keyIncomeType] = valPositionFunding
+	}
+	if _, ok := bodyMap[keyStartTime]; !ok {
+		bodyMap[keyStartTime] = nil
+	}
+	if _, ok := bodyMap[keyEndTime]; !ok {
+		bodyMap[keyEndTime] = nil
+	}
+	if bodyMap[keyLimit] == nil {
+		bodyMap[keyLimit] = 20
+	}
+	if _, ok := bodyMap[keyNextKeyID]; !ok {
+		bodyMap[keyNextKeyID] = nil
+	}
+	if _, ok := bodyMap[keyNextKeyTime]; !ok {
+		bodyMap[keyNextKeyTime] = nil
+	}
 }
 
 func buildQuery(params map[string]string) string {
@@ -235,7 +285,7 @@ func parseResponse[T any](body []byte) (T, error) {
 		if !isWeexSuccess(wrapped.Code) {
 			return res, toAPIError(wrapped.Code, wrapped.Msg, "")
 		}
-		if len(wrapped.Data) == 0 || string(wrapped.Data) == "null" {
+		if len(wrapped.Data) == 0 || string(wrapped.Data) == valNull {
 			return res, nil
 		}
 		if err := json.Unmarshal(wrapped.Data, &res); err != nil {

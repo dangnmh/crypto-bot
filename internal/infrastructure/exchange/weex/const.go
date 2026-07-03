@@ -36,6 +36,14 @@ const (
 	keyOrderIdList      = "orderIdList"
 	keyNewClientOrderId = "newClientOrderId"
 	keyMarginType       = "marginType"
+	keyStartTime        = "startTime"
+	keyEndTime          = "endTime"
+	keyLimit            = "limit"
+	keyNextKeyID        = "nextKeyId"
+	keyNextKeyTime      = "nextKeyTime"
+	keyIncomeType       = "incomeType"
+	valPositionFunding  = "position_funding"
+	valNull             = "null"
 
 	// WS constants.
 	wsMethodSubscribe   = "SUBSCRIBE"
