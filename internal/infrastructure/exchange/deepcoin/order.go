@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -47,6 +46,23 @@ type deepcoinOrder struct {
 	AccFillSz xjson.Number `json:"accFillSz"`
 	AvgPx     xjson.Number `json:"avgPx"`
 	State     string       `json:"state"`
+	CTime     xjson.Number `json:"cTime"`
+}
+
+type deepcoinClosedPosition struct {
+	InstID        string       `json:"instId"`
+	CloseAvgPx    xjson.Number `json:"closeAvgPx"`
+	OpenAvgPx     xjson.Number `json:"openAvgPx"`
+	Pnl           xjson.Number `json:"pnl"`
+	CloseTotalPos xjson.Number `json:"closeTotalPos"`
+	CTime         xjson.Number `json:"cTime"`
+	UTime         xjson.Number `json:"uTime"`
+	Fee           xjson.Number `json:"fee"`
+	FundingFee    xjson.Number `json:"fundingFee"`
+	RealizedPnl   xjson.Number `json:"realizedPnl"`
+	PosSide       string       `json:"posSide"`
+	Direction     string       `json:"direction"`
+	Pos           xjson.Number `json:"pos"`
 }
 
 func mapDeepcoinOrderSideAndPosition(reqSide domain.Side) (string, string, bool) {
@@ -76,6 +92,99 @@ func mapDeepcoinOrderType(t domain.OrderType) string {
 		return ordTypeLimit
 	}
 }
+
+// Private raw methods.
+
+func (c *Client) rawCreateOrder(ctx context.Context, req deepcoinOrderReq) (*deepcoinOrderResultData, error) {
+	body, err := c.PostCtx(ctx, "/deepcoin/trade/order", req)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponseFirst[deepcoinOrderResultData](body, "create_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) rawCancelOrder(ctx context.Context, symbol, orderID string) (*deepcoinOrderResultData, error) {
+	bodyMap := map[string]string{
+		paramInstId: symbol,
+		paramOrdId:  orderID,
+	}
+	body, err := c.PostCtx(ctx, "/deepcoin/trade/cancel-order", bodyMap)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponseFirst[deepcoinOrderResultData](body, "cancel_order")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+type deepcoinCancelAllData struct {
+	ErrorList []any `json:"errorList"`
+}
+
+func (c *Client) rawCancelAllOpenOrders(ctx context.Context, symbol string) (*deepcoinCancelAllData, error) {
+	bodyMap := map[string]any{
+		"InstrumentID":  normalizeSymbol(symbol),
+		"ProductGroup":  instTypeSwapU,
+		"IsCrossMargin": 1,
+		"IsMergeMode":   1,
+	}
+	body, err := c.PostCtx(ctx, "/deepcoin/trade/swap/cancel-all", bodyMap)
+	if err != nil {
+		return nil, err
+	}
+	res, err := ParseResponseFirst[deepcoinCancelAllData](body, "cancel_all")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *Client) rawGetOrder(ctx context.Context, symbol, orderID, clOrdID string) ([]deepcoinOrder, error) {
+	params := map[string]string{
+		paramInstId: symbol,
+	}
+	if orderID != "" {
+		params[paramOrdId] = orderID
+	}
+	if clOrdID != "" {
+		params["clOrdId"] = clOrdID
+	}
+
+	path := "/deepcoin/trade/orderByID"
+	if orderID == "" && clOrdID != "" {
+		path = "/deepcoin/trade/order"
+	}
+
+	body, err := c.GetCtx(ctx, path, params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[deepcoinOrder](body, "get_order")
+}
+
+func (c *Client) rawGetClosedPositions(ctx context.Context, symbol string, createTime int64) ([]deepcoinClosedPosition, error) {
+	params := map[string]string{
+		paramInstType: instTypeSwap,
+		paramInstId:   symbol,
+		"limit":       "10",
+	}
+	if createTime > 0 {
+		params["before"] = strconv.FormatInt(createTime-1000, 10)
+	}
+	body, err := c.GetCtx(ctx, "/deepcoin/account/positions-history", params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[deepcoinClosedPosition](body, "positions_history")
+}
+
+// Public OrderDataProvider methods.
 
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
 	side, posSide, reduceOnly := mapDeepcoinOrderSideAndPosition(req.Side)
@@ -108,12 +217,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.SlTriggerPx = decmath.FormatFloat(req.StopLossPrice)
 	}
 
-	body, err := c.PostCtx(ctx, "/deepcoin/trade/order", rawReq)
-	if err != nil {
-		return exchange.CreateOrderResult{}, err
-	}
-
-	res, err := ParseResponseFirst[deepcoinOrderResultData](body, "create_order")
+	res, err := c.rawCreateOrder(ctx, rawReq)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
@@ -129,15 +233,7 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 }
 
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
-	bodyMap := map[string]string{
-		paramInstId: symbol,
-		paramOrdId:  orderID,
-	}
-	body, err := c.PostCtx(ctx, "/deepcoin/trade/cancel-order", bodyMap)
-	if err != nil {
-		return err
-	}
-	res, err := ParseResponseFirst[deepcoinOrderResultData](body, "cancel_order")
+	res, err := c.rawCancelOrder(ctx, symbol, orderID)
 	if err != nil {
 		return err
 	}
@@ -152,33 +248,12 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 }
 
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	bodyMap := map[string]any{
-		"InstrumentID":  normalizeSymbol(symbol),
-		"ProductGroup":  "SwapU",
-		"IsCrossMargin": 1,
-		"IsMergeMode":   1,
-	}
-	body, err := c.PostCtx(ctx, "/deepcoin/trade/swap/cancel-all", bodyMap)
-	if err != nil {
-		return err
-	}
-	type cancelAllData struct {
-		ErrorList []any `json:"errorList"`
-	}
-	_, err = ParseResponseFirst[cancelAllData](body, "cancel_all")
+	_, err := c.rawCancelAllOpenOrders(ctx, symbol)
 	return err
 }
 
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	params := map[string]string{
-		paramInstId: symbol,
-		paramOrdId:  orderID,
-	}
-	body, err := c.GetCtx(ctx, "/deepcoin/trade/order", params)
-	if err != nil {
-		return nil, err
-	}
-	orders, err := ParseResponse[deepcoinOrder](body, "get_order")
+	orders, err := c.rawGetOrder(ctx, symbol, orderID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -189,15 +264,7 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 }
 
 func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*exchange.OrderInfo, error) {
-	params := map[string]string{
-		paramInstId: symbol,
-		"clOrdId":   externalOrderID,
-	}
-	body, err := c.GetCtx(ctx, "/deepcoin/trade/order", params)
-	if err != nil {
-		return nil, err
-	}
-	orders, err := ParseResponse[deepcoinOrder](body, "get_order")
+	orders, err := c.rawGetOrder(ctx, symbol, "", externalOrderID)
 	if err != nil {
 		return nil, err
 	}
@@ -211,66 +278,70 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	return nil, fmt.Errorf("GetOpenOrders not supported on Deepcoin")
 }
 
-func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
-	submitSide := exchange.SideCloseLong
-	if closeSide == domain.SideCloseShort {
-		submitSide = exchange.SideCloseShort
-	}
-	_, err := c.CreateOrder(ctx, exchange.SubmitOrderRequest{
-		Symbol:       symbol,
-		Side:         submitSide,
-		Type:         exchange.OrderTypeMarket,
-		Vol:          volume,
-		PositionMode: positionMode,
-		Leverage:     leverage,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "deepcoin"),
-	})
-	return err
-}
-
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	positions, err := c.GetOpenPositions(ctx, symbol)
+func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
+	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("deepcoin get order by ID %s failed: %w", orderID, err)
 	}
-	for i := range positions {
-		pos := &positions[i]
-		closeSide := domain.SideCloseLong
-		if pos.PositionType == exchange.PositionTypeShort {
-			closeSide = domain.SideCloseShort
+	if orderInfo.State == exchange.OrderStateCanceled && orderInfo.DealVol == 0 {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchange.ExchangeDeepcoin,
+			Symbol:   symbol,
+		}, nil
+	}
+
+	positions, err := c.rawGetClosedPositions(ctx, symbol, orderInfo.CreateTime)
+	if err != nil {
+		return nil, fmt.Errorf("query closed positions: %w", err)
+	}
+
+	if len(positions) == 0 {
+		return nil, fmt.Errorf("query closed pnl failed: no closed position history found for symbol %s", symbol)
+	}
+
+	pos := positions[0]
+	entryPrice, _ := strconv.ParseFloat(string(pos.OpenAvgPx), 64)
+	exitPrice, _ := strconv.ParseFloat(string(pos.CloseAvgPx), 64)
+	closedSize, _ := strconv.ParseFloat(string(pos.CloseTotalPos), 64)
+	closedPnl, _ := strconv.ParseFloat(string(pos.Pnl), 64)
+	feeVal, _ := strconv.ParseFloat(string(pos.Fee), 64)
+	fundingFeeVal, _ := strconv.ParseFloat(string(pos.FundingFee), 64)
+	netPnlVal, _ := strconv.ParseFloat(string(pos.RealizedPnl), 64)
+
+	cTime, _ := strconv.ParseInt(string(pos.CTime), 10, 64)
+	uTime, _ := strconv.ParseInt(string(pos.UTime), 10, 64)
+	duration := max(uTime-cTime, 0)
+
+	isLong := pos.PosSide == posSideLong
+	switch pos.Direction {
+	case "short":
+		isLong = false
+	case "long":
+		isLong = true
+	}
+
+	pnlRate := 0.0
+	if entryPrice > 0 {
+		if !isLong {
+			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
+		} else {
+			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1, pos.Leverage)
 	}
-	return nil
-}
 
-func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	mgnType := mgnModeCross
-	if req.OpenType == domain.OpenTypeIsolated {
-		mgnType = mgnModeIsolated
-	}
-	bodyMap := map[string]any{
-		paramInstId:      req.Symbol,
-		paramLever:       strconv.Itoa(req.Leverage),
-		paramMgnMode:     mgnType,
-		paramMrgPosition: mrgPositionMerge,
-	}
-	body, err := c.PostCtx(ctx, "/deepcoin/account/set-leverage", bodyMap)
-	if err != nil {
-		return err
-	}
-	res, err := ParseResponseFirst[deepcoinOrderResultData](body, "set_leverage")
-	if err != nil {
-		return err
-	}
-	if res.SCode != "0" {
-		return fmt.Errorf("set leverage failed: %s", res.SMsg)
-	}
-	return nil
-}
-
-func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
-	return nil
+	return &exchange.ClosedPnLInfo{
+		Exchange:   exchange.ExchangeDeepcoin,
+		Symbol:     pos.InstID,
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: closedSize,
+		GrossPnL:   closedPnl,
+		Fee:        feeVal,
+		FundingFee: fundingFeeVal,
+		NetPnl:     netPnlVal,
+		PnLRate:    pnlRate,
+		DurationMs: duration,
+	}, nil
 }
 
 func (c *Client) toOrderInfo(o *deepcoinOrder) *exchange.OrderInfo {
@@ -305,6 +376,7 @@ func (c *Client) toOrderInfo(o *deepcoinOrder) *exchange.OrderInfo {
 	sz, _ := strconv.ParseFloat(string(o.Sz), 64)
 	fillSz, _ := strconv.ParseFloat(string(o.AccFillSz), 64)
 	avgPx, _ := strconv.ParseFloat(string(o.AvgPx), 64)
+	cTimeVal, _ := strconv.ParseInt(string(o.CTime), 10, 64)
 
 	return &exchange.OrderInfo{
 		OrderID:      o.OrdId,
@@ -316,5 +388,6 @@ func (c *Client) toOrderInfo(o *deepcoinOrder) *exchange.OrderInfo {
 		State:        state,
 		ExternalOID:  o.ClOrdId,
 		Side:         sideVal,
+		CreateTime:   cTimeVal,
 	}
 }

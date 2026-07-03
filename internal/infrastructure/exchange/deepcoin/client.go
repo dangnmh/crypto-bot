@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
-	"crypto-bot/pkg/ticker"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -97,19 +97,6 @@ func (c *Client) SetClock(clk exchange.Clock) {
 	if clk != nil {
 		c.clock = clk
 	}
-}
-
-// WarmUp pre-establishes connection pool and maintains it via periodic public calls.
-func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
-	c.logger.InfoContext(ctx, "🔗 Warming up Deepcoin connection pool...", slog.Duration("interval", interval))
-
-	ticker.RunImmediate(ctx, interval, func() bool {
-		_, err := c.GetCtx(ctx, "/deepcoin/market/time", nil)
-		if err != nil {
-			c.logger.DebugContext(ctx, "Warmup server time call failed", slog.Any("error", err))
-		}
-		return true
-	})
 }
 
 // Get makes a signed GET request.
@@ -222,30 +209,32 @@ func (c *Client) Latency(ctx context.Context) (int64, error) {
 	return time.Since(start).Milliseconds(), nil
 }
 
-// SupportLeverageOnOrder returns false since Deepcoin doesn't support setting leverage directly on orders.
-func (c *Client) SupportLeverageOnOrder() bool {
-	return false
-}
-
 type deepcoinListenKeyData struct {
 	ListenKey string `json:"listenkey"`
 }
 
-// CreateListenKey acquires a new user stream listenKey from Deepcoin.
-func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
+func (c *Client) rawCreateListenKey(ctx context.Context) (*deepcoinListenKeyData, error) {
 	body, err := c.GetCtx(ctx, "/deepcoin/listenkey/acquire", nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	res, err := ParseResponseFirst[deepcoinListenKeyData](body, "acquire_listenkey")
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// CreateListenKey acquires a new user stream listenKey from Deepcoin.
+func (c *Client) CreateListenKey(ctx context.Context) (string, error) {
+	res, err := c.rawCreateListenKey(ctx)
 	if err != nil {
 		return "", err
 	}
 	return res.ListenKey, nil
 }
 
-// KeepAliveListenKey extends the lifetime of a listenKey.
-func (c *Client) KeepAliveListenKey(ctx context.Context, listenKey string) error {
+func (c *Client) rawKeepAliveListenKey(ctx context.Context, listenKey string) error {
 	params := map[string]string{
 		"listenkey": listenKey,
 	}
@@ -255,6 +244,45 @@ func (c *Client) KeepAliveListenKey(ctx context.Context, listenKey string) error
 	}
 	_, err = ParseResponseFirst[deepcoinListenKeyData](body, "extend_listenkey")
 	return err
+}
+
+// KeepAliveListenKey extends the lifetime of a listenKey.
+func (c *Client) KeepAliveListenKey(ctx context.Context, listenKey string) error {
+	return c.rawKeepAliveListenKey(ctx, listenKey)
+}
+
+// RawRequest interface implementations for diagnostics.
+
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.GetCtx(ctx, "/deepcoin/trade/fund-rate/current-funding-rate", params)
+}
+
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.GetCtx(ctx, "/deepcoin/market/tickers", params)
+}
+
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.GetCtx(ctx, "/deepcoin/account/positions", params)
+}
+
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.GetCtx(ctx, "/deepcoin/account/positions-history", params)
+}
+
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	query := map[string]string{
+		"ordId": orderID,
+	}
+	maps.Copy(query, params)
+	return c.GetCtx(ctx, "/deepcoin/trade/orderByID", query)
+}
+
+func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.GetCtx(ctx, "/deepcoin/trade/orders-history", params)
+}
+
+func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.GetCtx(ctx, "/deepcoin/account/positions-history", params)
 }
 
 func buildDeepcoinQueryString(q url.Values) string {

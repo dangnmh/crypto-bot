@@ -62,6 +62,16 @@
         "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt"
       }
     },
+    "deepcoin": {
+      "enable": false,
+      "future": {
+        "baseURL": "https://api.deepcoin.com"
+      },
+      "websocket": {
+        "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
+        "privateURL": "wss://stream.deepcoin.com/v1/private"
+      }
+    },
     "toobit": {
       "enable": true,
       "future": {

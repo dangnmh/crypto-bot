@@ -228,7 +228,7 @@ func TestClient_OrderLifecycle(t *testing.T) {
 			_, _ = w.Write([]byte(`{"code":"0","msg":"","data":{"ordId":"10001","clOrdId":"cl-1","sCode":"0","sMsg":""}}`))
 		case r.URL.Path == "/deepcoin/trade/cancel-order":
 			_, _ = w.Write([]byte(`{"code":"0","msg":"","data":{"ordId":"10001","sCode":"0"}}`))
-		case r.URL.Path == "/deepcoin/trade/order" && r.Method == http.MethodGet:
+		case r.URL.Path == "/deepcoin/trade/orderByID" && r.Method == http.MethodGet:
 			_, _ = w.Write([]byte(`{
 				"code": "0",
 				"data": [{
@@ -241,7 +241,8 @@ func TestClient_OrderLifecycle(t *testing.T) {
 					"posSide": "long",
 					"accFillSz": "1",
 					"avgPx": "95000",
-					"state": "filled"
+					"state": "filled",
+					"cTime": "1739263130000"
 				}]
 			}`))
 		}
@@ -292,4 +293,121 @@ func TestClient_SetLeverage(t *testing.T) {
 		Leverage: 10,
 	})
 	assert.NoError(t, err)
+}
+
+func TestClient_GetOrderPNL(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/deepcoin/trade/orderByID":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"data": [{
+					"instId": "BTC-USDT-SWAP",
+					"ordId": "10001",
+					"px": "95000",
+					"sz": "1",
+					"ordType": "limit",
+					"side": "buy",
+					"posSide": "long",
+					"accFillSz": "1",
+					"avgPx": "95000",
+					"state": "filled",
+					"cTime": "1739263130000"
+				}]
+			}`))
+		case "/deepcoin/account/positions-history":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"data": [{
+					"instId": "BTC-USDT-SWAP",
+					"closeAvgPx": "96000",
+					"openAvgPx": "95000",
+					"pnl": "1000",
+					"closeTotalPos": "1",
+					"cTime": "1739263130000",
+					"uTime": "1739263150000",
+					"fee": "10",
+					"fundingFee": "5",
+					"realizedPnl": "985",
+					"posSide": "long",
+					"direction": "long"
+				}]
+			}`))
+		default:
+			t.Fatalf("unexpected call to path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := deepcoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	pnl, err := client.GetOrderPNL(context.Background(), "BTC-USDT-SWAP", "10001")
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-USDT-SWAP", pnl.Symbol)
+	assert.Equal(t, 95000.0, pnl.EntryPrice)
+	assert.Equal(t, 96000.0, pnl.ExitPrice)
+	assert.Equal(t, 1.0, pnl.ClosedSize)
+	assert.Equal(t, 1000.0, pnl.GrossPnL)
+	assert.Equal(t, 10.0, pnl.Fee)
+	assert.Equal(t, 5.0, pnl.FundingFee)
+	assert.Equal(t, 985.0, pnl.NetPnl)
+	assert.Equal(t, int64(20000), pnl.DurationMs)
+}
+
+func TestClient_CloseAllPositions(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		assert.Equal(t, "/deepcoin/trade/batch-close-position", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		_, _ = w.Write([]byte(`{"code":"0","msg":"","data":{"errorList":[]}}`))
+	}))
+	defer server.Close()
+
+	client := deepcoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	err := client.CloseAllPositions(context.Background(), "BTC-USDT-SWAP")
+	assert.NoError(t, err)
+}
+
+func TestClient_RawRequestMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"0","data":"raw-data"}`))
+	}))
+	defer server.Close()
+
+	client := deepcoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	bytes, err := client.GetFundingRateRaw(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
+
+	bytes, err = client.GetTickersRaw(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
+
+	bytes, err = client.GetOpenPositionsRaw(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
+
+	bytes, err = client.GetHistoryPositionsRaw(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
+
+	bytes, err = client.GetOrderDetailRaw(context.Background(), "123", nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
+
+	bytes, err = client.GetHistoryOrdersRaw(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
+
+	bytes, err = client.GetOrderPNLRaw(context.Background(), nil)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "raw-data")
 }

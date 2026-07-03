@@ -9,8 +9,6 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-
-	"crypto-bot/pkg/xjson"
 )
 
 const (
@@ -20,10 +18,6 @@ const (
 )
 
 // Raw request/response models for market endpoints.
-
-type deepcoinServerTimeResponse struct {
-	Ts xjson.Number `json:"ts"`
-}
 
 type deepcoinInstrument struct {
 	InstID    string `json:"instId"`
@@ -64,19 +58,7 @@ type deepcoinCurrentFundingRatesData struct {
 
 // REST endpoints implementation.
 
-func (c *Client) getRawServerTime(ctx context.Context) (*deepcoinServerTimeResponse, error) {
-	body, err := c.RawRequest(ctx, http.MethodGet, "/deepcoin/market/time", nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ParseResponseFirst[deepcoinServerTimeResponse](body, "server_time")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-func (c *Client) getRawContractDetails(ctx context.Context) ([]deepcoinInstrument, error) {
+func (c *Client) rawGetContractDetails(ctx context.Context) ([]deepcoinInstrument, error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -87,7 +69,7 @@ func (c *Client) getRawContractDetails(ctx context.Context) ([]deepcoinInstrumen
 	return ParseResponse[deepcoinInstrument](body, "contract_details")
 }
 
-func (c *Client) getRawTickers(ctx context.Context, symbol string) ([]deepcoinTicker, error) {
+func (c *Client) rawGetTickers(ctx context.Context, symbol string) ([]deepcoinTicker, error) {
 	params := map[string]string{
 		paramInstType: instTypeSwap,
 	}
@@ -101,7 +83,7 @@ func (c *Client) getRawTickers(ctx context.Context, symbol string) ([]deepcoinTi
 	return ParseResponse[deepcoinTicker](body, "tickers")
 }
 
-func (c *Client) getRawFundingRateCycles(ctx context.Context) ([]deepcoinFundingRateCycle, error) {
+func (c *Client) rawGetFundingRateCycles(ctx context.Context) ([]deepcoinFundingRateCycle, error) {
 	params := map[string]string{
 		paramInstType: instTypeSwapU,
 	}
@@ -112,7 +94,7 @@ func (c *Client) getRawFundingRateCycles(ctx context.Context) ([]deepcoinFunding
 	return ParseResponse[deepcoinFundingRateCycle](body, "funding_rate_cycles")
 }
 
-func (c *Client) getRawCurrentFundingRates(ctx context.Context) (*deepcoinCurrentFundingRatesData, error) {
+func (c *Client) rawGetCurrentFundingRates(ctx context.Context) (*deepcoinCurrentFundingRatesData, error) {
 	params := map[string]string{
 		paramInstType: instTypeSwapU,
 	}
@@ -129,20 +111,8 @@ func (c *Client) getRawCurrentFundingRates(ctx context.Context) (*deepcoinCurren
 
 // Public MarketDataProvider methods.
 
-func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
-	res, err := c.getRawServerTime(ctx)
-	if err != nil {
-		return 0, err
-	}
-	val, err := strconv.ParseInt(string(res.Ts), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse server time: %w", err)
-	}
-	return val, nil
-}
-
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	instruments, err := c.getRawContractDetails(ctx)
+	instruments, err := c.rawGetContractDetails(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +154,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 }
 
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
-	rawTickers, err := c.getRawTickers(ctx, symbol)
+	rawTickers, err := c.rawGetTickers(ctx, symbol)
 	if err != nil {
 		return nil, err
 	}
@@ -218,13 +188,13 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	}
 
 	// 1. Fetch settlement cycles
-	cycles, err := c.getRawFundingRateCycles(ctx)
+	cycles, err := c.rawGetFundingRateCycles(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Fetch current funding rates
-	ratesData, err := c.getRawCurrentFundingRates(ctx)
+	ratesData, err := c.rawGetCurrentFundingRates(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +274,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	blacklist []string,
 ) ([]exchange.PotentialFundingResult, error) {
 	// 1. Fetch all tickers
-	tickers, err := c.getRawTickers(ctx, "")
+	tickers, err := c.rawGetTickers(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("deepcoin list tickers: %w", err)
 	}
@@ -327,13 +297,13 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	// 4. Fetch settlement cycles
-	cycles, err := c.getRawFundingRateCycles(ctx)
+	cycles, err := c.rawGetFundingRateCycles(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("deepcoin get funding rate cycles: %w", err)
 	}
 
 	// 5. Fetch current funding rates
-	ratesData, err := c.getRawCurrentFundingRates(ctx)
+	ratesData, err := c.rawGetCurrentFundingRates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("deepcoin get current funding rates: %w", err)
 	}

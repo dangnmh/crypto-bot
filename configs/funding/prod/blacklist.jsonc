@@ -61,6 +61,7 @@
   // 2. Blacklist riêng biệt theo từng sàn giao dịch
   "mexc": [],
   "gate": [],
+  "deepcoin": [],
   "bybit": [],
   "binance": [],
   "okx": [],
