@@ -234,6 +234,11 @@ func TestClient_GetContractDetails(t *testing.T) {
 							"minQty": "1",
 							"stepSize": "1"
 						}
+					],
+					"riskLimits": [
+						{
+							"maxLeverage": "200.0"
+						}
 					]
 				}
 			]
@@ -251,6 +256,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, 1, details[0].VolUnit)
 	assert.Equal(t, 1, details[0].PriceScale)
 	assert.Equal(t, 0, details[0].VolScale)
+	assert.Equal(t, 200, details[0].MaxLeverage)
 }
 
 func TestClient_GetPotentialFundingSymbols(t *testing.T) {

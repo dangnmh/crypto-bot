@@ -42,13 +42,18 @@ type toobitExchangeInfo struct {
 	Symbols   []toobitContract `json:"symbols"` // fallback
 }
 
+type toobitRiskLimit struct {
+	MaxLeverage xjson.Number `json:"maxLeverage"`
+}
+
 type toobitContract struct {
-	Symbol             string         `json:"symbol"`
-	BaseAsset          string         `json:"baseAsset"`
-	QuoteAsset         string         `json:"quoteAsset"`
-	MarginAsset        string         `json:"marginAsset"`
-	ContractMultiplier string         `json:"contractMultiplier"`
-	Filters            []toobitFilter `json:"filters"`
+	Symbol             string            `json:"symbol"`
+	BaseAsset          string            `json:"baseAsset"`
+	QuoteAsset         string            `json:"quoteAsset"`
+	MarginAsset        string            `json:"marginAsset"`
+	ContractMultiplier string            `json:"contractMultiplier"`
+	Filters            []toobitFilter    `json:"filters"`
+	RiskLimits         []toobitRiskLimit `json:"riskLimits"`
 }
 
 type toobitFilter struct {
@@ -130,6 +135,20 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		displayName = strings.ReplaceAll(displayName, "-", "")
 		displayName = strings.ReplaceAll(displayName, "_", "")
 
+		maxLeverage := 100
+		if len(raw.RiskLimits) > 0 {
+			highestLev := 0.0
+			for _, rl := range raw.RiskLimits {
+				lev, _ := rl.MaxLeverage.Int64()
+				if float64(lev) > highestLev {
+					highestLev = float64(lev)
+				}
+			}
+			if highestLev > 0 {
+				maxLeverage = int(highestLev)
+			}
+		}
+
 		details = append(details, exchange.ContractDetail{
 			Symbol:        raw.Symbol,
 			DisplayName:   displayName,
@@ -139,7 +158,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			SettleCoin:    raw.MarginAsset,
 			ContractSize:  multiplier,
 			MinLeverage:   1,
-			MaxLeverage:   100,
+			MaxLeverage:   maxLeverage,
 			PriceUnit:     priceUnit,
 			MinVol:        int(minVol),
 			VolUnit:       int(stepSize),
