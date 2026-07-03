@@ -22,7 +22,7 @@
       "accountType": "unified"
     },
     "binance": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://fapi.binance.com"
       },
@@ -54,7 +54,7 @@
       }
     },
     "gate": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api.gateio.ws/api/v4"
       },
