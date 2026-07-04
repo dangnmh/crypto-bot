@@ -34,6 +34,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
+	"crypto-bot/internal/infrastructure/exchange/fameex"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
@@ -151,6 +152,7 @@ func main() {
 	bydfiClient := bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default())
 	juClient := ju.NewClient(httpPool, "https://api.jucoin.com", logCfg)
 	sunxClient := sunx.NewClient(httpPool, "https://api.sunx.io", logCfg)
+	fameexClient := fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -197,6 +199,7 @@ func main() {
 		"ju":            juClient,
 		"echobit":       juClient,
 		"sunx":          sunxClient,
+		"fameex":        fameexClient,
 	}
 
 	// Filter clients based on user flag

@@ -46,6 +46,15 @@ func TestClient_Signature(t *testing.T) {
 	assert.Equal(t, "12345678", res.OrderID)
 }
 
+func runXTMockServer(routes map[string]string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if res, ok := routes[r.URL.Path]; ok {
+			_, _ = w.Write([]byte(res))
+		}
+	}))
+}
+
 func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
@@ -185,7 +194,8 @@ func TestClient_MarketMethods(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/future/market/v1/public/cg/contracts" {
+		switch r.URL.Path {
+		case "/future/market/v1/public/cg/contracts":
 			_, _ = w.Write([]byte(`[
 				{
 					"id": 1,
@@ -202,7 +212,7 @@ func TestClient_MarketMethods(t *testing.T) {
 					"next_funding_rate_timestamp": 1700000000
 				}
 			]`))
-		} else if r.URL.Path == "/future/market/v1/public/symbol/list" {
+		case "/future/market/v1/public/symbol/list":
 			_, _ = w.Write([]byte(`{
 				"returnCode": 0,
 				"msgInfo": "success",
@@ -247,14 +257,10 @@ func TestClient_MarketMethods(t *testing.T) {
 func TestClient_OrderCancellationAndPositions(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/future/trade/v1/order/cancel" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success"}`))
-		} else if r.URL.Path == "/future/trade/v1/order/cancel-all" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success"}`))
-		} else if r.URL.Path == "/future/user/v1/position" {
-			_, _ = w.Write([]byte(`{
+	server := runXTMockServer(map[string]string{
+		"/future/trade/v1/order/cancel":     `{"returnCode":0,"msgInfo":"success"}`,
+		"/future/trade/v1/order/cancel-all": `{"returnCode":0,"msgInfo":"success"}`,
+		"/future/user/v1/position": `{
 				"returnCode": 0,
 				"msgInfo": "success",
 				"result": [
@@ -266,15 +272,11 @@ func TestClient_OrderCancellationAndPositions(t *testing.T) {
 						"leverage": 10
 					}
 				]
-			}`))
-		} else if r.URL.Path == "/future/trade/v1/position/close-all" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success"}`))
-		} else if r.URL.Path == "/future/user/v1/position/change-type" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success"}`))
-		} else if r.URL.Path == "/future/user/v1/position/adjust-leverage" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success"}`))
-		}
-	}))
+			}`,
+		"/future/trade/v1/position/close-all":      `{"returnCode":0,"msgInfo":"success"}`,
+		"/future/user/v1/position/change-type":     `{"returnCode":0,"msgInfo":"success"}`,
+		"/future/user/v1/position/adjust-leverage": `{"returnCode":0,"msgInfo":"success"}`,
+	})
 	defer server.Close()
 
 	client := xt.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
@@ -338,17 +340,34 @@ func TestClient_GetPotentialFundingSymbols(t *testing.T) {
 	require.Len(t, res, 1)
 	assert.Equal(t, "BTCUSDT", res[0].Symbol)
 	assert.Equal(t, 0.001, res[0].Rate)
+
+	// Call with whitelist containing "BTCUSDT" -> should pass
+	res, err = client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, []string{"BTCUSDT"}, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+
+	// Call with whitelist NOT containing "BTCUSDT" -> should filter out
+	res, err = client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, []string{"ETHUSDT"}, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 0)
+
+	// Call with blacklist containing "BTCUSDT" -> should filter out
+	res, err = client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, []string{"BTCUSDT"})
+	require.NoError(t, err)
+	require.Len(t, res, 0)
+
+	// Call with maxVol24h (which is less than target_volume 15000000) -> should filter out
+	res, err = client.GetPotentialFundingSymbols(context.Background(), 10000000, 5000000, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 0)
 }
 
 func TestClient_SystemAndRemainingOrderMethods(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/future/market/v1/public/time" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"msgInfo":"success","result":1700000000}`))
-		} else if r.URL.Path == "/future/trade/v1/order/list" {
-			_, _ = w.Write([]byte(`{
+	server := runXTMockServer(map[string]string{
+		"/future/market/v1/public/time": `{"returnCode":0,"msgInfo":"success","result":1700000000}`,
+		"/future/trade/v1/order/list": `{
 				"returnCode": 0,
 				"msgInfo": "success",
 				"result": [
@@ -368,9 +387,8 @@ func TestClient_SystemAndRemainingOrderMethods(t *testing.T) {
 						"updateTime": 1700000000000
 					}
 				]
-			}`))
-		} else if r.URL.Path == "/future/trade/v1/order/list-history" {
-			_, _ = w.Write([]byte(`{
+			}`,
+		"/future/trade/v1/order/list-history": `{
 				"returnCode": 0,
 				"msgInfo": "success",
 				"result": {
@@ -394,15 +412,11 @@ func TestClient_SystemAndRemainingOrderMethods(t *testing.T) {
 						}
 					]
 				}
-			}`))
-		} else if r.URL.Path == "/future/market/v1/public/cg/contracts" {
-			_, _ = w.Write([]byte(`[]`))
-		} else if r.URL.Path == "/future/user/v1/position" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"result":[]}`))
-		} else if r.URL.Path == "/future/trade/v1/order/detail" {
-			_, _ = w.Write([]byte(`{"returnCode":0,"result":{}}`))
-		}
-	}))
+			}`,
+		"/future/market/v1/public/cg/contracts": `[]`,
+		"/future/user/v1/position":              `{"returnCode":0,"result":[]}`,
+		"/future/trade/v1/order/detail":         `{"returnCode":0,"result":{}}`,
+	})
 	defer server.Close()
 
 	client := xt.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})

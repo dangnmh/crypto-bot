@@ -31,6 +31,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
+	"crypto-bot/internal/infrastructure/exchange/fameex"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
@@ -131,6 +132,7 @@ func main() {
 		"ju":            ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
 		"echobit":       ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
 		"sunx":          sunx.NewClient(httpPool, "https://api.sunx.io", logCfg),
+		"fameex":        fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg),
 		"woox":          woox.NewClient(httpPool, "https://api.woox.io", slog.Default()),
 		"phemex":        phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default()),
 		"blofin":        blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default()),

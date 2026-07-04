@@ -59,6 +59,7 @@ const (
 	ExchangeKcex          = "kcex"
 	ExchangeBiconomy      = "biconomy"
 	ExchangeCoinex        = "coinex"
+	ExchangeFameex        = "fameex"
 	ExchangeOrangex       = "orangex"
 	ExchangeTapbit        = "tapbit"
 	ExchangeWhitebit      = "whitebit"
