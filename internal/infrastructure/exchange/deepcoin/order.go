@@ -129,7 +129,7 @@ type deepcoinCancelAllData struct {
 
 func (c *Client) rawCancelAllOpenOrders(ctx context.Context, symbol string) (*deepcoinCancelAllData, error) {
 	bodyMap := map[string]any{
-		"InstrumentID":  normalizeSymbol(symbol),
+		"InstrumentID":  symbol,
 		"ProductGroup":  instTypeSwapU,
 		"IsCrossMargin": 1,
 		"IsMergeMode":   1,

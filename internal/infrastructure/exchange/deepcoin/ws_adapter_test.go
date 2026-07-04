@@ -44,7 +44,7 @@ func TestWsAdapter_ParseTicker(t *testing.T) {
 	payload := []byte(`{
 		"Topic": "market",
 		"Data": {
-			"Symbol": "BTCUSDT",
+			"Symbol": "BTC-USDT-SWAP",
 			"LastPrice": 95000.5,
 			"BidPrice": 95000.0,
 			"AskPrice": 95001.0,
@@ -53,7 +53,7 @@ func TestWsAdapter_ParseTicker(t *testing.T) {
 	}`)
 	sym, pd, err := adapter.ParseTicker(payload)
 	assert.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", sym)
+	assert.Equal(t, "BTC-USDT-SWAP", sym)
 	assert.Equal(t, 95000.5, pd.LastPrice)
 }
 
@@ -67,7 +67,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 			{
 				"table": "Position",
 				"data": {
-					"I": "BTCUSDT",
+					"I": "BTC-USDT-SWAP",
 					"p": "1",
 					"Po": 55,
 					"OP": 29393.10,
@@ -78,7 +78,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	}`)
 	update, err := adapter.ParsePosition(payload)
 	assert.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", update.Symbol)
+	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
 	assert.Equal(t, 55.0, update.HoldVol)
 	assert.Equal(t, 29393.10, update.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
@@ -90,7 +90,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 			{
 				"table": "Position",
 				"data": {
-					"I": "BTCUSDT",
+					"I": "BTC-USDT-SWAP",
 					"p": "1",
 					"Po": 0,
 					"OP": 29393.10,
@@ -101,7 +101,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	}`)
 	updateClose, err := adapter.ParsePosition(closePayload)
 	assert.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", updateClose.Symbol)
+	assert.Equal(t, "BTC-USDT-SWAP", updateClose.Symbol)
 	assert.Equal(t, 0.0, updateClose.HoldVol)
 	assert.Equal(t, exchange.PositionTypeUnknown, updateClose.PositionType)
 }
@@ -116,7 +116,7 @@ func TestWsAdapter_ParseTickerReal(t *testing.T) {
 		"tt": 1757642301185,
 		"mt": 1757642301185,
 		"d": {
-			"I": "BTCUSDT",
+			"I": "BTC-USDT-SWAP",
 			"U": 1757642301089,
 			"PF": 1756690200,
 			"E": 0.0005251816,
@@ -138,7 +138,7 @@ func TestWsAdapter_ParseTickerReal(t *testing.T) {
 	}`)
 	sym, pd, err := adapter.ParseTicker(payload)
 	assert.NoError(t, err)
-	assert.Equal(t, "BTCUSDT", sym)
+	assert.Equal(t, "BTC-USDT-SWAP", sym)
 	assert.Equal(t, 115482.9, pd.LastPrice)
 	assert.Equal(t, 115482.8, pd.BestBid)
 	assert.Equal(t, 115482.9, pd.BestAsk)

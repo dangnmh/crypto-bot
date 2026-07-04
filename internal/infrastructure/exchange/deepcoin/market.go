@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -199,24 +198,21 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, err
 	}
 
-	// Build lookup maps using normalized symbol names to avoid formatting issues
+	// Build lookup maps using symbol names to avoid formatting issues
 	cycleMap := make(map[string]int64)
 	for _, cycle := range cycles {
-		norm := normalizeSymbol(cycle.InstrumentID)
-		cycleMap[norm] = cycle.NextSettleTime * 1000 // Convert seconds to milliseconds
+		cycleMap[cycle.InstrumentID] = cycle.NextSettleTime * 1000 // Convert seconds to milliseconds
 	}
 
 	rateMap := make(map[string]float64)
 	for _, rate := range ratesData.CurrentFundRates {
-		norm := normalizeSymbol(rate.InstrumentID)
-		rateMap[norm] = rate.FundingRate
+		rateMap[rate.InstrumentID] = rate.FundingRate
 	}
 
 	results := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		norm := normalizeSymbol(sym)
-		settleTime := cycleMap[norm]
-		rate := rateMap[norm]
+		settleTime := cycleMap[sym]
+		rate := rateMap[sym]
 
 		results = append(results, exchange.FundingRateResult{
 			Symbol:     sym,
@@ -228,14 +224,6 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 	return results, nil
 }
 
-func normalizeSymbol(s string) string {
-	upper := strings.ToUpper(s)
-	upper = strings.ReplaceAll(upper, "-", "")
-	upper = strings.ReplaceAll(upper, "_", "")
-	upper = strings.TrimSuffix(upper, "SWAP")
-	return upper
-}
-
 func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, whitelistMap, blacklistMap map[string]bool) ([]deepcoinTicker, map[string]float64, map[string]float64) {
 	var filteredTickers []deepcoinTicker
 	volMap := make(map[string]float64)
@@ -243,11 +231,10 @@ func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, white
 
 	for i := range tickers {
 		t := &tickers[i]
-		norm := normalizeSymbol(t.InstID)
-		if blacklistMap[norm] {
+		if blacklistMap[t.InstID] {
 			continue
 		}
-		if len(whitelistMap) > 0 && !whitelistMap[norm] {
+		if len(whitelistMap) > 0 && !whitelistMap[t.InstID] {
 			continue
 		}
 
@@ -260,9 +247,9 @@ func filterTickers(tickers []deepcoinTicker, minVol24h, maxVol24h float64, white
 		}
 
 		filteredTickers = append(filteredTickers, *t)
-		volMap[norm] = vol
+		volMap[t.InstID] = vol
 		price, _ := strconv.ParseFloat(t.Last, 64)
-		priceMap[norm] = price
+		priceMap[t.InstID] = price
 	}
 	return filteredTickers, volMap, priceMap
 }
@@ -282,12 +269,12 @@ func (c *Client) GetPotentialFundingSymbols(
 	// 2. Build maps
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
-		whitelistMap[normalizeSymbol(sym)] = true
+		whitelistMap[sym] = true
 	}
 
 	blacklistMap := make(map[string]bool)
 	for _, sym := range blacklist {
-		blacklistMap[normalizeSymbol(sym)] = true
+		blacklistMap[sym] = true
 	}
 
 	// 3. Filter symbols by whitelist, blacklist, and 24h volume
@@ -310,29 +297,26 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	cycleMap := make(map[string]int64)
 	for _, cycle := range cycles {
-		norm := normalizeSymbol(cycle.InstrumentID)
-		cycleMap[norm] = cycle.NextSettleTime * 1000
+		cycleMap[cycle.InstrumentID] = cycle.NextSettleTime * 1000
 	}
 
 	rateMap := make(map[string]float64)
 	for _, rate := range ratesData.CurrentFundRates {
-		norm := normalizeSymbol(rate.InstrumentID)
-		rateMap[norm] = rate.FundingRate
+		rateMap[rate.InstrumentID] = rate.FundingRate
 	}
 
 	// 6. Combine results
 	var results []exchange.PotentialFundingResult
 	for _, t := range filteredTickers {
-		norm := normalizeSymbol(t.InstID)
-		settleTime := cycleMap[norm]
-		rate := rateMap[norm]
+		settleTime := cycleMap[t.InstID]
+		rate := rateMap[t.InstID]
 
 		results = append(results, exchange.PotentialFundingResult{
 			Symbol:     t.InstID,
 			Rate:       rate,
 			SettleTime: settleTime,
-			Volume24h:  volMap[norm],
-			Price:      priceMap[norm],
+			Volume24h:  volMap[t.InstID],
+			Price:      priceMap[t.InstID],
 		})
 	}
 

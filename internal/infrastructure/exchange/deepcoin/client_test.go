@@ -159,7 +159,7 @@ func TestClient_GetFundingRates(t *testing.T) {
 				"data": {
 					"current_fund_rates": [
 						{
-							"instrumentId": "BTCUSDT",
+							"instrumentId": "BTC-USDT-SWAP",
 							"fundingRate": 0.0001
 						}
 					]
@@ -371,6 +371,39 @@ func TestClient_CloseAllPositions(t *testing.T) {
 	client := deepcoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
 	err := client.CloseAllPositions(context.Background(), "BTC-USDT-SWAP")
 	assert.NoError(t, err)
+}
+
+func TestClient_CloseAllPositions_Failure(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		assert.Equal(t, "/deepcoin/trade/batch-close-position", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		_, _ = w.Write([]byte(`{
+			"code": "0",
+			"msg": "",
+			"data": {
+				"errorList": [
+					{
+						"memberId": "10001",
+						"accountId": "100001234",
+						"tradeUnitId": "TU001",
+						"instId": "BTC-USDT-SWAP",
+						"posiDirection": "long",
+						"errorCode": 51020,
+						"errorMsg": "Insufficient position"
+					}
+				]
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := deepcoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	err := client.CloseAllPositions(context.Background(), "BTC-USDT-SWAP")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to close long position for BTC-USDT-SWAP: Insufficient position (code 51020)")
 }
 
 func TestClient_RawRequestMethods(t *testing.T) {

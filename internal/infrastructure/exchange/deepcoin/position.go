@@ -24,10 +24,13 @@ type deepcoinPosition struct {
 }
 
 type deepcoinClosePositionErrorItem struct {
-	InstID        string `json:"instId"`
-	PosiDirection string `json:"posiDirection"`
-	ErrorCode     int    `json:"errorCode"`
-	ErrorMsg      string `json:"errorMsg"`
+	MemberID      string       `json:"memberId"`
+	AccountID     string       `json:"accountId"`
+	TradeUnitID   string       `json:"tradeUnitId"`
+	InstID        string       `json:"instId"`
+	PosiDirection string       `json:"posiDirection"`
+	ErrorCode     xjson.Number `json:"errorCode"`
+	ErrorMsg      string       `json:"errorMsg"`
 }
 
 type deepcoinBatchCloseResultData struct {
@@ -127,7 +130,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 	if len(res.ErrorList) > 0 {
 		var errMsgs []string
 		for _, item := range res.ErrorList {
-			errMsgs = append(errMsgs, fmt.Sprintf("failed to close %s position for %s: %s (code %d)", item.PosiDirection, item.InstID, item.ErrorMsg, item.ErrorCode))
+			errMsgs = append(errMsgs, fmt.Sprintf("failed to close %s position for %s: %s (code %s)", item.PosiDirection, item.InstID, item.ErrorMsg, string(item.ErrorCode)))
 		}
 		return fmt.Errorf("batch close failed: %s", strings.Join(errMsgs, "; "))
 	}

@@ -82,7 +82,7 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]any{
 		wsAction:   "1",
-		wsSymbol:   normalizeSymbol(symbol),
+		wsSymbol:   symbol,
 		wsTopic:    wsTopicMarket,
 		wsLocalNo:  6,
 		wsResumeNo: -1,
@@ -93,7 +93,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]any{
 		wsAction:   "2",
-		wsSymbol:   normalizeSymbol(symbol),
+		wsSymbol:   symbol,
 		wsTopic:    wsTopicMarket,
 		wsLocalNo:  6,
 		wsResumeNo: -1,
