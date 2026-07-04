@@ -30,47 +30,51 @@
         "h": 8
       },
       "id": 1,
-      "title": "Exchanges with Most High Funding Opportunities",
-      "type": "bargauge",
+      "title": "Opportunity Distribution by Exchange",
+      "type": "piechart",
       "datasource": {
         "type": "postgres",
         "uid": "postgres"
       },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange as metric, count(*) as value FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange ORDER BY value DESC",
+          "rawSql": "SELECT exchange, count(*) FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "palette-classic-by-name"
           },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        }
+          "unit": "none"
+        },
+        "overrides": []
       },
       "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
         },
-        "showUnfilled": true
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       }
     },
     {
@@ -81,132 +85,52 @@
         "w": 12,
         "h": 8
       },
-      "id": 2,
-      "title": "Peak Absolute Funding Rates by Exchange",
-      "type": "timeseries",
+      "id": 5,
+      "title": "Opportunity Volume Share by Exchange",
+      "type": "piechart",
       "datasource": {
         "type": "postgres",
         "uid": "postgres"
       },
-      "targets": [
+      "transformations": [
         {
-          "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, 1h), exchange, max(abs(funding_rate)) * 100 as max_rate FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
-          "refId": "A"
+          "id": "rowsToFields",
+          "options": {}
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "showPoints": "auto"
-          },
-          "unit": "percent"
-        }
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 24,
-        "h": 8
-      },
-      "id": 3,
-      "title": "High-Conviction Opportunity Volume by Exchange",
-      "type": "timeseries",
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres"
-      },
-      "targets": [
-        {
-          "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(timestamp, 1h), exchange, sum(volume_24h) as total_vol FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY 1, 2 ORDER BY 1",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 20,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            }
-          },
-          "unit": "currencyUSD"
-        }
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "sum"
-          ],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "x": 0,
-        "y": 16,
-        "w": 24,
-        "h": 10
-      },
-      "id": 4,
-      "title": "High-Conviction Opportunities Ledger",
-      "type": "table",
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres"
-      },
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT timestamp as \"Scan Time\", exchange as \"Exchange\", symbol as \"Raw Symbol\", normalized_symbol as \"Normalized Symbol\", funding_rate * 100 as \"Rate (%)\", volume_24h as \"24h Vol (USDT)\", settle_time as \"Settle Time\" FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) ORDER BY timestamp DESC, abs(funding_rate) DESC",
+          "rawSql": "SELECT exchange, sum(volume_24h) FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
           "refId": "A"
         }
       ],
-      "options": {
-        "footer": {
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
         },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Scan Time"
-          }
-        ]
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
       }
     }
   ],
