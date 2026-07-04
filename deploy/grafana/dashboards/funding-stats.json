@@ -26,12 +26,12 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 12,
-        "h": 8
+        "w": 24,
+        "h": 12
       },
       "id": 1,
-      "title": "Opportunity Distribution by Exchange",
-      "type": "piechart",
+      "title": "Opportunity Count by Exchange",
+      "type": "bargauge",
       "datasource": {
         "type": "postgres",
         "uid": "postgres"
@@ -45,7 +45,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, count(*) FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "rawSql": "SELECT exchange, count(*) as count FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange ORDER BY count DESC",
           "refId": "A"
         }
       ],
@@ -60,34 +60,26 @@
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "right",
-          "showPercent": true,
-          "showValues": true
-        },
+        "displayMode": "basic",
+        "orientation": "horizontal",
         "reduceOptions": {
-          "values": true,
-          "calcs": []
+          "calcs": [],
+          "values": true
         },
-        "pieType": "pie",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
+        "showUnfilled": true
       }
     },
     {
       "collapsed": false,
       "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 12,
-        "h": 8
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 12
       },
       "id": 5,
-      "title": "Opportunity Volume Share by Exchange",
-      "type": "piechart",
+      "title": "Opportunity Volume by Exchange",
+      "type": "bargauge",
       "datasource": {
         "type": "postgres",
         "uid": "postgres"
@@ -101,7 +93,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, sum(volume_24h) FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "rawSql": "SELECT exchange, sum(volume_24h) as volume FROM symbol_funding_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange ORDER BY volume DESC",
           "refId": "A"
         }
       ],
@@ -116,21 +108,13 @@
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "right",
-          "showPercent": true,
-          "showValues": true
-        },
+        "displayMode": "basic",
+        "orientation": "horizontal",
         "reduceOptions": {
-          "values": true,
-          "calcs": []
+          "calcs": [],
+          "values": true
         },
-        "pieType": "pie",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
+        "showUnfilled": true
       }
     }
   ],
