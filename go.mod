@@ -33,6 +33,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/mock v0.6.0
+	golang.org/x/time v0.10.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.2
 )

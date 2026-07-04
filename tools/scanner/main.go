@@ -15,7 +15,9 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
+	"crypto-bot/internal/infrastructure/exchange/backpack"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
@@ -25,29 +27,38 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/blofin"
+	"crypto-bot/internal/infrastructure/exchange/btse"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/bydfi"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/cryptocom"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
+	"crypto-bot/internal/infrastructure/exchange/delta"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/fameex"
+	"crypto-bot/internal/infrastructure/exchange/fmfw"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/gemini"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
+	"crypto-bot/internal/infrastructure/exchange/hibt"
+	"crypto-bot/internal/infrastructure/exchange/hitbtc"
+	"crypto-bot/internal/infrastructure/exchange/hotcoin"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
+	"crypto-bot/internal/infrastructure/exchange/mandala"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
+	"crypto-bot/internal/infrastructure/exchange/poloniex"
 	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
@@ -123,20 +134,27 @@ func main() {
 	kucoinClient := kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg)
 	binanceClient := binance.NewClient(httpPool, "https://fapi.binance.com", "", "", logCfg)
 	deepcoinClient := deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg)
+	geminiClient := gemini.NewClient(httpPool, "https://api.gemini.com", "", "", logCfg)
 	toobitClient := toobit.NewClient(httpPool, "https://api.toobit.com", "", "", logCfg)
 	weexClient := weex.NewClient(httpPool, "https://api-contract.weex.com", "", "", "", logCfg)
 	batonexClient := batonex.NewClient(httpPool, "https://api.batonex.com", logCfg)
 	bitunixClient := bitunix.NewClient(httpPool, "https://fapi.bitunix.com", "", "", logCfg)
 	htxClient := htx.NewClient(httpPool, "https://api.hbdm.com", logCfg)
 	lbankClient := lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg)
+	mandalaClient := mandala.NewClient(httpPool, "https://api.wallet.mandala.exchange/api/3/public", "", "", logCfg)
 	orangexClient := orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", "", "", logCfg)
 	pionexClient := pionex.NewClient(httpPool, "https://api.pionex.com", "", "", logCfg)
+	poloniexClient := poloniex.NewClient(httpPool, "https://api.poloniex.com/v3", "", "", logCfg)
 	deribitClient := deribit.NewClient(httpPool, "https://www.deribit.com", logCfg)
+	deltaClient := delta.NewClient(httpPool, "https://api.delta.exchange/v2", "", "", logCfg)
 	coinexClient := coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg)
 	bitfinexClient := bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg)
 	whitebitClient := whitebit.NewClient(httpPool, "https://whitebit.com", logCfg)
 	dydxClient := dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg)
 	asterClient := aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg)
+	ascendexClient := ascendex.NewClient(httpPool, "https://ascendex.com/api/pro/v2", "", "", logCfg)
+	backpackClient := backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg)
+	btseClient := btse.NewClient(httpPool, "https://api.btse.com/futures/api/v2.1", "", "", logCfg)
 	bitmexClient := bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg)
 	zoomexClient := zoomex.NewClient(httpPool, "https://openapi.zoomex.com", logCfg)
 	bitmartClient := bitmart.NewClient(httpPool, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg)
@@ -144,6 +162,9 @@ func main() {
 	kfClient := krakenfutures.NewClient(httpPool, "https://futures.kraken.com", logCfg)
 	xtClient := xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg)
 	hashkeyClient := hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default())
+	hibtClient := hibt.NewClient(httpPool, "https://fapi.hibt0.com/open-api", logCfg)
+	hitbtcClient := hitbtc.NewClient(httpPool, "https://api.hitbtc.com/api/3/public", "", "", logCfg)
+	hotcoinClient := hotcoin.NewClient(httpPool, "https://api-ct.hotcoin.fit", "", "", logCfg)
 	cryptocomClient := cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default())
 	wooxClient := woox.NewClient(httpPool, "https://api.woox.io", slog.Default())
 	phemexClient := phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default())
@@ -153,6 +174,7 @@ func main() {
 	juClient := ju.NewClient(httpPool, "https://api.jucoin.com", logCfg)
 	sunxClient := sunx.NewClient(httpPool, "https://api.sunx.io", logCfg)
 	fameexClient := fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg)
+	fmfwClient := fmfw.NewClient(httpPool, "https://api.fmfw.io/api/3/public", "", "", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -170,6 +192,7 @@ func main() {
 		"bingx":         bingxClient,
 		"zoomex":        zoomexClient,
 		"deepcoin":      deepcoinClient,
+		"gemini":        geminiClient,
 		"toobit":        toobitClient,
 		"weex":          weexClient,
 		"batonex":       batonexClient,
@@ -180,16 +203,25 @@ func main() {
 		"xt":            xtClient,
 		"htx":           htxClient,
 		"lbank":         lbankClient,
+		"mandala":       mandalaClient,
 		"orangex":       orangexClient,
 		"pionex":        pionexClient,
+		"poloniex":      poloniexClient,
 		"deribit":       deribitClient,
+		"delta":         deltaClient,
 		"coinex":        coinexClient,
 		"bitfinex":      bitfinexClient,
 		"whitebit":      whitebitClient,
 		"dydx":          dydxClient,
 		"aster":         asterClient,
+		"ascendex":      ascendexClient,
+		"backpack":      backpackClient,
+		"btse":          btseClient,
 		"bitmex":        bitmexClient,
 		"hashkey":       hashkeyClient,
+		"hibt":          hibtClient,
+		"hitbtc":        hitbtcClient,
+		"hotcoin":       hotcoinClient,
 		"cryptocom":     cryptocomClient,
 		"woox":          wooxClient,
 		"phemex":        phemexClient,
@@ -200,6 +232,7 @@ func main() {
 		"echobit":       juClient,
 		"sunx":          sunxClient,
 		"fameex":        fameexClient,
+		"fmfw":          fmfwClient,
 	}
 
 	// Filter clients based on user flag

@@ -15,7 +15,9 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
+	"crypto-bot/internal/infrastructure/exchange/backpack"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
@@ -25,29 +27,38 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/blofin"
+	"crypto-bot/internal/infrastructure/exchange/btse"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/bydfi"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/cryptocom"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
+	"crypto-bot/internal/infrastructure/exchange/delta"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/fameex"
+	"crypto-bot/internal/infrastructure/exchange/fmfw"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/gemini"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
+	"crypto-bot/internal/infrastructure/exchange/hibt"
+	"crypto-bot/internal/infrastructure/exchange/hitbtc"
+	"crypto-bot/internal/infrastructure/exchange/hotcoin"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
+	"crypto-bot/internal/infrastructure/exchange/mandala"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
+	"crypto-bot/internal/infrastructure/exchange/poloniex"
 	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
@@ -109,6 +120,7 @@ func NewStatsReportJob(
 		"bingx":         bingx.NewClient(httpClient, "https://open-api.bingx.com", "", "", logCfg),
 		"zoomex":        zoomex.NewClient(httpClient, "https://openapi.zoomex.com", logCfg),
 		"deepcoin":      deepcoin.NewClient(httpClient, "https://api.deepcoin.com", "", "", "", logCfg),
+		"gemini":        gemini.NewClient(httpClient, "https://api.gemini.com", "", "", logCfg),
 		"toobit":        toobit.NewClient(httpClient, "https://api.toobit.com", "", "", logCfg),
 		"weex":          weex.NewClient(httpClient, "https://api-contract.weex.com", "", "", "", logCfg),
 		"batonex":       batonex.NewClient(httpClient, "https://api.batonex.com", logCfg),
@@ -119,16 +131,25 @@ func NewStatsReportJob(
 		"xt":            xt.NewClient(httpClient, "https://fapi.xt.com", "", "", logCfg),
 		"htx":           htx.NewClient(httpClient, "https://api.hbdm.com", logCfg),
 		"lbank":         lbank.NewClient(httpClient, "https://lbkperp.lbank.com", logCfg),
+		"mandala":       mandala.NewClient(httpClient, "https://api.wallet.mandala.exchange/api/3/public", "", "", logCfg),
 		"orangex":       orangex.NewClient(httpClient, "https://api.orangex.com/api/v1", "", "", logCfg),
 		"pionex":        pionex.NewClient(httpClient, "https://api.pionex.com", "", "", logCfg),
+		"poloniex":      poloniex.NewClient(httpClient, "https://api.poloniex.com/v3", "", "", logCfg),
 		"deribit":       deribit.NewClient(httpClient, "https://www.deribit.com", logCfg),
+		"delta":         delta.NewClient(httpClient, "https://api.delta.exchange/v2", "", "", logCfg),
 		"coinex":        coinex.NewClient(httpClient, "https://api.coinex.com/v2", logCfg),
 		"bitfinex":      bitfinex.NewClient(httpClient, "https://api-pub.bitfinex.com", logCfg),
 		"whitebit":      whitebit.NewClient(httpClient, "https://whitebit.com", logCfg),
 		"dydx":          dydx.NewClient(httpClient, "https://indexer.dydx.trade", logCfg),
 		"aster":         aster.NewClient(httpClient, "https://fapi.asterdex.com", "", "", "", logCfg),
+		"ascendex":      ascendex.NewClient(httpClient, "https://ascendex.com/api/pro/v2", "", "", logCfg),
+		"backpack":      backpack.NewClient(httpClient, "https://api.backpack.exchange/api/v1", "", "", logCfg),
+		"btse":          btse.NewClient(httpClient, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpClient, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpClient, "https://api-glb.hashkey.com", log),
+		"hibt":          hibt.NewClient(httpClient, "https://fapi.hibt0.com/open-api", logCfg),
+		"hitbtc":        hitbtc.NewClient(httpClient, "https://api.hitbtc.com/api/3/public", "", "", logCfg),
+		"hotcoin":       hotcoin.NewClient(httpClient, "https://api-ct.hotcoin.fit", "", "", logCfg),
 		"cryptocom":     cryptocom.NewClient(httpClient, "https://deriv-api.crypto.com/v1", log),
 		"woox":          woox.NewClient(httpClient, "https://api.woox.io", log),
 		"phemex":        phemex.NewClient(httpClient, "https://api.phemex.com", log),
@@ -139,6 +160,7 @@ func NewStatsReportJob(
 		"echobit":       ju.NewClient(httpClient, "https://api.jucoin.com", logCfg),
 		"sunx":          sunx.NewClient(httpClient, "https://api.sunx.io", logCfg),
 		"fameex":        fameex.NewClient(httpClient, "https://futuresopenapi.fameex.com", logCfg),
+		"fmfw":          fmfw.NewClient(httpClient, "https://api.fmfw.io/api/3/public", "", "", logCfg),
 	}
 
 	return &StatsReportJob{

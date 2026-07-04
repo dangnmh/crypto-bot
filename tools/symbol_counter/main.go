@@ -12,7 +12,9 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
+	"crypto-bot/internal/infrastructure/exchange/backpack"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
 	"crypto-bot/internal/infrastructure/exchange/bingx"
@@ -22,29 +24,38 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitmex"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/blofin"
+	"crypto-bot/internal/infrastructure/exchange/btse"
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/bydfi"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
 	"crypto-bot/internal/infrastructure/exchange/cryptocom"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
+	"crypto-bot/internal/infrastructure/exchange/delta"
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
 	"crypto-bot/internal/infrastructure/exchange/fameex"
+	"crypto-bot/internal/infrastructure/exchange/fmfw"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/gemini"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
+	"crypto-bot/internal/infrastructure/exchange/hibt"
+	"crypto-bot/internal/infrastructure/exchange/hitbtc"
+	"crypto-bot/internal/infrastructure/exchange/hotcoin"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
+	"crypto-bot/internal/infrastructure/exchange/mandala"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
+	"crypto-bot/internal/infrastructure/exchange/poloniex"
 	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
@@ -107,6 +118,7 @@ func main() {
 		"kucoin":        kucoin.NewClient(httpPool, "https://api-futures.kucoin.com", "", "", "", logCfg),
 		"hyperliquid":   hyperliquid.NewClient(ctx, httpPool, "https://api.hyperliquid.xyz", "", "", logCfg),
 		"deepcoin":      deepcoin.NewClient(httpPool, "https://api.deepcoin.com", "", "", "", logCfg),
+		"gemini":        gemini.NewClient(httpPool, "https://api.gemini.com", "", "", logCfg),
 		"toobit":        toobit.NewClient(httpPool, "https://api.toobit.com", "", "", logCfg),
 		"weex":          weex.NewClient(httpPool, "https://api-contract.weex.com", "", "", "", logCfg),
 		"batonex":       batonex.NewClient(httpPool, "https://api.batonex.com", logCfg),
@@ -118,21 +130,31 @@ func main() {
 		"xt":            xt.NewClient(httpPool, "https://fapi.xt.com", "", "", logCfg),
 		"htx":           htx.NewClient(httpPool, "https://api.hbdm.com", logCfg),
 		"lbank":         lbank.NewClient(httpPool, "https://lbkperp.lbank.com", logCfg),
+		"mandala":       mandala.NewClient(httpPool, "https://api.wallet.mandala.exchange/api/3/public", "", "", logCfg),
 		"orangex":       orangex.NewClient(httpPool, "https://api.orangex.com/api/v1", "", "", logCfg),
 		"pionex":        pionex.NewClient(httpPool, "https://api.pionex.com", "", "", logCfg),
+		"poloniex":      poloniex.NewClient(httpPool, "https://api.poloniex.com/v3", "", "", logCfg),
 		"deribit":       deribit.NewClient(httpPool, "https://www.deribit.com", logCfg),
+		"delta":         delta.NewClient(httpPool, "https://api.delta.exchange/v2", "", "", logCfg),
 		"coinex":        coinex.NewClient(httpPool, "https://api.coinex.com/v2", logCfg),
 		"bitfinex":      bitfinex.NewClient(httpPool, "https://api-pub.bitfinex.com", logCfg),
 		"whitebit":      whitebit.NewClient(httpPool, "https://whitebit.com", logCfg),
 		"dydx":          dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg),
 		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg),
+		"ascendex":      ascendex.NewClient(httpPool, "https://ascendex.com/api/pro/v2", "", "", logCfg),
+		"backpack":      backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg),
+		"btse":          btse.NewClient(httpPool, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),
+		"hibt":          hibt.NewClient(httpPool, "https://fapi.hibt0.com/open-api", logCfg),
+		"hitbtc":        hitbtc.NewClient(httpPool, "https://api.hitbtc.com/api/3/public", "", "", logCfg),
+		"hotcoin":       hotcoin.NewClient(httpPool, "https://api-ct.hotcoin.fit", "", "", logCfg),
 		"cryptocom":     cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default()),
 		"ju":            ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
 		"echobit":       ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
 		"sunx":          sunx.NewClient(httpPool, "https://api.sunx.io", logCfg),
 		"fameex":        fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg),
+		"fmfw":          fmfw.NewClient(httpPool, "https://api.fmfw.io/api/3/public", "", "", logCfg),
 		"woox":          woox.NewClient(httpPool, "https://api.woox.io", slog.Default()),
 		"phemex":        phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default()),
 		"blofin":        blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default()),

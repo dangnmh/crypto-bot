@@ -17,7 +17,10 @@ graph TD
 ---
 
 ## Step-by-Step Onboarding Workflow
-Dont write any test
+
+> [!IMPORTANT]
+> **No Unit Tests Required**: For these scanner-only integrations, you **must not** write unit tests. Since they are simple public REST API wrappers that only read market data, focus on verifying them functionally using the scanner, symbol counter, and stats reporter commands.
+
 ### Step 1: Verify Public REST Endpoints via curl
 Before writing any code, verify that the exchange's public REST endpoints (tickers and funding rates data) are accessible and retrieve the expected JSON structure using `curl`. This helps confirm the base URL, path names, and JSON fields (e.g. strings vs floats) upfront.
 
@@ -56,12 +59,12 @@ import (
 )
 
 type Client struct {
-	httpClient *httpclient.Pool
+	httpClient *http.Client
 	baseURL    string
 	logger     *slog.Logger
 }
 
-func NewClient(httpClient *httpclient.Pool, baseURL string, logger *slog.Logger) *Client {
+func NewClient(httpClient *http.Client, baseURL string, logger *slog.Logger) *Client {
 	return &Client{
 		httpClient: httpClient,
 		baseURL:    baseURL,
@@ -74,8 +77,26 @@ func NewClient(httpClient *httpclient.Pool, baseURL string, logger *slog.Logger)
 Implement the method required by the scanner tool's `ScannerClient` interface:
 * `GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error)`
 
-> [!IMPORTANT]
-> **Symbol Normalization:** Ensure the client normalizes exchange-specific symbol names (e.g. `BTC-SWAP-USDT`) into bot-standard symbols (e.g. `BTCUSDT`) in `GetPotentialFundingSymbols` and filters them correctly.
+#### 3. Rate Limiting (If Batch Query Unsupported)
+If the exchange supports querying tickers and funding rates for all symbols in a single request (e.g., Hotcoin's bulk contracts endpoint), you **do not** need rate limiting.
+
+However, if the exchange **does not** support batch queries (e.g., Gemini, Hibt) and requires querying endpoints (details, ticker, fundingRate) one-by-one per symbol, you **must** use the unified rate-limiting engine to prevent HTTP 429 / Too Many Requests errors.
+
+To use the rate limiter:
+1. Import `crypto-bot/pkg/ratelimit` and `golang.org/x/time/rate`.
+2. Add a `limiter *ratelimit.ExchangeRateLimiter` field to your client.
+3. Configure the limiter in `NewClient` (specifying global limits and optionally path-specific overrides/weights).
+4. Call `c.limiter.Acquire(ctx, path)` in your custom `request` helper before making HTTP requests.
+
+Example configuration in `NewClient`:
+```go
+	// Configure limits: Global limit is 3 req/s.
+	// Path limit overrides (e.g. /v1/fundingamount) can be added as prefix patterns.
+	configs := map[string]ratelimit.EndpointConfig{
+		"/v1/fundingamount": {Limit: rate.Limit(1), Burst: 1, Weight: 1},
+	}
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(3), 2, configs)
+```
 
 ---
 
@@ -91,7 +112,14 @@ Open [tools/symbol_counter/main.go](file:///home/four/projects/crypto-bot/tools/
 2. Instantiate the client using the public REST API base URL.
 3. Register the client instance in the `clients` map.
 
-### Step 6: Verify the Scanner Integration
+### Step 6: Register in the Background Stats Reporter Job
+Open [internal/bots/funding/application/stats_reporter.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/stats_reporter.go) and:
+1. Import your new exchange client package.
+2. Instantiate/register the client instance in the map inside `NewStatsReporter` (often around `clients := map[string]scannerClient{...}`).
+
+---
+
+### Step 7: Verify the Scanner Integration
 To verify that the newly added exchange client works correctly and fetches active market data, run the scanner tool specifically targeting your exchange and setting the minimum funding rate threshold to `0`:
 
 ```bash
@@ -100,7 +128,7 @@ make scan/funding exchanges=<your_exchange_name_lowercase> minFundingRate=0
 
 Verify that the output is displayed as a formatted table containing standardized symbols, real-time funding rates, settlement countdowns, and 24-hour volume statistics.
 
-### Step 7: Verify the Symbol Counter Integration
+### Step 8: Verify the Symbol Counter Integration
 To verify that the newly added exchange client counts symbols correctly, run:
 
 ```bash
@@ -108,6 +136,13 @@ go run ./tools/symbol_counter/main.go
 ```
 
 Verify that the output table contains your new exchange, active symbols count, the method used (e.g. `GetPotentialFundingSymbols` or `GetContractDetails`), and a status of `SUCCESS`.
+
+### Step 9: Register in the Exchange Status Registry
+Open [docs/tech/exchanges.json](file:///home/four/projects/crypto-bot/docs/tech/exchanges.json) and locate or add the entry for the exchange. Update the status fields to reflect the new integration capabilities:
+* `"implementedScanner"`: Set to `true` (since it is now registered in the scanner tool).
+* `"implementedFundingReversion"`: Set to `true` or `false` (whether the full high-frequency funding reversion execution strategy is implemented and registered in `provider_factory.go`).
+* `"supportsFuturesAPI"`: Set to `true` (since scanner clients leverage the exchange's contract/futures APIs).
+* `"implementedReportFundingOpportunity"`: Set to `true` (since it is registered in `stats_reporter.go`).
 
 ---
 
