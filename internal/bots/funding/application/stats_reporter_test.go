@@ -20,8 +20,9 @@ import (
 )
 
 type mockScannerClient struct {
-	results []exchange.PotentialFundingResult
-	err     error
+	results   []exchange.PotentialFundingResult
+	err       error
+	blacklist []string // Captured blacklist parameter
 }
 
 func (m *mockScannerClient) GetPotentialFundingSymbols(
@@ -30,6 +31,7 @@ func (m *mockScannerClient) GetPotentialFundingSymbols(
 	whitelist []string,
 	blacklist []string,
 ) ([]exchange.PotentialFundingResult, error) {
+	m.blacklist = blacklist
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -124,8 +126,14 @@ func TestStatsReportJob_Tick(t *testing.T) {
 	repo := &mockReportRepository{}
 	noti := &mockNotifier{}
 
+	cfg := &fundingconfig.Config{
+		Blacklist: &fundingconfig.BlacklistConfig{
+			"common": []string{"BTC-USDT"},
+		},
+	}
+
 	job := application.NewStatsReportJob(
-		&fundingconfig.Config{},
+		cfg,
 		&fundingconfig.SystemConfig{},
 		&http.Client{},
 		repo,
@@ -154,6 +162,7 @@ func TestStatsReportJob_Tick(t *testing.T) {
 	assert.Equal(t, decmath.RoundToScale(r1.Rate, 3), saved.FundingRate)
 	assert.Equal(t, 15000000.0, saved.Volume24h)
 	assert.True(t, math.Abs(float64(saved.SettleTime.UnixMilli()-r1.SettleTime)) < 1000)
+	assert.Contains(t, client.blacklist, "BTC-USDT")
 }
 
 func testLogger() *slog.Logger {

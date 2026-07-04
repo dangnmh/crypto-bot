@@ -34,10 +34,12 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
+	"crypto-bot/internal/infrastructure/exchange/fameex"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
+	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
@@ -46,6 +48,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/orangex"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
+	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
@@ -117,7 +120,7 @@ func NewStatsReportJob(
 		"htx":           htx.NewClient(httpClient, "https://api.hbdm.com", logCfg),
 		"lbank":         lbank.NewClient(httpClient, "https://lbkperp.lbank.com", logCfg),
 		"orangex":       orangex.NewClient(httpClient, "https://api.orangex.com/api/v1", "", "", logCfg),
-		"pionex":        pionex.NewClient(httpClient, "https://api.pionex.com", logCfg),
+		"pionex":        pionex.NewClient(httpClient, "https://api.pionex.com", "", "", logCfg),
 		"deribit":       deribit.NewClient(httpClient, "https://www.deribit.com", logCfg),
 		"coinex":        coinex.NewClient(httpClient, "https://api.coinex.com/v2", logCfg),
 		"bitfinex":      bitfinex.NewClient(httpClient, "https://api-pub.bitfinex.com", logCfg),
@@ -132,6 +135,10 @@ func NewStatsReportJob(
 		"blofin":        blofin.NewClient(httpClient, "https://openapi.blofin.com", log),
 		"digifinex":     digifinex.NewClient(httpClient, "https://openapi.digifinex.com", log),
 		"bydfi":         bydfi.NewClient(httpClient, "https://api.bydfi.com/api", log),
+		"ju":            ju.NewClient(httpClient, "https://api.jucoin.com", logCfg),
+		"echobit":       ju.NewClient(httpClient, "https://api.jucoin.com", logCfg),
+		"sunx":          sunx.NewClient(httpClient, "https://api.sunx.io", logCfg),
+		"fameex":        fameex.NewClient(httpClient, "https://futuresopenapi.fameex.com", logCfg),
 	}
 
 	return &StatsReportJob{
@@ -225,8 +232,14 @@ func (j *StatsReportJob) CollectStats(ctx context.Context) {
 }
 
 func (j *StatsReportJob) scanExchange(ctx context.Context, exchName string, client ScannerClient, now time.Time) []domain.SymbolFundingReport {
+	var blacklist []string
+	if j.cfg.Blacklist != nil {
+		blacklist = append(blacklist, j.cfg.Blacklist.GetCommonBlacklist()...)
+		blacklist = append(blacklist, j.cfg.Blacklist.GetExchangeBlacklist(exchName)...)
+	}
+
 	// Condition 4: 24h volume at least 10M USDT
-	results, err := client.GetPotentialFundingSymbols(ctx, 10000000, 0, nil, nil)
+	results, err := client.GetPotentialFundingSymbols(ctx, 10000000, 0, nil, blacklist)
 	if err != nil {
 		j.log.DebugContext(ctx, "Failed to query public symbols from exchange",
 			slog.String("exchange", exchName),

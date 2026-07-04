@@ -23,6 +23,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
+	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/xt"
@@ -101,6 +102,21 @@ func DefaultProviderFactories() []ProviderFactory {
 				)
 				adapter := orangex.NewWsAdapter(client)
 				return buildProvider(ctx, exchange.ExchangeOrangex, exchange.ExchangeOrangex, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangePionex,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangePionex]
+				client := pionex.NewClient(
+					cfg.HTTPClient,
+					apiCfg.Future.BaseURL,
+					apiCfg.APIKey,
+					apiCfg.APISecret,
+					cfg.SystemConfig.Logging,
+				)
+				adapter := pionex.NewWsAdapter(client, apiCfg.WebSocket.PrivateURL)
+				return buildProvider(ctx, exchange.ExchangePionex, exchange.ExchangePionex, cfg, apiCfg, client, adapter), nil
 			},
 		},
 		SimpleProviderFactory{

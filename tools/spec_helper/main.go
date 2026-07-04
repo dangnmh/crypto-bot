@@ -472,6 +472,36 @@ func getProvider(ctx context.Context, cfg *sysconfig.SystemConfig, exchangeName 
 	return nil, fmt.Errorf("provider factory not found for exchange: %s", exchangeName)
 }
 
+func runCustomPrivateREST(ctx context.Context, providerClient any, method string, params map[string]string) ([]byte, error) {
+	switch strings.ToLower(method) {
+	case "funding_fee":
+		type rawFundingFee interface {
+			GetFundingFeeRaw(ctx context.Context, params map[string]string) ([]byte, error)
+		}
+		if feeClient, ok := providerClient.(rawFundingFee); ok {
+			return feeClient.GetFundingFeeRaw(ctx, params)
+		}
+		return nil, fmt.Errorf("client does not support GetFundingFeeRaw")
+	case "risk_table":
+		type rawRiskTable interface {
+			GetRiskTableRaw(ctx context.Context, params map[string]string) ([]byte, error)
+		}
+		if rtClient, ok := providerClient.(rawRiskTable); ok {
+			return rtClient.GetRiskTableRaw(ctx, params)
+		}
+		return nil, fmt.Errorf("client does not support GetRiskTableRaw")
+	case "symbols":
+		type rawSymbols interface {
+			GetSymbolsRaw(ctx context.Context, params map[string]string) ([]byte, error)
+		}
+		if symClient, ok := providerClient.(rawSymbols); ok {
+			return symClient.GetSymbolsRaw(ctx, params)
+		}
+		return nil, fmt.Errorf("client does not support GetSymbolsRaw")
+	}
+	return nil, fmt.Errorf("unsupported custom private REST method: %s", method)
+}
+
 func runPrivateREST(exchangeName, method string, params map[string]string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -512,6 +542,8 @@ func runPrivateREST(exchangeName, method string, params map[string]string) {
 		data, err = rawReq.GetFundingRateRaw(ctx, params)
 	case "tickers":
 		data, err = rawReq.GetTickersRaw(ctx, params)
+	case "funding_fee", "risk_table", "symbols":
+		data, err = runCustomPrivateREST(ctx, provider.Client, method, params)
 	default:
 		fmt.Printf("Unsupported raw REST method: %s\n", method)
 		return

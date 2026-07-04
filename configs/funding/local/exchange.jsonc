@@ -176,6 +176,17 @@
         "privateURL": "wss://fstream.asterdex.com/ws",
         "maxPairsPerWSConn": 20
       }
+    },
+    "pionex": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api.pionex.com"
+      },
+      "websocket": {
+        "publicURL": "wss://ws.pionex.com/wsPub",
+        "privateURL": "wss://ws.pionex.com/wsUA",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }
