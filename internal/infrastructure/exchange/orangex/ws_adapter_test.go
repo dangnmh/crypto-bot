@@ -28,6 +28,8 @@ func TestWsAdapter_ConfigAndExtraction(t *testing.T) {
 	hook := adapter.GetAuthHook("key", "secret")
 	if hook == nil {
 		t.Error("expected auth hook to be non-nil")
+	} else {
+		hook(pkgws.NewClient("ws://localhost", slog.Default()))
 	}
 	hookNil := adapter.GetAuthHook("", "")
 	if hookNil != nil {

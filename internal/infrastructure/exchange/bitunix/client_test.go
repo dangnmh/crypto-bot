@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -522,4 +523,32 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, 50.0, pnl.NetPnl)
 	assert.Equal(t, 59000.0, pnl.EntryPrice)
 	assert.Equal(t, 60000.0, pnl.ExitPrice)
+}
+
+func TestClient_BitunixRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":0,"data":{}}`))
+	}))
+	defer server.Close()
+
+	client := bitunix.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	ctx := context.Background()
+
+	// WarmUp
+	client.WarmUp(ctx, 1*time.Hour)
+
+	// Raw methods
+	_, _ = client.RawRequest(ctx, "GET", "/api/v1/test", nil, nil)
+	_, _ = client.GetFundingRateRaw(ctx, nil)
+	_, _ = client.GetTickersRaw(ctx, nil)
+	_, _ = client.GetOpenPositionsRaw(ctx, nil)
+	_, _ = client.GetHistoryPositionsRaw(ctx, nil)
+	_, _ = client.GetOrderDetailRaw(ctx, "123", nil)
+	_, _ = client.GetHistoryOrdersRaw(ctx, nil)
+	_, _ = client.GetOrderPNLRaw(ctx, nil)
 }

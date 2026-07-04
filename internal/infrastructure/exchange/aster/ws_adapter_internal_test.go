@@ -2,14 +2,19 @@ package aster
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	pkgws "crypto-bot/pkg/ws"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWsAdapterParseTicker(t *testing.T) {
@@ -255,4 +260,38 @@ func TestWsAdapterParsePosition_AccountUpdate_Closed(t *testing.T) {
 	if update.HoldVol != 0 {
 		t.Errorf("expected hold volume 0, got %f", update.HoldVol)
 	}
+}
+
+func TestWsAdapterRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewWsAdapter("", "", "", "")
+
+	// 1. SetPool & SetClock
+	pool := pkgws.NewPool("ws://dummy", 30, slog.Default())
+	adapter.SetPool(pool)
+	adapter.SetClock(nil)
+
+	// 2. SubscribeTicker & UnsubscribeTicker & SubscribePersonal
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_ = adapter.SubscribeTicker(ctx, "BTCUSDT")
+	_ = adapter.UnsubscribeTicker(ctx, "BTCUSDT")
+	_ = adapter.SubscribePersonal(ctx)
+
+	// 3. GetPingConfig & GetCustomPingHandler
+	ping, interval := adapter.GetPingConfig()
+	assert.Nil(t, ping)
+	assert.Equal(t, time.Duration(0), interval)
+
+	pingHandler := adapter.GetCustomPingHandler()
+	assert.NotNil(t, pingHandler)
+
+	// 4. GetAuthHook & HandshakeHeaders
+	hook := adapter.GetAuthHook("key", "secret")
+	assert.Nil(t, hook)
+
+	headers, err := adapter.HandshakeHeaders()
+	assert.NoError(t, err)
+	assert.NotNil(t, headers)
 }

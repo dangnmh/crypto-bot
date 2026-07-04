@@ -65,7 +65,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 					},
 				}),
 				transportlog.LogOptionRedactSensitive(true),
-				transportlog.LogOptionRedactSensitiveKeys([]string{"DC-ACCESS-KEY", "DC-ACCESS-PASSPHRASE"}),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"DC-ACCESS-KEY", "DC-ACCESS-PASSPHRASE", "DC-ACCESS-SIGN"}),
 				transportlog.LogOptionQueryParams(true),
 			)
 			clientCopy.Transport = rt

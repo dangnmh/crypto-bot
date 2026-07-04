@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -637,4 +638,142 @@ func TestClient_SwitchPositionMode(t *testing.T) {
 	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
 	err := client.SwitchPositionMode(context.Background(), "BTCUSDT", domain.PositionModeHedge)
 	require.NoError(t, err)
+}
+
+func TestClient_GetPotentialFundingSymbols(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v2/mix/market/tickers":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": [
+					{
+						"symbol": "BTCUSDT",
+						"lastPr": "64000",
+						"bidPr": "63999",
+						"askPr": "64001",
+						"baseVolume": "100.5",
+						"quoteVolume": "15000000",
+						"ts": "1700000000000"
+					}
+				]
+			}`))
+		case "/api/v2/mix/market/current-fund-rate":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": [
+					{
+						"symbol": "BTCUSDT",
+						"fundingRate": "0.001",
+						"nextUpdate": "1700000000"
+					}
+				]
+			}`))
+		default:
+			t.Fatalf("unexpected call to path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTCUSDT", res[0].Symbol)
+	assert.Equal(t, 0.001, res[0].Rate)
+	assert.Equal(t, int64(1700000000), res[0].SettleTime)
+}
+
+func TestClient_BitgetRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v2/mix/account/set-margin-mode":
+			_, _ = w.Write([]byte(`{"code":"00000","msg":"success"}`))
+		case "/api/v2/mix/order/detail":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": {
+					"orderId": "order123",
+					"clientOid": "client123",
+					"symbol": "BTCUSDT",
+					"size": "1.0",
+					"price": "50000.0",
+					"priceAvg": "50000.0",
+					"baseVolume": "1.0",
+					"status": "filled",
+					"side": "buy",
+					"posSide": "long",
+					"leverage": "20",
+					"cTime": "1695812285073",
+					"uTime": "1695812285073"
+				}
+			}`))
+		case "/api/v2/mix/order/place-order":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": {
+					"orderId": "order1234"
+				}
+			}`))
+		case "/api/v2/public/time":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": {
+					"serverTime": "1700000000000"
+				}
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	client := bitget.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	// 1. SwitchMarginMode
+	err := client.SwitchMarginMode(context.Background(), "BTCUSDT", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	// 2. GetOrderByExternalID
+	order, err := client.GetOrderByExternalID(context.Background(), "BTCUSDT", "client123")
+	require.NoError(t, err)
+	assert.Equal(t, "order123", order.OrderID)
+
+	// 3. ClosePosition
+	err = client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 1.0, domain.PositionModeHedge, 10)
+	require.NoError(t, err)
+
+	// 4. SupportLeverageOnOrder
+	assert.False(t, client.SupportLeverageOnOrder())
+
+	// 5. Latency
+	_, err = client.Latency(context.Background())
+	require.NoError(t, err)
+
+	// 6. WarmUp
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, 10*time.Millisecond)
+
+	// 7. GetOrderPNLRaw
+	_, _ = client.GetOrderPNLRaw(context.Background(), nil)
+
+	// 8. SetClock
+	client.SetClock(exchange.RealClock{})
+
+	// 9. Get and Post
+	_, _ = client.Get(context.Background(), "/api/v2/public/time", nil)
+	_, _ = client.Post(context.Background(), "/api/v2/mix/account/set-margin-mode", nil)
+
+	// 10. CancelOrders
+	_ = client.CancelOrders(context.Background(), []string{"order1234"})
 }

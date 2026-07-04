@@ -77,6 +77,10 @@ func setupMockServer() *httptest.Server {
 				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","error":{"code":5147,"message":"Unsupported operation on current position mode"}}`))
 				return
 			}
+			if req.Params.InstrumentName == "ERROR-5148" {
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","error":{"code":5148,"message":"Some other error"}}`))
+				return
+			}
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":"ok"}`))
 		},
 		"/private/adjust_perpetual_margin_type": func(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +336,20 @@ func TestClient_PositionAndMargin(t *testing.T) {
 		t.Fatalf("expected ChangeLeverage to ignore error 5147, got: %v", err)
 	}
 
+	// Test ChangeLeverage returning error 5148, which should be returned as error
+	err = client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
+		Symbol:       "ERROR-5148",
+		Leverage:     5,
+		PositionType: exchange.PositionTypeShort,
+	})
+	if err == nil {
+		t.Fatal("expected ChangeLeverage to fail with error 5148")
+	}
+	expectedErrMsg := "OrangeX error 5148: Some other error"
+	if !strings.Contains(err.Error(), expectedErrMsg) {
+		t.Errorf("expected error message to contain '%s', got '%s'", expectedErrMsg, err.Error())
+	}
+
 	err = client.SwitchMarginMode(ctx, "BTC-USDT-PERPETUAL", "isolated", 5, domain.SideOpenLong)
 	if err != nil {
 		t.Fatalf("SwitchMarginMode failed: %v", err)
@@ -438,4 +456,21 @@ func TestClient_GetTransactionLog(t *testing.T) {
 	if !strings.Contains(string(res), `"logs"`) {
 		t.Errorf("expected response to contain logs, got %s", string(res))
 	}
+}
+
+func TestClient_RawMethods(t *testing.T) {
+	t.Parallel()
+	server := setupMockServer()
+	defer server.Close()
+	client := orangex.NewClient(server.Client(), server.URL, "my-api-key", "my-api-secret", config.LoggingConfig{})
+
+	ctx := context.Background()
+
+	_, _ = client.GetFundingRateRaw(ctx, nil)
+	_, _ = client.GetTickersRaw(ctx, nil)
+	_, _ = client.GetOpenPositionsRaw(ctx, nil)
+	_, _ = client.GetHistoryPositionsRaw(ctx, nil)
+	_, _ = client.GetOrderDetailRaw(ctx, "123", nil)
+	_, _ = client.GetHistoryOrdersRaw(ctx, nil)
+	_, _ = client.GetOrderPNLRaw(ctx, nil)
 }

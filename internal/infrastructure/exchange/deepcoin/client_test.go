@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -410,4 +411,81 @@ func TestClient_RawRequestMethods(t *testing.T) {
 	bytes, err = client.GetOrderPNLRaw(context.Background(), nil)
 	assert.NoError(t, err)
 	assert.Contains(t, string(bytes), "raw-data")
+}
+
+func TestClient_GetPotentialFundingSymbols(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/deepcoin/market/tickers":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instType": "SWAP",
+						"instId": "BTC-USDT-SWAP",
+						"last": "64000",
+						"volCcy24h": "15000000"
+					}
+				]
+			}`))
+		case "/deepcoin/trade/funding-rate":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"settleInterval": 28800,
+						"instrumentID": "BTC-USDT-SWAP",
+						"nextSettleTime": 1739289600
+					}
+				]
+			}`))
+		case "/deepcoin/trade/fund-rate/current-funding-rate":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": {
+					"current_fund_rates": [
+						{
+							"instrumentId": "BTC-USDT-SWAP",
+							"fundingRate": 0.0001
+						}
+					]
+				}
+			}`))
+		case "/deepcoin/market/time":
+			_, _ = w.Write([]byte(`{"code":"0","data":[{"ts":"1700000000"}]}`))
+		default:
+			t.Fatalf("unexpected call to path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := deepcoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTC-USDT-SWAP", res[0].Symbol)
+	assert.Equal(t, 0.0001, res[0].Rate)
+	assert.Equal(t, int64(1739289600000), res[0].SettleTime)
+
+	// test Latency
+	_, err = client.Latency(context.Background())
+	require.NoError(t, err)
+
+	// test SupportLeverageOnOrder
+	assert.False(t, client.SupportLeverageOnOrder())
+
+	// test SwitchMarginMode
+	err = client.SwitchMarginMode(context.Background(), "BTC-USDT-SWAP", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	// test WarmUp
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, 10*time.Millisecond)
 }

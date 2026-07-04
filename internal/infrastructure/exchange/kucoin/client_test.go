@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
@@ -677,4 +679,102 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, -0.03389521, res.FundingFee)
 	assert.Equal(t, int64(1735589352069-1735549162120), res.DurationMs)
 	assert.Equal(t, 0.51214413, res.NetPnl)
+}
+
+func TestClient_RemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/contracts/active":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": [
+					{
+						"symbol": "XBTUSDTM",
+						"status": "Open",
+						"fundingFeeRate": 0.001,
+						"nextFundingRateDateTime": 1700000000,
+						"turnoverOf24h": 15000000
+					}
+				]
+			}`))
+		case "/api/v1/allTickers":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": [
+					{
+						"symbol": "XBTUSDTM",
+						"lastPrice": "64000",
+						"price": "64000"
+					}
+				]
+			}`))
+		case "/api/v1/orders/byClientOid":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": {
+					"id": "ord123",
+					"clientOid": "client-order-id",
+					"symbol": "XBTUSDTM"
+				}
+			}`))
+		case "/api/v2/position/changeMarginMode":
+			_, _ = w.Write([]byte(`{"code":"200000","data":{}}`))
+		case "/api/v1/position/leverage":
+			_, _ = w.Write([]byte(`{"code":"200000","data":{}}`))
+		case "/api/v1/timestamp":
+			_, _ = w.Write([]byte(`{"code":"200000","data":1700000000}`))
+		case "/api/v1/ticker":
+			_, _ = w.Write([]byte(`{"code":"200000","data":{"symbol":"XBTUSDTM","price":64000.0}}`))
+		}
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	// 1. GetPotentialFundingSymbols
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "XBTUSDTM", res[0].Symbol)
+	assert.Equal(t, 0.001, res[0].Rate)
+
+	// 2. GetOrderByExternalID
+	order, err := client.GetOrderByExternalID(context.Background(), "XBTUSDTM", "client-order-id")
+	require.NoError(t, err)
+	assert.Equal(t, "ord123", order.OrderID)
+
+	// 3. WarmUp
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, 10*time.Millisecond)
+
+	// 4. SupportLeverageOnOrder
+	assert.True(t, client.SupportLeverageOnOrder())
+
+	// 5. ChangeLeverage & SwitchMarginMode
+	err = client.ChangeLeverage(context.Background(), exchange.ChangeLeverageRequest{Symbol: "XBTUSDTM", Leverage: 10})
+	assert.ErrorContains(t, err, "not implemented")
+
+	err = client.SwitchMarginMode(context.Background(), "XBTUSDTM", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	// 6. GetServerTime & Latency
+	ts, err := client.GetServerTime(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(1700000000), ts)
+
+	_, err = client.Latency(context.Background())
+	require.NoError(t, err)
+
+	// 7. Cover Raw methods to hit client.go lines
+	_, _ = client.GetFundingRateRaw(context.Background(), nil)
+	_, _ = client.GetHistoryOrdersRaw(context.Background(), nil)
+	_, _ = client.GetClosedPnLRaw(context.Background(), nil)
+	_, _ = client.GetOrderPNLRaw(context.Background(), nil)
+
+	// 8. GetTickers with single symbol
+	_, _ = client.GetTickers(context.Background(), "XBTUSDTM")
 }

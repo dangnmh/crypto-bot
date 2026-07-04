@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -865,4 +866,152 @@ func TestClient_GetOrderPNL_Short(t *testing.T) {
 	assert.Equal(t, 50000.0, res.EntryPrice)
 	assert.Equal(t, 51000.0, res.ExitPrice)
 	assert.InDelta(t, -2.0, res.PnLRate, 0.0001)
+}
+
+func TestClient_GetPotentialFundingSymbols(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v5/market/tickers":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"last": "64000",
+						"bidPx": "63999",
+						"askPx": "64001",
+						"volCcy24h": "100",
+						"ts": "1700000000000"
+					}
+				]
+			}`))
+		case "/api/v5/public/funding-rate":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"fundingRate": "0.001",
+						"nextFundingTime": "1700000000"
+					}
+				]
+			}`))
+		case "/api/v5/public/time":
+			_, _ = w.Write([]byte(`{"code":"0","data":[{"ts":"1700000000"}]}`))
+		case "/api/v5/trade/order":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"msg": "",
+				"data": [
+					{
+						"instId": "BTC-USDT-SWAP",
+						"ordId": "ord123",
+						"clOrdId": "ext123",
+						"state": "filled"
+					}
+				]
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 1000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTC-USDT-SWAP", res[0].Symbol)
+	assert.Equal(t, 0.001, res[0].Rate)
+
+	// test Latency
+	_, err = client.Latency(context.Background())
+	require.NoError(t, err)
+
+	// GetOrderByExternalID
+	order, err := client.GetOrderByExternalID(context.Background(), "BTC-USDT-SWAP", "ext123")
+	require.NoError(t, err)
+	assert.Equal(t, "ord123", order.OrderID)
+
+	// GetServerTime
+	serverTime, err := client.GetServerTime(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(1700000000), serverTime)
+
+	// SupportLeverageOnOrder
+	assert.False(t, client.SupportLeverageOnOrder())
+
+	// WarmUp
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, 10*time.Millisecond)
+
+	// test Raw Methods to hit client.go lines
+	_, _ = client.GetFundingRateRaw(context.Background(), nil)
+	_, _ = client.GetTickersRaw(context.Background(), nil)
+	_, _ = client.GetOpenPositionsRaw(context.Background(), nil)
+	_, _ = client.GetHistoryPositionsRaw(context.Background(), nil)
+	_, _ = client.GetOrderDetailRaw(context.Background(), "ord123", nil)
+	_, _ = client.GetHistoryOrdersRaw(context.Background(), nil)
+	_, _ = client.GetOrderDealsRaw(context.Background(), nil)
+	_, _ = client.GetClosedPnLRaw(context.Background(), nil)
+	_, _ = client.GetOrderPNLRaw(context.Background(), map[string]string{"symbol": "BTC-USDT-SWAP", "orderId": "ord123"})
+}
+
+type dummyClock struct{}
+
+func (dummyClock) Now() time.Time { return time.Unix(1700000000, 0) }
+
+func TestClient_OKXRemainingClientMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "POST" {
+			_, _ = w.Write([]byte(`{"code":"0","data":[{"result":"post_ok"}]}`))
+		} else {
+			_, _ = w.Write([]byte(`{"code":"0","data":[{"result":"get_ok"}]}`))
+		}
+	}))
+	defer server.Close()
+
+	client := okx.NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	// 1. SetClock
+	client.SetClock(dummyClock{})
+
+	// 2. Get
+	resGet, err := client.Get(context.Background(), "/api/v5/test", nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(resGet), "get_ok")
+
+	// 3. Post
+	resPost, err := client.Post(context.Background(), "/api/v5/test", map[string]string{"foo": "bar"})
+	require.NoError(t, err)
+	assert.Contains(t, string(resPost), "post_ok")
+
+	// 4. Test error paths (Rate limit)
+	serverErr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"code":"50011","msg":"Rate limit exceeded"}`))
+	}))
+	defer serverErr.Close()
+
+	clientErr := okx.NewClient(serverErr.Client(), serverErr.URL, "key", "secret", "pass", config.LoggingConfig{})
+	_, err = clientErr.Get(context.Background(), "/api/v5/test", nil)
+	assert.Error(t, err)
+
+	// 5. Test error paths (toHTTPError)
+	serverErr2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"code":"50012","msg":"Invalid API key"}`))
+	}))
+	defer serverErr2.Close()
+
+	clientErr2 := okx.NewClient(serverErr2.Client(), serverErr2.URL, "key", "secret", "pass", config.LoggingConfig{})
+	_, err = clientErr2.Get(context.Background(), "/api/v5/test", nil)
+	assert.Error(t, err)
 }

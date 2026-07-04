@@ -135,7 +135,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			if topicCheck.Topic == wsTopicMarket || topicCheck.A == "PO" {
 				return "ticker"
 			}
-			if len(topicCheck.Result) > 0 && topicCheck.Result[0].Table == wsTablePosition {
+			if len(topicCheck.Result) > 0 && strings.EqualFold(topicCheck.Result[0].Table, wsTablePosition) {
 				return "personal.position"
 			}
 		}
@@ -221,12 +221,16 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		return nil, fmt.Errorf("no position payload")
 	}
 	raw := msg.Result[0].Data
+	qty, _ := strconv.ParseFloat(string(raw.Po), 64)
+	openPx, _ := strconv.ParseFloat(string(raw.OP), 64)
+
 	posType := exchange.PositionTypeLong
 	if raw.P == "2" {
 		posType = exchange.PositionTypeShort
 	}
-	qty, _ := strconv.ParseFloat(string(raw.Po), 64)
-	openPx, _ := strconv.ParseFloat(string(raw.OP), 64)
+	if qty == 0 {
+		posType = exchange.PositionTypeUnknown
+	}
 
 	return &exchange.PersonalPositionUpdate{
 		Symbol:       raw.I,

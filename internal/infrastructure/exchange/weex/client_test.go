@@ -644,3 +644,108 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, -0.05, res.FundingFee)
 	assert.InDelta(t, 49.684, res.NetPnl, 1e-9) // 50.0 - 0.266 + (-0.05) = 49.684
 }
+
+func TestClient_WeexRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/capi/v3/market/ticker/24hr":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": [
+					{
+						"symbol": "BTCUSDT",
+						"lastPrice": "64000",
+						"volume": "100.5",
+						"quoteVolume": "15000000",
+						"closeTime": 1700000000000
+					}
+				]
+			}`))
+		case "/capi/v3/market/premiumIndex":
+			_, _ = w.Write([]byte(`{
+				"code": "00000",
+				"msg": "success",
+				"data": [
+					{
+						"symbol": "BTCUSDT",
+						"lastFundingRate": "0.001",
+						"nextFundingTime": "1700000000"
+					}
+				]
+			}`))
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+
+	// 1. GetPotentialFundingSymbols
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTCUSDT", res[0].Symbol)
+
+	// 2. SupportLeverageOnOrder
+	assert.False(t, client.SupportLeverageOnOrder())
+
+	// 3. WarmUp
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client.WarmUp(ctx, 10*time.Millisecond)
+
+	// 4. Trigger toAPIError
+	serverErr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":"12345","msg":"api error message"}`))
+	}))
+	defer serverErr.Close()
+	clientErr := NewClient(serverErr.Client(), serverErr.URL, "key", "secret", "pass", config.LoggingConfig{})
+	_, err = clientErr.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	assert.ErrorContains(t, err, "api error message")
+}
+
+func TestClient_RawMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":"00000","msg":"success","data":"raw-data"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.Client(), server.URL, "key", "secret", "pass", config.LoggingConfig{})
+	ctx := context.Background()
+
+	res, err := client.GetFundingRateRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+
+	res, err = client.GetTickersRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+
+	res, err = client.GetOpenPositionsRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+
+	res, err = client.GetHistoryPositionsRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+
+	res, err = client.GetOrderDetailRaw(ctx, "123", nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+
+	res, err = client.GetHistoryOrdersRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+
+	res, err = client.GetOrderPNLRaw(ctx, nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(res), "raw-data")
+}

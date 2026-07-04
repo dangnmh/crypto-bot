@@ -182,4 +182,16 @@ func TestWsAdapter_SubscribeAndUnsubscribe(t *testing.T) {
 
 	err = a.SubscribePersonal(ctx)
 	assert.NoError(t, err) // nil privateClient should succeed (noop)
+
+	// test SetClient
+	a.SetClient(nil)
+
+	// test GetCustomPingHandler
+	pingHandler := a.GetCustomPingHandler()
+	assert.NotNil(t, pingHandler)
+	assert.False(t, pingHandler(nil, []byte(`{"event":"not-ping"}`)))
+
+	// test GetAuthHook
+	authHook := a.GetAuthHook("key", "secret")
+	assert.Nil(t, authHook)
 }

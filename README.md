@@ -12,7 +12,6 @@ Dont have enough API:
 https://github.com/CoinUpGlobal/api-docs
 https://fameexdocs.github.io/docs-v1/en/index.html#documentation
 https://www.ju.com/en/api-doc/common/intro
-https://openapi-docs.orangex.com/#get-ticker
 https://www.echobit.com/apiApply
 https://docs-api.trubit.com/trubit-pro/contract/contract-api#openpositioninexchange
 https://docs.digifinex.com/en-ww/spot/v3/rest.html#currencies-which-support-margin-trading

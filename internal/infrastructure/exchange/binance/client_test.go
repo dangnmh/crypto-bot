@@ -911,3 +911,43 @@ func TestDecompressionRoundTripper(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1672531200000), timeVal)
 }
+
+func TestClient_BinanceRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fapi/v1/ticker/24hr":
+			_, _ = w.Write([]byte(`[{"symbol":"BTCUSDT","quoteVolume":"15000000"}]`))
+		case "/fapi/v1/ticker/bookTicker":
+			_, _ = w.Write([]byte(`[{"symbol":"BTCUSDT","bidPrice":"63999","askPrice":"64001"}]`))
+		case "/fapi/v1/premiumIndex":
+			_, _ = w.Write([]byte(`[{"symbol":"BTCUSDT","lastFundingRate":"0.001","nextFundingTime":1700000000000,"markPrice":"64000"}]`))
+		case "/fapi/v1/openOrders":
+			_, _ = w.Write([]byte(`[{"orderId":123,"clientOrderId":"client123","symbol":"BTCUSDT","status":"FILLED","price":"50000","origQty":"1","executedQty":"1","avgPrice":"50000"}]`))
+		case "/fapi/v1/order":
+			_, _ = w.Write([]byte(`{"orderId":123,"clientOrderId":"client123","symbol":"BTCUSDT","status":"FILLED","price":"50000","origQty":"1","executedQty":"1","avgPrice":"50000"}`))
+		case "/fapi/v1/marginType":
+			_, _ = w.Write([]byte(`{"code":200,"msg":"success"}`))
+		}
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	// 1. GetPotentialFundingSymbols
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTCUSDT", res[0].Symbol)
+
+	// 2. GetOrderByExternalID
+	order, err := client.GetOrderByExternalID(context.Background(), "BTCUSDT", "client123")
+	require.NoError(t, err)
+	assert.Equal(t, "123", order.OrderID)
+
+	// 3. SwitchMarginMode
+	err = client.SwitchMarginMode(context.Background(), "BTCUSDT", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+}

@@ -2,13 +2,16 @@ package deepcoin_test
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
+	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -79,6 +82,28 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 55.0, update.HoldVol)
 	assert.Equal(t, 29393.10, update.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
+
+	// Test position close event (volume 0)
+	closePayload := []byte(`{
+		"action": "PushPosition",
+		"result": [
+			{
+				"table": "Position",
+				"data": {
+					"I": "BTCUSDT",
+					"p": "1",
+					"Po": 0,
+					"OP": 29393.10,
+					"u": 0
+				}
+			}
+		]
+	}`)
+	updateClose, err := adapter.ParsePosition(closePayload)
+	assert.NoError(t, err)
+	assert.Equal(t, "BTCUSDT", updateClose.Symbol)
+	assert.Equal(t, 0.0, updateClose.HoldVol)
+	assert.Equal(t, exchange.PositionTypeUnknown, updateClose.PositionType)
 }
 
 func TestWsAdapter_ParseTickerReal(t *testing.T) {
@@ -118,4 +143,39 @@ func TestWsAdapter_ParseTickerReal(t *testing.T) {
 	assert.Equal(t, 115482.8, pd.BestBid)
 	assert.Equal(t, 115482.9, pd.BestAsk)
 	assert.Equal(t, 7688046.0, pd.Volume24)
+}
+
+func TestWsAdapter_SubscriptionsAndChannelExtractor(t *testing.T) {
+	t.Parallel()
+
+	adapter := deepcoin.NewWsAdapter("wss://stream.deepcoin.com/v1/private")
+	pool := pkgws.NewPool("ws://dummy", 30, slog.Default())
+	adapter.SetPool(pool)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := adapter.SubscribeTicker(ctx, "BTC-USDT-SWAP")
+	assert.Error(t, err)
+
+	err = adapter.UnsubscribeTicker(ctx, "BTC-USDT-SWAP")
+	assert.NoError(t, err)
+
+	err = adapter.SubscribePersonal(ctx)
+	assert.NoError(t, err)
+
+	pingPayload, pingInterval := adapter.GetPingConfig()
+	assert.Equal(t, "ping", pingPayload)
+	assert.Equal(t, 15*time.Second, pingInterval)
+
+	authHook := adapter.GetAuthHook("key", "secret")
+	assert.Nil(t, authHook)
+
+	extractor := adapter.GetChannelExtractor()
+	assert.NotNil(t, extractor)
+	assert.Equal(t, "pong", extractor([]byte("pong")))
+	assert.Equal(t, "ticker", extractor([]byte(`{"Topic":"market"}`)))
+	assert.Equal(t, "ticker", extractor([]byte(`{"a":"PO"}`)))
+	assert.Equal(t, "personal.position", extractor([]byte(`{"result":[{"table":"Position"}]}`)))
+	assert.Equal(t, "", extractor([]byte(`{}`)))
 }

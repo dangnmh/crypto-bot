@@ -6,14 +6,17 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
-
-	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/mexc"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // newTestClient creates a MEXC client pointed at the given test server.
@@ -529,4 +532,64 @@ func TestClient_HTTPLogging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request with logging failed: %v", err)
 	}
+}
+
+func TestClient_MexcRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/contract/ticker":
+			_, _ = w.Write([]byte(`{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","lastPrice":64000.0,"volume24":100.5,"amount24":15000000.0}]}`))
+		case "/api/v1/contract/funding_rate":
+			_, _ = w.Write([]byte(`{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","fundingRate":0.001,"nextSettleTime":1700000000000}]}`))
+		case "/api/v1/private/position/change_leverage":
+			_, _ = w.Write([]byte(`{"success":true,"code":0}`))
+		default:
+			if strings.HasPrefix(r.URL.Path, "/api/v1/private/order/external/") {
+				_, _ = w.Write([]byte(`{
+					"success": true,
+					"code": 0,
+					"data": {
+						"orderId": "order123",
+						"externalOid": "client123",
+						"symbol": "BTC_USDT",
+						"price": 50000.0,
+						"vol": 1.0,
+						"dealVol": 1.0,
+						"dealAvgPrice": 50000.0,
+						"state": 2
+					}
+				}`))
+			}
+		}
+	}))
+	defer server.Close()
+
+	client := mexc.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	// 1. GetPotentialFundingSymbols
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTC_USDT", res[0].Symbol)
+
+	// 2. GetOrderByExternalID
+	order, err := client.GetOrderByExternalID(context.Background(), "BTC_USDT", "client123")
+	require.NoError(t, err)
+	assert.Equal(t, "order123", order.OrderID)
+
+	// 3. SupportLeverageOnOrder
+	assert.True(t, client.SupportLeverageOnOrder())
+
+	// 4. SwitchMarginMode
+	err = client.SwitchMarginMode(context.Background(), "BTC_USDT", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	// 5. Raw methods
+	_, _ = client.GetHistoryOrdersRaw(context.Background(), nil)
+	_, _ = client.GetOrderDealsRaw(context.Background(), nil)
+	_, _ = client.GetClosedPnLRaw(context.Background(), nil)
+	_, _ = client.GetOrderPNLRaw(context.Background(), nil)
 }

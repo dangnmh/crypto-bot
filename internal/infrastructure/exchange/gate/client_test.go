@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"testing"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/gate"
@@ -247,4 +248,43 @@ func assertOrderSize(t *testing.T, body map[string]any, wantSize int64) {
 		require.True(t, ok, "size must be a float64")
 		assert.Equal(t, float64(0), val)
 	}
+}
+
+func TestClient_GateRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/futures/usdt/contracts":
+			_, _ = w.Write([]byte(`[{"name":"BTC_USDT","settle":"usdt","config_leverage_limit":100}]`))
+		case "/futures/usdt/tickers":
+			_, _ = w.Write([]byte(`[{"contract":"BTC_USDT","volume_24h_quote":"15000000","last":"64000"}]`))
+		case "/futures/usdt/positions/BTC_USDT/margin_mode":
+			_, _ = w.Write([]byte(`{"contract":"BTC_USDT","margin_mode":"crossed"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer server.Close()
+
+	client := gate.NewClient(server.Client(), server.URL, "api_key", "api_secret", config.LoggingConfig{})
+
+	// 1. GetPotentialFundingSymbols
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTC_USDT", res[0].Symbol)
+
+	// 2. SwitchMarginMode
+	err = client.SwitchMarginMode(context.Background(), "BTC_USDT", domain.MarginModeCross, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	// 3. SupportLeverageOnOrder
+	assert.False(t, client.SupportLeverageOnOrder())
+
+	// 4. Raw methods
+	_, _ = client.GetHistoryPositionsRaw(context.Background(), nil)
+	_, _ = client.GetHistoryOrdersRaw(context.Background(), nil)
+	_, _ = client.GetOrderPNLRaw(context.Background(), nil)
 }

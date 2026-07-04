@@ -1046,3 +1046,118 @@ func TestClient_SwitchPositionMode(t *testing.T) {
 		})
 	}
 }
+
+func TestClient_BybitRemainingMethods(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v5/market/tickers":
+			_, _ = w.Write([]byte(`{
+				"retCode": 0,
+				"retMsg": "OK",
+				"result": {
+					"category": "linear",
+					"list": [
+						{
+							"symbol": "BTCUSDT",
+							"lastPrice": "64000",
+							"bid1Price": "63999",
+							"ask1Price": "64001",
+							"volume24h": "100",
+							"turnover24h": "15000000"
+						}
+					]
+				}
+			}`))
+		case "/v5/market/funding/history":
+			_, _ = w.Write([]byte(`{
+				"retCode": 0,
+				"retMsg": "OK",
+				"result": {
+					"category": "linear",
+					"list": [
+						{
+							"symbol": "BTCUSDT",
+							"fundingRate": "0.001",
+							"fundingRateTimestamp": "1700000000"
+						}
+					]
+				}
+			}`))
+		case "/v5/order/create":
+			_, _ = w.Write([]byte(`{
+				"retCode": 0,
+				"retMsg": "OK",
+				"result": {
+					"orderId": "tpsl123"
+				}
+			}`))
+		case "/v5/order/realtime":
+			_, _ = w.Write([]byte(`{
+				"retCode": 0,
+				"retMsg": "OK",
+				"result": {
+					"category": "linear",
+					"list": [
+						{
+							"orderId": "ord123",
+							"orderLinkId": "ext123",
+							"symbol": "BTCUSDT"
+						}
+					]
+				}
+			}`))
+		case "/v5/position/set-leverage":
+			_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK"}`))
+		case "/v5/position/switch-isolated":
+			_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK"}`))
+		case "/v5/account/set-margin-mode":
+			_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK"}`))
+		case "/v5/position/trading-stop":
+			_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK"}`))
+		}
+	}))
+	defer server.Close()
+
+	clientStandard := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	clientUnified := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "unified", config.LoggingConfig{})
+
+	// 1. GetPotentialFundingSymbols
+	res, err := clientStandard.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	assert.Equal(t, "BTCUSDT", res[0].Symbol)
+
+	// 2. GetOrderByExternalID
+	order, err := clientStandard.GetOrderByExternalID(context.Background(), "BTCUSDT", "ext123")
+	require.NoError(t, err)
+	assert.Equal(t, "ord123", order.OrderID)
+
+	// 3. SupportLeverageOnOrder
+	assert.True(t, clientStandard.SupportLeverageOnOrder())
+
+	// 4. PlaceTPSL
+	err = clientStandard.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+		Symbol:          "BTCUSDT",
+		TakeProfitPrice: 65000.0,
+		StopLossPrice:   63000.0,
+		Volume:          1.0,
+	})
+	require.NoError(t, err)
+
+	// 5. SwitchMarginMode (standard and unified)
+	err = clientStandard.SwitchMarginMode(context.Background(), "BTCUSDT", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	err = clientUnified.SwitchMarginMode(context.Background(), "BTCUSDT", domain.MarginModeIsolated, 10, domain.SideOpenLong)
+	require.NoError(t, err)
+
+	// 6. Raw methods coverage
+	_, _ = clientStandard.GetFundingRateRaw(context.Background(), nil)
+	_, _ = clientStandard.GetHistoryPositionsRaw(context.Background(), nil)
+	_, _ = clientStandard.GetHistoryOrdersRaw(context.Background(), nil)
+	_, _ = clientStandard.GetOrderDealsRaw(context.Background(), nil)
+	_, _ = clientStandard.GetOrderPNLRaw(context.Background(), nil)
+}
