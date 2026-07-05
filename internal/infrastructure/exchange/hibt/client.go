@@ -3,6 +3,7 @@ package hibt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -105,7 +106,24 @@ func (c *Client) request(ctx context.Context, method, path string) ([]byte, erro
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error status %d: %s", resp.StatusCode, string(body))
+		var errResp struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+		}
+		var code int
+		var msg string
+		if json.Unmarshal(body, &errResp) == nil {
+			code = errResp.Code
+			msg = errResp.Msg
+		} else {
+			msg = string(body)
+		}
+		return nil, &exchange.APIError{
+			StatusCode: resp.StatusCode,
+			Code:       code,
+			Message:    msg,
+			Path:       path,
+		}
 	}
 
 	return body, nil
@@ -210,7 +228,14 @@ func (c *Client) fetchSingleSymbolFunding(ctx context.Context, ticker hibtTicker
 	path := fmt.Sprintf("/v2/market/fundingRate?symbol=%s", ticker.Symbol)
 	body, err := c.request(ctx, http.MethodGet, path)
 	if err != nil {
-		return exchange.PotentialFundingResult{}, err
+		if apiErr, ok := errors.AsType[*exchange.APIError](err); ok {
+			if apiErr.StatusCode == http.StatusBadRequest && apiErr.Code == 210001 {
+				// Param error for this symbol from Hibt perp fundingRate endpoint means it is unsupported.
+				// We return an empty result and no error to skip it.
+				return exchange.PotentialFundingResult{}, nil
+			}
+		}
+		return exchange.PotentialFundingResult{}, fmt.Errorf("fetch funding rate for %s: %w", ticker.Symbol, err)
 	}
 
 	var resp hibtFundingResponse
