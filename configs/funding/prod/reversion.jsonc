@@ -149,7 +149,7 @@
     "orangex": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "250ms", // 100ms dont paid funding fee, 200ms cancel high cancel rate
+      "bufferTime": "300ms", // 100ms dont paid funding fee, 250ms cancel high cancel rate
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
