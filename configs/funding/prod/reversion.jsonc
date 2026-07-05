@@ -64,7 +64,7 @@
     "bybit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms", // -50ms high cancel rate
+      "bufferTime": "50ms", // 0ms high cancel rate
       "postSettleTimeout": "0.5s"
     },
     "binance": {
