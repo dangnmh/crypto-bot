@@ -19,6 +19,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/apex"
 	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
+	"crypto-bot/internal/infrastructure/exchange/avantis"
 	"crypto-bot/internal/infrastructure/exchange/backpack"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
@@ -40,10 +41,12 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
+	"crypto-bot/internal/infrastructure/exchange/extended"
 	"crypto-bot/internal/infrastructure/exchange/fameex"
 	"crypto-bot/internal/infrastructure/exchange/fmfw"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/gemini"
+	"crypto-bot/internal/infrastructure/exchange/grvt"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/hibt"
 	"crypto-bot/internal/infrastructure/exchange/hitbtc"
@@ -51,18 +54,22 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/ju"
+	"crypto-bot/internal/infrastructure/exchange/jupiter"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
+	"crypto-bot/internal/infrastructure/exchange/lighter"
 	"crypto-bot/internal/infrastructure/exchange/mandala"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
+	"crypto-bot/internal/infrastructure/exchange/pacifica"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/poloniex"
 	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
+	"crypto-bot/internal/infrastructure/exchange/tradexyz"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
 	"crypto-bot/internal/infrastructure/exchange/woox"
@@ -179,6 +186,13 @@ func main() {
 	sunxClient := sunx.NewClient(httpPool, "https://api.sunx.io", logCfg)
 	fameexClient := fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg)
 	fmfwClient := fmfw.NewClient(httpPool, "https://api.fmfw.io/api/3/public", "", "", logCfg)
+	lighterClient := lighter.NewClient(httpPool, "https://mainnet.zklighter.elliot.ai", logCfg)
+	tradexyzClient := tradexyz.NewClient(httpPool, "https://api.hyperliquid.xyz", logCfg)
+	grvtClient := grvt.NewClient(httpPool, "https://market-data.grvt.io", logCfg)
+	pacificaClient := pacifica.NewClient(httpPool, "https://api.pacifica.fi", logCfg)
+	extendedClient := extended.NewClient(httpPool, "https://api.starknet.extended.exchange", logCfg)
+	jupiterClient := jupiter.NewClient(httpPool, "https://perps-api.jup.ag", logCfg)
+	avantisClient := avantis.NewClient(httpPool, "https://data.avantisfi.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -222,6 +236,13 @@ func main() {
 		"backpack":      backpackClient,
 		"aevo":          aevoClient,
 		"apex":          apexClient,
+		"lighter":       lighterClient,
+		"tradexyz":      tradexyzClient,
+		"grvt":          grvtClient,
+		"pacifica":      pacificaClient,
+		"extended":      extendedClient,
+		"jupiter":       jupiterClient,
+		"avantis":       avantisClient,
 		"btse":          btseClient,
 		"bitmex":        bitmexClient,
 		"hashkey":       hashkeyClient,

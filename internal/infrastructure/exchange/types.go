@@ -77,6 +77,13 @@ const (
 	ExchangeBydfi         = "bydfi"
 	ExchangeAevo          = "aevo"
 	ExchangeApex          = "apex"
+	ExchangeLighter       = "lighter"
+	ExchangeTradexyz      = "tradexyz"
+	ExchangeGrvt          = "grvt"
+	ExchangePacifica      = "pacifica"
+	ExchangeExtended      = "extended"
+	ExchangeJupiter       = "jupiter"
+	ExchangeAvantis       = "avantis"
 )
 
 // Side constants — delegate to domain.

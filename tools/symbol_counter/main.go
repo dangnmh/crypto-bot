@@ -16,6 +16,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/apex"
 	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
+	"crypto-bot/internal/infrastructure/exchange/avantis"
 	"crypto-bot/internal/infrastructure/exchange/backpack"
 	"crypto-bot/internal/infrastructure/exchange/batonex"
 	"crypto-bot/internal/infrastructure/exchange/binance"
@@ -37,10 +38,12 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/deribit"
 	"crypto-bot/internal/infrastructure/exchange/digifinex"
 	"crypto-bot/internal/infrastructure/exchange/dydx"
+	"crypto-bot/internal/infrastructure/exchange/extended"
 	"crypto-bot/internal/infrastructure/exchange/fameex"
 	"crypto-bot/internal/infrastructure/exchange/fmfw"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/gemini"
+	"crypto-bot/internal/infrastructure/exchange/grvt"
 	"crypto-bot/internal/infrastructure/exchange/hashkey"
 	"crypto-bot/internal/infrastructure/exchange/hibt"
 	"crypto-bot/internal/infrastructure/exchange/hitbtc"
@@ -48,18 +51,22 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/htx"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/ju"
+	"crypto-bot/internal/infrastructure/exchange/jupiter"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
+	"crypto-bot/internal/infrastructure/exchange/lighter"
 	"crypto-bot/internal/infrastructure/exchange/mandala"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
 	"crypto-bot/internal/infrastructure/exchange/okx"
 	"crypto-bot/internal/infrastructure/exchange/orangex"
+	"crypto-bot/internal/infrastructure/exchange/pacifica"
 	"crypto-bot/internal/infrastructure/exchange/phemex"
 	"crypto-bot/internal/infrastructure/exchange/pionex"
 	"crypto-bot/internal/infrastructure/exchange/poloniex"
 	"crypto-bot/internal/infrastructure/exchange/sunx"
 	"crypto-bot/internal/infrastructure/exchange/toobit"
+	"crypto-bot/internal/infrastructure/exchange/tradexyz"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/whitebit"
 	"crypto-bot/internal/infrastructure/exchange/woox"
@@ -147,6 +154,13 @@ func main() {
 		"backpack":      backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg),
 		"aevo":          aevo.NewClient(httpPool, "https://api.aevo.xyz", "", "", logCfg),
 		"apex":          apex.NewClient(httpPool, "https://omni.apex.exchange", "", "", logCfg),
+		"lighter":       lighter.NewClient(httpPool, "https://mainnet.zklighter.elliot.ai", logCfg),
+		"tradexyz":      tradexyz.NewClient(httpPool, "https://api.hyperliquid.xyz", logCfg),
+		"grvt":          grvt.NewClient(httpPool, "https://market-data.grvt.io", logCfg),
+		"pacifica":      pacifica.NewClient(httpPool, "https://api.pacifica.fi", logCfg),
+		"extended":      extended.NewClient(httpPool, "https://api.starknet.extended.exchange", logCfg),
+		"jupiter":       jupiter.NewClient(httpPool, "https://perps-api.jup.ag", logCfg),
+		"avantis":       avantis.NewClient(httpPool, "https://data.avantisfi.com", logCfg),
 		"btse":          btse.NewClient(httpPool, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),
