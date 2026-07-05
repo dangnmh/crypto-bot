@@ -169,7 +169,7 @@
     "bitget": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-20ms", // 0ms sometime paid funding fee
+      "bufferTime": "-50ms", // -20ms sometime paid funding fee
       "postSettleTimeout": "0.5s",
       "leverage": 1,
       "marginUSD": 100
