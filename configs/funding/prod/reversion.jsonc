@@ -123,7 +123,7 @@
     "weex": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-50ms", // 0ms paid funding fee
+      "bufferTime": "-100ms", // -50ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -149,7 +149,7 @@
     "orangex": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "200ms", // 100ms dont paid funding fee
+      "bufferTime": "250ms", // 100ms dont paid funding fee, 200ms cancel high cancel rate
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -169,12 +169,12 @@
     "bitget": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms", // 30ms paid funding fee
+      "bufferTime": "-20ms", // 0ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
-      "leverage": 3,
-      "marginUSD": 5
+      "leverage": 5,
+      "marginUSD": 8
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
