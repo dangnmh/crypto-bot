@@ -2308,5 +2308,35 @@
         "supportsFuturesAPI": false,
         "note": "Spot-only exchange; does not support perpetual swap markets.",
         "implementedReportFundingOpportunity": false
+    },
+    {
+        "rank": 155,
+        "name": "Aevo",
+        "openInterest": "--",
+        "volume24h": "--",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 207,
+        "launched": "2022",
+        "implementedScanner": true,
+        "implementedFundingReversion": false,
+        "supportsFuturesAPI": true,
+        "note": "",
+        "implementedReportFundingOpportunity": false
+    },
+    {
+        "rank": 156,
+        "name": "ApeX Omni",
+        "openInterest": "--",
+        "volume24h": "--",
+        "makerFee": "0.02%",
+        "takerFee": "0.05%",
+        "noMarkets": 353,
+        "launched": "2022",
+        "implementedScanner": true,
+        "implementedFundingReversion": false,
+        "supportsFuturesAPI": true,
+        "note": "",
+        "implementedReportFundingOpportunity": false
     }
 ]

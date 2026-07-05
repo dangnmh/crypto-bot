@@ -75,6 +75,8 @@ const (
 	ExchangeBlofin        = "blofin"
 	ExchangeDigifinex     = "digifinex"
 	ExchangeBydfi         = "bydfi"
+	ExchangeAevo          = "aevo"
+	ExchangeApex          = "apex"
 )
 
 // Side constants — delegate to domain.

@@ -12,6 +12,8 @@ import (
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/aevo"
+	"crypto-bot/internal/infrastructure/exchange/apex"
 	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/backpack"
@@ -143,6 +145,8 @@ func main() {
 		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg),
 		"ascendex":      ascendex.NewClient(httpPool, "https://ascendex.com/api/pro/v2", "", "", logCfg),
 		"backpack":      backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg),
+		"aevo":          aevo.NewClient(httpPool, "https://api.aevo.xyz", "", "", logCfg),
+		"apex":          apex.NewClient(httpPool, "https://omni.apex.exchange", "", "", logCfg),
 		"btse":          btse.NewClient(httpPool, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),

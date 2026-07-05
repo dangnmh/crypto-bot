@@ -15,6 +15,8 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/aevo"
+	"crypto-bot/internal/infrastructure/exchange/apex"
 	"crypto-bot/internal/infrastructure/exchange/ascendex"
 	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/backpack"
@@ -144,6 +146,8 @@ func NewStatsReportJob(
 		"aster":         aster.NewClient(httpClient, "https://fapi.asterdex.com", "", "", "", logCfg),
 		"ascendex":      ascendex.NewClient(httpClient, "https://ascendex.com/api/pro/v2", "", "", logCfg),
 		"backpack":      backpack.NewClient(httpClient, "https://api.backpack.exchange/api/v1", "", "", logCfg),
+		"aevo":          aevo.NewClient(httpClient, "https://api.aevo.xyz", "", "", logCfg),
+		"apex":          apex.NewClient(httpClient, "https://omni.apex.exchange", "", "", logCfg),
 		"btse":          btse.NewClient(httpClient, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
 		"bitmex":        bitmex.NewClient(httpClient, "https://www.bitmex.com", logCfg),
 		"hashkey":       hashkey.NewClient(httpClient, "https://api-glb.hashkey.com", log),
