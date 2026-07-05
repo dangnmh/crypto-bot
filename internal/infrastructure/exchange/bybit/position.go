@@ -306,11 +306,6 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	row := res.List[0]
-	updatedTime := decmath.ParseInt64(row.UpdatedTime)
-	// Check if the record is fresh (updated within the last 15 seconds).
-	if time.Now().UnixMilli()-updatedTime >= 15000 {
-		return nil, fmt.Errorf("query closed pnl failed: stale closed pnl record found for symbol %s", symbol)
-	}
 
 	entryPrice := decmath.ParseFloat(row.AvgEntryPrice)
 	exitPrice := decmath.ParseFloat(row.AvgExitPrice)
