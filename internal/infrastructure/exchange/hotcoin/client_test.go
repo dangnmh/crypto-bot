@@ -355,15 +355,18 @@ func TestClient_GetOrderAndGetOpenOrders(t *testing.T) {
 		default:
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
-				"id": 3799035537965136,
-				"amount": "1",
-				"dealAmount": "1",
-				"price": "95000",
-				"avgPrice": "95000",
-				"status": 2,
-				"detailSide": "open_long",
-				"tag": "my-tag",
-				"createdDate": 1783229346000
+				"code": 200,
+				"data": {
+					"id": 3799035537965136,
+					"amount": "1",
+					"dealAmount": "1",
+					"price": "95000",
+					"avgPrice": "95000",
+					"status": 2,
+					"detailSide": "open_long",
+					"tag": "my-tag",
+					"createdDate": 1783229346000
+				}
 			}`))
 		}
 	}))
@@ -453,15 +456,18 @@ func TestClient_GetOrderPNL(t *testing.T) {
 		default:
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
-				"id": 3799035537965136,
-				"amount": "1",
-				"dealAmount": "1",
-				"price": "95000",
-				"avgPrice": "95000",
-				"status": 2,
-				"detailSide": "open_long",
-				"tag": "my-tag",
-				"createdDate": 1783229340000
+				"code": 200,
+				"data": {
+					"id": 3799035537965136,
+					"amount": "1",
+					"dealAmount": "1",
+					"price": "95000",
+					"avgPrice": "95000",
+					"status": 2,
+					"detailSide": "open_long",
+					"tag": "my-tag",
+					"createdDate": 1783229340000
+				}
 			}`))
 		}
 	}))

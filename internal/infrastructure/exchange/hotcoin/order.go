@@ -216,11 +216,15 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		return nil, err
 	}
 
-	var raw hotcoinOrderDetail
-	if err := json.Unmarshal(body, &raw); err != nil {
+	var envelope struct {
+		Code int                `json:"code"`
+		Data hotcoinOrderDetail `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("unmarshal order info: %w", err)
 	}
 
+	raw := &envelope.Data
 	if raw.ID == 0 && raw.OrderID != 0 {
 		raw.ID = raw.OrderID
 	}
