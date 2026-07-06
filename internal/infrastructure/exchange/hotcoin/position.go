@@ -2,20 +2,102 @@ package hotcoin
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/xjson"
 )
 
+type hotcoinPosition struct {
+	Amount            xjson.Number `json:"amount"`
+	ContractCode      string       `json:"contractCode"`
+	Side              string       `json:"side"`
+	Price             xjson.Number `json:"price"`
+	Fee               xjson.Number `json:"fee"`
+	Lever             xjson.Number `json:"lever"`
+	RealizedSurplus   xjson.Number `json:"realizedSurplus"`
+	UnRealizedSurplus xjson.Number `json:"unRealizedSurplus"`
+}
+
+func (p *hotcoinPosition) toPosition() exchange.Position {
+	pType := exchange.PositionTypeLong
+	if strings.EqualFold(p.Side, "short") {
+		pType = exchange.PositionTypeShort
+	}
+
+	// Normalize symbol from contractCode (e.g. btcusdt -> BTC_USDT)
+	symbol := strings.ToUpper(p.ContractCode)
+	if !strings.Contains(symbol, "_") {
+		if before, ok := strings.CutSuffix(symbol, "USDT"); ok {
+			symbol = before + "_USDT"
+		} else if before, ok := strings.CutSuffix(symbol, "USDC"); ok {
+			symbol = before + "_USDC"
+		}
+	}
+
+	vol := xjson.ToFloat64(p.Amount)
+	priceVal := xjson.ToFloat64(p.Price)
+	feeVal := xjson.ToFloat64(p.Fee)
+	leverVal := int(xjson.ToInt64(p.Lever))
+
+	return exchange.Position{
+		Symbol:       symbol,
+		HoldVol:      vol,
+		PositionType: pType,
+		OpenAvgPrice: priceVal,
+		HoldAvgPrice: priceVal,
+		Leverage:     leverVal,
+		Fee:          feeVal,
+	}
+}
+
 // GetOpenPositions returns the user's active open positions.
-// Since Hotcoin REST API does not have an endpoint to list positions, we return an empty list gracefully
-// and rely on WebSocket pushes (which update the in-memory store in real-time).
 func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
-	c.logger.DebugContext(ctx, "GetOpenPositions called, returning empty list (relying on WebSocket updates)", "symbol", symbol)
-	return []exchange.Position{}, nil
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required for Hotcoin GetOpenPositions")
+	}
+
+	body, err := c.GetOpenPositionsRaw(ctx, map[string]string{"symbol": symbol})
+	if err != nil {
+		return nil, err
+	}
+
+	var rawPositions []hotcoinPosition
+	trimmed := strings.TrimSpace(string(body))
+
+	if strings.HasPrefix(trimmed, "[") {
+		if err := json.Unmarshal(body, &rawPositions); err != nil {
+			return nil, fmt.Errorf("unmarshal positions list array: %w", err)
+		}
+	} else {
+		var wrapped struct {
+			Code int               `json:"code"`
+			Msg  string            `json:"msg"`
+			Data []hotcoinPosition `json:"data"`
+		}
+		if err := json.Unmarshal(body, &wrapped); err != nil {
+			return nil, fmt.Errorf("unmarshal positions list wrapped: %w", err)
+		}
+		if wrapped.Code != 200 && wrapped.Msg != "success" && wrapped.Msg != "" {
+			return nil, fmt.Errorf("API error: code=%d msg=%s", wrapped.Code, wrapped.Msg)
+		}
+		rawPositions = wrapped.Data
+	}
+
+	var positions []exchange.Position
+	for i := range rawPositions {
+		pos := rawPositions[i].toPosition()
+		if pos.HoldVol == 0 {
+			continue
+		}
+		positions = append(positions, pos)
+	}
+
+	return positions, nil
 }
 
 // ClosePosition closes a long or short position at the market price using Hotcoin's native closePosition endpoint.
