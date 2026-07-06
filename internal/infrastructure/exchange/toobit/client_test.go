@@ -547,6 +547,38 @@ func TestClient_ChangeLeverage_And_SwitchMarginMode(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClient_GetMaxLeverage(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/futures/riskLimits", r.URL.Path)
+		assert.Equal(t, "BTC-SWAP-USDT", r.URL.Query().Get("symbol"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[
+			{
+				"level": 1,
+				"quantity": "1000000.0",
+				"maintainMargin": "0.005",
+				"initialMargin": "0.01",
+				"maxLeverage": 100
+			},
+			{
+				"level": 2,
+				"quantity": "2000000.0",
+				"maintainMargin": "0.01",
+				"initialMargin": "0.02",
+				"maxLeverage": 50
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client := toobit.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	maxLev, err := client.GetMaxLeverage(context.Background(), "BTC-SWAP-USDT")
+	require.NoError(t, err)
+	assert.Equal(t, 100, maxLev)
+}
+
 func TestClient_ListenKeys(t *testing.T) {
 	t.Parallel()
 
