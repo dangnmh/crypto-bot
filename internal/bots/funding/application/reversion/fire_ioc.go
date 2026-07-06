@@ -188,6 +188,20 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 	}
 
 	if leverage > 0 && !r.deps.Client.SupportLeverageOnOrder() {
+		if provider, ok := r.deps.Client.(exchange.MaxLeverageProvider); ok {
+			maxLev, err := provider.GetMaxLeverage(ctx, evt.Symbol)
+			if err != nil {
+				r.log.ErrorContext(ctx, "Failed to get max leverage from client", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+			} else if maxLev > 0 && leverage > maxLev {
+				r.log.InfoContext(ctx, "Configured leverage exceeds exchange risk limits, adjusting to max",
+					slog.String("symbol", evt.Symbol),
+					slog.Int("configured", leverage),
+					slog.Int("max", maxLev),
+				)
+				leverage = maxLev
+			}
+		}
+
 		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
 		posType := exchange.PositionTypeLong
 		if !evt.Candidate.Side.IsLong() {
