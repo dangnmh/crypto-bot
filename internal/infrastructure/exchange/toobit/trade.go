@@ -66,6 +66,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode
 type toobitRiskLimitConfig struct {
 	Level          int          `json:"level"`
 	Quantity       string       `json:"quantity"`
+	Value          string       `json:"value"`
 	MaintainMargin string       `json:"maintainMargin"`
 	InitialMargin  string       `json:"initialMargin"`
 	MaxLeverage    xjson.Number `json:"maxLeverage"`
