@@ -447,9 +447,12 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				"data": [
 					{
 						"code": "btcusdt",
+						"tickerId": "btcusdt",
 						"indexBase": "btc",
 						"quote": "usdt",
-						"unitAmount": 1.0
+						"unitAmount": 1.0,
+						"nextFundingRate": "0.00015",
+						"nextFundingRateTimestamp": 1783229346000
 					}
 				]
 			}`))
@@ -487,6 +490,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, 1.0, pnl.ClosedSize)
 	assert.Equal(t, 1000.0, pnl.GrossPnL)
 	assert.Equal(t, 0.0002, pnl.Fee)
+	assert.Equal(t, 0.0, pnl.FundingFee)
 	assert.Equal(t, 999.9998, pnl.NetPnl)
 }
 

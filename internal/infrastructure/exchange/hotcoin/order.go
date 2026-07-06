@@ -34,8 +34,11 @@ type hotcoinBaseOrder struct {
 
 type hotcoinOrderDetail struct {
 	hotcoinBaseOrder
-	ContractCode string `json:"contractCode"`
-	OrderID      int64  `json:"orderId"`
+	ContractCode string       `json:"contractCode"`
+	OrderID      int64        `json:"orderId"`
+	Fee          xjson.Number `json:"fee"`
+	DonationFee  xjson.Number `json:"donationFee"`
+	DeductedFee  xjson.Number `json:"deductedFee"`
 }
 
 type hotcoinOrderListItem struct {
@@ -413,10 +416,10 @@ func parseDurationMs(createTime int64, dealTimeStr string) int64 {
 		return 0
 	}
 	dealMs := t.UnixMilli()
-	if dealMs > createTime {
-		return dealMs - createTime
+	if dealMs <= createTime {
+		return 0
 	}
-	return 0
+	return dealMs - createTime
 }
 
 func filterOppositeDeals(openOrderID, contractCode string, data []hotcoinDealRecord) ([]hotcoinDealRecord, []hotcoinDealRecord) {
