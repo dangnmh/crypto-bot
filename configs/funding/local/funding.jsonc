@@ -86,10 +86,16 @@
   //   "exchange": "aster",
   //   "simulateSettle": "2026-07-03T23:40:00.000+07:00"
   // },
+  // {
+  //   "symbol": "LAB_USDT_PERP",
+  //   "marginUSDT": 3,
+  //   "exchange": "pionex",
+  //   "simulateSettle": "2026-07-04T20:25:00.000+07:00"
+  // },
   {
-    "symbol": "LAB_USDT_PERP",
+    "symbol": "SLX_USDT",
     "marginUSDT": 3,
-    "exchange": "pionex",
-    "simulateSettle": "2026-07-04T20:25:00.000+07:00"
+    "exchange": "hotcoin",
+    "simulateSettle": "2026-07-05T14:55:00.000+07:00"
   },
 ]

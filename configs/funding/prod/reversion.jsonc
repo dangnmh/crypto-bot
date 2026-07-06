@@ -171,8 +171,20 @@
       "stopLossPct": 2,
       "bufferTime": "-50ms", // -20ms sometime paid funding fee
       "postSettleTimeout": "0.5s",
-      "leverage": 1,
-      "marginUSD": 100
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 5,
+      "marginUSD": 8
+    },
+    "hotcoin": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-20ms",
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 5,
+      "marginUSD": 8
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

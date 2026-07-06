@@ -1,41 +1,38 @@
 package hotcoin
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/xjson"
+
+	transportlog "github.com/dangnmh/transport"
 )
 
-// Client is the Hotcoin public REST API client for scanner integrations.
+// Client handles REST calls to the Hotcoin perpetual futures API.
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	apiKey     string
 	apiSecret  string
+	logCfg     config.LoggingConfig
 	logger     *slog.Logger
-}
-
-type hotcoinContract struct {
-	TickerID                 string       `json:"tickerId"`
-	LastPrice                xjson.Number `json:"lastPrice"`
-	NextFundingRate          xjson.Number `json:"nextFundingRate"`
-	NextFundingRateTimestamp int64        `json:"nextFundingRateTimestamp"`
-	TargetVolume             xjson.Number `json:"targetVolume"`
-}
-
-type hotcoinResponse struct {
-	Code int               `json:"code"`
-	Data []hotcoinContract `json:"data"`
-	Msg  string            `json:"msg"`
+	clock      exchange.Clock
 }
 
 // NewClient creates a new Hotcoin client.
@@ -51,6 +48,25 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	if clientCopy.Transport == nil {
 		clientCopy.Transport = http.DefaultTransport
 	}
+	if logCfg.HTTP {
+		rt := clientCopy.Transport
+		rt = transportlog.NewTransportLog(rt,
+			transportlog.LogOptionLogger(logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"},
+				BlackListPaths: []string{
+					"GET|/api/v1/perpetual/public/time",
+					"GET|/api/v1/perpetual/public/contracts",
+					"GET|/api/v1/perpetual/public",
+				},
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{"AccessKeyId", "Signature"}),
+			transportlog.LogOptionQueryParams(true),
+		)
+		clientCopy.Transport = rt
+	}
 	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 
 	return &Client{
@@ -58,14 +74,81 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
+		logCfg:     logCfg,
 		logger:     logger,
+		clock:      exchange.RealClock{},
 	}
 }
 
-func (c *Client) request(ctx context.Context, method, path string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, http.NoBody)
+// SetClock configures a custom clock for testing.
+func (c *Client) SetClock(clk exchange.Clock) {
+	if clk != nil {
+		c.clock = clk
+	}
+}
+
+func (c *Client) addSignature(method string, reqURL *url.URL, queryParams map[string]string) {
+	queryParams["AccessKeyId"] = c.apiKey
+	queryParams["SignatureMethod"] = "HmacSHA256"
+	queryParams["SignatureVersion"] = "2"
+	queryParams["Timestamp"] = c.clock.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+
+	sig := c.signRequest(method, reqURL.Host, reqURL.Path, queryParams)
+	queryParams["Signature"] = sig
+}
+
+func (c *Client) parseAPIError(respBody []byte) error {
+	var apiErr struct {
+		Code xjson.Number `json:"code"`
+		Msg  string       `json:"msg"`
+	}
+	if len(respBody) > 0 && respBody[0] == '{' {
+		if err := json.Unmarshal(respBody, &apiErr); err == nil && apiErr.Code != "" {
+			codeVal := xjson.ToInt64(apiErr.Code)
+			if codeVal != 0 && codeVal != 200 {
+				return fmt.Errorf("API error code %d: %s", codeVal, apiErr.Msg)
+			}
+		}
+	}
+	return nil
+}
+
+// request executes a signed or unsigned request to the Hotcoin API.
+func (c *Client) request(ctx context.Context, method, path string, query map[string]string, body any, signed bool) ([]byte, error) {
+	reqURL, err := url.Parse(c.baseURL + path)
+	if err != nil {
+		return nil, fmt.Errorf("parse url: %w", err)
+	}
+
+	queryParams := make(map[string]string)
+	if len(query) > 0 {
+		maps.Copy(queryParams, query)
+	}
+
+	if signed {
+		c.addSignature(method, reqURL, queryParams)
+	}
+
+	if len(queryParams) > 0 {
+		reqURL.RawQuery = buildSortedQuery(queryParams)
+	}
+
+	var bodyReader io.Reader
+	if body != nil {
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshal body: %w", err)
+		}
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -74,78 +157,141 @@ func (c *Client) request(ctx context.Context, method, path string) ([]byte, erro
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("HTTP error status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	return body, nil
-}
-
-// GetPotentialFundingSymbols fetches all perpetual contracts, their tickers, and estimated funding rates.
-func (c *Client) GetPotentialFundingSymbols(
-	ctx context.Context,
-	minVol24h, maxVol24h float64,
-	whitelist []string,
-	blacklist []string,
-) ([]exchange.PotentialFundingResult, error) {
-	body, err := c.request(ctx, http.MethodGet, "/api/v1/perpetual/public/contracts")
-	if err != nil {
+	if err := c.parseAPIError(respBody); err != nil {
 		return nil, err
 	}
 
-	var resp hotcoinResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("unmarshal contracts: %w", err)
-	}
+	return respBody, nil
+}
 
-	if resp.Code != 200 && resp.Msg != "success" {
-		return nil, fmt.Errorf("API error: code=%d msg=%s", resp.Code, resp.Msg)
+// signRequest generates Hotcoin Signature Version 2.
+func (c *Client) signRequest(method, host, path string, query map[string]string) string {
+	keys := make([]string, 0, len(query))
+	for k := range query {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
-	whitelistMap := make(map[string]bool)
-	for _, sym := range whitelist {
-		whitelistMap[strings.ToUpper(sym)] = true
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, customURLEscape(k)+"="+customURLEscape(query[k]))
 	}
-	blacklistMap := make(map[string]bool)
-	for _, sym := range blacklist {
-		blacklistMap[strings.ToUpper(sym)] = true
-	}
+	queryString := strings.Join(parts, "&")
 
-	var results []exchange.PotentialFundingResult
-	for _, item := range resp.Data {
-		symbol := strings.ToUpper(item.TickerID)
-
-		if blacklistMap[symbol] {
-			continue
+	// Lowercase the host as per API standard documentation signature normalize steps
+	signHost := strings.ToLower(host)
+	if signHost == "" {
+		// Fallback parse host from baseURL
+		if u, err := url.Parse(c.baseURL); err == nil {
+			signHost = strings.ToLower(u.Host)
 		}
-		if len(whitelistMap) > 0 && !whitelistMap[symbol] {
-			continue
-		}
-
-		vol := xjson.ToFloat64(item.TargetVolume)
-		if vol < minVol24h {
-			continue
-		}
-		if maxVol24h > 0 && vol > maxVol24h {
-			continue
-		}
-
-		price := xjson.ToFloat64(item.LastPrice)
-		rate := xjson.ToFloat64(item.NextFundingRate)
-
-		results = append(results, exchange.PotentialFundingResult{
-			Symbol:     symbol,
-			Rate:       rate,
-			SettleTime: item.NextFundingRateTimestamp,
-			Volume24h:  vol,
-			Price:      price,
-		})
 	}
 
-	return results, nil
+	baseString := fmt.Sprintf("%s\n%s\n%s\n%s", method, signHost, path, queryString)
+
+	h := hmac.New(sha256.New, []byte(c.apiSecret))
+	h.Write([]byte(baseString))
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+}
+
+func customURLEscape(s string) string {
+	escaped := url.QueryEscape(s)
+	escaped = strings.ReplaceAll(escaped, "+", "%20")
+	var sb strings.Builder
+	runes := []rune(escaped)
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == '%' && i+2 < len(runes) {
+			sb.WriteRune('%')
+			sb.WriteString(strings.ToUpper(string(runes[i+1 : i+3])))
+			i += 2
+		} else {
+			sb.WriteRune(runes[i])
+		}
+	}
+	return sb.String()
+}
+
+func buildSortedQuery(query map[string]string) string {
+	keys := make([]string, 0, len(query))
+	for k := range query {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, customURLEscape(k)+"="+customURLEscape(query[k]))
+	}
+	return strings.Join(parts, "&")
+}
+
+// RawRequest executes a signed or unsigned request to the Hotcoin API returning raw bytes.
+func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	var bodyVal any
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &bodyVal); err != nil {
+			return nil, fmt.Errorf("unmarshal raw body: %w", err)
+		}
+	}
+	return c.request(ctx, method, path, query, bodyVal, true)
+}
+
+// GetFundingRateRaw returns raw funding rate.
+func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	if symbol == "" {
+		return nil, fmt.Errorf("missing symbol")
+	}
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/public/"+strings.ToLower(symbol)+"/premiumIndex", nil, nil, false)
+}
+
+// GetTickersRaw returns raw tickers list.
+func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/public/contracts", params, nil, false)
+}
+
+// GetOpenPositionsRaw returns raw positions.
+func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	if symbol == "" {
+		return c.request(ctx, http.MethodGet, "/api/v1/perpetual/position/list", params, nil, true)
+	}
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/position/"+strings.ToLower(symbol)+"/configs", params, nil, true)
+}
+
+// GetHistoryPositionsRaw is a stub returning not implemented error.
+func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// GetOrderDetailRaw returns raw order details.
+func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	if symbol == "" {
+		return nil, fmt.Errorf("missing symbol")
+	}
+	return c.request(ctx, http.MethodGet, fmt.Sprintf("/api/v1/perpetual/products/%s/%s", strings.ToLower(symbol), orderID), nil, nil, true)
+}
+
+// GetHistoryOrdersRaw returns raw history orders.
+func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	symbol := params["symbol"]
+	if symbol == "" {
+		return nil, fmt.Errorf("missing symbol")
+	}
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/products/"+strings.ToLower(symbol)+"/history-list", params, nil, true)
+}
+
+// GetOrderPNLRaw returns raw deal records.
+func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/bills/deal-record", params, nil, true)
 }

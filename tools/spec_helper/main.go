@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode"
 
+	"compress/gzip"
+
 	"github.com/gorilla/websocket"
 
 	"crypto-bot/internal/infrastructure/app"
@@ -378,6 +380,38 @@ func isPingPongOrEmpty(message []byte) bool {
 	return false
 }
 
+func decompressIfNeeded(message []byte) []byte {
+	if len(message) < 2 || message[0] != 0x1f || message[1] != 0x8b {
+		return message
+	}
+	r, err := gzip.NewReader(bytes.NewReader(message))
+	if err != nil {
+		return message
+	}
+	defer r.Close()
+	decompressed, err := io.ReadAll(r)
+	if err != nil {
+		return message
+	}
+	return decompressed
+}
+
+func handlePingIfNeeded(c *websocket.Conn, message []byte) bool {
+	if !isPingPongOrEmpty(message) {
+		return false
+	}
+	fmt.Printf("Received ping/pong/empty: %s\n", string(message))
+	var ping struct {
+		Ping string `json:"ping"`
+	}
+	if err := json.Unmarshal(message, &ping); err == nil && ping.Ping != "" {
+		pongMsg := map[string]string{"pong": ping.Ping}
+		_ = c.WriteJSON(pongMsg)
+		fmt.Println("Sent pong response")
+	}
+	return true
+}
+
 func readWSMessages(c *websocket.Conn) {
 	fmt.Println("Listening for messages (waiting for first data message)...")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -396,7 +430,9 @@ func readWSMessages(c *websocket.Conn) {
 				return
 			}
 
-			if isPingPongOrEmpty(message) {
+			message = decompressIfNeeded(message)
+
+			if handlePingIfNeeded(c, message) {
 				continue
 			}
 

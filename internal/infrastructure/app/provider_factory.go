@@ -18,6 +18,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
+	"crypto-bot/internal/infrastructure/exchange/hotcoin"
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/mexc"
@@ -257,6 +258,18 @@ func DefaultProviderFactories() []ProviderFactory {
 					adapter.SetClient(concreteClient)
 				}
 				return buildProvider(ctx, exchange.ExchangeWeex, exchange.ExchangeWeex, cfg, apiCfg, client, adapter), nil
+			},
+		},
+		SimpleProviderFactory{
+			name: exchange.ExchangeHotcoin,
+			buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
+				apiCfg := cfg.SystemConfig.ExchangeConfig[exchange.ExchangeHotcoin]
+				client := exchange.Client(hotcoin.NewClient(cfg.HTTPClient, apiCfg.Future.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+				adapter := hotcoin.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret)
+				if concreteClient, ok := client.(*hotcoin.Client); ok {
+					adapter.SetClient(concreteClient)
+				}
+				return buildProvider(ctx, exchange.ExchangeHotcoin, exchange.ExchangeHotcoin, cfg, apiCfg, client, adapter), nil
 			},
 		},
 		SimpleProviderFactory{

@@ -157,6 +157,8 @@ vault kv put secret/crypto-bot \
   DEEPCOIN_API_KEY="deepcoin_api_key_from_vault" \
   DEEPCOIN_API_SECRET="deepcoin_api_secret_from_vault" \
   DEEPCOIN_API_PASSPHRASE="deepcoin_api_passphrase_from_vault" \
+  HOTCOIN_API_KEY="hotcoin_api_key_from_vault" \
+  HOTCOIN_API_SECRET="hotcoin_api_secret_from_vault" \
   DATABASE_URL="postgres://postgres:postgres@postgresql:5432/postgres?sslmode=disable" \
   TELEGRAM_CHAT_ID="telegram_chat_id_from_vault" \
   TELEGRAM_BOT_TOKEN="telegram_bot_token_from_vault"

@@ -564,7 +564,7 @@
         "noMarkets": 437,
         "launched": "Nov 2017",
         "implementedScanner": true,
-        "implementedFundingReversion": false,
+        "implementedFundingReversion": true,
         "supportsFuturesAPI": true,
         "note": "",
         "implementedReportFundingOpportunity": true

@@ -159,6 +159,17 @@
         "privateURL": "wss://ws.bitget.com/v2/ws/private",
         "maxPairsPerWSConn": 20
       }
+    },
+    "hotcoin": {
+      "enable": true,
+      "future": {
+        "baseURL": "https://api-ct.hotcoin.fit"
+      },
+      "websocket": {
+        "publicURL": "wss://wss-ct.hotcoin.fit/",
+        "privateURL": "wss://wss-ct.hotcoin.fit/",
+        "maxPairsPerWSConn": 20
+      }
     }
   }
 }

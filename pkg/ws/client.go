@@ -136,6 +136,13 @@ func (c *Client) SetGlobalHandler(handler Handler) {
 	c.globalHandler = handler
 }
 
+// URL returns the WebSocket endpoint URL.
+func (c *Client) URL() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.url
+}
+
 // Connect establishes the WebSocket connection and starts the read loop.
 // Reconnects automatically on disconnect.
 func (c *Client) Connect(ctx context.Context) {
@@ -317,6 +324,8 @@ func (c *Client) processMessage(data []byte) {
 		return
 	}
 
+	c.logger.Debug("🚀 WebSocket message received", slog.String("data", string(data)))
+
 	c.handleEventLog(data)
 	if c.channelExtractor == nil {
 		c.mu.Lock()
@@ -350,6 +359,7 @@ func (c *Client) processMessage(data []byte) {
 
 // SendJSON sends a generic JSON payload.
 func (c *Client) SendJSON(msg any) error {
+	c.logger.Debug("SendJSON", slog.Any("msg", msg))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {
