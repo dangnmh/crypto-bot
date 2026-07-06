@@ -33,22 +33,22 @@ type bitunixPlaceOrderResp struct {
 }
 
 type bitunixPendingOrder struct {
-	OrderID     string   `json:"orderId"`
-	ClientID    string   `json:"clientId"`
-	Symbol      string   `json:"symbol"`
-	Side        string   `json:"side"`
-	TradeSide   string   `json:"tradeSide"`
-	OrderType   string   `json:"orderType"`
-	Price       string   `json:"price"`
-	Qty         string   `json:"qty"`
-	FilledQty   string   `json:"filledQty"`
-	TradeQty    string   `json:"tradeQty"`
-	DealQty     string   `json:"dealQty"`
-	AvgPrice    string   `json:"avgPrice"`
-	Status      string   `json:"status"`
-	CTime       flexTime `json:"ctime"`
-	MTime       flexTime `json:"mtime"`
-	RealizedPnL string   `json:"realizedPNL"`
+	OrderID     string         `json:"orderId"`
+	ClientID    string         `json:"clientId"`
+	Symbol      string         `json:"symbol"`
+	Side        string         `json:"side"`
+	TradeSide   string         `json:"tradeSide"`
+	OrderType   string         `json:"orderType"`
+	Price       string         `json:"price"`
+	Qty         string         `json:"qty"`
+	FilledQty   string         `json:"filledQty"`
+	TradeQty    string         `json:"tradeQty"`
+	DealQty     string         `json:"dealQty"`
+	AvgPrice    string         `json:"avgPrice"`
+	Status      string         `json:"status"`
+	CTime       xjson.FlexTime `json:"ctime"`
+	MTime       xjson.FlexTime `json:"mtime"`
+	RealizedPnL string         `json:"realizedPNL"`
 }
 
 type bitunixPendingOrdersResponse struct {
@@ -60,18 +60,18 @@ type bitunixPendingOrdersResponse struct {
 }
 
 type bitunixHistoryPosition struct {
-	PositionID  string   `json:"positionId"`
-	Symbol      string   `json:"symbol"`
-	Side        string   `json:"side"`
-	MaxQty      string   `json:"maxQty"`
-	Qty         string   `json:"qty"`
-	EntryPrice  string   `json:"entryPrice"`
-	ClosePrice  string   `json:"closePrice"`
-	RealizedPNL string   `json:"realizedPNL"`
-	Funding     string   `json:"funding"`
-	Fee         string   `json:"fee"`
-	CTime       flexTime `json:"ctime"`
-	MTime       flexTime `json:"mtime"`
+	PositionID  string         `json:"positionId"`
+	Symbol      string         `json:"symbol"`
+	Side        string         `json:"side"`
+	MaxQty      string         `json:"maxQty"`
+	Qty         string         `json:"qty"`
+	EntryPrice  string         `json:"entryPrice"`
+	ClosePrice  string         `json:"closePrice"`
+	RealizedPNL string         `json:"realizedPNL"`
+	Funding     string         `json:"funding"`
+	Fee         string         `json:"fee"`
+	CTime       xjson.FlexTime `json:"ctime"`
+	MTime       xjson.FlexTime `json:"mtime"`
 }
 
 type bitunixHistoryPositionsResponse struct {
@@ -417,36 +417,36 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 }
 
 type bitunixOrderDetail struct {
-	OrderID      string   `json:"orderId"`
-	ClientID     string   `json:"clientId"`
-	Symbol       string   `json:"symbol"`
-	Side         string   `json:"side"`
-	TradeSide    string   `json:"tradeSide,omitempty"`
-	OrderType    string   `json:"orderType"`
-	Price        string   `json:"price"`
-	Qty          string   `json:"qty"`
-	TradeQty     string   `json:"tradeQty"`
-	FilledQty    string   `json:"filledQty,omitempty"`
-	DealQty      string   `json:"dealQty,omitempty"`
-	AvgPrice     string   `json:"avgPrice,omitempty"`
-	Status       string   `json:"status"`
-	CTime        flexTime `json:"ctime"`
-	MTime        flexTime `json:"mtime"`
-	Fee          string   `json:"fee"`
-	RealizedPnL  string   `json:"realizedPNL"`
-	PositionMode string   `json:"positionMode"`
-	MarginMode   string   `json:"marginMode"`
-	Leverage     int      `json:"leverage"`
-	Effect       string   `json:"effect"`
-	ReduceOnly   bool     `json:"reduceOnly"`
-	TpPrice      string   `json:"tpPrice"`
-	TpStopType   string   `json:"tpStopType"`
-	TpOrderType  string   `json:"tpOrderType"`
-	TpOrderPrice string   `json:"tpOrderPrice"`
-	SlPrice      string   `json:"slPrice"`
-	SlStopType   string   `json:"slStopType"`
-	SlOrderType  string   `json:"slOrderType"`
-	SlOrderPrice string   `json:"slOrderPrice"`
+	OrderID      string         `json:"orderId"`
+	ClientID     string         `json:"clientId"`
+	Symbol       string         `json:"symbol"`
+	Side         string         `json:"side"`
+	TradeSide    string         `json:"tradeSide,omitempty"`
+	OrderType    string         `json:"orderType"`
+	Price        string         `json:"price"`
+	Qty          string         `json:"qty"`
+	TradeQty     string         `json:"tradeQty"`
+	FilledQty    string         `json:"filledQty,omitempty"`
+	DealQty      string         `json:"dealQty,omitempty"`
+	AvgPrice     string         `json:"avgPrice,omitempty"`
+	Status       string         `json:"status"`
+	CTime        xjson.FlexTime `json:"ctime"`
+	MTime        xjson.FlexTime `json:"mtime"`
+	Fee          string         `json:"fee"`
+	RealizedPnL  string         `json:"realizedPNL"`
+	PositionMode string         `json:"positionMode"`
+	MarginMode   string         `json:"marginMode"`
+	Leverage     int            `json:"leverage"`
+	Effect       string         `json:"effect"`
+	ReduceOnly   bool           `json:"reduceOnly"`
+	TpPrice      string         `json:"tpPrice"`
+	TpStopType   string         `json:"tpStopType"`
+	TpOrderType  string         `json:"tpOrderType"`
+	TpOrderPrice string         `json:"tpOrderPrice"`
+	SlPrice      string         `json:"slPrice"`
+	SlStopType   string         `json:"slStopType"`
+	SlOrderType  string         `json:"slOrderType"`
+	SlOrderPrice string         `json:"slOrderPrice"`
 }
 
 func (c *Client) rawGetOrderDetail(ctx context.Context, orderID string) (*bitunixOrderDetail, error) {

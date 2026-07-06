@@ -103,39 +103,30 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribePersonal subscribes to position and fill channels.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
-	a.symMu.Lock()
-	symbols := make([]string, len(a.symbols))
-	copy(symbols, a.symbols)
-	a.symMu.Unlock()
+	posMsg := map[string]any{
+		eventKey: subscribeEvent,
+		paramsKey: map[string]any{
+			bizKey:       perpetualBiz,
+			typeKey:      positionsType, // "position"
+			zipParam:     false,
+			serializeKey: false,
+		},
+	}
+	if err := a.pool.SendPrivate(ctx, posMsg); err != nil {
+		return err
+	}
 
-	for _, symbol := range symbols {
-		contractCode := strings.ToLower(strings.ReplaceAll(symbol, "_", ""))
-
-		posMsg := map[string]any{
-			eventKey: subscribeEvent,
-			paramsKey: map[string]any{
-				bizKey:          perpetualBiz,
-				typeKey:         positionsType,
-				contractCodeKey: contractCode,
-				serializeKey:    false,
-			},
-		}
-		if err := a.pool.SendPrivate(ctx, posMsg); err != nil {
-			return err
-		}
-
-		fillsMsg := map[string]any{
-			eventKey: subscribeEvent,
-			paramsKey: map[string]any{
-				bizKey:          perpetualBiz,
-				typeKey:         fillsType,
-				contractCodeKey: contractCode,
-				serializeKey:    false,
-			},
-		}
-		if err := a.pool.SendPrivate(ctx, fillsMsg); err != nil {
-			return err
-		}
+	fillsMsg := map[string]any{
+		eventKey: subscribeEvent,
+		paramsKey: map[string]any{
+			bizKey:       perpetualBiz,
+			typeKey:      fillsType,
+			zipParam:     false,
+			serializeKey: false,
+		},
+	}
+	if err := a.pool.SendPrivate(ctx, fillsMsg); err != nil {
+		return err
 	}
 	return nil
 }
@@ -220,34 +211,40 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	}
 }
 
+func parseChannelName(channel string) string {
+	if strings.HasPrefix(channel, "market.") && (strings.HasSuffix(channel, ".ticker") || strings.HasSuffix(channel, ".depth")) {
+		return wsChannelTicker
+	}
+	if channel == personalPosition || channel == positionsType || channel == positionsPlural {
+		return personalPosition
+	}
+	if channel == personalOrder || channel == fillsType {
+		return personalOrder
+	}
+	return channel
+}
+
+func parseEventName(event string) string {
+	if event == positionsType || event == positionsPlural {
+		return personalPosition
+	}
+	if event == fillsType {
+		return personalOrder
+	}
+	return event
+}
+
 func extractChannelByField(channel, event, status string) string {
 	if status == "ok" || event == subscribeEvent || event == signinEvent {
 		return keySubscribed
 	}
 
 	if channel != "" {
-		if strings.HasPrefix(channel, "market.") {
-			if strings.HasSuffix(channel, ".ticker") || strings.HasSuffix(channel, ".depth") {
-				return wsChannelTicker
-			}
-		}
-		if channel == personalPosition || channel == positionsType {
-			return personalPosition
-		}
-		if channel == personalOrder || channel == fillsType {
-			return personalOrder
-		}
-		return channel
+		return parseChannelName(channel)
 	}
 
 	if event != "" {
-		if event == positionsType {
-			return personalPosition
-		}
-		if event == fillsType {
-			return personalOrder
-		}
-		return event
+		return parseEventName(event)
 	}
 
 	return ""
@@ -274,7 +271,7 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			if msg.Type == "ticker" || msg.Type == "depth" {
 				return wsChannelTicker
 			}
-			if msg.Type == positionsType {
+			if msg.Type == positionsType || msg.Type == positionsPlural {
 				return personalPosition
 			}
 			if msg.Type == fillsType {
@@ -307,25 +304,10 @@ type hotcoinWsDepthMsg struct {
 }
 
 type hotcoinWsNewTickerMsg struct {
-	Biz          string  `json:"biz"`
-	Type         string  `json:"type"`
-	ContractCode string  `json:"contractCode"`
-	Data         [][]any `json:"data"`
-}
-
-func toFloat64(val any) float64 {
-	switch v := val.(type) {
-	case float64:
-		return v
-	case int64:
-		return float64(v)
-	case int:
-		return float64(v)
-	case string:
-		f, _ := strconv.ParseFloat(v, 64)
-		return f
-	}
-	return 0
+	Biz          string           `json:"biz"`
+	Type         string           `json:"type"`
+	ContractCode string           `json:"contractCode"`
+	Data         [][]xjson.Number `json:"data"`
 }
 
 // ParseTicker parses public ticker/depth messages.
@@ -392,10 +374,10 @@ func (a *WsAdapter) parseNewTicker(symbol string, data []byte) (string, *store.P
 		return "", nil, fmt.Errorf("invalid ticker data row length: %d", len(row))
 	}
 
-	last := toFloat64(row[6])
-	vol := toFloat64(row[3])
-	bid := toFloat64(row[9])
-	ask := toFloat64(row[10])
+	last := xjson.ToFloat64(row[6])
+	vol := xjson.ToFloat64(row[3])
+	bid := xjson.ToFloat64(row[9])
+	ask := xjson.ToFloat64(row[10])
 
 	var mark float64
 	if bid > 0 && ask > 0 {

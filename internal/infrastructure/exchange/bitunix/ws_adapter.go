@@ -18,6 +18,7 @@ import (
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
+	"crypto-bot/pkg/xjson"
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Bitunix.
@@ -327,56 +328,18 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 	return item.S, pd, nil
 }
 
-type flexTime int64
-
-func (ft *flexTime) UnmarshalJSON(b []byte) error {
-	if len(b) == 0 {
-		return nil
-	}
-	var s string
-	if err := json.Unmarshal(b, &s); err == nil {
-		t, err := time.Parse(time.RFC3339, s)
-		if err != nil {
-			t, err = time.Parse("2006-01-02 15:04:05", s)
-		}
-		if err == nil {
-			*ft = flexTime(t.UnixMilli())
-			return nil
-		}
-		if val, err := strconv.ParseInt(s, 10, 64); err == nil {
-			*ft = flexTime(val)
-			return nil
-		}
-		if val, err := strconv.ParseFloat(s, 64); err == nil {
-			*ft = flexTime(int64(val))
-			return nil
-		}
-	}
-	var i int64
-	if err := json.Unmarshal(b, &i); err == nil {
-		*ft = flexTime(i)
-		return nil
-	}
-	var f float64
-	if err := json.Unmarshal(b, &f); err == nil {
-		*ft = flexTime(int64(f))
-		return nil
-	}
-	return fmt.Errorf("cannot unmarshal %s into flexTime", string(b))
-}
-
 type wsPositionData struct {
-	Symbol           string   `json:"symbol"`
-	Size             string   `json:"size"`
-	Qty              string   `json:"qty"`
-	EntryPrice       string   `json:"entryPrice"`
-	Side             string   `json:"side"` // "LONG", "SHORT"
-	Leverage         string   `json:"leverage"`
-	UnrealizedProfit string   `json:"unrealizedProfit"`
-	UnrealizedPNL    string   `json:"unrealizedPNL"`
-	UpdateTime       int64    `json:"updateTime"`
-	CTime            flexTime `json:"ctime"`
-	Event            string   `json:"event"`
+	Symbol           string         `json:"symbol"`
+	Size             string         `json:"size"`
+	Qty              string         `json:"qty"`
+	EntryPrice       string         `json:"entryPrice"`
+	Side             string         `json:"side"` // "LONG", "SHORT"
+	Leverage         string         `json:"leverage"`
+	UnrealizedProfit string         `json:"unrealizedProfit"`
+	UnrealizedPNL    string         `json:"unrealizedPNL"`
+	UpdateTime       int64          `json:"updateTime"`
+	CTime            xjson.FlexTime `json:"ctime"`
+	Event            string         `json:"event"`
 }
 
 // ParsePosition parses position updates.

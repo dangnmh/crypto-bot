@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,16 +20,16 @@ type hotcoinPlaceOrderResponse struct {
 }
 
 type hotcoinBaseOrder struct {
-	ID          int64        `json:"id"`
-	Amount      xjson.Number `json:"amount"`
-	DealAmount  xjson.Number `json:"dealAmount"`
-	Price       xjson.Number `json:"price"`
-	AvgPrice    xjson.Number `json:"avgPrice"`
-	Status      int          `json:"status"` // 0: pending, 1: partially filled, 2: fully filled, -1: cancelled
-	DetailSide  string       `json:"detailSide"`
-	Tag         string       `json:"tag"`
-	CreatedDate any          `json:"createdDate"`
-	ModifyDate  any          `json:"modifyDate"`
+	ID          int64          `json:"id"`
+	Amount      xjson.Number   `json:"amount"`
+	DealAmount  xjson.Number   `json:"dealAmount"`
+	Price       xjson.Number   `json:"price"`
+	AvgPrice    xjson.Number   `json:"avgPrice"`
+	Status      int            `json:"status"` // 0: pending, 1: partially filled, 2: fully filled, -1: cancelled
+	DetailSide  string         `json:"detailSide"`
+	Tag         string         `json:"tag"`
+	CreatedDate xjson.FlexTime `json:"createdDate"`
+	ModifyDate  xjson.FlexTime `json:"modifyDate"`
 }
 
 type hotcoinOrderDetail struct {
@@ -323,7 +324,7 @@ func parseDealRecords(orderID string, data []hotcoinDealRecord) aggregatedDeal {
 
 			agg.qty += itemQty
 			agg.sumPriceQty += itemPrice * itemQty
-			agg.fee += mathAbs(itemFee)
+			agg.fee += math.Abs(itemFee)
 			agg.pnl += itemPnl
 			agg.detailSide = item.DetailSide
 			agg.dealTimeStr = item.CreateDate
@@ -411,33 +412,9 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}, nil
 }
 
-func mathAbs(f float64) float64 {
-	if f < 0 {
-		return -f
-	}
-	return f
-}
-
-func parseDateToUnix(val any) int64 {
-	switch v := val.(type) {
-	case float64:
-		return int64(v)
-	case string:
-		t, err := time.Parse("2006-01-02 15:04:05", v)
-		if err == nil {
-			return t.UnixMilli()
-		}
-		t, err = time.Parse(time.RFC3339, v)
-		if err == nil {
-			return t.UnixMilli()
-		}
-	}
-	return 0
-}
-
 func (c *Client) mapOrder(o *hotcoinBaseOrder) exchange.OrderInfo {
-	cTime := parseDateToUnix(o.CreatedDate)
-	uTime := parseDateToUnix(o.ModifyDate)
+	cTime := int64(o.CreatedDate)
+	uTime := int64(o.ModifyDate)
 
 	state := domain.OrderStateNew
 	switch o.Status {
