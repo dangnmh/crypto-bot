@@ -58,7 +58,6 @@ type MaxLeverageProvider interface {
 	GetMaxLeverage(ctx context.Context, symbol string) (int, error)
 }
 
-
 // ClosedPnLInfo represents the standardized historical ledger of a closed trade.
 type ClosedPnLInfo struct {
 	Exchange   string

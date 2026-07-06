@@ -221,6 +221,8 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 		}
 	}
 
+	evt.Candidate.Config.Leverage = leverage
+
 	next := PositionWatchReadyEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Candidate:          evt.Candidate,
