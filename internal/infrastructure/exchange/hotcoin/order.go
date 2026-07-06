@@ -416,6 +416,8 @@ func filterOppositeDeals(openOrderID, contractCode string, data []hotcoinDealRec
 	var openDeals, closeDeals []hotcoinDealRecord
 	var closeOrderID string
 
+	openIDVal, _ := strconv.ParseInt(openOrderID, 10, 64)
+
 	for i := range data {
 		item := &data[i]
 		if item.OrderID.String() == openOrderID {
@@ -426,6 +428,10 @@ func filterOppositeDeals(openOrderID, contractCode string, data []hotcoinDealRec
 	for i := range data {
 		item := &data[i]
 		if strings.EqualFold(item.ContractCode, contractCode) && strings.HasPrefix(strings.ToLower(item.DetailSide), "close") {
+			itemOrderIDVal := xjson.ToInt64(item.OrderID)
+			if openIDVal > 0 && itemOrderIDVal <= openIDVal {
+				continue
+			}
 			if closeOrderID == "" {
 				closeOrderID = item.OrderID.String()
 			}
