@@ -406,34 +406,60 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/deal-record") {
+		switch {
+		case strings.Contains(r.URL.Path, "/deal-record"):
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
 				"code": 200,
 				"data": {
 					"data": [
 						{
+							"contractCode": "btcusdt",
 							"amount": "1",
 							"price": "96000",
 							"fee": "-0.0001",
 							"profit": "1000",
-							"orderId": 3799035537965136,
+							"orderId": 3799035537965137,
 							"detailSide": "close_long",
 							"createDate": "2026-07-05 00:00:10"
+						},
+						{
+							"contractCode": "btcusdt",
+							"amount": "1",
+							"price": "95000",
+							"fee": "-0.0001",
+							"profit": "0",
+							"orderId": 3799035537965136,
+							"detailSide": "open_long",
+							"createDate": "2026-07-05 00:00:02"
 						}
 					]
 				}
 			}`))
-		} else {
+		case strings.Contains(r.URL.Path, "/public") && !strings.Contains(r.URL.Path, "/candles"):
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"code": 200,
+				"msg": "success",
+				"data": [
+					{
+						"code": "btcusdt",
+						"indexBase": "btc",
+						"quote": "usdt",
+						"unitAmount": 1.0
+					}
+				]
+			}`))
+		default:
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
 				"id": 3799035537965136,
 				"amount": "1",
 				"dealAmount": "1",
-				"price": "96000",
-				"avgPrice": "96000",
+				"price": "95000",
+				"avgPrice": "95000",
 				"status": 2,
-				"detailSide": "close_long",
+				"detailSide": "open_long",
 				"tag": "my-tag",
 				"createdDate": 1783229340000
 			}`))
@@ -451,11 +477,11 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, "hotcoin", pnl.Exchange)
 	assert.Equal(t, "BTC_USDT", pnl.Symbol)
 	assert.Equal(t, 96000.0, pnl.ExitPrice)
-	assert.Equal(t, 95000.0, pnl.EntryPrice) // ExitPrice - (profit / amount) = 96000 - 1000 = 95000
+	assert.Equal(t, 95000.0, pnl.EntryPrice)
 	assert.Equal(t, 1.0, pnl.ClosedSize)
 	assert.Equal(t, 1000.0, pnl.GrossPnL)
-	assert.Equal(t, 0.0001, pnl.Fee)
-	assert.Equal(t, 999.9999, pnl.NetPnl)
+	assert.Equal(t, 0.0002, pnl.Fee)
+	assert.Equal(t, 999.9998, pnl.NetPnl)
 }
 
 func TestClient_SystemOperations(t *testing.T) {

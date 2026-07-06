@@ -51,14 +51,15 @@ type hotcoinHistoryResponse struct {
 }
 
 type hotcoinDealRecord struct {
-	Amount     xjson.Number `json:"amount"`
-	Price      xjson.Number `json:"price"`
-	Fee        xjson.Number `json:"fee"`
-	Profit     xjson.Number `json:"profit"`
-	OrderID    xjson.Number `json:"orderId"`
-	RefOrderID xjson.Number `json:"refOrderId"`
-	DetailSide string       `json:"detailSide"`
-	CreateDate string       `json:"createDate"`
+	ContractCode string       `json:"contractCode"`
+	Amount       xjson.Number `json:"amount"`
+	Price        xjson.Number `json:"price"`
+	Fee          xjson.Number `json:"fee"`
+	Profit       xjson.Number `json:"profit"`
+	OrderID      xjson.Number `json:"orderId"`
+	RefOrderID   xjson.Number `json:"refOrderId"`
+	DetailSide   string       `json:"detailSide"`
+	CreateDate   string       `json:"createDate"`
 }
 
 type hotcoinDealRecordResponse struct {
@@ -66,15 +67,6 @@ type hotcoinDealRecordResponse struct {
 	Data struct {
 		Data []hotcoinDealRecord `json:"data"`
 	} `json:"data"`
-}
-
-type aggregatedDeal struct {
-	qty         float64
-	sumPriceQty float64
-	fee         float64
-	pnl         float64
-	detailSide  string
-	dealTimeStr string
 }
 
 func mapOrderType(t domain.OrderType) (string, error) {
@@ -315,29 +307,6 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 	return orders, nil
 }
 
-func parseDealRecords(orderID string, data []hotcoinDealRecord) aggregatedDeal {
-	var agg aggregatedDeal
-	for i := range data {
-		item := &data[i]
-		itemOrderID := item.OrderID.String()
-
-		if itemOrderID == orderID {
-			itemQty := xjson.ToFloat64(item.Amount)
-			itemPrice := xjson.ToFloat64(item.Price)
-			itemFee := xjson.ToFloat64(item.Fee)
-			itemPnl := xjson.ToFloat64(item.Profit)
-
-			agg.qty += itemQty
-			agg.sumPriceQty += itemPrice * itemQty
-			agg.fee += math.Abs(itemFee)
-			agg.pnl += itemPnl
-			agg.detailSide = item.DetailSide
-			agg.dealTimeStr = item.CreateDate
-		}
-	}
-	return agg
-}
-
 // GetOrderPNL calculates closed PnL metrics for a filled closing order using deal records.
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
 	orderInfo, err := c.GetOrder(ctx, symbol, orderID)
@@ -368,53 +337,122 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return nil, fmt.Errorf("unmarshal deal records: %w", err)
 	}
 
-	agg := parseDealRecords(orderID, resp.Data.Data)
-	if agg.qty == 0 {
+	openDeals, closeDeals := filterOppositeDeals(orderID, contractCode, resp.Data.Data)
+
+	openQty, openSumPriceQty, openFee, _, _ := aggregateDeals(openDeals)
+	closeQty, closeSumPriceQty, closeFee, grossPnL, lastDealTimeStr := aggregateDeals(closeDeals)
+
+	res := calculateClosedPnLInfo(orderInfo, openQty, openSumPriceQty, openFee, closeQty, closeSumPriceQty, closeFee, grossPnL, lastDealTimeStr)
+	if res == nil {
 		return nil, fmt.Errorf("no trades found for order %s", orderID)
 	}
 
-	exitPrice := agg.sumPriceQty / agg.qty
-	var entryPrice float64
+	res.Exchange = exchangeName
+	res.Symbol = symbol
+	return res, nil
+}
 
-	isLong := strings.EqualFold(agg.detailSide, sideCloseLong) || strings.EqualFold(agg.detailSide, sideOpenLong)
-	if isLong {
-		entryPrice = exitPrice - (agg.pnl / agg.qty)
-	} else {
-		entryPrice = exitPrice + (agg.pnl / agg.qty)
+func calculateClosedPnLInfo(
+	orderInfo *exchange.OrderInfo,
+	openQty, openSumPriceQty, openFee,
+	closeQty, closeSumPriceQty, closeFee,
+	grossPnL float64,
+	lastDealTimeStr string,
+) *exchange.ClosedPnLInfo {
+	if openQty == 0 && closeQty > 0 {
+		openQty, openSumPriceQty = closeQty, closeSumPriceQty
+	} else if closeQty == 0 && openQty > 0 {
+		closeQty, closeSumPriceQty = openQty, openSumPriceQty
 	}
 
+	if openQty == 0 || closeQty == 0 {
+		return nil
+	}
+
+	entryPrice := openSumPriceQty / openQty
+	exitPrice := closeSumPriceQty / closeQty
+
+	isLong := orderInfo.Side == domain.SideOpenLong || orderInfo.Side == domain.SideCloseLong
 	var pnlRate float64
 	if entryPrice > 0 {
-		if isLong {
-			pnlRate = ((exitPrice - entryPrice) / entryPrice) * 100.0
-		} else {
-			pnlRate = ((entryPrice - exitPrice) / entryPrice) * 100.0
+		diff := exitPrice - entryPrice
+		if !isLong {
+			diff = entryPrice - exitPrice
+		}
+		pnlRate = (diff / entryPrice) * 100.0
+	}
+
+	durationMs := parseDurationMs(orderInfo.CreateTime, lastDealTimeStr)
+
+	return &exchange.ClosedPnLInfo{
+		EntryPrice: entryPrice,
+		ExitPrice:  exitPrice,
+		ClosedSize: closeQty,
+		GrossPnL:   grossPnL,
+		Fee:        openFee + closeFee,
+		FundingFee: 0,
+		NetPnl:     grossPnL - (openFee + closeFee),
+		PnLRate:    pnlRate,
+		DurationMs: durationMs,
+	}
+}
+
+func parseDurationMs(createTime int64, dealTimeStr string) int64 {
+	if createTime <= 0 || dealTimeStr == "" {
+		return 0
+	}
+	t, err := time.Parse("2006-01-02 15:04:05", dealTimeStr)
+	if err != nil {
+		return 0
+	}
+	dealMs := t.UnixMilli()
+	if dealMs > createTime {
+		return dealMs - createTime
+	}
+	return 0
+}
+
+func filterOppositeDeals(openOrderID, contractCode string, data []hotcoinDealRecord) ([]hotcoinDealRecord, []hotcoinDealRecord) {
+	var openDeals, closeDeals []hotcoinDealRecord
+	var closeOrderID string
+
+	for i := range data {
+		item := &data[i]
+		if item.OrderID.String() == openOrderID {
+			openDeals = append(openDeals, *item)
 		}
 	}
 
-	durationMs := int64(0)
-	if orderInfo.CreateTime > 0 && agg.dealTimeStr != "" {
-		if t, err := time.Parse("2006-01-02 15:04:05", agg.dealTimeStr); err == nil {
-			dealMs := t.UnixMilli()
-			if dealMs > orderInfo.CreateTime {
-				durationMs = dealMs - orderInfo.CreateTime
+	for i := range data {
+		item := &data[i]
+		if strings.EqualFold(item.ContractCode, contractCode) && strings.HasPrefix(strings.ToLower(item.DetailSide), "close") {
+			if closeOrderID == "" {
+				closeOrderID = item.OrderID.String()
+			}
+			if item.OrderID.String() == closeOrderID {
+				closeDeals = append(closeDeals, *item)
 			}
 		}
 	}
 
-	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: agg.qty,
-		GrossPnL:   agg.pnl,
-		Fee:        agg.fee,
-		FundingFee: 0,
-		NetPnl:     agg.pnl - agg.fee,
-		PnLRate:    pnlRate,
-		DurationMs: durationMs,
-	}, nil
+	return openDeals, closeDeals
+}
+
+func aggregateDeals(deals []hotcoinDealRecord) (qty, sumPriceQty, totalFee, pnl float64, timeStr string) {
+	for i := range deals {
+		item := &deals[i]
+		q := xjson.ToFloat64(item.Amount)
+		p := xjson.ToFloat64(item.Price)
+		f := xjson.ToFloat64(item.Fee)
+		pnlVal := xjson.ToFloat64(item.Profit)
+
+		qty += q
+		sumPriceQty += p * q
+		totalFee += math.Abs(f)
+		pnl += pnlVal
+		timeStr = item.CreateDate
+	}
+	return
 }
 
 func (c *Client) mapOrder(o *hotcoinBaseOrder) exchange.OrderInfo {
