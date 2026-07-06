@@ -397,7 +397,7 @@ func calculateClosedPnLInfo(
 		ClosedSize: closeQty,
 		GrossPnL:   grossPnL,
 		Fee:        openFee + closeFee,
-		FundingFee: 0,
+		FundingFee: 0, // Option A: Zero fallback chosen (Hotcoin lacks private billing/ledger REST history endpoints)
 		NetPnl:     grossPnL - (openFee + closeFee),
 		PnLRate:    pnlRate,
 		DurationMs: durationMs,
