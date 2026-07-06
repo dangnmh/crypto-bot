@@ -153,7 +153,6 @@
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s",
-      "minVol24USD": 100000,
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

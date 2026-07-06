@@ -47,6 +47,7 @@
       "bybit": true,
       "bitget": true,
       "aster": true,
+      "hotcoin": true,
     }
   },
   "exchanges": {
@@ -179,12 +180,12 @@
     "hotcoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-20ms",
+      "bufferTime": "0ms",
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
-      "leverage": 5,
-      "marginUSD": 8
+      "leverage": 8,
+      "marginUSD": 5
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.
