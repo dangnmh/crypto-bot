@@ -280,7 +280,8 @@ func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params m
 	if symbol == "" {
 		return nil, fmt.Errorf("missing symbol")
 	}
-	return c.request(ctx, http.MethodGet, fmt.Sprintf("/api/v1/perpetual/products/%s/%s", strings.ToLower(symbol), orderID), nil, nil, true)
+	contractCode := strings.ToLower(strings.ReplaceAll(symbol, "_", ""))
+	return c.request(ctx, http.MethodGet, fmt.Sprintf("/api/v1/perpetual/products/%s/%s", contractCode, orderID), nil, nil, true)
 }
 
 // GetHistoryOrdersRaw returns raw history orders.
@@ -289,7 +290,8 @@ func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]stri
 	if symbol == "" {
 		return nil, fmt.Errorf("missing symbol")
 	}
-	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/products/"+strings.ToLower(symbol)+"/history-list", params, nil, true)
+	contractCode := strings.ToLower(strings.ReplaceAll(symbol, "_", ""))
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/products/"+contractCode+"/history-list", params, nil, true)
 }
 
 // GetOrderPNLRaw returns raw deal records.

@@ -220,6 +220,25 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 	path := fmt.Sprintf("/api/v1/perpetual/products/%s/%s", contractCode, orderID)
 	body, err := c.request(ctx, http.MethodGet, path, nil, nil, true)
 	if err != nil {
+		// Fallback to scan history orders if order is not found (which happens if it is closed/filled)
+		histPath := fmt.Sprintf("/api/v1/perpetual/products/%s/history-list", contractCode)
+		histBody, histErr := c.request(ctx, http.MethodGet, histPath, map[string]string{pageSizeKey: "50"}, nil, true)
+		if histErr == nil {
+			var hist hotcoinHistoryResponse
+			if errJson := json.Unmarshal(histBody, &hist); errJson == nil {
+				for i := range hist.Data.Rows {
+					item := &hist.Data.Rows[i]
+					itemOrderIDStr := strconv.FormatInt(item.ID, 10)
+					if itemOrderIDStr == orderID {
+						info := c.mapOrder(&item.hotcoinBaseOrder)
+						if symbol != "" {
+							info.Symbol = symbol
+						}
+						return &info, nil
+					}
+				}
+			}
+		}
 		return nil, err
 	}
 
