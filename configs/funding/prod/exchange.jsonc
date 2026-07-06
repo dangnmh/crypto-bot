@@ -128,7 +128,7 @@
       }
     },
     "orangex": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api.orangex.com/api/v1"
       },
