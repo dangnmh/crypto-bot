@@ -276,17 +276,25 @@ func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]s
 
 // GetOrderDetailRaw returns raw order details.
 func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
-	symbol := params["symbol"]
+	symbol := params[symbolKey]
 	if symbol == "" {
 		return nil, fmt.Errorf("missing symbol")
 	}
 	contractCode := strings.ToLower(strings.ReplaceAll(symbol, "_", ""))
-	return c.request(ctx, http.MethodGet, fmt.Sprintf("/api/v1/perpetual/products/%s/%s", contractCode, orderID), nil, nil, true)
+	queryParams := map[string]string{
+		orderIDKey: orderID,
+	}
+	for k, v := range params {
+		if k != symbolKey {
+			queryParams[k] = v
+		}
+	}
+	return c.request(ctx, http.MethodGet, fmt.Sprintf("/api/v1/perpetual/products/%s/orderDetail", contractCode), queryParams, nil, true)
 }
 
 // GetHistoryOrdersRaw returns raw history orders.
 func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	symbol := params["symbol"]
+	symbol := params[symbolKey]
 	if symbol == "" {
 		return nil, fmt.Errorf("missing symbol")
 	}
@@ -297,4 +305,9 @@ func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]stri
 // GetOrderPNLRaw returns raw deal records.
 func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/bills/deal-record", params, nil, true)
+}
+
+// QueryCustomPrivate sends a signed private request to any path (useful for testing custom paths).
+func (c *Client) QueryCustomPrivate(ctx context.Context, method, path string, query map[string]string) ([]byte, error) {
+	return c.request(ctx, method, path, query, nil, true)
 }

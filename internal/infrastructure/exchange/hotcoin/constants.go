@@ -24,6 +24,8 @@ const (
 	fillsType        = "fills"
 	pingValue        = "ping"
 	zipParam         = "zip"
+	orderIDKey       = "orderId"
+	symbolKey        = "symbol"
 	signinEvent      = "signin"
 	personalPosition = "personal.position"
 	personalOrder    = "personal.order"

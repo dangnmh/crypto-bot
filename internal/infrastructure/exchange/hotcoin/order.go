@@ -35,6 +35,7 @@ type hotcoinBaseOrder struct {
 type hotcoinOrderDetail struct {
 	hotcoinBaseOrder
 	ContractCode string `json:"contractCode"`
+	OrderID      int64  `json:"orderId"`
 }
 
 type hotcoinOrderListItem struct {
@@ -217,34 +218,19 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 // GetOrder queries order status and details by order ID.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
 	contractCode := strings.ToLower(strings.ReplaceAll(symbol, "_", ""))
-	path := fmt.Sprintf("/api/v1/perpetual/products/%s/%s", contractCode, orderID)
-	body, err := c.request(ctx, http.MethodGet, path, nil, nil, true)
+	path := fmt.Sprintf("/api/v1/perpetual/products/%s/orderDetail", contractCode)
+	body, err := c.request(ctx, http.MethodGet, path, map[string]string{orderIDKey: orderID}, nil, true)
 	if err != nil {
-		// Fallback to scan history orders if order is not found (which happens if it is closed/filled)
-		histPath := fmt.Sprintf("/api/v1/perpetual/products/%s/history-list", contractCode)
-		histBody, histErr := c.request(ctx, http.MethodGet, histPath, map[string]string{pageSizeKey: "50"}, nil, true)
-		if histErr == nil {
-			var hist hotcoinHistoryResponse
-			if errJson := json.Unmarshal(histBody, &hist); errJson == nil {
-				for i := range hist.Data.Rows {
-					item := &hist.Data.Rows[i]
-					itemOrderIDStr := strconv.FormatInt(item.ID, 10)
-					if itemOrderIDStr == orderID {
-						info := c.mapOrder(&item.hotcoinBaseOrder)
-						if symbol != "" {
-							info.Symbol = symbol
-						}
-						return &info, nil
-					}
-				}
-			}
-		}
 		return nil, err
 	}
 
 	var raw hotcoinOrderDetail
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("unmarshal order info: %w", err)
+	}
+
+	if raw.ID == 0 && raw.OrderID != 0 {
+		raw.ID = raw.OrderID
 	}
 
 	info := c.mapOrder(&raw.hotcoinBaseOrder)

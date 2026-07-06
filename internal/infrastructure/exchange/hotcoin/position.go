@@ -61,7 +61,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		return nil, fmt.Errorf("symbol is required for Hotcoin GetOpenPositions")
 	}
 
-	body, err := c.GetOpenPositionsRaw(ctx, map[string]string{"symbol": symbol})
+	body, err := c.GetOpenPositionsRaw(ctx, map[string]string{symbolKey: symbol})
 	if err != nil {
 		return nil, err
 	}
