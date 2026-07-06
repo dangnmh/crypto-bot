@@ -77,7 +77,7 @@ func TestClient_RawRequestHelpers(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = client.GetOpenPositionsRaw(ctx, map[string]string{})
-	assert.NoError(t, err)
+	assert.Error(t, err)
 
 	_, err = client.GetOrderDetailRaw(ctx, "123", map[string]string{"symbol": "BTCUSDT"})
 	assert.NoError(t, err)
@@ -576,4 +576,100 @@ func TestClient_PlaceTPSL(t *testing.T) {
 		Volume:          1.0,
 	})
 	assert.NoError(t, err)
+}
+
+func TestClient_GetOpenPositions_DirectArray(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/perpetual/position/btcusdt/list", r.URL.Path)
+		assert.Equal(t, http.MethodGet, r.Method)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[
+			{
+				"amount": "1.5",
+				"contractCode": "btcusdt",
+				"side": "long",
+				"price": "50000.0",
+				"fee": "0.1",
+				"lever": "10"
+			},
+			{
+				"amount": "0",
+				"contractCode": "btcusdt",
+				"side": "short",
+				"price": "50000.0",
+				"fee": "0.0",
+				"lever": "10"
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client := hotcoin.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(mockClock{now: time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC)})
+
+	positions, err := client.GetOpenPositions(context.Background(), "BTC_USDT")
+	require.NoError(t, err)
+	assert.Len(t, positions, 1)
+
+	pos := positions[0]
+	assert.Equal(t, "BTC_USDT", pos.Symbol)
+	assert.Equal(t, 1.5, pos.HoldVol)
+	assert.Equal(t, exchange.PositionTypeLong, pos.PositionType)
+	assert.Equal(t, 50000.0, pos.OpenAvgPrice)
+	assert.Equal(t, 50000.0, pos.HoldAvgPrice)
+	assert.Equal(t, 10, pos.Leverage)
+	assert.Equal(t, 0.1, pos.Fee)
+}
+
+func TestClient_GetOpenPositions_WrappedEnvelope(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/perpetual/position/btcusdt/list", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"code": 200,
+			"msg": "success",
+			"data": [
+				{
+					"amount": "2.0",
+					"contractCode": "btcusdt",
+					"side": "short",
+					"price": "51000.0",
+					"fee": "0.2",
+					"lever": "20"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := hotcoin.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(mockClock{now: time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC)})
+
+	positions, err := client.GetOpenPositions(context.Background(), "BTC_USDT")
+	require.NoError(t, err)
+	assert.Len(t, positions, 1)
+
+	pos := positions[0]
+	assert.Equal(t, "BTC_USDT", pos.Symbol)
+	assert.Equal(t, 2.0, pos.HoldVol)
+	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
+	assert.Equal(t, 51000.0, pos.OpenAvgPrice)
+	assert.Equal(t, 51000.0, pos.HoldAvgPrice)
+	assert.Equal(t, 20, pos.Leverage)
+	assert.Equal(t, 0.2, pos.Fee)
+}
+
+func TestClient_GetOpenPositions_Errors(t *testing.T) {
+	t.Parallel()
+
+	client := hotcoin.NewClient(nil, "", "key", "secret", config.LoggingConfig{})
+	_, err := client.GetOpenPositions(context.Background(), "")
+	assert.Error(t, err)
+
+	_, err = client.GetOpenPositionsRaw(context.Background(), map[string]string{})
+	assert.Error(t, err)
 }
