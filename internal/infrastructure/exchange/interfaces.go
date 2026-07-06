@@ -52,6 +52,13 @@ type PositionModeSwitcher interface {
 	SwitchPositionMode(ctx context.Context, symbol string, positionMode domain.PositionMode) error
 }
 
+// MaxLeverageProvider is an optional interface that exchange REST clients can implement
+// to support retrieving the maximum leverage allowed for a symbol.
+type MaxLeverageProvider interface {
+	GetMaxLeverage(ctx context.Context, symbol string) (int, error)
+}
+
+
 // ClosedPnLInfo represents the standardized historical ledger of a closed trade.
 type ClosedPnLInfo struct {
 	Exchange   string
