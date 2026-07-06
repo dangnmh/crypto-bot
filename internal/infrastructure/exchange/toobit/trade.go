@@ -2,11 +2,13 @@ package toobit
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/pkg/xjson"
 )
 
 // Private raw methods.
@@ -59,4 +61,42 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode
 	}
 	_, err = parseResponse[any](body)
 	return err
+}
+
+type toobitRiskLimitConfig struct {
+	Level          int          `json:"level"`
+	Quantity       string       `json:"quantity"`
+	MaintainMargin string       `json:"maintainMargin"`
+	InitialMargin  string       `json:"initialMargin"`
+	MaxLeverage    xjson.Number `json:"maxLeverage"`
+}
+
+func (c *Client) rawGetRiskLimits(ctx context.Context, symbol string) ([]byte, error) {
+	params := map[string]string{
+		symbolKey: symbol,
+	}
+	return c.request(ctx, http.MethodGet, "/api/v1/futures/riskLimits", params, false)
+}
+
+// GetMaxLeverage queries risk limits for the specified symbol and returns the maximum leverage allowed.
+func (c *Client) GetMaxLeverage(ctx context.Context, symbol string) (int, error) {
+	body, err := c.rawGetRiskLimits(ctx, symbol)
+	if err != nil {
+		return 0, err
+	}
+	limits, err := parseResponse[[]toobitRiskLimitConfig](body)
+	if err != nil {
+		return 0, err
+	}
+	maxLev := 0
+	for _, rl := range limits {
+		val, err := rl.MaxLeverage.Float64()
+		if err == nil && int(val) > maxLev {
+			maxLev = int(val)
+		}
+	}
+	if maxLev == 0 {
+		return 0, fmt.Errorf("no valid risk limits found for symbol %s", symbol)
+	}
+	return maxLev, nil
 }
