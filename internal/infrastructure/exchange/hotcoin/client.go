@@ -263,9 +263,10 @@ func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([
 func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	symbol := params["symbol"]
 	if symbol == "" {
-		return c.request(ctx, http.MethodGet, "/api/v1/perpetual/position/list", params, nil, true)
+		return nil, fmt.Errorf("symbol is required for Hotcoin GetOpenPositionsRaw")
 	}
-	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/position/"+strings.ToLower(symbol)+"/configs", params, nil, true)
+	contractCode := strings.ToLower(strings.ReplaceAll(symbol, "_", ""))
+	return c.request(ctx, http.MethodGet, "/api/v1/perpetual/position/"+contractCode+"/list", params, nil, true)
 }
 
 // GetHistoryPositionsRaw is a stub returning not implemented error.
