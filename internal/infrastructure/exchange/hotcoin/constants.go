@@ -36,4 +36,5 @@ const (
 	serializeKey     = "serialize"
 	sideLong         = "long"
 	sideShort        = "short"
+	startDateKey     = "startDate"
 )

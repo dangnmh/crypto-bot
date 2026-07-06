@@ -326,6 +326,9 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		contractCodeKey: contractCode,
 		pageSizeKey:     "100",
 	}
+	if orderInfo.CreateTime > 0 {
+		query[startDateKey] = strconv.FormatInt(orderInfo.CreateTime, 10)
+	}
 
 	body, err := c.request(ctx, http.MethodGet, "/api/v1/perpetual/bills/deal-record", query, nil, true)
 	if err != nil {
