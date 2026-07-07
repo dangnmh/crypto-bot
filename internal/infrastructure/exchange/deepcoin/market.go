@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -181,6 +182,15 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	return exchangeTickers, nil
 }
 
+func normalizeDeepcoinSymbol(symbol string) string {
+	s := strings.ToUpper(symbol)
+	s = strings.TrimSuffix(s, "-SWAP")
+	s = strings.TrimSuffix(s, "SWAP")
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "_", "")
+	return s
+}
+
 func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]exchange.FundingRateResult, error) {
 	if len(symbols) == 0 {
 		return nil, nil
@@ -198,21 +208,22 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, err
 	}
 
-	// Build lookup maps using symbol names to avoid formatting issues
+	// Build lookup maps using normalized symbol names to avoid formatting issues
 	cycleMap := make(map[string]int64)
 	for _, cycle := range cycles {
-		cycleMap[cycle.InstrumentID] = cycle.NextSettleTime * 1000 // Convert seconds to milliseconds
+		cycleMap[normalizeDeepcoinSymbol(cycle.InstrumentID)] = cycle.NextSettleTime * 1000 // Convert seconds to milliseconds
 	}
 
 	rateMap := make(map[string]float64)
 	for _, rate := range ratesData.CurrentFundRates {
-		rateMap[rate.InstrumentID] = rate.FundingRate
+		rateMap[normalizeDeepcoinSymbol(rate.InstrumentID)] = rate.FundingRate
 	}
 
 	results := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		settleTime := cycleMap[sym]
-		rate := rateMap[sym]
+		normSym := normalizeDeepcoinSymbol(sym)
+		settleTime := cycleMap[normSym]
+		rate := rateMap[normSym]
 
 		results = append(results, exchange.FundingRateResult{
 			Symbol:     sym,
@@ -297,19 +308,20 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	cycleMap := make(map[string]int64)
 	for _, cycle := range cycles {
-		cycleMap[cycle.InstrumentID] = cycle.NextSettleTime * 1000
+		cycleMap[normalizeDeepcoinSymbol(cycle.InstrumentID)] = cycle.NextSettleTime * 1000
 	}
 
 	rateMap := make(map[string]float64)
 	for _, rate := range ratesData.CurrentFundRates {
-		rateMap[rate.InstrumentID] = rate.FundingRate
+		rateMap[normalizeDeepcoinSymbol(rate.InstrumentID)] = rate.FundingRate
 	}
 
 	// 6. Combine results
 	var results []exchange.PotentialFundingResult
 	for _, t := range filteredTickers {
-		settleTime := cycleMap[t.InstID]
-		rate := rateMap[t.InstID]
+		normSym := normalizeDeepcoinSymbol(t.InstID)
+		settleTime := cycleMap[normSym]
+		rate := rateMap[normSym]
 
 		results = append(results, exchange.PotentialFundingResult{
 			Symbol:     t.InstID,
