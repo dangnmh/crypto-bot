@@ -52,9 +52,9 @@ type deepcoinOrder struct {
 type deepcoinClosedPosition struct {
 	InstID        string       `json:"instId"`
 	CloseAvgPx    xjson.Number `json:"closeAvgPx"`
-	OpenAvgPx     xjson.Number `json:"openAvgPx"`
+	OpenAvgPx     xjson.Number `json:"avgPx"`
 	Pnl           xjson.Number `json:"pnl"`
-	CloseTotalPos xjson.Number `json:"closeTotalPos"`
+	CloseTotalPos xjson.Number `json:"closePos"`
 	CTime         xjson.Number `json:"cTime"`
 	UTime         xjson.Number `json:"uTime"`
 	Fee           xjson.Number `json:"fee"`
@@ -63,6 +63,26 @@ type deepcoinClosedPosition struct {
 	PosSide       string       `json:"posSide"`
 	Direction     string       `json:"direction"`
 	Pos           xjson.Number `json:"pos"`
+}
+
+type deepcoinFinishedOrder struct {
+	InstID    string       `json:"instId"`
+	OrdId     string       `json:"ordId"`
+	ClOrdId   string       `json:"clOrdId"`
+	Px        xjson.Number `json:"px"`
+	Sz        xjson.Number `json:"sz"`
+	Pnl       xjson.Number `json:"pnl"`
+	OrdType   string       `json:"ordType"`
+	Side      string       `json:"side"`
+	PosSide   string       `json:"posSide"`
+	AccFillSz xjson.Number `json:"accFillSz"`
+	AvgPx     xjson.Number `json:"avgPx"`
+	State     string       `json:"state"`
+	Lever     xjson.Number `json:"lever"`
+	FeeCcy    string       `json:"feeCcy"`
+	Fee       xjson.Number `json:"fee"`
+	CTime     xjson.Number `json:"cTime"`
+	UTime     xjson.Number `json:"uTime"`
 }
 
 func mapDeepcoinOrderSideAndPosition(reqSide domain.Side) (string, string, bool) {
@@ -175,7 +195,7 @@ func (c *Client) rawGetClosedPositions(ctx context.Context, symbol string, creat
 		"limit":       "10",
 	}
 	if createTime > 0 {
-		params["before"] = strconv.FormatInt(createTime-1000, 10)
+		params["startTime"] = strconv.FormatInt(createTime, 10)
 	}
 	body, err := c.GetCtx(ctx, "/deepcoin/account/positions-history", params)
 	if err != nil {
@@ -258,7 +278,29 @@ func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchang
 		return nil, err
 	}
 	if len(orders) == 0 {
-		return nil, fmt.Errorf("order not found: %s", orderID)
+		finishedOrders, err := c.rawGetFinishedOrder(ctx, symbol, orderID)
+		if err != nil {
+			return nil, fmt.Errorf("fallback to rawGetFinishedOrder failed: %w", err)
+		}
+		if len(finishedOrders) == 0 {
+			return nil, fmt.Errorf("order not found: %s", orderID)
+		}
+		fo := finishedOrders[0]
+		o := deepcoinOrder{
+			InstID:    fo.InstID,
+			OrdId:     fo.OrdId,
+			ClOrdId:   fo.ClOrdId,
+			Px:        fo.Px,
+			Sz:        fo.Sz,
+			OrdType:   fo.OrdType,
+			Side:      fo.Side,
+			PosSide:   fo.PosSide,
+			AccFillSz: fo.AccFillSz,
+			AvgPx:     fo.AvgPx,
+			State:     fo.State,
+			CTime:     fo.CTime,
+		}
+		return c.toOrderInfo(&o), nil
 	}
 	return c.toOrderInfo(&orders[0]), nil
 }
@@ -276,6 +318,18 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
 	return nil, fmt.Errorf("GetOpenOrders not supported on Deepcoin")
+}
+
+func (c *Client) rawGetFinishedOrder(ctx context.Context, symbol, orderID string) ([]deepcoinFinishedOrder, error) {
+	params := map[string]string{
+		paramInstId: symbol,
+		paramOrdId:  orderID,
+	}
+	body, err := c.GetCtx(ctx, "/deepcoin/trade/finishOrderByID", params)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResponse[deepcoinFinishedOrder](body, "finish_order")
 }
 
 func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
@@ -307,6 +361,9 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	feeVal, _ := strconv.ParseFloat(string(pos.Fee), 64)
 	fundingFeeVal, _ := strconv.ParseFloat(string(pos.FundingFee), 64)
 	netPnlVal, _ := strconv.ParseFloat(string(pos.RealizedPnl), 64)
+	if netPnlVal == 0 {
+		netPnlVal = closedPnl - feeVal - fundingFeeVal
+	}
 
 	cTime, _ := strconv.ParseInt(string(pos.CTime), 10, 64)
 	uTime, _ := strconv.ParseInt(string(pos.UTime), 10, 64)
@@ -351,7 +408,7 @@ func (c *Client) toOrderInfo(o *deepcoinOrder) *exchange.OrderInfo {
 		state = exchange.OrderStateNew
 	case "filled":
 		state = exchange.OrderStateFilled
-	case "canceled":
+	case stateCanceled:
 		state = exchange.OrderStateCanceled
 	default:
 		state = exchange.OrderStateNew
@@ -377,6 +434,9 @@ func (c *Client) toOrderInfo(o *deepcoinOrder) *exchange.OrderInfo {
 	fillSz, _ := strconv.ParseFloat(string(o.AccFillSz), 64)
 	avgPx, _ := strconv.ParseFloat(string(o.AvgPx), 64)
 	cTimeVal, _ := strconv.ParseInt(string(o.CTime), 10, 64)
+	if cTimeVal > 0 && cTimeVal < 9999999999 {
+		cTimeVal *= 1000
+	}
 
 	return &exchange.OrderInfo{
 		OrderID:      o.OrdId,

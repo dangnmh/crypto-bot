@@ -92,10 +92,16 @@
   //   "exchange": "pionex",
   //   "simulateSettle": "2026-07-04T20:25:00.000+07:00"
   // },
+  //   {
+  //     "symbol": "SLX_USDT",
+  //     "marginUSDT": 3,
+  //     "exchange": "hotcoin",
+  //     "simulateSettle": "2026-07-06T20:35:00.000+07:00"
+  //   },
   {
-    "symbol": "SLX_USDT",
+    "symbol": "XCN-USDT-SWAP",
     "marginUSDT": 3,
-    "exchange": "hotcoin",
-    "simulateSettle": "2026-07-06T20:35:00.000+07:00"
+    "exchange": "deepcoin",
+    "simulateSettle": "2026-07-07T17:50:00.000+07:00"
   },
 ]

@@ -13,7 +13,8 @@ const (
 	sideBuy  = "buy"
 	sideSell = "sell"
 
-	stateLive = "live"
+	stateLive     = "live"
+	stateCanceled = "canceled"
 
 	ordTypeMarket = "market"
 	ordTypeLimit  = "limit"

@@ -390,6 +390,7 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 		NetPnL:             12.50,
 		PnLPct:             0.18,
 		HoldDurationMs:     134000, // 2m 14s
+		Vol24hUSDT:         1500000.00,
 	}
 
 	msg := evt.GetMessage()
@@ -397,7 +398,7 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 	assert.Contains(t, msg, "PnL: +$12.5000 (+0.18%)")
 	assert.Contains(t, msg, "Side: Short")
 	assert.Contains(t, msg, "Price: 60,200.500000 ➔ 60,310.200000")
-	assert.Contains(t, msg, "FR: -0.2%")
+	assert.Contains(t, msg, "FR: -0.2% | Vol24h: $1.5m")
 	assert.Contains(t, msg, "Order ID: ord-12345")
 	assert.Contains(t, msg, "Client ID: client-abc")
 }

@@ -83,6 +83,14 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 29393.10, update.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
+	// Test user payload with mixed casing i/I and u/U
+	userPayload := []byte(`{"action":"PushPosition","result":[{"table":"Position","data":{"A":"9581780","CP":0,"I":"JSTUSDT","IT":1783413000,"M":"9581780","PI":"1001123956472905","Po":15,"U":1783413000,"i":0,"l":5,"p":"1","u":0.0123}}]}`)
+	userUpdate, err := adapter.ParsePosition(userPayload)
+	assert.NoError(t, err)
+	assert.Equal(t, "JST-USDT-SWAP", userUpdate.Symbol)
+	assert.Equal(t, 15.0, userUpdate.HoldVol)
+	assert.Equal(t, exchange.PositionTypeLong, userUpdate.PositionType)
+
 	// Test position close event (volume 0)
 	closePayload := []byte(`{
 		"action": "PushPosition",
@@ -115,7 +123,7 @@ func TestWsAdapter_ParseTickerReal(t *testing.T) {
 		"m": "Success",
 		"tt": 1757642301185,
 		"mt": 1757642301185,
-		"d": {
+		"d": [{
 			"I": "BTC-USDT-SWAP",
 			"U": 1757642301089,
 			"PF": 1756690200,
@@ -134,7 +142,7 @@ func TestWsAdapter_ParseTickerReal(t *testing.T) {
 			"C": 173183.6,
 			"BP1": 115482.8,
 			"AP1": 115482.9
-		}
+		}]
 	}`)
 	sym, pd, err := adapter.ParseTicker(payload)
 	assert.NoError(t, err)

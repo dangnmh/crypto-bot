@@ -62,6 +62,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 						"GET|/deepcoin/market/instruments",
 						"GET|/deepcoin/trade/funding-rate",
 						"GET|/deepcoin/trade/fund-rate/current-funding-rate",
+						"GET|/deepcoin/listenkey/acquire",
 					},
 				}),
 				transportlog.LogOptionRedactSensitive(true),
@@ -282,7 +283,22 @@ func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]stri
 }
 
 func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	return c.GetCtx(ctx, "/deepcoin/account/positions-history", params)
+	symbol := params["symbol"]
+	orderID := params["order_id"]
+	if orderID == "" {
+		orderID = params["orderId"]
+	}
+	if symbol == "" {
+		return nil, fmt.Errorf("symbol is required")
+	}
+	if orderID == "" {
+		return nil, fmt.Errorf("order_id is required")
+	}
+	info, err := c.GetOrderPNL(ctx, symbol, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return xjson.Marshal(info)
 }
 
 func buildDeepcoinQueryString(q url.Values) string {

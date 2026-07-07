@@ -21,11 +21,14 @@ type WsAdapter struct {
 	privateURL   string
 	cancelKeep   context.CancelFunc
 	cancelKeepMu sync.Mutex
+	activeSubs   map[string]bool
+	activeSubsMu sync.Mutex
 }
 
 func NewWsAdapter(privateURL string) *WsAdapter {
 	return &WsAdapter{
 		privateURL: privateURL,
+		activeSubs: make(map[string]bool),
 	}
 }
 
@@ -80,9 +83,13 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 }
 
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
+	a.activeSubsMu.Lock()
+	a.activeSubs[symbol] = true
+	a.activeSubsMu.Unlock()
+
 	msg := map[string]any{
 		wsAction:   "1",
-		wsSymbol:   symbol,
+		wsSymbol:   normalizeDeepcoinSymbol(symbol),
 		wsTopic:    wsTopicMarket,
 		wsLocalNo:  6,
 		wsResumeNo: -1,
@@ -91,14 +98,46 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 }
 
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	msg := map[string]any{
-		wsAction:   "2",
-		wsSymbol:   symbol,
+	a.activeSubsMu.Lock()
+	delete(a.activeSubs, symbol)
+
+	remaining := make([]string, 0, len(a.activeSubs))
+	for sym := range a.activeSubs {
+		remaining = append(remaining, sym)
+	}
+	a.activeSubsMu.Unlock()
+
+	unsubMsg := map[string]any{
+		wsAction:   "0",
+		wsSymbol:   normalizeDeepcoinSymbol(symbol),
 		wsTopic:    wsTopicMarket,
 		wsLocalNo:  6,
 		wsResumeNo: -1,
 	}
-	return a.pool.UnsubscribePublic(ctx, symbol+":ticker", msg)
+
+	if len(remaining) > 0 {
+		// 1. Send Action: "0" (unsubscribe all)
+		if err := a.pool.UnsubscribePublic(ctx, symbol+":ticker", unsubMsg); err != nil {
+			return err
+		}
+
+		// 2. Re-subscribe to other active symbols
+		for _, activeSym := range remaining {
+			subMsg := map[string]any{
+				wsAction:   "1",
+				wsSymbol:   normalizeDeepcoinSymbol(activeSym),
+				wsTopic:    wsTopicMarket,
+				wsLocalNo:  6,
+				wsResumeNo: -1,
+			}
+			if err := a.pool.SubscribePublic(ctx, activeSym+":ticker", subMsg); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return a.pool.UnsubscribePublic(ctx, symbol+":ticker", unsubMsg)
 }
 
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
@@ -143,6 +182,23 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	}
 }
 
+func reconstructDeepcoinSymbol(symbol string) string {
+	if strings.Contains(symbol, "-SWAP") || strings.Contains(symbol, "_SWAP") {
+		return symbol
+	}
+	s := strings.ToUpper(symbol)
+	if before, ok := strings.CutSuffix(s, "USDT"); ok {
+		return before + "-USDT-SWAP"
+	}
+	if before, ok := strings.CutSuffix(s, "USDC"); ok {
+		return before + "-USDC-SWAP"
+	}
+	if before, ok := strings.CutSuffix(s, "USD"); ok {
+		return before + "-USD-SWAP"
+	}
+	return symbol
+}
+
 func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error) {
 	var msg struct {
 		Topic string `json:"Topic"`
@@ -154,7 +210,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 			Volume24  xjson.Number `json:"Volume24"`
 		} `json:"Data"`
 		A string `json:"a"`
-		D struct {
+		D []struct {
 			I   string       `json:"I"`
 			N   xjson.Number `json:"N"`
 			BP1 xjson.Number `json:"BP1"`
@@ -167,13 +223,18 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	}
 
 	if msg.A == "PO" {
-		lastPx, _ := strconv.ParseFloat(string(msg.D.N), 64)
-		bidPx, _ := strconv.ParseFloat(string(msg.D.BP1), 64)
-		askPx, _ := strconv.ParseFloat(string(msg.D.AP1), 64)
-		vol, _ := strconv.ParseFloat(string(msg.D.V), 64)
+		if len(msg.D) == 0 {
+			return "", nil, fmt.Errorf("empty data array in PO message")
+		}
+		item := msg.D[0]
+		lastPx, _ := strconv.ParseFloat(string(item.N), 64)
+		bidPx, _ := strconv.ParseFloat(string(item.BP1), 64)
+		askPx, _ := strconv.ParseFloat(string(item.AP1), 64)
+		vol, _ := strconv.ParseFloat(string(item.V), 64)
 
+		reconstructed := reconstructDeepcoinSymbol(item.I)
 		pd = &store.PriceData{
-			Symbol:    msg.D.I,
+			Symbol:    reconstructed,
 			LastPrice: lastPx,
 			BestBid:   bidPx,
 			BestAsk:   askPx,
@@ -181,7 +242,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 			Volume24:  vol,
 			UpdatedAt: time.Now(),
 		}
-		return msg.D.I, pd, nil
+		return reconstructed, pd, nil
 	}
 
 	lastPx, _ := strconv.ParseFloat(string(msg.Data.LastPrice), 64)
@@ -189,8 +250,9 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 	askPx, _ := strconv.ParseFloat(string(msg.Data.AskPrice), 64)
 	vol, _ := strconv.ParseFloat(string(msg.Data.Volume24), 64)
 
+	reconstructed := reconstructDeepcoinSymbol(msg.Data.Symbol)
 	pd = &store.PriceData{
-		Symbol:    msg.Data.Symbol,
+		Symbol:    reconstructed,
 		LastPrice: lastPx,
 		BestBid:   bidPx,
 		BestAsk:   askPx,
@@ -198,7 +260,7 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		Volume24:  vol,
 		UpdatedAt: time.Now(),
 	}
-	return msg.Data.Symbol, pd, nil
+	return reconstructed, pd, nil
 }
 
 func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
@@ -206,11 +268,13 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		Result []struct {
 			Table string `json:"table"`
 			Data  struct {
-				I  string       `json:"I"`  // Instrument
-				P  xjson.Number `json:"p"`  // Direction ("1" = Long, "2" = Short)
-				Po xjson.Number `json:"Po"` // Position qty
-				OP xjson.Number `json:"OP"` // Open Price
-				U  xjson.Number `json:"u"`  // Used margin
+				I      string       `json:"I"`  // Instrument
+				LowerI any          `json:"i"`  // Consumes lowercase "i" to avoid case-insensitive fallback to "I"
+				P      xjson.Number `json:"p"`  // Direction ("1" = Long, "2" = Short)
+				Po     xjson.Number `json:"Po"` // Position qty
+				OP     xjson.Number `json:"OP"` // Open Price
+				U      xjson.Number `json:"u"`  // Used margin (lowercase u)
+				UpperU any          `json:"U"`  // Consumes uppercase "U" to avoid case-insensitive fallback to "u"
 			} `json:"data"`
 		} `json:"result"`
 	}
@@ -232,8 +296,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		posType = exchange.PositionTypeUnknown
 	}
 
+	reconstructed := reconstructDeepcoinSymbol(raw.I)
 	return &exchange.PersonalPositionUpdate{
-		Symbol:       raw.I,
+		Symbol:       reconstructed,
 		HoldVol:      qty,
 		HoldAvgPrice: openPx,
 		PositionType: posType,

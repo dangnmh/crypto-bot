@@ -25,7 +25,7 @@ func TestExternalOrderID(t *testing.T) {
 
 	settleTime := time.Date(2026, 6, 9, 11, 4, 1, 0, time.UTC)
 	id := orders.ExternalOrderID("BTC_USDT", settleTime, "bybit")
-	assert.Equal(t, "09062026180401BYBITBTCUSDT", id)
+	assert.Equal(t, "09062026180401BYBITBTC", id)
 	assert.LessOrEqual(t, len(id), 32)
 
 	idLong := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "bybit")

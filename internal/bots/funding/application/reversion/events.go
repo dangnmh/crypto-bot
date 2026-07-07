@@ -454,6 +454,7 @@ type PositionClosedEvent struct {
 	SLPriceTouched  bool    `json:"sl_price_touched,omitempty"`
 	Method          string  `json:"method,omitempty"`
 	CloseRetryCount int     `json:"close_retry_count,omitempty"`
+	Vol24hUSDT      float64 `json:"vol_24h_usdt"`
 }
 
 func (e PositionClosedEvent) GetMessage() string {
@@ -634,6 +635,7 @@ type FinalPnLEvent struct {
 	Fees           float64 `json:"fees"`
 	HoldFee        float64 `json:"hold_fees"`
 	HoldDurationMs int64   `json:"hold_duration_ms"`
+	Vol24hUSDT     float64 `json:"vol_24h_usdt"`
 }
 
 func (e FinalPnLEvent) GetMessage() string {
@@ -681,6 +683,8 @@ func (e FinalPnLEvent) GetMessage() string {
 		frSign = "+"
 	}
 	frStr := fmt.Sprintf("%s%.1f%%", frSign, e.FundingRate*100)
+	vol24hStr := formatutil.FormatCompactUSD(e.Vol24hUSDT)
+	frStr = fmt.Sprintf("%s | Vol24h: $%s", frStr, vol24hStr)
 
 	return fmt.Sprintf("PnL: %s [%s] | Side: %s | FR: %s\n• Price: %s | Size: %s\n• Fees: %s\n• Order ID: %s | Client ID: %s",
 		netPnLStr,

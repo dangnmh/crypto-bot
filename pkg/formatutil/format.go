@@ -150,3 +150,23 @@ func FormatCompactUSD(val float64) string {
 	s = strings.TrimRight(s, ".")
 	return s + suffix
 }
+
+// GetNormalizedSymbol normalizes exchange-specific symbols to a base asset name.
+func GetNormalizedSymbol(symbol string) string {
+	s := strings.ToUpper(strings.TrimSpace(symbol))
+	s = strings.ReplaceAll(s, "-USDT-SWAP", "")
+	s = strings.ReplaceAll(s, "-USDT-PERPETUAL", "")
+	s = strings.ReplaceAll(s, "-SWAP-USDT", "")
+	s = strings.ReplaceAll(s, "_USDT", "")
+	s = strings.ReplaceAll(s, "-USDT", "")
+	s = strings.ReplaceAll(s, "USDTM", "")
+	s = strings.ReplaceAll(s, "USDT", "")
+	s = strings.ReplaceAll(s, "_USD", "")
+	s = strings.ReplaceAll(s, "-USD", "")
+	s = strings.ReplaceAll(s, "USD", "")
+
+	if s == "H" {
+		s = "HOME"
+	}
+	return s
+}

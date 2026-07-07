@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application/reversion"
 	"crypto-bot/internal/bots/funding/application/strategy"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
@@ -77,6 +76,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/formatutil"
 
 	"github.com/robfig/cron/v3"
 )
@@ -311,7 +311,7 @@ func (j *StatsReportJob) scanExchange(ctx context.Context, exchName string, clie
 			Timestamp:        now,
 			Exchange:         exchName,
 			Symbol:           r.Symbol,
-			NormalizedSymbol: reversion.GetNormalizedSymbol(r.Symbol),
+			NormalizedSymbol: formatutil.GetNormalizedSymbol(r.Symbol),
 			FundingRate:      decmath.RoundToScale(r.Rate, 3),
 			Volume24h:        r.Volume24h,
 			SettleTime:       settleTime,

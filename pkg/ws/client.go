@@ -324,8 +324,6 @@ func (c *Client) processMessage(data []byte) {
 		return
 	}
 
-	c.logger.Debug("🚀 WebSocket message received", slog.String("data", string(data)))
-
 	c.handleEventLog(data)
 	if c.channelExtractor == nil {
 		c.mu.Lock()
@@ -359,7 +357,6 @@ func (c *Client) processMessage(data []byte) {
 
 // SendJSON sends a generic JSON payload.
 func (c *Client) SendJSON(msg any) error {
-	c.logger.Debug("SendJSON", slog.Any("msg", msg))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {

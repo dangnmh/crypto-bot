@@ -2,6 +2,7 @@ package reversion
 
 import (
 	"context"
+	"crypto-bot/pkg/formatutil"
 	"encoding/json"
 	"log/slog"
 	"sync"
@@ -67,6 +68,7 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 		Fees:               closeEvt.Fee,
 		HoldFee:            closeEvt.HoldFee,
 		HoldDurationMs:     closeEvt.HoldDurationMs,
+		Vol24hUSDT:         closeEvt.Vol24hUSDT,
 	}
 }
 
@@ -117,7 +119,7 @@ func (r *StatelessRunner) compileAndPublishReport(ctx context.Context, reqID, to
 			SettleTime: state.SettleTime,
 			Side:       state.Side,
 		},
-		NormalizedSymbol:    GetNormalizedSymbol(state.Symbol),
+		NormalizedSymbol:    formatutil.GetNormalizedSymbol(state.Symbol),
 		SettleTime:          state.SettleTime,
 		Side:                state.Side,
 		FundingRate:         state.FundingRate,

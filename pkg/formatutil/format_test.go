@@ -221,3 +221,34 @@ func TestFormatCompactUSD(t *testing.T) {
 		})
 	}
 }
+
+func TestGetNormalizedSymbol(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		symbol string
+		want   string
+	}{
+		{"BTC-USDT-SWAP", "BTC"},
+		{"ETH-USDT-PERPETUAL", "ETH"},
+		{"SOL-SWAP-USDT", "SOL"},
+		{"ADA_USDT", "ADA"},
+		{"XRP-USDT", "XRP"},
+		{"DOGEUSDTM", "DOGE"},
+		{"DOTUSDT", "DOT"},
+		{"LINK_USD", "LINK"},
+		{"UNI-USD", "UNI"},
+		{"LTCUSD", "LTC"},
+		{"H-USDT", "HOME"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.symbol, func(t *testing.T) {
+			t.Parallel()
+			got := formatutil.GetNormalizedSymbol(tt.symbol)
+			if got != tt.want {
+				t.Errorf("GetNormalizedSymbol(%q) = %q, want %q", tt.symbol, got, tt.want)
+			}
+		})
+	}
+}

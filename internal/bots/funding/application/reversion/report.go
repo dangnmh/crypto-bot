@@ -2,7 +2,6 @@ package reversion
 
 import (
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +49,7 @@ type CycleState struct {
 	HoldFee        float64 `json:"hold_fee"`
 	HoldDurationMs int64   `json:"hold_duration_ms"`
 	ExitReason     string  `json:"exit_reason"`
+	Vol24hUSDT     float64 `json:"vol_24h_usdt"`
 
 	// Risk & Termination Status Fields
 	CloseRetryCount     int    `json:"close_retry_count"`
@@ -106,26 +106,6 @@ type ReversionTradeReportEvent struct {
 	ForceCloseSucceeded bool   `json:"force_close_succeeded"`
 	Status              string `json:"status"` // "completed", "aborted", "error"
 	ErrorMsg            string `json:"error_msg"`
-}
-
-// GetNormalizedSymbol normalizes exchange-specific symbols to a base asset name.
-func GetNormalizedSymbol(symbol string) string {
-	s := strings.ToUpper(strings.TrimSpace(symbol))
-	s = strings.ReplaceAll(s, "-USDT-SWAP", "")
-	s = strings.ReplaceAll(s, "-USDT-PERPETUAL", "")
-	s = strings.ReplaceAll(s, "-SWAP-USDT", "")
-	s = strings.ReplaceAll(s, "_USDT", "")
-	s = strings.ReplaceAll(s, "-USDT", "")
-	s = strings.ReplaceAll(s, "USDTM", "")
-	s = strings.ReplaceAll(s, "USDT", "")
-	s = strings.ReplaceAll(s, "_USD", "")
-	s = strings.ReplaceAll(s, "-USD", "")
-	s = strings.ReplaceAll(s, "USD", "")
-
-	if s == "H" {
-		s = "HOME"
-	}
-	return s
 }
 
 var _cacheMu sync.Mutex
@@ -195,6 +175,7 @@ func (r *StatelessRunner) recordStage1State(state *CycleState, val any) bool {
 		state.CandidateFoundTime = evt.Timestamp
 		state.MarginUSDT = evt.Candidate.Config.MarginUSDT
 		state.Leverage = evt.Candidate.Config.Leverage
+		state.Vol24hUSDT = evt.Candidate.AmountUSDT24
 		return true
 	case ArmMarketReadyEvent:
 		state.SettleTime = evt.SettleTime

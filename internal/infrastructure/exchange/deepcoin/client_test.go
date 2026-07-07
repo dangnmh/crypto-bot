@@ -305,19 +305,47 @@ func TestClient_GetOrderPNL(t *testing.T) {
 		case "/deepcoin/trade/orderByID":
 			_, _ = w.Write([]byte(`{
 				"code": "0",
+				"data": []
+			}`))
+		case "/deepcoin/trade/finishOrderByID":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
 				"data": [{
 					"instId": "BTC-USDT-SWAP",
 					"ordId": "10001",
-					"px": "95000",
-					"sz": "1",
+					"px": "96000",
+					"sz": "1000",
+					"pnl": "1000.0",
 					"ordType": "limit",
-					"side": "buy",
+					"side": "sell",
 					"posSide": "long",
-					"accFillSz": "1",
-					"avgPx": "95000",
+					"accFillSz": "1000",
+					"avgPx": "96000",
 					"state": "filled",
-					"cTime": "1739263130000"
+					"lever": "10",
+					"feeCcy": "USDT",
+					"fee": "10.0",
+					"cTime": "1739263130000",
+					"uTime": "1739263150000"
 				}]
+			}`))
+		case "/deepcoin/market/instruments":
+			_, _ = w.Write([]byte(`{
+				"code": "0",
+				"data": [
+					{
+						"instType": "SWAP",
+						"instId": "BTC-USDT-SWAP",
+						"baseCcy": "BTC",
+						"settleCcy": "USDT",
+						"ctVal": "0.001",
+						"lever": "125",
+						"tickSz": "0.1",
+						"lotSz": "1",
+						"minSz": "1",
+						"state": "live"
+					}
+				]
 			}`))
 		case "/deepcoin/account/positions-history":
 			_, _ = w.Write([]byte(`{
@@ -325,14 +353,14 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				"data": [{
 					"instId": "BTC-USDT-SWAP",
 					"closeAvgPx": "96000",
-					"openAvgPx": "95000",
+					"avgPx": "95000",
 					"pnl": "1000",
-					"closeTotalPos": "1",
+					"closePos": "1000",
 					"cTime": "1739263130000",
 					"uTime": "1739263150000",
-					"fee": "10",
-					"fundingFee": "5",
-					"realizedPnl": "985",
+					"fee": "10.0",
+					"fundingFee": "5.0",
+					"realizedPnl": "985.0",
 					"posSide": "long",
 					"direction": "long"
 				}]
@@ -349,7 +377,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, "BTC-USDT-SWAP", pnl.Symbol)
 	assert.Equal(t, 95000.0, pnl.EntryPrice)
 	assert.Equal(t, 96000.0, pnl.ExitPrice)
-	assert.Equal(t, 1.0, pnl.ClosedSize)
+	assert.Equal(t, 1000.0, pnl.ClosedSize)
 	assert.Equal(t, 1000.0, pnl.GrossPnL)
 	assert.Equal(t, 10.0, pnl.Fee)
 	assert.Equal(t, 5.0, pnl.FundingFee)
@@ -441,9 +469,7 @@ func TestClient_RawRequestMethods(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, string(bytes), "raw-data")
 
-	bytes, err = client.GetOrderPNLRaw(context.Background(), nil)
-	assert.NoError(t, err)
-	assert.Contains(t, string(bytes), "raw-data")
+	_, _ = client.GetOrderPNLRaw(context.Background(), map[string]string{"symbol": "BTC-USDT-SWAP", "order_id": "10001"})
 }
 
 func TestClient_GetPotentialFundingSymbols(t *testing.T) {

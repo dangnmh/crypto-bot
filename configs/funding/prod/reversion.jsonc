@@ -48,6 +48,7 @@
       "bitget": true,
       "aster": true,
       "hotcoin": true,
+      "deepcoin": true
     }
   },
   "exchanges": {
@@ -97,8 +98,12 @@
     "deepcoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms",
-      "postSettleTimeout": "0.5s"
+      "bufferTime": "0ms",
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.3,
+      "leverage": 3,
+      "marginUSD": 5
     },
     "toobit": {
       "takeProfitPct": 1,

@@ -79,8 +79,8 @@
     "deepcoin": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms",
-      "postSettleTimeout": "3s"
+      "bufferTime": "0ms",
+      "postSettleTimeout": "300s"
     },
     "hyperliquid": {
       "takeProfitPct": 1,

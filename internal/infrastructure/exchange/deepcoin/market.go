@@ -9,6 +9,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 const (
@@ -20,15 +21,15 @@ const (
 // Raw request/response models for market endpoints.
 
 type deepcoinInstrument struct {
-	InstID    string `json:"instId"`
-	BaseCcy   string `json:"baseCcy"`
-	SettleCcy string `json:"settleCcy"`
-	CtVal     string `json:"ctVal"`
-	Lever     string `json:"lever"`
-	TickSz    string `json:"tickSz"`
-	LotSz     string `json:"lotSz"`
-	MinSz     string `json:"minSz"`
-	State     string `json:"state"`
+	InstID    string       `json:"instId"`
+	BaseCcy   string       `json:"baseCcy"`
+	SettleCcy string       `json:"settleCcy"`
+	CtVal     xjson.Number `json:"ctVal"`
+	Lever     xjson.Number `json:"lever"`
+	TickSz    xjson.Number `json:"tickSz"`
+	LotSz     xjson.Number `json:"lotSz"`
+	MinSz     xjson.Number `json:"minSz"`
+	State     string       `json:"state"`
 }
 
 type deepcoinTicker struct {
@@ -120,17 +121,22 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	details := make([]exchange.ContractDetail, 0, len(instruments))
 	for i := range instruments {
 		inst := &instruments[i]
-		ctVal, _ := strconv.ParseFloat(inst.CtVal, 64)
-		lever, _ := strconv.Atoi(inst.Lever)
-		priceUnit, _ := strconv.ParseFloat(inst.TickSz, 64)
+		ctVal, _ := strconv.ParseFloat(string(inst.CtVal), 64)
+		lever, _ := strconv.Atoi(string(inst.Lever))
+		priceUnit, _ := strconv.ParseFloat(string(inst.TickSz), 64)
 
 		stateVal := 0
 		if inst.State == stateLive {
 			stateVal = 1
 		}
 
-		priceScale := decmath.DecimalPlaces(inst.TickSz)
-		volScale := decmath.DecimalPlaces(inst.LotSz)
+		priceScale := decmath.DecimalPlaces(string(inst.TickSz))
+		volScale := decmath.DecimalPlaces(string(inst.LotSz))
+
+		minVolVal := 1
+		if minSzVal, err := inst.MinSz.Int64(); err == nil && minSzVal > 0 {
+			minVolVal = int(minSzVal)
+		}
 
 		details = append(details, exchange.ContractDetail{
 			Symbol:           inst.InstID,
@@ -146,7 +152,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			PriceScale:       priceScale,
 			VolScale:         volScale,
 			PriceUnit:        priceUnit,
-			MinVol:           1,
+			MinVol:           minVolVal,
 			State:            stateVal,
 		})
 	}

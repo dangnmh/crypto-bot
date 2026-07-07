@@ -1,6 +1,7 @@
 package exchange
 
 import (
+	"crypto-bot/pkg/formatutil"
 	"strings"
 	"time"
 )
@@ -9,13 +10,7 @@ import (
 // SYMBOL (alphanumeric only) + SETTLETIME (alphanumeric DDMMYYYYHHmmss in GMT+7) + "_" + EXCHANGE.
 // The entire string is converted to upper case and truncated to a maximum of 32 characters.
 func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) string {
-	var sb strings.Builder
-	for _, r := range symbol {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			sb.WriteRune(r)
-		}
-	}
-	symFiltered := sb.String()
+	symFiltered := formatutil.GetNormalizedSymbol(symbol)
 
 	// 2. Format settle time in GMT+7 time zone directly as alphanumeric DDMMYYYYHHmmss
 	loc := time.FixedZone("GMT+7", 7*60*60)
@@ -33,10 +28,14 @@ func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) stri
 func ExternalOrderID(symbol string, settleTime time.Time, exchange string) string {
 	upperID := ExternalUniqueID(symbol, settleTime, exchange)
 	maxLen := 32
-	if strings.EqualFold(exchange, "gate") {
+
+	switch {
+	case strings.EqualFold(exchange, "gate"):
 		maxLen = 28
-	} else if strings.EqualFold(exchange, "orangex") {
+	case strings.EqualFold(exchange, "orangex"):
 		maxLen = 30
+	case strings.EqualFold(exchange, "deepcoin"):
+		maxLen = 20
 	}
 
 	if len(upperID) > maxLen {

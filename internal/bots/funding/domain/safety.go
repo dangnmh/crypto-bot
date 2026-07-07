@@ -96,6 +96,17 @@ func (c *Candidate) ApplySafetySizing(limits SafetyLimits) *SafetyResult {
 }
 
 func (c *Candidate) evaluateTradeSafety(result *SafetyResult) *SafetyResult {
+	// Check if the required notional to trade the minimum volume exceeds our budget.
+	refPrice := c.ExecutionRefPrice()
+	requiredNotional := c.NotionalForVolume(c.Volume, refPrice)
+	budgetNotional := c.ReversionNotionalUSDT()
+
+	if budgetNotional > 0 && requiredNotional > budgetNotional*1.01 {
+		result.Passed = false
+		result.RejectReason = fmt.Sprintf("insufficient budget (required notional %.4f exceeds budget %.4f)", requiredNotional, budgetNotional)
+		return result
+	}
+
 	// Minimum trade volume filter based on margin limit
 	if c.Volume < float64(c.MinVol) {
 		result.Passed = false

@@ -477,6 +477,15 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		closePrice = pos.CloseAvgPrice
 	}
 
+	var vol24h float64
+	if r.cache != nil {
+		if cachedVal, found := r.cache.Get(prev.ReqID); found {
+			if cs, ok := cachedVal.(*CycleState); ok {
+				vol24h = cs.Vol24hUSDT
+			}
+		}
+	}
+
 	evt := PositionClosedEvent{
 		BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
 		EntryPrice:         fillPrice,
@@ -490,6 +499,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		Fee:                pos.Fee,
 		HoldFee:            pos.HoldFee,
 		Method:             "watcher",
+		Vol24hUSDT:         vol24h,
 	}
 
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
