@@ -23,6 +23,7 @@ const (
 	positionsPlural  = "positions"
 	fillsType        = "fills"
 	pingValue        = "ping"
+	pongValue        = "pong"
 	zipParam         = "zip"
 	orderIDKey       = "orderId"
 	symbolKey        = "symbol"

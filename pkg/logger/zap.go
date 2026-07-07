@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"slices"
 	"time"
 
 	"crypto-bot/pkg/tracectx"
@@ -43,6 +44,65 @@ func (h *TraceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *TraceHandler) WithGroup(name string) slog.Handler {
 	return &TraceHandler{inner: h.inner.WithGroup(name)}
+}
+
+// DedupHandler wraps an existing slog.Handler and deduplicates record & bound attributes.
+type DedupHandler struct {
+	inner slog.Handler
+	attrs []slog.Attr
+}
+
+func NewDedupHandler(inner slog.Handler) *DedupHandler {
+	return &DedupHandler{inner: inner}
+}
+
+func (h *DedupHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *DedupHandler) Handle(ctx context.Context, r slog.Record) error {
+	var allAttrs []slog.Attr
+	allAttrs = append(allAttrs, h.attrs...)
+	r.Attrs(func(a slog.Attr) bool {
+		allAttrs = append(allAttrs, a)
+		return true
+	})
+
+	seen := make(map[string]bool)
+	var deduped []slog.Attr
+	for _, a := range slices.Backward(allAttrs) {
+		if a.Key == "" {
+			continue
+		}
+		if !seen[a.Key] {
+			seen[a.Key] = true
+			deduped = append(deduped, a)
+		}
+	}
+
+	newRecord := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	for _, d := range slices.Backward(deduped) {
+		newRecord.AddAttrs(d)
+	}
+
+	return h.inner.Handle(ctx, newRecord)
+}
+
+func (h *DedupHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
+	copy(newAttrs, h.attrs)
+	copy(newAttrs[len(h.attrs):], attrs)
+	return &DedupHandler{
+		inner: h.inner,
+		attrs: newAttrs,
+	}
+}
+
+func (h *DedupHandler) WithGroup(name string) slog.Handler {
+	return &DedupHandler{
+		inner: h.inner.WithGroup(name),
+		attrs: h.attrs,
+	}
 }
 
 // CtxLogger binds a slog logger to a context for log records.
@@ -157,7 +217,7 @@ func InitLogger(level, env string) func() {
 	}
 
 	opts := &slog.HandlerOptions{Level: slogLevel, AddSource: true, ReplaceAttr: sourceReplaceAttr}
-	consoleHandler := slog.NewJSONHandler(os.Stdout, opts)
+	consoleHandler := NewDedupHandler(slog.NewJSONHandler(os.Stdout, opts))
 
 	handlers := []slog.Handler{NewTraceHandler(consoleHandler)}
 
@@ -170,7 +230,7 @@ func InitLogger(level, env string) func() {
 				os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666,
 			)
 			if err == nil {
-				fileHandler := slog.NewJSONHandler(file, opts)
+				fileHandler := NewDedupHandler(slog.NewJSONHandler(file, opts))
 				handlers = append(handlers, NewTraceHandler(fileHandler))
 			}
 		}

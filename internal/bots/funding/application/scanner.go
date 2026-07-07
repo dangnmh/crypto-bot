@@ -128,6 +128,7 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	// Minimum funding rate check
 	if math.Abs(c.FundingRate) < c.Config.MinFundingRate {
 		j.log.Debug("Skipping trigger: funding rate below minimum",
+			slog.String("exchange", c.Config.Exchange),
 			slog.String("symbol", c.Symbol),
 			slog.Float64("rate", c.FundingRate),
 			slog.Float64("min", c.Config.MinFundingRate),
@@ -160,6 +161,7 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	}
 	if now.Add(15 * time.Minute).Before(settle) {
 		j.log.Debug("Skipping trigger: too early for settlement",
+			slog.String("exchange", c.Config.Exchange),
 			slog.String("symbol", c.Symbol),
 			slog.Time("now", now),
 			slog.Time("settle", settle),
@@ -168,6 +170,7 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	}
 	if !now.Before(settle) {
 		j.log.Debug("Skipping trigger: settlement time already passed",
+			slog.String("exchange", c.Config.Exchange),
 			slog.String("symbol", c.Symbol),
 			slog.Time("now", now),
 			slog.Time("settle", settle),
@@ -226,9 +229,13 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 	}
 
 	if err := j.engine.Bus.Publish(reversion.TopicReversionCandidate, startEvt); err != nil {
-		j.log.Error("Failed to publish reversion candidate event", slog.Any("error", err))
+		j.log.Error("Failed to publish reversion candidate event",
+			slog.String("exchange", candidate.Config.Exchange),
+			slog.Any("error", err))
 	} else {
-		j.log.Info("Reversion candidate event successfully published", slog.Time("settle", settle))
+		j.log.Info("Reversion candidate event successfully published",
+			slog.String("exchange", candidate.Config.Exchange),
+			slog.Time("settle", settle))
 	}
 }
 
@@ -314,6 +321,7 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 		if s.cfg != nil && s.cfg.Reversion != nil {
 			if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
 				s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
+					slog.String("exchange", candidate.Config.Exchange),
 					slog.String("symbol", candidate.Symbol),
 					slog.String("side", candidate.Side.String()),
 					slog.String("configSide", s.cfg.Reversion.TradeSide),
@@ -367,7 +375,9 @@ func (s *ConfiguredScanner) enrich(ctx context.Context, contractStore store.Cont
 	}
 	cd, err := contractStore.GetContract(ctx, c.Symbol)
 	if err != nil {
-		s.log.WarnContext(ctx, "🟡 No contract data — skip", slog.String("symbol", c.Symbol))
+		s.log.WarnContext(ctx, "🟡 No contract data — skip",
+			slog.String("exchange", c.Config.Exchange),
+			slog.String("symbol", c.Symbol))
 		return false
 	}
 	c.ContractSpec = domain.ContractSpec{

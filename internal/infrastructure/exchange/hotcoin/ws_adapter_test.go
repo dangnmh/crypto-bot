@@ -20,8 +20,8 @@ func TestWsAdapter_GetPingConfig(t *testing.T) {
 	a := hotcoin.NewWsAdapter("key", "secret")
 	payload, interval := a.GetPingConfig()
 
-	assert.Nil(t, payload)
-	assert.Equal(t, time.Duration(0), interval)
+	assert.NotNil(t, payload)
+	assert.Equal(t, 30*time.Second, interval)
 }
 
 func TestWsAdapter_GetChannelExtractor(t *testing.T) {
@@ -199,4 +199,16 @@ func TestWsAdapter_SubscribePublicAndPrivate(t *testing.T) {
 
 	pingHandler := a.GetCustomPingHandler()
 	assert.NotNil(t, pingHandler)
+
+	// Test string ping
+	ok := pingHandler(nil, []byte(`{"ping":"ping"}`))
+	assert.True(t, ok)
+
+	// Test numeric/timestamp ping
+	ok = pingHandler(nil, []byte(`{"ping":1783433819000}`))
+	assert.True(t, ok)
+
+	// Test non-ping json
+	ok = pingHandler(nil, []byte(`{"other":"data"}`))
+	assert.False(t, ok)
 }

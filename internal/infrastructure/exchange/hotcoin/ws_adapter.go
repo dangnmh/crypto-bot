@@ -131,23 +131,39 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	return nil
 }
 
-// GetPingConfig disables client-initiated pings since Hotcoin relies on server-initiated heartbeats.
+// GetPingConfig returns client-initiated ping configuration (event=ping) every 30 seconds.
 func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
-	return nil, 0
+	pingMsg := map[string]any{
+		eventKey: pingValue,
+	}
+	return pingMsg, 30 * time.Second
 }
 
 // GetCustomPingHandler returns a custom handler for incoming server-side ping messages.
 func (a *WsAdapter) GetCustomPingHandler() func(*websocket.Conn, []byte) bool {
 	return func(conn *websocket.Conn, data []byte) bool {
 		var ping struct {
-			Ping string `json:"ping"`
+			Ping any `json:"ping"`
 		}
-		if err := json.Unmarshal(data, &ping); err == nil && ping.Ping != "" {
-			pongMsg := map[string]string{
-				"pong": ping.Ping,
+		if err := json.Unmarshal(data, &ping); err == nil && ping.Ping != nil {
+			var pongVal any
+			if s, ok := ping.Ping.(string); ok {
+				if s == pingValue {
+					pongVal = pongValue
+				} else {
+					pongVal = s
+				}
+			} else {
+				pongVal = ping.Ping
+			}
+
+			pongMsg := map[string]any{
+				pongValue: pongVal,
 			}
 			pongBytes, _ := json.Marshal(pongMsg)
-			_ = conn.WriteMessage(websocket.TextMessage, pongBytes)
+			if conn != nil {
+				_ = conn.WriteMessage(websocket.TextMessage, pongBytes)
+			}
 			return true
 		}
 		return false
