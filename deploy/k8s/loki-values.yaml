@@ -17,7 +17,7 @@ loki:
     querier:
       max_concurrent: 2048
     limits_config:
-      retention_period: 2160h
+      retention_period: 720h
     compactor:
       retention_enabled: true
 

@@ -1,4 +1,5 @@
 server:
+  retention: 30d
   persistentVolume:
     enabled: true
     size: 8Gi

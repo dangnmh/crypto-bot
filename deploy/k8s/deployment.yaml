@@ -41,34 +41,16 @@ spec:
             - "/app/configs/funding/prod/blacklist.jsonc"
             - "-reversion"
             - "/app/configs/funding/prod/reversion.jsonc"
-          env:
-            - name: BITWARDEN_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: crypto-bot-secrets
-                  key: BITWARDEN_ACCESS_TOKEN
-            - name: BITWARDEN_ORGANIZATION_ID
-              valueFrom:
-                secretKeyRef:
-                  name: crypto-bot-secrets
-                  key: BITWARDEN_ORGANIZATION_ID
-            - name: BITWARDEN_PROJECT_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: crypto-bot-secrets
-                  key: BITWARDEN_PROJECT_NAME
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: crypto-bot-secrets
-                  key: DATABASE_URL
+          envFrom:
+            - secretRef:
+                name: crypto-bot-vault-secrets
           resources:
             limits:
-              cpu: "1000m"
-              memory: "512Mi"
+              cpu: "4000m"
+              memory: "2Gi"
             requests:
-              cpu: "200m"
-              memory: "256Mi"
+              cpu: "4000m"
+              memory: "500Mb"
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
