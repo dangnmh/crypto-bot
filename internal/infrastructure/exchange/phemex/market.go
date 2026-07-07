@@ -23,16 +23,17 @@ type phemexProductsResponse struct {
 	Code int64  `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		Products []phemexProduct `json:"products"`
+		Products       []phemexProduct `json:"products"`
+		PerpProductsV2 []phemexProduct `json:"perpProductsV2"`
 	} `json:"data"`
 }
 
 type phemexTicker struct {
-	Symbol          string       `json:"symbol"`
-	LastEp          xjson.Number `json:"lastEp"`          // price scaled by 10^8
-	VolumeEv        xjson.Number `json:"volumeEv"`        // volume scaled by 10^8 or base
-	FundingRateEr   xjson.Number `json:"fundingRateEr"`   // funding rate scaled by 10^8
-	PredFundingRate xjson.Number `json:"predFundingRate"` // predicted funding rate
+	Symbol            string       `json:"symbol"`
+	CloseRp           xjson.Number `json:"closeRp"`           // price as string
+	TurnoverRv        xjson.Number `json:"turnoverRv"`        // volume (USDT/USD) as string
+	FundingRateRr     xjson.Number `json:"fundingRateRr"`     // funding rate as string
+	PredFundingRateRr xjson.Number `json:"predFundingRateRr"` // predicted funding rate as string
 }
 
 type phemexTickerResponse struct {
@@ -105,6 +106,12 @@ func (c *Client) fetchPerpetualSymbols(ctx context.Context) (map[string]bool, er
 			perpSymbols[item.Symbol] = true
 		}
 	}
+	for i := range prodResp.Data.PerpProductsV2 {
+		item := &prodResp.Data.PerpProductsV2[i]
+		if (strings.EqualFold(item.Type, "Perpetual") || strings.EqualFold(item.Type, "PerpetualV2")) && strings.EqualFold(item.Status, "Listed") {
+			perpSymbols[item.Symbol] = true
+		}
+	}
 	return perpSymbols, nil
 }
 
@@ -145,12 +152,8 @@ func (c *Client) processTicker(
 		return exchange.PotentialFundingResult{}, false
 	}
 
-	lastEp, _ := ticker.LastEp.Int64()
-	price := float64(lastEp) / 1e8
-
-	volumeEv, _ := ticker.VolumeEv.Int64()
-	baseVolume := float64(volumeEv) / 1e8
-	vol24h := baseVolume * price // volume in quote currency (USD/USDT)
+	price, _ := ticker.CloseRp.Float64()
+	vol24h, _ := ticker.TurnoverRv.Float64()
 
 	if minVol24h > 0 && vol24h < minVol24h {
 		return exchange.PotentialFundingResult{}, false
@@ -159,8 +162,7 @@ func (c *Client) processTicker(
 		return exchange.PotentialFundingResult{}, false
 	}
 
-	fundingRateEr, _ := ticker.FundingRateEr.Int64()
-	rate := float64(fundingRateEr) / 1e8
+	rate, _ := ticker.FundingRateRr.Float64()
 
 	// Calculate next settle time (usually every 8 hours at 00:00, 08:00, 16:00 UTC)
 	now := time.Now().UTC()
