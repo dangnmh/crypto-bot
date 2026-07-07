@@ -200,7 +200,7 @@ func (j *StatsReportJob) Start(ctx context.Context, _ map[string]strategy.Fundin
 	j.cancel = cancel
 
 	c := cron.New(cron.WithLocation(time.Local))
-	_, err := c.AddFunc("45 * * * *", func() {
+	_, err := c.AddFunc("50 * * * *", func() {
 		j.CollectStats(cronCtx)
 	})
 	if err != nil {
