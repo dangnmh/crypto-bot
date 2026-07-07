@@ -1017,7 +1017,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(net_profit) AS total_profit FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "rawSql": "SELECT exchange, SUM(net_profit) AS total_profit FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange ORDER BY total_profit DESC",
           "refId": "A"
         }
       ],
@@ -1065,7 +1065,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(gross_profit) AS total_gross_profit FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange",
+          "rawSql": "SELECT exchange, SUM(gross_profit) AS total_gross_profit FROM reversion_trade_reports WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(timestamp) GROUP BY exchange ORDER BY total_gross_profit DESC",
           "refId": "A"
         }
       ],
