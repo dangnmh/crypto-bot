@@ -65,7 +65,7 @@
     "bybit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "50ms", // 0ms high cancel rate
+      "bufferTime": "0ms", // 0ms high cancel rate 50ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
     "binance": {
@@ -162,10 +162,10 @@
       "stopLossPct": 2,
       "bufferTime": "50ms",
       "postSettleTimeout": "0.5s",
-      "minVol24USD": 1000000,
-      "minFundingRate": 0.3,
+      "minVol24USD": 2000000,
+      "minFundingRate": 0.7,
       "leverage": 3,
-      "marginUSD": 5
+      "marginUSD": 50
     },
     "bitget": {
       "takeProfitPct": 1,
