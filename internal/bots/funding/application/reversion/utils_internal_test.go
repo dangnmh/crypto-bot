@@ -442,7 +442,7 @@ func TestPositionWatcherArmedBeforeIOCSubmit(t *testing.T) {
 
 	var operations []string
 	watcher := mocks.NewMockOrderNotifier(ctrl)
-	watcher.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", 20*time.Second, gomock.Any()).Do(
+	watcher.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
 		func(context.Context, string, time.Duration, func(exchange.PersonalPositionUpdate)) {
 			operations = append(operations, "watcher_armed")
 		},

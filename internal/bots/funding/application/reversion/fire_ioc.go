@@ -232,7 +232,8 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 	}
 	watchBase := next.BaseReversionEvent
 	watchBase.Topic = TopicReversionPositionWatchReady
-	r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, timeout*2, func(pos exchange.PersonalPositionUpdate) {
+	watchTimeout := max(timeout*2, 30*time.Second)
+	r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, watchTimeout, func(pos exchange.PersonalPositionUpdate) {
 		r.handlePositionUpdate(ctx, pos, watchBase)
 	})
 	return r.publishEvent(ctx, TopicReversionPositionWatchReady, next)
