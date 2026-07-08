@@ -10,7 +10,7 @@
       }
     },
     "bybit": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api.bybit.com"
       },
@@ -95,7 +95,7 @@
       }
     },
     "weex": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api-contract.weex.com"
       },
@@ -161,7 +161,7 @@
       }
     },
     "hotcoin": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api-ct.hotcoin.fit"
       },
