@@ -165,11 +165,11 @@
     "aster": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms", // 50ms paid funding fee
+      "bufferTime": "-50ms", // 0ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 2000000,
       "minFundingRate": 0.7,
-      "leverage": 3,
+      "leverage": 2,
       "marginUSD": 50
     },
     "bitget": {
