@@ -60,7 +60,7 @@
       "minVol24USD": 10000000,
       "minFundingRate": 0.8,
       "leverage": 10,
-      "marginUSD": 300,
+      "marginUSD": 200,
       "maxCandidateTrade": 2
     },
     "bybit": {
@@ -111,9 +111,9 @@
       "bufferTime": "450ms", // 500ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 10000000,
-      "minFundingRate": 0.8,
+      "minFundingRate": 0.7,
       "leverage": 18,
-      "marginUSD": 550,
+      "marginUSD": 700,
       "maxCandidateTrade": 3
     },
     "bitmart": {
