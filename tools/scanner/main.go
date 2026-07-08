@@ -17,7 +17,10 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/aevo"
 	"crypto-bot/internal/infrastructure/exchange/apex"
-	"crypto-bot/internal/infrastructure/exchange/ascendex"
+	"crypto-bot/internal/infrastructure/exchange/coinbase"
+	"crypto-bot/internal/infrastructure/exchange/koinbay"
+	"crypto-bot/internal/infrastructure/exchange/trubit"
+
 	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/avantis"
 	"crypto-bot/internal/infrastructure/exchange/backpack"
@@ -161,7 +164,7 @@ func main() {
 	whitebitClient := whitebit.NewClient(httpPool, "https://whitebit.com", logCfg)
 	dydxClient := dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg)
 	asterClient := aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg)
-	ascendexClient := ascendex.NewClient(httpPool, "https://ascendex.com/api/pro/v2", "", "", logCfg)
+
 	backpackClient := backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg)
 	aevoClient := aevo.NewClient(httpPool, "https://api.aevo.xyz", "", "", logCfg)
 	apexClient := apex.NewClient(httpPool, "https://omni.apex.exchange", "", "", logCfg)
@@ -193,6 +196,9 @@ func main() {
 	extendedClient := extended.NewClient(httpPool, "https://api.starknet.extended.exchange", logCfg)
 	jupiterClient := jupiter.NewClient(httpPool, "https://perps-api.jup.ag", logCfg)
 	avantisClient := avantis.NewClient(httpPool, "https://data.avantisfi.com", logCfg)
+	coinbaseClient := coinbase.NewClient(httpPool, "https://api.international.coinbase.com", logCfg)
+	koinbayClient := koinbay.NewClient(httpPool, "https://futuresopenapi.koinbay.com", logCfg)
+	trubitClient := trubit.NewClient(httpPool, "https://api-futures.trubit.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*3)
@@ -232,34 +238,37 @@ func main() {
 		"whitebit":      whitebitClient,
 		"dydx":          dydxClient,
 		"aster":         asterClient,
-		"ascendex":      ascendexClient,
-		"backpack":      backpackClient,
-		"aevo":          aevoClient,
-		"apex":          apexClient,
-		"lighter":       lighterClient,
-		"tradexyz":      tradexyzClient,
-		"grvt":          grvtClient,
-		"pacifica":      pacificaClient,
-		"extended":      extendedClient,
-		"jupiter":       jupiterClient,
-		"avantis":       avantisClient,
-		"btse":          btseClient,
-		"bitmex":        bitmexClient,
-		"hashkey":       hashkeyClient,
-		"hibt":          hibtClient,
-		"hitbtc":        hitbtcClient,
-		"hotcoin":       hotcoinClient,
-		"cryptocom":     cryptocomClient,
-		"woox":          wooxClient,
-		"phemex":        phemexClient,
-		"blofin":        blofinClient,
-		"digifinex":     digifinexClient,
-		"bydfi":         bydfiClient,
-		"ju":            juClient,
-		"echobit":       juClient,
-		"sunx":          sunxClient,
-		"fameex":        fameexClient,
-		"fmfw":          fmfwClient,
+
+		"backpack":  backpackClient,
+		"aevo":      aevoClient,
+		"apex":      apexClient,
+		"lighter":   lighterClient,
+		"tradexyz":  tradexyzClient,
+		"grvt":      grvtClient,
+		"pacifica":  pacificaClient,
+		"extended":  extendedClient,
+		"jupiter":   jupiterClient,
+		"avantis":   avantisClient,
+		"btse":      btseClient,
+		"bitmex":    bitmexClient,
+		"hashkey":   hashkeyClient,
+		"hibt":      hibtClient,
+		"hitbtc":    hitbtcClient,
+		"hotcoin":   hotcoinClient,
+		"cryptocom": cryptocomClient,
+		"woox":      wooxClient,
+		"phemex":    phemexClient,
+		"blofin":    blofinClient,
+		"coinbase":  coinbaseClient,
+		"koinbay":   koinbayClient,
+		"trubit":    trubitClient,
+		"digifinex": digifinexClient,
+		"bydfi":     bydfiClient,
+		"ju":        juClient,
+		"echobit":   juClient,
+		"sunx":      sunxClient,
+		"fameex":    fameexClient,
+		"fmfw":      fmfwClient,
 	}
 
 	// Filter clients based on user flag

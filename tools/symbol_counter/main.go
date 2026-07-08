@@ -14,7 +14,10 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/aevo"
 	"crypto-bot/internal/infrastructure/exchange/apex"
-	"crypto-bot/internal/infrastructure/exchange/ascendex"
+	"crypto-bot/internal/infrastructure/exchange/coinbase"
+	"crypto-bot/internal/infrastructure/exchange/koinbay"
+	"crypto-bot/internal/infrastructure/exchange/trubit"
+
 	"crypto-bot/internal/infrastructure/exchange/aster"
 	"crypto-bot/internal/infrastructure/exchange/avantis"
 	"crypto-bot/internal/infrastructure/exchange/backpack"
@@ -150,34 +153,37 @@ func main() {
 		"whitebit":      whitebit.NewClient(httpPool, "https://whitebit.com", logCfg),
 		"dydx":          dydx.NewClient(httpPool, "https://indexer.dydx.trade", logCfg),
 		"aster":         aster.NewClient(httpPool, "https://fapi.asterdex.com", "", "", "", logCfg),
-		"ascendex":      ascendex.NewClient(httpPool, "https://ascendex.com/api/pro/v2", "", "", logCfg),
-		"backpack":      backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg),
-		"aevo":          aevo.NewClient(httpPool, "https://api.aevo.xyz", "", "", logCfg),
-		"apex":          apex.NewClient(httpPool, "https://omni.apex.exchange", "", "", logCfg),
-		"lighter":       lighter.NewClient(httpPool, "https://mainnet.zklighter.elliot.ai", logCfg),
-		"tradexyz":      tradexyz.NewClient(httpPool, "https://api.hyperliquid.xyz", logCfg),
-		"grvt":          grvt.NewClient(httpPool, "https://market-data.grvt.io", logCfg),
-		"pacifica":      pacifica.NewClient(httpPool, "https://api.pacifica.fi", logCfg),
-		"extended":      extended.NewClient(httpPool, "https://api.starknet.extended.exchange", logCfg),
-		"jupiter":       jupiter.NewClient(httpPool, "https://perps-api.jup.ag", logCfg),
-		"avantis":       avantis.NewClient(httpPool, "https://data.avantisfi.com", logCfg),
-		"btse":          btse.NewClient(httpPool, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
-		"bitmex":        bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
-		"hashkey":       hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),
-		"hibt":          hibt.NewClient(httpPool, "https://fapi.hibt0.com/open-api", logCfg),
-		"hitbtc":        hitbtc.NewClient(httpPool, "https://api.hitbtc.com/api/3/public", "", "", logCfg),
-		"hotcoin":       hotcoin.NewClient(httpPool, "https://api-ct.hotcoin.fit", "", "", logCfg),
-		"cryptocom":     cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default()),
-		"ju":            ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
-		"echobit":       ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
-		"sunx":          sunx.NewClient(httpPool, "https://api.sunx.io", logCfg),
-		"fameex":        fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg),
-		"fmfw":          fmfw.NewClient(httpPool, "https://api.fmfw.io/api/3/public", "", "", logCfg),
-		"woox":          woox.NewClient(httpPool, "https://api.woox.io", slog.Default()),
-		"phemex":        phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default()),
-		"blofin":        blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default()),
-		"digifinex":     digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default()),
-		"bydfi":         bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default()),
+
+		"backpack":  backpack.NewClient(httpPool, "https://api.backpack.exchange/api/v1", "", "", logCfg),
+		"aevo":      aevo.NewClient(httpPool, "https://api.aevo.xyz", "", "", logCfg),
+		"apex":      apex.NewClient(httpPool, "https://omni.apex.exchange", "", "", logCfg),
+		"lighter":   lighter.NewClient(httpPool, "https://mainnet.zklighter.elliot.ai", logCfg),
+		"tradexyz":  tradexyz.NewClient(httpPool, "https://api.hyperliquid.xyz", logCfg),
+		"grvt":      grvt.NewClient(httpPool, "https://market-data.grvt.io", logCfg),
+		"pacifica":  pacifica.NewClient(httpPool, "https://api.pacifica.fi", logCfg),
+		"extended":  extended.NewClient(httpPool, "https://api.starknet.extended.exchange", logCfg),
+		"jupiter":   jupiter.NewClient(httpPool, "https://perps-api.jup.ag", logCfg),
+		"avantis":   avantis.NewClient(httpPool, "https://data.avantisfi.com", logCfg),
+		"btse":      btse.NewClient(httpPool, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
+		"bitmex":    bitmex.NewClient(httpPool, "https://www.bitmex.com", logCfg),
+		"hashkey":   hashkey.NewClient(httpPool, "https://api-glb.hashkey.com", slog.Default()),
+		"hibt":      hibt.NewClient(httpPool, "https://fapi.hibt0.com/open-api", logCfg),
+		"hitbtc":    hitbtc.NewClient(httpPool, "https://api.hitbtc.com/api/3/public", "", "", logCfg),
+		"hotcoin":   hotcoin.NewClient(httpPool, "https://api-ct.hotcoin.fit", "", "", logCfg),
+		"cryptocom": cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default()),
+		"ju":        ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
+		"echobit":   ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
+		"sunx":      sunx.NewClient(httpPool, "https://api.sunx.io", logCfg),
+		"fameex":    fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg),
+		"fmfw":      fmfw.NewClient(httpPool, "https://api.fmfw.io/api/3/public", "", "", logCfg),
+		"woox":      woox.NewClient(httpPool, "https://api.woox.io", slog.Default()),
+		"phemex":    phemex.NewClient(httpPool, "https://api.phemex.com", slog.Default()),
+		"blofin":    blofin.NewClient(httpPool, "https://openapi.blofin.com", slog.Default()),
+		"digifinex": digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default()),
+		"bydfi":     bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default()),
+		"coinbase":  coinbase.NewClient(httpPool, "https://api.international.coinbase.com", logCfg),
+		"koinbay":   koinbay.NewClient(httpPool, "https://futuresopenapi.koinbay.com", logCfg),
+		"trubit":    trubit.NewClient(httpPool, "https://api-futures.trubit.com", logCfg),
 	}
 
 	var results []Result

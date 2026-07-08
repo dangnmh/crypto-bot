@@ -878,11 +878,11 @@
         "takerFee": "0%",
         "noMarkets": 151,
         "launched": "Dec 2023",
-        "implementedScanner": false,
+        "implementedScanner": true,
         "implementedFundingReversion": false,
-        "supportsFuturesAPI": false,
-        "note": "No public API documentation available for perpetual contracts or funding rates.",
-        "implementedReportFundingOpportunity": false
+        "supportsFuturesAPI": true,
+        "note": "",
+        "implementedReportFundingOpportunity": true
     },
     {
         "rank": 60,
@@ -938,11 +938,11 @@
         "takerFee": "0%",
         "noMarkets": 39,
         "launched": "Jul 2020",
-        "implementedScanner": false,
+        "implementedScanner": true,
         "implementedFundingReversion": false,
-        "supportsFuturesAPI": false,
-        "note": "Derivatives API is not publicly accessible or requires direct registration.",
-        "implementedReportFundingOpportunity": false
+        "supportsFuturesAPI": true,
+        "note": "",
+        "implementedReportFundingOpportunity": true
     },
     {
         "rank": 64,
@@ -1058,11 +1058,11 @@
         "takerFee": "0%",
         "noMarkets": 244,
         "launched": "May 2023",
-        "implementedScanner": false,
+        "implementedScanner": true,
         "implementedFundingReversion": false,
-        "supportsFuturesAPI": false,
-        "note": "Derivatives API requires institutional onboarding and is not open to retail; REST API lacks unified bulk tickers/funding endpoints.",
-        "implementedReportFundingOpportunity": false
+        "supportsFuturesAPI": true,
+        "note": "",
+        "implementedReportFundingOpportunity": true
     },
     {
         "rank": 72,

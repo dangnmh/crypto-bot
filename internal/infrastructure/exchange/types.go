@@ -85,6 +85,9 @@ const (
 	ExchangeJupiter       = "jupiter"
 	ExchangeAvantis       = "avantis"
 	ExchangeHotcoin       = "hotcoin"
+	ExchangeCoinbase      = "coinbase"
+	ExchangeKoinbay       = "koinbay"
+	ExchangeTrubit        = "trubit"
 )
 
 // Side constants — delegate to domain.
