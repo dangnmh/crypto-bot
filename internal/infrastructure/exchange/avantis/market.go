@@ -41,6 +41,8 @@ type avantisTradingResponse struct {
 }
 
 // GetPotentialFundingSymbols fetches all perpetual contracts, their tickers, and estimated funding rates.
+//
+//nolint:cyclop,gocognit // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -85,7 +87,9 @@ func (c *Client) GetPotentialFundingSymbols(
 		targetedPairs = append(targetedPairs, pair)
 		if pair.Feed.FeedID != "" {
 			cleanID := strings.TrimPrefix(strings.ToLower(pair.Feed.FeedID), "0x")
-			feedIDs = append(feedIDs, cleanID)
+			if strings.Trim(cleanID, "0") != "" {
+				feedIDs = append(feedIDs, cleanID)
+			}
 		}
 	}
 
