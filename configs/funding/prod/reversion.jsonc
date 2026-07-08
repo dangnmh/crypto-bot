@@ -40,7 +40,7 @@
       "xt": false, // negative pnl
       "gate": false, // rare oppotunity, negative pnl,
       "binance": false, // negative pnl,
-      "orangex": true, // negative pnl,
+      "orangex": false, // negative pnl,
       "bybit": false, // very high cancel rate,
       "hotcoin": false, // prevent trade at funding settle
       "toobit": true,
