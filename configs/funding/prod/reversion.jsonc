@@ -43,8 +43,8 @@
       "orangex": false, // negative pnl,
       "bybit": false, // very high cancel rate,
       "hotcoin": false, // prevent trade at funding settle
+      "weex": false, // no funding oppotunity
       "toobit": true,
-      "weex": true,
       "mexc": true,
       "bitget": true,
       "aster": true,
