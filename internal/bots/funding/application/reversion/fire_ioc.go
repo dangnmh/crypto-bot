@@ -64,6 +64,53 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 		}
 	}
 
+	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
+	leverage := evt.Candidate.Config.Leverage
+	if evt.Candidate.MaxLeverage > 0 && leverage > evt.Candidate.MaxLeverage {
+		r.log.InfoContext(ctx, "Configured leverage exceeds symbol max leverage, adjusting to max",
+			slog.String("symbol", evt.Symbol),
+			slog.Int("configured", leverage),
+			slog.Int("max", evt.Candidate.MaxLeverage),
+		)
+		leverage = evt.Candidate.MaxLeverage
+	}
+
+	if leverage > 0 && !r.deps.Client.SupportLeverageOnOrder() {
+		if provider, ok := r.deps.Client.(exchange.MaxLeverageProvider); ok {
+			maxLev, err := provider.GetMaxLeverage(ctx, evt.Symbol)
+			if err != nil {
+				r.log.ErrorContext(ctx, "Failed to get max leverage from client", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+			} else if maxLev > 0 && leverage > maxLev {
+				r.log.InfoContext(ctx, "Configured leverage exceeds exchange risk limits, adjusting to max",
+					slog.String("symbol", evt.Symbol),
+					slog.Int("configured", leverage),
+					slog.Int("max", maxLev),
+				)
+				leverage = maxLev
+			}
+		}
+
+		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
+		posType := exchange.PositionTypeLong
+		if !evt.Candidate.Side.IsLong() {
+			posType = exchange.PositionTypeShort
+		}
+
+		err := r.deps.Client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
+			Symbol:       evt.Symbol,
+			Leverage:     leverage,
+			OpenType:     shared.OpenType(evt.Candidate.Config.ParsedOpenType),
+			PositionType: posType,
+		})
+		if err != nil {
+			r.log.ErrorContext(ctx, "Failed to adjust leverage", slog.Any("error", err), slog.String("symbol", evt.Symbol))
+			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("change leverage failed: "+err.Error()))
+			return fmt.Errorf("change leverage failed: %w", err)
+		}
+	}
+
+	evt.Candidate.Config.Leverage = leverage
+
 	latencyMs := r.deps.Clock.LatencyMs()
 	oneWayMs := latencyMs / 2
 	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
@@ -175,53 +222,6 @@ func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireW
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
-
-	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
-	leverage := evt.Candidate.Config.Leverage
-	if evt.Candidate.MaxLeverage > 0 && leverage > evt.Candidate.MaxLeverage {
-		r.log.InfoContext(ctx, "Configured leverage exceeds symbol max leverage, adjusting to max",
-			slog.String("symbol", evt.Symbol),
-			slog.Int("configured", leverage),
-			slog.Int("max", evt.Candidate.MaxLeverage),
-		)
-		leverage = evt.Candidate.MaxLeverage
-	}
-
-	if leverage > 0 && !r.deps.Client.SupportLeverageOnOrder() {
-		if provider, ok := r.deps.Client.(exchange.MaxLeverageProvider); ok {
-			maxLev, err := provider.GetMaxLeverage(ctx, evt.Symbol)
-			if err != nil {
-				r.log.ErrorContext(ctx, "Failed to get max leverage from client", slog.Any("error", err), slog.String("symbol", evt.Symbol))
-			} else if maxLev > 0 && leverage > maxLev {
-				r.log.InfoContext(ctx, "Configured leverage exceeds exchange risk limits, adjusting to max",
-					slog.String("symbol", evt.Symbol),
-					slog.Int("configured", leverage),
-					slog.Int("max", maxLev),
-				)
-				leverage = maxLev
-			}
-		}
-
-		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
-		posType := exchange.PositionTypeLong
-		if !evt.Candidate.Side.IsLong() {
-			posType = exchange.PositionTypeShort
-		}
-
-		err := r.deps.Client.ChangeLeverage(ctx, exchange.ChangeLeverageRequest{
-			Symbol:       evt.Symbol,
-			Leverage:     leverage,
-			OpenType:     shared.OpenType(evt.Candidate.Config.ParsedOpenType),
-			PositionType: posType,
-		})
-		if err != nil {
-			r.log.ErrorContext(ctx, "Failed to adjust leverage", slog.Any("error", err), slog.String("symbol", evt.Symbol))
-			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("change leverage failed: "+err.Error()))
-			return fmt.Errorf("change leverage failed: %w", err)
-		}
-	}
-
-	evt.Candidate.Config.Leverage = leverage
 
 	next := PositionWatchReadyEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
