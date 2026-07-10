@@ -16,7 +16,7 @@
 - [x] aster
 - [x] binance
 - [x] gate
-- [ ] lbank
+- [x] lbank
 - [x] toobit
 - [x] bingx
 - [x] xt
