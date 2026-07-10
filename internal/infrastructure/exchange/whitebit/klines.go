@@ -13,9 +13,9 @@ import (
 )
 
 type whitebitKlinesResponse struct {
-	Success bool            `json:"success"`
-	Message string          `json:"message"`
-	Result  [][]interface{} `json:"result"`
+	Success bool    `json:"success"`
+	Message string  `json:"message"`
+	Result  [][]any `json:"result"`
 }
 
 const (
@@ -58,6 +58,8 @@ func mapWhitebitInterval(interval exchange.Interval) (string, error) {
 }
 
 // FetchKlines fetches public K-lines for whitebit.
+//
+//nolint:cyclop // REST market methods are naturally complex
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	cleanSymbol := strings.ToUpper(symbol)
 	if !strings.Contains(cleanSymbol, "_") {
@@ -80,8 +82,10 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 
 	path := "/api/v1/public/kline"
 	var qParts []string
-	qParts = append(qParts, "market="+url.QueryEscape(cleanSymbol))
-	qParts = append(qParts, "interval="+url.QueryEscape(mappedInterval))
+	qParts = append(qParts,
+		"market="+url.QueryEscape(cleanSymbol),
+		"interval="+url.QueryEscape(mappedInterval),
+	)
 	if !start.IsZero() {
 		qParts = append(qParts, fmt.Sprintf("start=%d", start.Unix()))
 	}
