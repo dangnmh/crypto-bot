@@ -10,7 +10,7 @@
 - [ ] koinbay
 - [ ] bydfi
 - [ ] orangex
-- [ ] bitmart
+- [x] bitmart
 - [x] deepcoin
 - [ ] echobit
 - [ ] krakenfutures
