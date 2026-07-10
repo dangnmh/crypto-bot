@@ -9,6 +9,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -292,4 +293,89 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	return results, nil
+}
+
+// FetchKlines fetches public K-lines for Bybit.
+
+//nolint:cyclop // Switch statements mapping intervals are naturally complex but easy to read
+func mapBybitInterval(interval exchange.Interval) string {
+	switch interval {
+	case exchange.Interval1m:
+		return "1"
+	case exchange.Interval3m:
+		return "3"
+	case exchange.Interval5m:
+		return "5"
+	case exchange.Interval15m:
+		return "15"
+	case exchange.Interval30m:
+		return "30"
+	case exchange.Interval1h:
+		return "60"
+	case exchange.Interval2h:
+		return "120"
+	case exchange.Interval4h:
+		return "240"
+	case exchange.Interval6h:
+		return "360"
+	case exchange.Interval8h:
+		return "480"
+	case exchange.Interval12h:
+		return "720"
+	case exchange.Interval1d:
+		return "D"
+	case exchange.Interval1w:
+		return "W"
+	case exchange.Interval1M:
+		return "M"
+	default:
+		return "1"
+	}
+}
+
+func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
+	params := map[string]string{
+		"category":  "linear",
+		"symbol":    symbol,
+		"interval":  mapBybitInterval(interval),
+		"startTime": fmt.Sprintf("%d", start.UnixMilli()),
+	}
+	if !end.IsZero() {
+		params["endTime"] = fmt.Sprintf("%d", end.UnixMilli())
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, "/v5/market/kline", params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("bybit fetch klines: %w", err)
+	}
+
+	type klineResp struct {
+		Category string           `json:"category"`
+		Symbol   string           `json:"symbol"`
+		List     [][]xjson.Number `json:"list"`
+	}
+
+	res, err := parseResponse[klineResp](body, "bybit fetch klines")
+	if err != nil {
+		return nil, err
+	}
+
+	var klines []exchange.Kline
+	for _, item := range res.List {
+		if len(item) < 5 {
+			continue
+		}
+		var volume float64
+		if len(item) > 5 {
+			volume = xjson.ToFloat64(item[5])
+		}
+		klines = append(klines, exchange.Kline{
+			Timestamp: xjson.ToInt64(item[0]),
+			Open:      xjson.ToFloat64(item[1]),
+			High:      xjson.ToFloat64(item[2]),
+			Low:       xjson.ToFloat64(item[3]),
+			Close:     xjson.ToFloat64(item[4]),
+			Volume:    volume,
+		})
+	}
+	return klines, nil
 }
