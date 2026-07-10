@@ -6,7 +6,7 @@
 - [ ] fameex
 - [x] hotcoin
 - [x] kucoin
-- [ ] ju
+- [x] ju
 - [x] koinbay
 - [x] bydfi
 - [x] orangex
