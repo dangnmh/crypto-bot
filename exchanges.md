@@ -3,7 +3,7 @@
 - [x] blofin
 - [x] zoomex
 - [x] bitget
-- [ ] fameex
+- [x] fameex
 - [x] hotcoin
 - [x] kucoin
 - [x] ju
@@ -12,7 +12,6 @@
 - [x] orangex
 - [x] bitmart
 - [x] deepcoin
-- [ ] echobit
 - [ ] krakenfutures
 - [x] aster
 - [x] binance
