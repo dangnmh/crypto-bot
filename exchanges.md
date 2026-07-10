@@ -1,0 +1,26 @@
+- [ ] pionex
+- [ ] bitunix
+- [ ] blofin
+- [x] zoomex
+- [x] bitget
+- [ ] fameex
+- [ ] hotcoin
+- [x] kucoin
+- [ ] ju
+- [ ] koinbay
+- [ ] bydfi
+- [ ] orangex
+- [ ] bitmart
+- [x] deepcoin
+- [ ] echobit
+- [ ] krakenfutures
+- [x] aster
+- [x] binance
+- [x] gate
+- [ ] lbank
+- [x] toobit
+- [x] bingx
+- [ ] xt
+- [x] bybit
+- [ ] whitebit
+- [x] mexc
