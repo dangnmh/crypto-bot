@@ -41,7 +41,7 @@ var okxIntervals = map[exchange.Interval]string{
 	exchange.Interval1w:  bar1w,
 	exchange.Interval1M:  bar1M,
 	// Fallbacks
-	exchange.Interval8h:  bar6h,
+	exchange.Interval8h: bar6h,
 }
 
 func mapOKXInterval(interval exchange.Interval) (string, error) {
@@ -75,8 +75,8 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 
 	params := map[string]string{
-		"instId": cleanSymbol,
-		"bar":    mappedInterval,
+		paramInstId: cleanSymbol,
+		"bar":       mappedInterval,
 	}
 
 	if !start.IsZero() {
