@@ -1,5 +1,5 @@
 - [ ] pionex
-- [ ] bitunix
+- [x] bitunix
 - [ ] blofin
 - [x] zoomex
 - [x] bitget
