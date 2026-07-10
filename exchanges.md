@@ -1,4 +1,4 @@
-- [ ] pionex
+- [x] pionex
 - [x] bitunix
 - [ ] blofin
 - [x] zoomex
