@@ -8,7 +8,7 @@
 - [x] kucoin
 - [ ] ju
 - [ ] koinbay
-- [ ] bydfi
+- [x] bydfi
 - [x] orangex
 - [x] bitmart
 - [x] deepcoin
