@@ -18,3 +18,5 @@ func NewClient(httpClient *http.Client, baseURL string, logger *slog.Logger) *Cl
 		logger:     logger.With("exchange", "bydfi"),
 	}
 }
+
+const symbolKey = "symbol"

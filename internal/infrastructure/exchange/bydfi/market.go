@@ -134,7 +134,7 @@ func (c *Client) fetchTickers(ctx context.Context) ([]bydfiTicker, error) {
 
 func (c *Client) fetchFundingRateForSymbol(ctx context.Context, symbol string) (*bydfiFundingRateInfo, error) {
 	body, err := c.request(ctx, "/v1/fapi/market/funding_rate", map[string]string{
-		"symbol": symbol,
+		symbolKey: symbol,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("bydfi get funding rate for %s: %w", symbol, err)

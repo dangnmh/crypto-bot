@@ -90,7 +90,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 
 	params := map[string]string{
-		"symbol":   cleanSymbol,
+		symbolKey:  cleanSymbol,
 		"interval": mappedInterval,
 	}
 
