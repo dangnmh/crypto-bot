@@ -45,8 +45,8 @@ type orangexKlineResult struct {
 
 func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) (*orangexKlineResult, error) {
 	params := map[string]any{
-		"instrument_name": symbol,
-		"resolution":      mapOrangexInterval(interval),
+		paramInstrument: symbol,
+		"resolution":    mapOrangexInterval(interval),
 	}
 	if !start.IsZero() {
 		params["start_timestamp"] = start.UnixMilli()
@@ -91,7 +91,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 
 	klines := make([]exchange.Kline, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		klines = append(klines, exchange.Kline{
 			Timestamp: res.Ticks[i],
 			Open:      xjson.ToFloat64(res.Open[i]),

@@ -249,8 +249,8 @@ func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.O
 
 func (c *Client) rawGetUserTradesByInstrument(ctx context.Context, symbol string, startTimestamp int64) ([]userTrade, error) {
 	params := map[string]any{
-		"instrument_name": symbol,
-		paramCount:        100,
+		paramInstrument: symbol,
+		paramCount:      100,
 	}
 	if startTimestamp > 0 {
 		params["start_timestamp"] = startTimestamp
