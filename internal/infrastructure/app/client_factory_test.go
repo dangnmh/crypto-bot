@@ -49,6 +49,7 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 		"bitunix":     true,
 		"xt":          true,
 		"pionex":      true,
+		"hotcoin":     true,
 	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
