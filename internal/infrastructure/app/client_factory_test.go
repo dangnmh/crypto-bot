@@ -27,6 +27,22 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 		"sunx", "fameex", "fmfw", "coinbase", "koinbay", "trubit",
 	}
 
+	supported := map[string]bool{
+		"binance":     true,
+		"bybit":       true,
+		"gate":        true,
+		"mexc":        true,
+		"okx":         true,
+		"hyperliquid": true,
+		"apex":        true,
+		"aster":       true,
+		"backpack":    true,
+		"batonex":     true,
+		"bingx":       true,
+		"kucoin":      true,
+		"bitget":      true,
+	}
+
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	logCfg := config.LoggingConfig{}
 
@@ -44,7 +60,7 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 			defer cancel()
 
 			_, err = kProv.FetchKlines(ctx, "BTC-USDT", exchange.Interval1m, time.Now().Add(-10*time.Minute), time.Now())
-			if name == "binance" || name == "bybit" || name == "gate" || name == "mexc" || name == "okx" || name == "hyperliquid" || name == "apex" || name == "aster" || name == "backpack" || name == "batonex" || name == "bingx" || name == "kucoin" {
+			if supported[name] {
 				// Supported clients might return context/network/symbol errors, but never "does not support FetchKlines"
 				if err != nil {
 					assert.NotContains(t, err.Error(), "does not support FetchKlines")
