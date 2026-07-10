@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
-	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -279,106 +277,3 @@ func (c *Client) GetPotentialFundingSymbols(
 	return results, nil
 }
 
-// FetchKlines fetches public K-lines for OKX.
-
-//nolint:cyclop // Switch statements mapping intervals are naturally complex but easy to read
-func mapOkxInterval(interval exchange.Interval) string {
-	switch interval {
-	case exchange.Interval1m:
-		return "1m"
-	case exchange.Interval3m:
-		return "3m"
-	case exchange.Interval5m:
-		return "5m"
-	case exchange.Interval15m:
-		return "15m"
-	case exchange.Interval30m:
-		return "30m"
-	case exchange.Interval1h:
-		return "1H"
-	case exchange.Interval2h:
-		return "2H"
-	case exchange.Interval4h:
-		return "4H"
-	case exchange.Interval6h:
-		return "6H"
-	case exchange.Interval8h:
-		return "8H"
-	case exchange.Interval12h:
-		return "12H"
-	case exchange.Interval1d:
-		return "1D"
-	case exchange.Interval1w:
-		return "1W"
-	case exchange.Interval1M:
-		return "1M"
-	default:
-		return "1m"
-	}
-}
-
-func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	params := map[string]string{
-		paramInstId: symbol,
-		"bar":       mapOkxInterval(interval),
-		"after":     fmt.Sprintf("%d", end.UnixMilli()),
-		"limit":     "35",
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v5/market/candles", params, nil)
-	if err != nil {
-		return nil, fmt.Errorf("okx fetch klines: %w", err)
-	}
-
-	var resp struct {
-		Code string     `json:"code"`
-		Msg  string     `json:"msg"`
-		Data [][]string `json:"data"`
-	}
-	if err := xjson.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("okx unmarshal klines: %w", err)
-	}
-	if resp.Code != "0" {
-		return nil, fmt.Errorf("okx fetch klines error: code=%s msg=%s", resp.Code, resp.Msg)
-	}
-
-	var klines []exchange.Kline
-	for _, k := range resp.Data {
-		if len(k) < 5 {
-			continue
-		}
-		tsVal, err := strconv.ParseInt(k[0], 10, 64)
-		if err != nil {
-			continue
-		}
-		open, err := strconv.ParseFloat(k[1], 64)
-		if err != nil {
-			continue
-		}
-		high, err := strconv.ParseFloat(k[2], 64)
-		if err != nil {
-			continue
-		}
-		low, err := strconv.ParseFloat(k[3], 64)
-		if err != nil {
-			continue
-		}
-		closePrice, err := strconv.ParseFloat(k[4], 64)
-		if err != nil {
-			continue
-		}
-		var volume float64
-		if len(k) > 5 {
-			volume, _ = strconv.ParseFloat(k[5], 64)
-		}
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: tsVal,
-			Open:      open,
-			High:      high,
-			Low:       low,
-			Close:     closePrice,
-			Volume:    volume,
-		})
-	}
-	return klines, nil
-}
