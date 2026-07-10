@@ -276,4 +276,3 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	return results, nil
 }
-

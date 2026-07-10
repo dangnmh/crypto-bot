@@ -33,11 +33,11 @@ var weexIntervals = map[exchange.Interval]string{
 	exchange.Interval1d:  weex1d,
 	exchange.Interval1w:  weex1w,
 	// Fallbacks
-	exchange.Interval3m:  weex1m,
-	exchange.Interval2h:  weex1h,
-	exchange.Interval6h:  weex4h,
-	exchange.Interval8h:  weex4h,
-	exchange.Interval1M:  weex1w,
+	exchange.Interval3m: weex1m,
+	exchange.Interval2h: weex1h,
+	exchange.Interval6h: weex4h,
+	exchange.Interval8h: weex4h,
+	exchange.Interval1M: weex1w,
 }
 
 func mapWEEXInterval(interval exchange.Interval) (string, error) {
@@ -47,7 +47,7 @@ func mapWEEXInterval(interval exchange.Interval) (string, error) {
 	return "", fmt.Errorf("unsupported interval: %s", interval)
 }
 
-func parseFloatValue(v interface{}) float64 {
+func parseFloatValue(v any) float64 {
 	if v == nil {
 		return 0
 	}
@@ -87,7 +87,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("weex request klines: %w", err)
 	}
 
-	candlesData, err := parseResponse[[][]interface{}](body)
+	candlesData, err := parseResponse[[][]any](body)
 	if err != nil {
 		return nil, fmt.Errorf("weex parse klines: %w", err)
 	}
