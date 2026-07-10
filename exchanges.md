@@ -22,7 +22,7 @@
 - [x] bingx
 - [x] xt
 - [x] bybit
-- [ ] whitebit
+- [x] whitebit
 - [x] mexc
 - [x] okx
 - [x] weex
