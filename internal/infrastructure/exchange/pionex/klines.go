@@ -28,40 +28,41 @@ type pionexKlineResponseData struct {
 	Klines []pionexKlineItem `json:"klines"`
 }
 
+const (
+	interval1m  = "1M"
+	interval5m  = "5M"
+	interval15m = "15M"
+	interval30m = "30M"
+	interval60m = "60M"
+	interval4h  = "4H"
+	interval8h  = "8H"
+	interval12h = "12H"
+	interval1d  = "1D"
+)
+
+var pionexIntervals = map[exchange.Interval]string{
+	exchange.Interval1m:  interval1m,
+	exchange.Interval5m:  interval5m,
+	exchange.Interval15m: interval15m,
+	exchange.Interval30m: interval30m,
+	exchange.Interval1h:  interval60m,
+	exchange.Interval4h:  interval4h,
+	exchange.Interval8h:  interval8h,
+	exchange.Interval12h: interval12h,
+	exchange.Interval1d:  interval1d,
+	// Fallbacks
+	exchange.Interval3m: interval1m,
+	exchange.Interval2h: interval60m,
+	exchange.Interval6h: interval4h,
+	exchange.Interval1w: interval1d,
+	exchange.Interval1M: interval1d,
+}
+
 func mapPionexInterval(interval exchange.Interval) (string, error) {
-	switch interval {
-	case exchange.Interval1m:
-		return "1M", nil
-	case exchange.Interval5m:
-		return "5M", nil
-	case exchange.Interval15m:
-		return "15M", nil
-	case exchange.Interval30m:
-		return "30M", nil
-	case exchange.Interval1h:
-		return "60M", nil
-	case exchange.Interval4h:
-		return "4H", nil
-	case exchange.Interval8h:
-		return "8H", nil
-	case exchange.Interval12h:
-		return "12H", nil
-	case exchange.Interval1d:
-		return "1D", nil
-	default:
-		switch interval {
-		case exchange.Interval3m:
-			return "1M", nil
-		case exchange.Interval2h:
-			return "60M", nil
-		case exchange.Interval6h:
-			return "4H", nil
-		case exchange.Interval1w, exchange.Interval1M:
-			return "1D", nil
-		default:
-			return "", fmt.Errorf("unsupported interval: %s", interval)
-		}
+	if mapped, ok := pionexIntervals[interval]; ok {
+		return mapped, nil
 	}
+	return "", fmt.Errorf("unsupported interval: %s", interval)
 }
 
 // FetchKlines fetches public K-lines for pionex.
@@ -74,7 +75,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		} else if before, ok := strings.CutSuffix(cleanSymbol, "USDC"); ok {
 			cleanSymbol = before + "_USDC_PERP"
 		} else {
-			cleanSymbol = cleanSymbol + "_PERP"
+			cleanSymbol += "_PERP"
 		}
 	}
 

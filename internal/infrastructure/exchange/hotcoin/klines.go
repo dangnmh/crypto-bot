@@ -12,9 +12,9 @@ import (
 )
 
 type hotcoinKlineResponse struct {
-	Code int             `json:"code"`
-	Data [][]interface{} `json:"data"`
-	Msg  string          `json:"msg"`
+	Code int     `json:"code"`
+	Data [][]any `json:"data"`
+	Msg  string  `json:"msg"`
 }
 
 const (
@@ -54,7 +54,7 @@ func mapHotcoinInterval(interval exchange.Interval) (string, error) {
 	return "", fmt.Errorf("unsupported interval: %s", interval)
 }
 
-func parseFloatValue(v interface{}) float64 {
+func parseFloatValue(v any) float64 {
 	if v == nil {
 		return 0
 	}
@@ -103,10 +103,11 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		}
 
 		var ts int64
-		if f, ok := item[0].(float64); ok {
-			ts = int64(f)
-		} else if s, ok := item[0].(string); ok {
-			val, _ := strconv.ParseInt(s, 10, 64)
+		switch v := item[0].(type) {
+		case float64:
+			ts = int64(v)
+		case string:
+			val, _ := strconv.ParseInt(v, 10, 64)
 			ts = val
 		}
 
