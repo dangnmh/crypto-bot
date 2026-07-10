@@ -7,7 +7,7 @@
 - [x] hotcoin
 - [x] kucoin
 - [ ] ju
-- [ ] koinbay
+- [x] koinbay
 - [x] bydfi
 - [x] orangex
 - [x] bitmart
