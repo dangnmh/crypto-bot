@@ -12,7 +12,7 @@
 - Create: `internal/infrastructure/exchange/deepcoin/klines_test.go`
 - Modify: `internal/infrastructure/exchange/deepcoin/klines.go`
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
   Create `internal/infrastructure/exchange/deepcoin/klines_test.go` containing:
   ```go
   package deepcoin_test
@@ -122,11 +122,11 @@
   }
   ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
   Run command: `go test -v ./internal/infrastructure/exchange/deepcoin/... -run TestClient_FetchKlines`
   Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
   Replace `internal/infrastructure/exchange/deepcoin/klines.go` with:
   ```go
   package deepcoin
@@ -209,11 +209,11 @@
   }
   ```
 
-- [ ] **Step 4: Run unit tests to verify they pass**
+- [x] **Step 4: Run unit tests to verify they pass**
   Run command: `go test -v ./internal/infrastructure/exchange/deepcoin/... -run TestClient_FetchKlines`
   Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
   Run: `git add internal/infrastructure/exchange/deepcoin/klines.go && git add internal/infrastructure/exchange/deepcoin/klines_test.go && git commit -m "feat(deepcoin): implement FetchKlines with unit tests"`
 
 ---
@@ -223,7 +223,7 @@
 **Files:**
 - Modify: `internal/infrastructure/app/client_factory_test.go`
 
-- [ ] **Step 1: Modify the factory test condition**
+- [x] **Step 1: Modify the factory test condition**
   Add `"deepcoin"` to the `supported` map inside `TestAllExchangesFetchKlinesSupport`:
   ```go
 	supported := map[string]bool{
@@ -245,15 +245,15 @@
 	}
   ```
 
-- [ ] **Step 2: Run tests to verify all pass**
+- [x] **Step 2: Run tests to verify all pass**
   Run: `go test -v ./internal/infrastructure/app/... -run TestAllExchangesFetchKlinesSupport`
   Expected: PASS
 
-- [ ] **Step 3: Run full package quality checks**
+- [x] **Step 3: Run full package quality checks**
   Run commands:
   `make lint`
   `make test`
   `make cover`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
   Run: `git add internal/infrastructure/app/client_factory_test.go && git commit -m "test: register deepcoin in FetchKlines support tests"`
