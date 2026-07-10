@@ -15,10 +15,10 @@ import (
 )
 
 type lbankKlinesResponse struct {
-	Result    string          `json:"result"`
-	Msg       string          `json:"msg"`
-	ErrorCode int             `json:"error_code"`
-	Data      [][]interface{} `json:"data"`
+	Result    string  `json:"result"`
+	Msg       string  `json:"msg"`
+	ErrorCode int     `json:"error_code"`
+	Data      [][]any `json:"data"`
 }
 
 var lbankIntervals = map[exchange.Interval]string{
@@ -42,6 +42,8 @@ func mapLbankInterval(interval exchange.Interval) (string, error) {
 }
 
 // FetchKlines fetches public K-lines for LBank.
+//
+//nolint:gocognit,cyclop // naturally complex scanner method
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	// Form symbol as lowercase with underscore (e.g. btc_usdt)
 	cleanSymbol := strings.ToLower(symbol)
@@ -184,7 +186,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	return klines, nil
 }
 
-func valToFloat(val interface{}) (float64, error) {
+func valToFloat(val any) (float64, error) {
 	switch v := val.(type) {
 	case float64:
 		return v, nil

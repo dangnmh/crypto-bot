@@ -57,6 +57,7 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 		"koinbay":     true,
 		"ju":          true,
 		"fameex":      true,
+		"lbank":       true,
 	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
