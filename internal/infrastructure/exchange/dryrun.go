@@ -222,3 +222,11 @@ func (d *DryRunClient) SetClock(clk Clock) {
 		setter.SetClock(clk)
 	}
 }
+
+// FetchKlines delegates historical candlestick querying to the inner client if supported.
+func (d *DryRunClient) FetchKlines(ctx context.Context, symbol string, interval Interval, start, end time.Time) ([]Kline, error) {
+	if kp, ok := d.inner.(KlineProvider); ok {
+		return kp.FetchKlines(ctx, symbol, interval, start, end)
+	}
+	return nil, fmt.Errorf("inner exchange client does not implement KlineProvider")
+}

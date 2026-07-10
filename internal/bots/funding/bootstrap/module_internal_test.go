@@ -10,6 +10,7 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/config"
+	exchange "crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/testutil/mocks"
 	"crypto-bot/pkg/eventbus"
 
@@ -54,7 +55,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	require.NoError(t, lc.Start(context.Background()))
 	require.NoError(t, lc.Stop(context.Background()))
 
-	httpClient := provideHTTPClient(bootstrapTestLogger())
+	httpClient := exchange.ProvideHTTPClient(bootstrapTestLogger())
 	require.NotNil(t, httpClient)
 	assert.IsType(t, &http.Client{}, httpClient)
 
@@ -72,6 +73,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 		engine,
 		n,
 		revStrat,
+		nil,
 		nil,
 		bootstrapTestLogger(),
 	)

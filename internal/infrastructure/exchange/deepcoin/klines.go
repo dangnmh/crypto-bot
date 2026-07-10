@@ -37,8 +37,8 @@ func mapDeepcoinInterval(interval exchange.Interval) string {
 
 func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([][]xjson.Number, error) {
 	params := map[string]string{
-		"instId": symbol,
-		"bar":    mapDeepcoinInterval(interval),
+		paramInstId: symbol,
+		"bar":       mapDeepcoinInterval(interval),
 	}
 	if !end.IsZero() {
 		params["after"] = strconv.FormatInt(end.UnixMilli(), 10)

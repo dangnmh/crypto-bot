@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -359,4 +360,86 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	return results, nil
+}
+
+// FetchKlines fetches public K-lines for Binance.
+func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
+	params := map[string]any{
+		"symbol":    symbol,
+		"interval":  string(interval),
+		"startTime": start.UnixMilli(),
+		"limit":     35,
+	}
+	var data [][]any
+	err := c.request(ctx, http.MethodGet, "/fapi/v1/klines", params, false, &data)
+	if err != nil {
+		return nil, fmt.Errorf("binance fetch klines: %w", err)
+	}
+
+	var klines []exchange.Kline
+	for _, k := range data {
+		if kline, ok := parseBinanceKline(k); ok {
+			klines = append(klines, kline)
+		}
+	}
+	return klines, nil
+}
+
+func parseBinanceKline(k []any) (exchange.Kline, bool) {
+	if len(k) < 6 {
+		return exchange.Kline{}, false
+	}
+	tsVal, ok := k[0].(float64)
+	if !ok {
+		return exchange.Kline{}, false
+	}
+	openStr, ok := k[1].(string)
+	if !ok {
+		return exchange.Kline{}, false
+	}
+	open, err := strconv.ParseFloat(openStr, 64)
+	if err != nil {
+		return exchange.Kline{}, false
+	}
+	highStr, ok := k[2].(string)
+	if !ok {
+		return exchange.Kline{}, false
+	}
+	high, err := strconv.ParseFloat(highStr, 64)
+	if err != nil {
+		return exchange.Kline{}, false
+	}
+	lowStr, ok := k[3].(string)
+	if !ok {
+		return exchange.Kline{}, false
+	}
+	low, err := strconv.ParseFloat(lowStr, 64)
+	if err != nil {
+		return exchange.Kline{}, false
+	}
+	closeStr, ok := k[4].(string)
+	if !ok {
+		return exchange.Kline{}, false
+	}
+	closePrice, err := strconv.ParseFloat(closeStr, 64)
+	if err != nil {
+		return exchange.Kline{}, false
+	}
+	volStr, ok := k[5].(string)
+	if !ok {
+		return exchange.Kline{}, false
+	}
+	volume, err := strconv.ParseFloat(volStr, 64)
+	if err != nil {
+		volume = 0
+	}
+
+	return exchange.Kline{
+		Timestamp: int64(tsVal),
+		Open:      open,
+		High:      high,
+		Low:       low,
+		Close:     closePrice,
+		Volume:    volume,
+	}, true
 }

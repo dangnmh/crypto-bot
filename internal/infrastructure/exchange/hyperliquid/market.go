@@ -87,6 +87,7 @@ func (c *Client) getRawMeta(ctx context.Context, _ hyperliquidMetaRequest) (*hl.
 	return c.info.Meta(ctx)
 }
 
+//nolint:goconst // JSON request payload specifies "type"
 func (c *Client) getRawPredictedFundings(ctx context.Context, _ hyperliquidPredictedFundingsRequest) ([]RawAssetFunding, error) {
 	payload := map[string]string{
 		"type": "predictedFundings",

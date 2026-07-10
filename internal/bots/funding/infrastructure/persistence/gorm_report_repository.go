@@ -165,7 +165,7 @@ func InitDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to register otelgorm plugin: %w", err)
 	}
 
-	if err := db.AutoMigrate(&ReversionTradeReport{}, &GormSymbolFundingReport{}); err != nil {
+	if err := db.AutoMigrate(&ReversionTradeReport{}, &GormSymbolFundingReport{}, &GormFundingPriceTick{}); err != nil {
 		return nil, fmt.Errorf("failed to auto-migrate database: %w", err)
 	}
 

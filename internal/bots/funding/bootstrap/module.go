@@ -15,10 +15,10 @@ import (
 	persistence "crypto-bot/internal/bots/funding/infrastructure/persistence"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	sysconfig "crypto-bot/internal/infrastructure/config"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/internal/infrastructure/server"
-	"crypto-bot/pkg/httpclient"
 	applogger "crypto-bot/pkg/logger"
 
 	"github.com/patrickmn/go-cache"
@@ -40,17 +40,19 @@ type ConfigPaths struct {
 func Module(paths ConfigPaths) fx.Option {
 	return fx.Options(
 		fx.Supply(paths),
+		exchange.Module,
 		fx.Provide(
 			provideSystemConfig,
 			provideBaseSystemConfig,
 			provideLogger,
 			provideFundingConfig,
 			provideNotifier,
-			provideHTTPClient,
 			provideEngine,
 			persistence.InitDatabase,
 			provideTradeReportRepository,
 			provideSymbolFundingReportRepository,
+			providePriceTickRepository,
+			providePriceTrackJob,
 			provideStatsReportJob,
 			provideGoCache,
 			provideReversionStrategy,
@@ -117,12 +119,6 @@ func provideNotifier(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig, fundingCf
 	})
 
 	return n, nil
-}
-
-func provideHTTPClient(log *slog.Logger) *http.Client {
-	cfg := httpclient.DefaultPoolConfig()
-	cfg.Logger = log
-	return httpclient.NewPool(cfg)
 }
 
 func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
@@ -203,6 +199,21 @@ func provideSymbolFundingReportRepository(db *gorm.DB) domain.SymbolFundingRepor
 	return persistence.NewGormSymbolFundingReportRepository(db)
 }
 
+func providePriceTickRepository(db *gorm.DB) domain.FundingPriceTickRepository {
+	return persistence.NewGormFundingPriceTickRepository(db)
+}
+
+func providePriceTrackJob(
+	reportRepo domain.SymbolFundingReportRepository,
+	sysCfg *fundingconfig.SystemConfig,
+	engine *infraapp.Engine,
+	tickRepo domain.FundingPriceTickRepository,
+	httpClient *http.Client,
+	log *slog.Logger,
+) *application.PriceTrackJob {
+	return application.NewPriceTrackJob(reportRepo, sysCfg, engine, tickRepo, httpClient, log)
+}
+
 func provideStatsReportJob(
 	cfg *fundingconfig.Config,
 	sysCfg *fundingconfig.SystemConfig,
@@ -221,11 +232,12 @@ func provideBot(
 	n notifier.Notifier,
 	reversionStrategy *reversion.Strategy,
 	statsReporter *application.StatsReportJob,
+	priceTracker *application.PriceTrackJob,
 	log *slog.Logger,
 ) infraapp.Bot {
 	return application.NewFundingBot(
 		cfg, sysCfg, engine, n,
-		[]strategy.BackgroundStrategy{reversionStrategy, statsReporter},
+		[]strategy.BackgroundStrategy{reversionStrategy, statsReporter, priceTracker},
 		log.With("bot", "funding"),
 	)
 }

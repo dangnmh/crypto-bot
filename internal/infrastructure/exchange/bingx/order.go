@@ -392,7 +392,7 @@ func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode
 	}
 
 	params := map[string]string{
-		"symbol":     symbol,
+		paramSymbol:  symbol,
 		"marginType": mgnType,
 	}
 

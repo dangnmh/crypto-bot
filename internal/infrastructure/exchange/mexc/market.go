@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
 
@@ -374,4 +376,96 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	return results, nil
+}
+
+// FetchKlines fetches public K-lines for Mexc.
+
+//nolint:cyclop,goconst // Switch statements mapping intervals are naturally complex but easy to read
+func mapMexcInterval(interval exchange.Interval) string {
+	switch interval {
+	case exchange.Interval1m:
+		return "Min1"
+	case exchange.Interval3m:
+		return "Min3"
+	case exchange.Interval5m:
+		return "Min5"
+	case exchange.Interval15m:
+		return "Min15"
+	case exchange.Interval30m:
+		return "Min30"
+	case exchange.Interval1h:
+		return "Hour1"
+	case exchange.Interval2h:
+		return "Hour2"
+	case exchange.Interval4h:
+		return "Hour4"
+	case exchange.Interval6h:
+		return "Hour6"
+	case exchange.Interval8h:
+		return "Hour8"
+	case exchange.Interval12h:
+		return "Hour12"
+	case exchange.Interval1d:
+		return "Day1"
+	case exchange.Interval1w:
+		return "Week1"
+	case exchange.Interval1M:
+		return "Month1"
+	default:
+		return "Min1"
+	}
+}
+
+func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
+	path := fmt.Sprintf("/api/v1/contract/kline/%s", symbol)
+	params := map[string]string{
+		"interval": mapMexcInterval(interval),
+		"start":    strconv.FormatInt(start.Unix(), 10),
+		"end":      strconv.FormatInt(end.Unix(), 10),
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, path, params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("mexc fetch klines: %w", err)
+	}
+
+	type klineResp struct {
+		Time  []int64   `json:"time"`
+		Close []float64 `json:"close"`
+		Open  []float64 `json:"open"`
+		High  []float64 `json:"high"`
+		Low   []float64 `json:"low"`
+		Vol   []float64 `json:"vol"`
+	}
+
+	res, err := ParseResponse[klineResp](body, "mexc fetch klines")
+	if err != nil {
+		return nil, err
+	}
+
+	var klines []exchange.Kline
+	limit := min(len(res.Close), len(res.Time))
+	for i := range limit {
+		var open, high, low, vol float64
+		if i < len(res.Open) {
+			open = res.Open[i]
+		}
+		if i < len(res.High) {
+			high = res.High[i]
+		}
+		if i < len(res.Low) {
+			low = res.Low[i]
+		}
+		if i < len(res.Vol) {
+			vol = res.Vol[i]
+		}
+		klines = append(klines, exchange.Kline{
+			Timestamp: res.Time[i] * 1000,
+			Open:      open,
+			High:      high,
+			Low:       low,
+			Close:     res.Close[i],
+			Volume:    vol,
+		})
+	}
+	return klines, nil
 }

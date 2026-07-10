@@ -58,6 +58,22 @@ func (m *mockReportRepository) SaveBatch(ctx context.Context, reports []domain.S
 	return m.err
 }
 
+func (m *mockReportRepository) GetPendingPreFunding(ctx context.Context, settleTimeThreshold time.Time) ([]domain.SymbolFundingReport, error) {
+	return nil, nil
+}
+
+func (m *mockReportRepository) GetPendingAfterFunding(ctx context.Context, settleTimeThreshold time.Time) ([]domain.SymbolFundingReport, error) {
+	return nil, nil
+}
+
+func (m *mockReportRepository) UpdatePreFunding(ctx context.Context, id uint, fetched bool) error {
+	return nil
+}
+
+func (m *mockReportRepository) UpdateAfterFunding(ctx context.Context, id uint, fetched bool) error {
+	return nil
+}
+
 type mockNotifier struct {
 	mu     sync.Mutex
 	events []notifier.Event

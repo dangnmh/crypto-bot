@@ -13,70 +13,8 @@ import (
 	"crypto-bot/internal/bots/funding/application/strategy"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/bots/funding/domain"
+	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/exchange/aevo"
-	"crypto-bot/internal/infrastructure/exchange/apex"
-	"crypto-bot/internal/infrastructure/exchange/coinbase"
-	"crypto-bot/internal/infrastructure/exchange/koinbay"
-	"crypto-bot/internal/infrastructure/exchange/trubit"
-
-	"crypto-bot/internal/infrastructure/exchange/aster"
-	"crypto-bot/internal/infrastructure/exchange/avantis"
-	"crypto-bot/internal/infrastructure/exchange/backpack"
-	"crypto-bot/internal/infrastructure/exchange/batonex"
-	"crypto-bot/internal/infrastructure/exchange/binance"
-	"crypto-bot/internal/infrastructure/exchange/bingx"
-	"crypto-bot/internal/infrastructure/exchange/bitfinex"
-	"crypto-bot/internal/infrastructure/exchange/bitget"
-	"crypto-bot/internal/infrastructure/exchange/bitmart"
-	"crypto-bot/internal/infrastructure/exchange/bitmex"
-	"crypto-bot/internal/infrastructure/exchange/bitunix"
-	"crypto-bot/internal/infrastructure/exchange/blofin"
-	"crypto-bot/internal/infrastructure/exchange/btse"
-	"crypto-bot/internal/infrastructure/exchange/bybit"
-	"crypto-bot/internal/infrastructure/exchange/bydfi"
-	"crypto-bot/internal/infrastructure/exchange/coinex"
-	"crypto-bot/internal/infrastructure/exchange/coinw"
-	"crypto-bot/internal/infrastructure/exchange/cryptocom"
-	"crypto-bot/internal/infrastructure/exchange/deepcoin"
-	"crypto-bot/internal/infrastructure/exchange/delta"
-	"crypto-bot/internal/infrastructure/exchange/deribit"
-	"crypto-bot/internal/infrastructure/exchange/digifinex"
-	"crypto-bot/internal/infrastructure/exchange/dydx"
-	"crypto-bot/internal/infrastructure/exchange/extended"
-	"crypto-bot/internal/infrastructure/exchange/fameex"
-	"crypto-bot/internal/infrastructure/exchange/fmfw"
-	"crypto-bot/internal/infrastructure/exchange/gate"
-	"crypto-bot/internal/infrastructure/exchange/gemini"
-	"crypto-bot/internal/infrastructure/exchange/grvt"
-	"crypto-bot/internal/infrastructure/exchange/hashkey"
-	"crypto-bot/internal/infrastructure/exchange/hibt"
-	"crypto-bot/internal/infrastructure/exchange/hitbtc"
-	"crypto-bot/internal/infrastructure/exchange/hotcoin"
-	"crypto-bot/internal/infrastructure/exchange/htx"
-	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
-	"crypto-bot/internal/infrastructure/exchange/ju"
-	"crypto-bot/internal/infrastructure/exchange/jupiter"
-	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
-	"crypto-bot/internal/infrastructure/exchange/kucoin"
-	"crypto-bot/internal/infrastructure/exchange/lbank"
-	"crypto-bot/internal/infrastructure/exchange/lighter"
-	"crypto-bot/internal/infrastructure/exchange/mandala"
-	"crypto-bot/internal/infrastructure/exchange/mexc"
-	"crypto-bot/internal/infrastructure/exchange/okx"
-	"crypto-bot/internal/infrastructure/exchange/orangex"
-	"crypto-bot/internal/infrastructure/exchange/pacifica"
-	"crypto-bot/internal/infrastructure/exchange/phemex"
-	"crypto-bot/internal/infrastructure/exchange/pionex"
-	"crypto-bot/internal/infrastructure/exchange/poloniex"
-	"crypto-bot/internal/infrastructure/exchange/sunx"
-	"crypto-bot/internal/infrastructure/exchange/toobit"
-	"crypto-bot/internal/infrastructure/exchange/tradexyz"
-	"crypto-bot/internal/infrastructure/exchange/weex"
-	"crypto-bot/internal/infrastructure/exchange/whitebit"
-	"crypto-bot/internal/infrastructure/exchange/woox"
-	"crypto-bot/internal/infrastructure/exchange/xt"
-	"crypto-bot/internal/infrastructure/exchange/zoomex"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/formatutil"
@@ -120,71 +58,34 @@ func NewStatsReportJob(
 ) *StatsReportJob {
 	logCfg := sysCfg.Logging
 
-	clients := map[string]ScannerClient{
-		"mexc":          mexc.NewClient(httpClient, "https://contract.mexc.com", "", "", logCfg),
-		"gate":          gate.NewClient(httpClient, "https://api.gateio.ws/api/v4", "", "", logCfg),
-		"bybit":         bybit.NewClient(httpClient, "https://api.bybit.com", "", "", "standard", logCfg),
-		"okx":           okx.NewClient(httpClient, "https://www.okx.com", "", "", "", logCfg),
-		"kucoin":        kucoin.NewClient(httpClient, "https://api-futures.kucoin.com", "", "", "", logCfg),
-		"binance":       binance.NewClient(httpClient, "https://fapi.binance.com", "", "", logCfg),
-		"hyperliquid":   hyperliquid.NewClient(context.Background(), httpClient, "https://api.hyperliquid.xyz", "", "", logCfg),
-		"bitget":        bitget.NewClient(httpClient, "https://api.bitget.com", "", "", "", logCfg),
-		"bingx":         bingx.NewClient(httpClient, "https://open-api.bingx.com", "", "", logCfg),
-		"zoomex":        zoomex.NewClient(httpClient, "https://openapi.zoomex.com", logCfg),
-		"deepcoin":      deepcoin.NewClient(httpClient, "https://api.deepcoin.com", "", "", "", logCfg),
-		"gemini":        gemini.NewClient(httpClient, "https://api.gemini.com", "", "", logCfg),
-		"toobit":        toobit.NewClient(httpClient, "https://api.toobit.com", "", "", logCfg),
-		"weex":          weex.NewClient(httpClient, "https://api-contract.weex.com", "", "", "", logCfg),
-		"batonex":       batonex.NewClient(httpClient, "https://api.batonex.com", logCfg),
-		"bitmart":       bitmart.NewClient(httpClient, "https://api-cloud-v2.bitmart.com", "", "", "", logCfg),
-		"coinw":         coinw.NewClient(httpClient, "https://api.coinw.com", logCfg),
-		"krakenfutures": krakenfutures.NewClient(httpClient, "https://futures.kraken.com", logCfg),
-		"bitunix":       bitunix.NewClient(httpClient, "https://fapi.bitunix.com", "", "", logCfg),
-		"xt":            xt.NewClient(httpClient, "https://fapi.xt.com", "", "", logCfg),
-		"htx":           htx.NewClient(httpClient, "https://api.hbdm.com", logCfg),
-		"lbank":         lbank.NewClient(httpClient, "https://lbkperp.lbank.com", logCfg),
-		"mandala":       mandala.NewClient(httpClient, "https://api.wallet.mandala.exchange/api/3/public", "", "", logCfg),
-		"orangex":       orangex.NewClient(httpClient, "https://api.orangex.com/api/v1", "", "", logCfg),
-		"pionex":        pionex.NewClient(httpClient, "https://api.pionex.com", "", "", logCfg),
-		"poloniex":      poloniex.NewClient(httpClient, "https://api.poloniex.com/v3", "", "", logCfg),
-		"deribit":       deribit.NewClient(httpClient, "https://www.deribit.com", logCfg),
-		"delta":         delta.NewClient(httpClient, "https://api.delta.exchange/v2", "", "", logCfg),
-		"coinex":        coinex.NewClient(httpClient, "https://api.coinex.com/v2", logCfg),
-		"bitfinex":      bitfinex.NewClient(httpClient, "https://api-pub.bitfinex.com", logCfg),
-		"whitebit":      whitebit.NewClient(httpClient, "https://whitebit.com", logCfg),
-		"dydx":          dydx.NewClient(httpClient, "https://indexer.dydx.trade", logCfg),
-		"aster":         aster.NewClient(httpClient, "https://fapi.asterdex.com", "", "", "", logCfg),
+	exchanges := []string{
+		"mexc", "gate", "bybit", "okx", "kucoin", "binance", "hyperliquid", "bitget",
+		"bingx", "zoomex", "deepcoin", "gemini", "toobit", "weex", "batonex", "bitmart",
+		"coinw", "krakenfutures", "bitunix", "xt", "htx", "lbank", "mandala", "orangex",
+		"pionex", "poloniex", "deribit", "delta", "coinex", "bitfinex", "whitebit", "dydx",
+		"aster", "backpack", "aevo", "apex", "lighter", "tradexyz", "grvt", "pacifica",
+		"extended", "jupiter", "avantis", "btse", "bitmex", "hashkey", "hibt", "hitbtc",
+		"hotcoin", "cryptocom", "woox", "phemex", "blofin", "digifinex", "bydfi", "ju",
+		"echobit", "sunx", "fameex", "fmfw", "coinbase", "koinbay", "trubit",
+	}
 
-		"backpack":  backpack.NewClient(httpClient, "https://api.backpack.exchange/api/v1", "", "", logCfg),
-		"aevo":      aevo.NewClient(httpClient, "https://api.aevo.xyz", "", "", logCfg),
-		"apex":      apex.NewClient(httpClient, "https://omni.apex.exchange", "", "", logCfg),
-		"lighter":   lighter.NewClient(httpClient, "https://mainnet.zklighter.elliot.ai", logCfg),
-		"tradexyz":  tradexyz.NewClient(httpClient, "https://api.hyperliquid.xyz", logCfg),
-		"grvt":      grvt.NewClient(httpClient, "https://market-data.grvt.io", logCfg),
-		"pacifica":  pacifica.NewClient(httpClient, "https://api.pacifica.fi", logCfg),
-		"extended":  extended.NewClient(httpClient, "https://api.starknet.extended.exchange", logCfg),
-		"jupiter":   jupiter.NewClient(httpClient, "https://perps-api.jup.ag", logCfg),
-		"avantis":   avantis.NewClient(httpClient, "https://data.avantisfi.com", logCfg),
-		"btse":      btse.NewClient(httpClient, "https://api.btse.com/futures/api/v2.1", "", "", logCfg),
-		"bitmex":    bitmex.NewClient(httpClient, "https://www.bitmex.com", logCfg),
-		"hashkey":   hashkey.NewClient(httpClient, "https://api-glb.hashkey.com", log),
-		"hibt":      hibt.NewClient(httpClient, "https://fapi.hibt0.com/open-api", logCfg),
-		"hitbtc":    hitbtc.NewClient(httpClient, "https://api.hitbtc.com/api/3/public", "", "", logCfg),
-		"hotcoin":   hotcoin.NewClient(httpClient, "https://api-ct.hotcoin.fit", "", "", logCfg),
-		"cryptocom": cryptocom.NewClient(httpClient, "https://deriv-api.crypto.com/v1", log),
-		"woox":      woox.NewClient(httpClient, "https://api.woox.io", log),
-		"phemex":    phemex.NewClient(httpClient, "https://api.phemex.com", log),
-		"blofin":    blofin.NewClient(httpClient, "https://openapi.blofin.com", log),
-		"digifinex": digifinex.NewClient(httpClient, "https://openapi.digifinex.com", log),
-		"bydfi":     bydfi.NewClient(httpClient, "https://api.bydfi.com/api", log),
-		"ju":        ju.NewClient(httpClient, "https://api.jucoin.com", logCfg),
-		"echobit":   ju.NewClient(httpClient, "https://api.jucoin.com", logCfg),
-		"sunx":      sunx.NewClient(httpClient, "https://api.sunx.io", logCfg),
-		"fameex":    fameex.NewClient(httpClient, "https://futuresopenapi.fameex.com", logCfg),
-		"fmfw":      fmfw.NewClient(httpClient, "https://api.fmfw.io/api/3/public", "", "", logCfg),
-		"coinbase":  coinbase.NewClient(httpClient, "https://api.international.coinbase.com", logCfg),
-		"koinbay":   koinbay.NewClient(httpClient, "https://futuresopenapi.koinbay.com", logCfg),
-		"trubit":    trubit.NewClient(httpClient, "https://api-futures.trubit.com", logCfg),
+	clients := make(map[string]ScannerClient)
+	for _, name := range exchanges {
+		clientExchangeName := name
+		if name == "echobit" {
+			clientExchangeName = "ju"
+		}
+		c, err := infraapp.BuildPublicClient(context.Background(), clientExchangeName, httpClient, log, logCfg)
+		if err != nil {
+			log.Warn("Failed to build public client for stats reporter", slog.String("exchange", name), slog.Any("error", err))
+			continue
+		}
+		scanner, ok := c.(ScannerClient)
+		if !ok {
+			log.Warn("Client does not implement ScannerClient", slog.String("exchange", name))
+			continue
+		}
+		clients[name] = scanner
 	}
 
 	return &StatsReportJob{

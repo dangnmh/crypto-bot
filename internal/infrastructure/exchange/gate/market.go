@@ -3,6 +3,9 @@ package gate
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -278,4 +281,69 @@ func (c *Client) GetPotentialFundingSymbols(
 	}
 
 	return results, nil
+}
+
+// FetchKlines fetches public K-lines for Gate.io.
+func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
+	q := url.Values{}
+	q.Set("contract", symbol)
+	q.Set("interval", string(interval))
+	q.Set("limit", "35")
+	q.Set("from", strconv.FormatInt(start.Unix(), 10))
+
+	var data [][]any
+	err := c.sendRequest(ctx, http.MethodGet, "/futures/usdt/candlesticks", q, nil, &data)
+	if err != nil {
+		return nil, fmt.Errorf("gate fetch klines: %w", err)
+	}
+
+	var klines []exchange.Kline
+	for _, k := range data {
+		if len(k) < 6 {
+			continue
+		}
+		tsVal, ok := k[0].(float64)
+		if !ok {
+			tsStr, okStr := k[0].(string)
+			if okStr {
+				if parsed, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
+					tsVal = float64(parsed)
+				} else {
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+		closePrice, err := strconv.ParseFloat(fmt.Sprintf("%v", k[2]), 64)
+		if err != nil {
+			continue
+		}
+		open, err := strconv.ParseFloat(fmt.Sprintf("%v", k[3]), 64)
+		if err != nil {
+			open = closePrice
+		}
+		high, err := strconv.ParseFloat(fmt.Sprintf("%v", k[4]), 64)
+		if err != nil {
+			high = closePrice
+		}
+		low, err := strconv.ParseFloat(fmt.Sprintf("%v", k[5]), 64)
+		if err != nil {
+			low = closePrice
+		}
+		vol, err := strconv.ParseFloat(fmt.Sprintf("%v", k[1]), 64)
+		if err != nil {
+			vol = 0
+		}
+
+		klines = append(klines, exchange.Kline{
+			Timestamp: int64(tsVal) * 1000,
+			Open:      open,
+			High:      high,
+			Low:       low,
+			Close:     closePrice,
+			Volume:    vol,
+		})
+	}
+	return klines, nil
 }

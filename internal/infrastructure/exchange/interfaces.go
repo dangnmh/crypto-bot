@@ -46,6 +46,32 @@ type TPSLProvider interface {
 	PlaceTPSL(ctx context.Context, req TPSLRequest) error
 }
 
+// Interval represents candlestick granularity.
+type Interval string
+
+const (
+	Interval1m  Interval = "1m"
+	Interval3m  Interval = "3m"
+	Interval5m  Interval = "5m"
+	Interval15m Interval = "15m"
+	Interval30m Interval = "30m"
+	Interval1h  Interval = "1h"
+	Interval2h  Interval = "2h"
+	Interval4h  Interval = "4h"
+	Interval6h  Interval = "6h"
+	Interval8h  Interval = "8h"
+	Interval12h Interval = "12h"
+	Interval1d  Interval = "1d"
+	Interval1w  Interval = "1w"
+	Interval1M  Interval = "1M"
+)
+
+// KlineProvider is an optional interface that exchange REST clients can implement
+// to support retrieving historical candlestick (K-line) data.
+type KlineProvider interface {
+	FetchKlines(ctx context.Context, symbol string, interval Interval, start, end time.Time) ([]Kline, error)
+}
+
 // PositionModeSwitcher is an optional interface that exchange REST clients can implement
 // to support switching position mode (Hedge vs One-Way).
 type PositionModeSwitcher interface {
