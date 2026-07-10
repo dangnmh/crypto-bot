@@ -24,3 +24,5 @@
 - [x] bybit
 - [ ] whitebit
 - [x] mexc
+- [x] okx
+- [x] weex
