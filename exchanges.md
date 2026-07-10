@@ -9,7 +9,7 @@
 - [ ] ju
 - [ ] koinbay
 - [ ] bydfi
-- [ ] orangex
+- [x] orangex
 - [x] bitmart
 - [x] deepcoin
 - [ ] echobit
