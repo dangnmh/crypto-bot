@@ -4,7 +4,7 @@
 - [x] zoomex
 - [x] bitget
 - [ ] fameex
-- [ ] hotcoin
+- [x] hotcoin
 - [x] kucoin
 - [ ] ju
 - [ ] koinbay
