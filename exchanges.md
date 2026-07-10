@@ -20,7 +20,7 @@
 - [ ] lbank
 - [x] toobit
 - [x] bingx
-- [ ] xt
+- [x] xt
 - [x] bybit
 - [ ] whitebit
 - [x] mexc
