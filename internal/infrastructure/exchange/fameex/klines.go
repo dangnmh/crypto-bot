@@ -71,10 +71,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("fameex interval map: %w", err)
 	}
 
-	targetBase := c.baseURL
-	if strings.Contains(targetBase, "api.fameex.com") {
-		targetBase = strings.Replace(targetBase, "api.fameex.com", "openapi.fameex.com", 1)
-	}
+	targetBase := strings.Replace(c.baseURL, "api.fameex.com", "openapi.fameex.com", 1)
 
 	reqURL, err := url.Parse(targetBase + "/sapi/v1/klines")
 	if err != nil {
