@@ -43,6 +43,7 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 		"bitget":      true,
 		"zoomex":      true,
 		"deepcoin":    true,
+		"toobit":      true,
 	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}

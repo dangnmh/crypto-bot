@@ -37,7 +37,7 @@ func mapToobitInterval(interval exchange.Interval) string {
 
 func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([][]xjson.Number, error) {
 	params := map[string]string{
-		"symbol":   symbol,
+		symbolKey:  symbol,
 		"interval": mapToobitInterval(interval),
 	}
 	if !start.IsZero() {

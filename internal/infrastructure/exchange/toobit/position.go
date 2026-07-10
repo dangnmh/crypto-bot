@@ -209,8 +209,8 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	params := map[string]string{
-		"symbol": symbol,
-		"side":   positionSide,
+		symbolKey: symbol,
+		"side":    positionSide,
 	}
 
 	if orderInfo.CreateTime > 0 {
