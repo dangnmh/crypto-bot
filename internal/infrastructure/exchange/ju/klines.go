@@ -53,20 +53,6 @@ func mapJuInterval(interval exchange.Interval) (string, error) {
 
 // FetchKlines fetches public K-lines for Jucoin.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToUpper(symbol)
-	if !strings.Contains(cleanSymbol, "_") {
-		cleanSymbol = strings.ReplaceAll(cleanSymbol, "-", "_")
-		if !strings.Contains(cleanSymbol, "_") {
-			if before, ok := strings.CutSuffix(cleanSymbol, "USDT"); ok {
-				cleanSymbol = before + "_USDT"
-			} else if before, ok := strings.CutSuffix(cleanSymbol, "USDC"); ok {
-				cleanSymbol = before + "_USDC"
-			} else {
-				cleanSymbol += "_USDT"
-			}
-		}
-	}
-
 	mappedInterval, err := mapJuInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("ju interval map: %w", err)
@@ -75,7 +61,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	path := "/v1/spot/public/kline"
 	var qParts []string
 	qParts = append(qParts,
-		"symbol="+url.QueryEscape(cleanSymbol),
+		"symbol="+url.QueryEscape(symbol),
 		"interval="+url.QueryEscape(mappedInterval),
 	)
 

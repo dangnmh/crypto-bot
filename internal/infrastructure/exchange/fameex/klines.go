@@ -62,10 +62,6 @@ func mapFameexInterval(interval exchange.Interval) (string, error) {
 
 // FetchKlines fetches public K-lines for FameEX.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToUpper(symbol)
-	cleanSymbol = strings.ReplaceAll(cleanSymbol, "_", "")
-	cleanSymbol = strings.ReplaceAll(cleanSymbol, "-", "")
-
 	mappedInterval, err := mapFameexInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("fameex interval map: %w", err)
@@ -79,7 +75,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 
 	q := reqURL.Query()
-	q.Set("symbol", cleanSymbol)
+	q.Set("symbol", symbol)
 	q.Set("interval", mappedInterval)
 
 	if !start.IsZero() {

@@ -45,21 +45,7 @@ func mapLbankInterval(interval exchange.Interval) (string, error) {
 //
 //nolint:gocognit,cyclop // naturally complex scanner method
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	// Form symbol as lowercase with underscore (e.g. btc_usdt)
-	cleanSymbol := strings.ToLower(symbol)
-	if !strings.Contains(cleanSymbol, "_") {
-		cleanSymbol = strings.ReplaceAll(cleanSymbol, "-", "_")
-		if !strings.Contains(cleanSymbol, "_") {
-			if before, ok := strings.CutSuffix(cleanSymbol, "usdt"); ok {
-				cleanSymbol = before + "_usdt"
-			} else if before, ok := strings.CutSuffix(cleanSymbol, "usdc"); ok {
-				cleanSymbol = before + "_usdc"
-			} else {
-				cleanSymbol += "_usdt"
-			}
-		}
-	}
-
+	symbol = strings.ToLower(symbol)
 	mappedInterval, err := mapLbankInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("lbank interval map: %w", err)
@@ -73,7 +59,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 
 	q := reqURL.Query()
-	q.Set("symbol", cleanSymbol)
+	q.Set("symbol", symbol)
 	q.Set("type", mappedInterval)
 
 	startTimeSecs := time.Now().Add(-2 * time.Hour).Unix()

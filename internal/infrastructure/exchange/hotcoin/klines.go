@@ -72,7 +72,6 @@ func parseFloatValue(v any) float64 {
 // FetchKlines fetches public K-lines for hotcoin.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	contractCode := strings.ToUpper(strings.ReplaceAll(symbol, "_", ""))
-
 	mappedInterval, err := mapHotcoinInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("hotcoin interval map: %w", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -70,27 +69,13 @@ func mapBydfiInterval(interval exchange.Interval) (string, error) {
 
 // FetchKlines fetches public K-lines for BYDFi.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToUpper(symbol)
-	if !strings.Contains(cleanSymbol, "-") {
-		cleanSymbol = strings.ReplaceAll(cleanSymbol, "_", "-")
-		if !strings.Contains(cleanSymbol, "-") {
-			if before, ok := strings.CutSuffix(cleanSymbol, "USDT"); ok {
-				cleanSymbol = before + "-USDT"
-			} else if before, ok := strings.CutSuffix(cleanSymbol, "USDC"); ok {
-				cleanSymbol = before + "-USDC"
-			} else {
-				cleanSymbol += "-USDT"
-			}
-		}
-	}
-
 	mappedInterval, err := mapBydfiInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("bydfi interval map: %w", err)
 	}
 
 	params := map[string]string{
-		symbolKey:  cleanSymbol,
+		symbolKey:  symbol,
 		"interval": mappedInterval,
 	}
 

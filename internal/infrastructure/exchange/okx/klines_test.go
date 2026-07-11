@@ -53,7 +53,7 @@ func TestClient_FetchKlines(t *testing.T) {
 
 	klines, err := client.FetchKlines(
 		context.Background(),
-		"BTC_USDT",
+		"BTC-USDT-SWAP",
 		exchange.Interval1m,
 		time.Unix(1783680060, 0),
 		time.Unix(1783681200, 0),

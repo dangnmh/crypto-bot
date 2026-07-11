@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -53,29 +52,13 @@ func mapOKXInterval(interval exchange.Interval) (string, error) {
 
 // FetchKlines fetches public K-lines for OKX.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToUpper(symbol)
-	if !strings.HasSuffix(cleanSymbol, "-SWAP") {
-		cleanSymbol = strings.ReplaceAll(cleanSymbol, "_", "-")
-		if !strings.Contains(cleanSymbol, "-") {
-			if before, ok := strings.CutSuffix(cleanSymbol, "USDT"); ok {
-				cleanSymbol = before + "-USDT-SWAP"
-			} else if before, ok := strings.CutSuffix(cleanSymbol, "USDC"); ok {
-				cleanSymbol = before + "-USDC-SWAP"
-			} else {
-				cleanSymbol += "-USDT-SWAP"
-			}
-		} else {
-			cleanSymbol += "-SWAP"
-		}
-	}
-
 	mappedInterval, err := mapOKXInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("okx interval map: %w", err)
 	}
 
 	params := map[string]string{
-		paramInstId: cleanSymbol,
+		paramInstId: symbol,
 		"bar":       mappedInterval,
 	}
 

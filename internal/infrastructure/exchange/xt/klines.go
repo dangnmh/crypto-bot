@@ -63,14 +63,6 @@ func mapXTInterval(interval exchange.Interval) (string, error) {
 // FetchKlines fetches public K-lines for xt.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	cleanSymbol := strings.ToLower(symbol)
-	if !strings.Contains(cleanSymbol, "_") {
-		if before, ok := strings.CutSuffix(cleanSymbol, "usdt"); ok {
-			cleanSymbol = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(cleanSymbol, "usdc"); ok {
-			cleanSymbol = before + "_usdc"
-		}
-	}
-
 	mappedInterval, err := mapXTInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("xt interval map: %w", err)

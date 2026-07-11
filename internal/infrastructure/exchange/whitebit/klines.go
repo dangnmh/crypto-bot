@@ -61,20 +61,6 @@ func mapWhitebitInterval(interval exchange.Interval) (string, error) {
 //
 //nolint:cyclop // REST market methods are naturally complex
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToUpper(symbol)
-	if !strings.Contains(cleanSymbol, "_") {
-		cleanSymbol = strings.ReplaceAll(cleanSymbol, "-", "_")
-		if !strings.Contains(cleanSymbol, "_") {
-			if before, ok := strings.CutSuffix(cleanSymbol, "USDT"); ok {
-				cleanSymbol = before + "_USDT"
-			} else if before, ok := strings.CutSuffix(cleanSymbol, "USDC"); ok {
-				cleanSymbol = before + "_USDC"
-			} else {
-				cleanSymbol += "_USDT"
-			}
-		}
-	}
-
 	mappedInterval, err := mapWhitebitInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("whitebit interval map: %w", err)
@@ -83,7 +69,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	path := "/api/v1/public/kline"
 	var qParts []string
 	qParts = append(qParts,
-		"market="+url.QueryEscape(cleanSymbol),
+		"market="+url.QueryEscape(symbol),
 		"interval="+url.QueryEscape(mappedInterval),
 	)
 	if !start.IsZero() {

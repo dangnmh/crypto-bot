@@ -3,7 +3,6 @@ package pionex
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -67,25 +66,13 @@ func mapPionexInterval(interval exchange.Interval) (string, error) {
 
 // FetchKlines fetches public K-lines for pionex.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToUpper(symbol)
-	if !strings.HasSuffix(cleanSymbol, "_PERP") {
-		cleanSymbol = strings.ReplaceAll(cleanSymbol, "_", "")
-		if before, ok := strings.CutSuffix(cleanSymbol, "USDT"); ok {
-			cleanSymbol = before + "_USDT_PERP"
-		} else if before, ok := strings.CutSuffix(cleanSymbol, "USDC"); ok {
-			cleanSymbol = before + "_USDC_PERP"
-		} else {
-			cleanSymbol += "_PERP"
-		}
-	}
-
 	mappedInterval, err := mapPionexInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("pionex interval map: %w", err)
 	}
 
 	params := map[string]string{
-		"symbol":   cleanSymbol,
+		"symbol":   symbol,
 		"interval": mappedInterval,
 		"limit":    "100",
 	}
