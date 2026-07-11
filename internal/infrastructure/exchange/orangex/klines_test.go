@@ -120,3 +120,62 @@ func TestClient_FetchKlines_Error(t *testing.T) {
 	)
 	assert.Error(t, err)
 }
+
+func TestClient_FetchKlines_Limit1500(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/public/auth" {
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"access_token":"mock_tok","expires_in":3600}}`))
+			return
+		}
+		if r.URL.Path == "/private/get_tradingview_chart_data" {
+			var reqBody struct {
+				Method string `json:"method"`
+				Params struct {
+					StartTimestamp int64 `json:"start_timestamp"`
+					EndTimestamp   int64 `json:"end_timestamp"`
+				} `json:"params"`
+			}
+			err := json.NewDecoder(r.Body).Decode(&reqBody)
+			require.NoError(t, err)
+
+			// 1h interval. 1500 candles is 1500 hours.
+			// Expected start timestamp should be exactly end_timestamp - 1500 * time.Hour
+			expectedStart := reqBody.Params.EndTimestamp - (1500 * time.Hour).Milliseconds()
+			assert.Equal(t, expectedStart, reqBody.Params.StartTimestamp)
+
+			_, _ = w.Write([]byte(`{
+				"jsonrpc": "2.0",
+				"id": 1,
+				"result": {
+					"status": "ok",
+					"ticks": [],
+					"open": [],
+					"high": [],
+					"low": [],
+					"close": [],
+					"volume": []
+				}
+			}`))
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := orangex.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	// Requesting 2000 hours range (from 2000 hours ago to now)
+	endTime := time.Now()
+	startTime := endTime.Add(-2000 * time.Hour)
+
+	_, err := client.FetchKlines(
+		context.Background(),
+		"BTC-USDT-PERPETUAL",
+		exchange.Interval1h,
+		startTime,
+		endTime,
+	)
+	require.NoError(t, err)
+}

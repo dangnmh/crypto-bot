@@ -216,15 +216,7 @@ func (c *Client) rawCreateOrder(ctx context.Context, req exchange.SubmitOrderReq
 		ot = "LIMIT"
 	}
 
-	sym := strings.ToLower(req.Symbol)
-	// XT symbols generally require underscore notation for trade endpoints
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(req.Symbol)
 
 	payload := xtCreateOrderReq{
 		Symbol:        sym,
@@ -271,14 +263,7 @@ func (c *Client) rawCreateOrder(ctx context.Context, req exchange.SubmitOrderReq
 }
 
 func (c *Client) rawCancelOrder(ctx context.Context, symbol, orderID string) error {
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	payload := xtCancelReq{
 		Symbol:  sym,
@@ -352,14 +337,7 @@ func (c *Client) CancelOrders(ctx context.Context, orderIDs []string) error {
 
 // CancelAllOpenOrders satisfies the Client interface.
 func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") && sym != "" {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	type cancelAllReq struct {
 		Symbol string `json:"symbol,omitempty"`
@@ -389,14 +367,7 @@ func (c *Client) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 
 // GetOrder satisfies the Client interface.
 func (c *Client) GetOrder(ctx context.Context, symbol, orderID string) (*exchange.OrderInfo, error) {
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	query := map[string]string{
 		paramSymbol:  sym,
@@ -448,14 +419,7 @@ func (c *Client) GetOrderByExternalID(ctx context.Context, symbol, externalOrder
 func (c *Client) GetOpenOrders(ctx context.Context, symbol string) ([]exchange.OrderInfo, error) {
 	query := make(map[string]string)
 	if symbol != "" {
-		sym := strings.ToLower(symbol)
-		if !strings.Contains(sym, "_") {
-			if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-				sym = before + "_usdt"
-			} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-				sym = before + "_usdc"
-			}
-		}
+		sym := cleanXTSymbol(symbol)
 		query["symbol"] = sym
 	}
 
@@ -487,14 +451,7 @@ func (c *Client) GetHistoryOrders(ctx context.Context, symbol string, limit int)
 		"direction": "NEXT",
 	}
 	if symbol != "" {
-		sym := strings.ToLower(symbol)
-		if !strings.Contains(sym, "_") {
-			if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-				sym = before + "_usdt"
-			} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-				sym = before + "_usdc"
-			}
-		}
+		sym := cleanXTSymbol(symbol)
 		query["symbol"] = sym
 	}
 	if limit > 0 {
@@ -530,14 +487,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return nil, fmt.Errorf("fetch order: %w", err)
 	}
 
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	var expectedPosSide string
 	switch orderInfo.Side {
@@ -646,14 +596,7 @@ func (c *Client) getFundingFee(ctx context.Context, symbol string, orderCreateTi
 		return 0, false, nil
 	}
 
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	params := map[string]string{
 		paramSymbol:    sym,

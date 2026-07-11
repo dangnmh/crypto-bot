@@ -52,7 +52,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("bitunix unmarshal klines: %w", err)
 	}
 
-	if resp.Code != 200 {
+	if resp.Code != 200 && resp.Code != 0 {
 		return nil, fmt.Errorf("bitunix API error: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 

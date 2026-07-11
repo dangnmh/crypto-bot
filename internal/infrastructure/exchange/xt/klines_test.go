@@ -121,3 +121,32 @@ func TestClient_FetchKlines_Error(t *testing.T) {
 	)
 	assert.Error(t, err)
 }
+
+func TestClient_FetchKlines_SymbolFormat(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		assert.Equal(t, "btc_usdt", q.Get("symbol"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"returnCode": 0,
+			"msgInfo": "success",
+			"error": null,
+			"result": []
+		}`))
+	}))
+	defer server.Close()
+
+	client := xt.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	_, err := client.FetchKlines(
+		context.Background(),
+		"BTCUSDT",
+		exchange.Interval1m,
+		time.Time{},
+		time.Time{},
+	)
+	require.NoError(t, err)
+}

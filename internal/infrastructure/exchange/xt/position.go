@@ -62,14 +62,7 @@ type xtPositionHistoryResponse struct {
 func (c *Client) rawGetOpenPositions(ctx context.Context, symbol string) ([]xtOpenPosition, error) {
 	query := make(map[string]string)
 	if symbol != "" {
-		sym := strings.ToLower(symbol)
-		if !strings.Contains(sym, "_") {
-			if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-				sym = before + "_usdt"
-			} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-				sym = before + "_usdc"
-			}
-		}
+		sym := cleanXTSymbol(symbol)
 		query["symbol"] = sym
 	}
 

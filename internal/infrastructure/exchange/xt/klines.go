@@ -3,7 +3,6 @@ package xt
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -62,7 +61,7 @@ func mapXTInterval(interval exchange.Interval) (string, error) {
 
 // FetchKlines fetches public K-lines for xt.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	cleanSymbol := strings.ToLower(symbol)
+	cleanSymbol := cleanXTSymbol(symbol)
 	mappedInterval, err := mapXTInterval(interval)
 	if err != nil {
 		return nil, fmt.Errorf("xt interval map: %w", err)

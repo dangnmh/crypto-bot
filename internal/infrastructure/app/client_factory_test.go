@@ -7,11 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"io"
+	"strings"
+
 	"crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAllExchangesFetchKlinesSupport(t *testing.T) {
@@ -90,4 +94,40 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 			}
 		})
 	}
+}
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestBuildPublicClient_CoinbaseBaseURL(t *testing.T) {
+	t.Parallel()
+
+	var requestedURL string
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requestedURL = req.URL.String()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("[]")),
+			}, nil
+		}),
+	}
+
+	c, err := app.BuildPublicClient(context.Background(), "coinbase", httpClient, slog.Default(), config.LoggingConfig{})
+	require.NoError(t, err)
+
+	type fundingSymbolGetter interface {
+		GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error)
+	}
+
+	getter, ok := c.(fundingSymbolGetter)
+	require.True(t, ok)
+
+	_, err = getter.GetPotentialFundingSymbols(context.Background(), 0, 0, nil, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://api.international.coinbase.com/api/v1/instruments", requestedURL)
 }

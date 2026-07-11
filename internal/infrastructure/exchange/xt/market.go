@@ -52,6 +52,18 @@ func toStandardSymbol(sym string) string {
 	return s
 }
 
+func cleanXTSymbol(symbol string) string {
+	sym := strings.ToLower(symbol)
+	if !strings.Contains(sym, "_") {
+		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
+			sym = before + "_usdt"
+		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
+			sym = before + "_usdc"
+		}
+	}
+	return sym
+}
+
 // GetTickers satisfies the Client interface.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	body, err := c.request(ctx, "GET", "/future/market/v1/public/cg/contracts", nil, nil, false)

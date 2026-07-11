@@ -16,16 +16,8 @@ type xtTradeResponse struct {
 	MsgInfo    string `json:"msgInfo"`
 }
 
-// ChangeLeverage satisfies the Client interface.
 func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverageRequest) error {
-	sym := strings.ToLower(req.Symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(req.Symbol)
 
 	// Change leverage for both LONG and SHORT position sides
 	sides := []string{sideLong, sideShort}
@@ -64,14 +56,7 @@ func (c *Client) SwitchMarginMode(
 	leverage int,
 	side domain.Side,
 ) error {
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	// Map marginMode to CROSSED / ISOLATED
 	var pt string

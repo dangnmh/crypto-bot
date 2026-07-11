@@ -194,7 +194,7 @@ func BuildPublicClient(ctx context.Context, exchangeName string, httpClient *htt
 	case exchange.ExchangeJu:
 		return ju.NewClient(httpClient, "https://api.jucoin.com", logCfg), nil
 	case exchange.ExchangeCoinbase:
-		return coinbase.NewClient(httpClient, "https://api.exchange.coinbase.com", logCfg), nil
+		return coinbase.NewClient(httpClient, "https://api.international.coinbase.com", logCfg), nil
 	case "sunx":
 		return sunx.NewClient(httpClient, "https://api.sunx.com", logCfg), nil
 	case exchange.ExchangeTrubit:

@@ -42,16 +42,8 @@ func (a *WsAdapter) SetClient(client *Client) {
 	a.client = client
 }
 
-// SubscribeTicker streams ticker info.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	topic := fmt.Sprintf("agg_ticker@%s", sym)
 	msg := map[string]any{
@@ -65,14 +57,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker stops streaming ticker updates.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	sym := strings.ToLower(symbol)
-	if !strings.Contains(sym, "_") {
-		if before, ok := strings.CutSuffix(sym, "usdt"); ok {
-			sym = before + "_usdt"
-		} else if before, ok := strings.CutSuffix(sym, "usdc"); ok {
-			sym = before + "_usdc"
-		}
-	}
+	sym := cleanXTSymbol(symbol)
 
 	topic := fmt.Sprintf("agg_ticker@%s", sym)
 	msg := map[string]any{

@@ -26,6 +26,23 @@ var intervalMap = map[exchange.Interval]string{
 	exchange.Interval1M:  "1M",
 }
 
+var intervalDurations = map[exchange.Interval]time.Duration{
+	exchange.Interval1m:  time.Minute,
+	exchange.Interval3m:  3 * time.Minute,
+	exchange.Interval5m:  5 * time.Minute,
+	exchange.Interval15m: 15 * time.Minute,
+	exchange.Interval30m: 30 * time.Minute,
+	exchange.Interval1h:  time.Hour,
+	exchange.Interval2h:  2 * time.Hour,
+	exchange.Interval4h:  4 * time.Hour,
+	exchange.Interval6h:  6 * time.Hour,
+	exchange.Interval8h:  8 * time.Hour,
+	exchange.Interval12h: 12 * time.Hour,
+	exchange.Interval1d:  24 * time.Hour,
+	exchange.Interval1w:  7 * 24 * time.Hour,
+	exchange.Interval1M:  30 * 24 * time.Hour,
+}
+
 func mapOrangexInterval(interval exchange.Interval) string {
 	if val, ok := intervalMap[interval]; ok {
 		return val
@@ -44,27 +61,36 @@ type orangexKlineResult struct {
 }
 
 func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) (*orangexKlineResult, error) {
+	now := c.clock.Now()
+	startTime := start
+	endTime := end
+
+	if startTime.IsZero() {
+		startTime = now.Add(-24 * time.Hour)
+	}
+	if endTime.IsZero() {
+		endTime = now
+	}
+
+	candleDur := intervalDurations[interval]
+	if candleDur <= 0 {
+		candleDur = time.Minute
+	}
+
+	maxDuration := 1500 * candleDur
+	if endTime.Sub(startTime) > maxDuration {
+		startTime = endTime.Add(-maxDuration)
+	}
+
 	params := map[string]any{
-		paramInstrument: symbol,
-		"resolution":    mapOrangexInterval(interval),
-	}
-	if !start.IsZero() {
-		params["start_timestamp"] = start.UnixMilli()
-	} else {
-		params["start_timestamp"] = c.clock.Now().Add(-24 * time.Hour).UnixMilli()
-	}
-	if !end.IsZero() {
-		params["end_timestamp"] = end.UnixMilli()
-	} else {
-		params["end_timestamp"] = c.clock.Now().UnixMilli()
+		paramInstrument:   symbol,
+		"resolution":      mapOrangexInterval(interval),
+		"start_timestamp": startTime.UnixMilli(),
+		"end_timestamp":   endTime.UnixMilli(),
 	}
 
 	path := "/private/get_tradingview_chart_data"
 	signed := true
-	if c.apiKey == "" {
-		path = "/public/get_tradingview_chart_data"
-		signed = false
-	}
 	body, err := c.postRPC(ctx, path, path, params, signed)
 	if err != nil {
 		return nil, err

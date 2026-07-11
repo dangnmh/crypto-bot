@@ -13,6 +13,7 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/orangex"
 
 	"github.com/robfig/cron/v3"
 )
@@ -258,6 +259,20 @@ func (j *PriceTrackJob) FetchHistoryTicksRange(ctx context.Context, rep *domain.
 //
 //nolint:contextcheck // Caller context is correctly propagated
 func (j *PriceTrackJob) buildClient(ctx context.Context, exchangeName string) (exchange.KlineProvider, error) {
+	if strings.EqualFold(exchangeName, "orangex") {
+		apiCfg, ok := j.sysCfg.ExchangeConfig["orangex"]
+		if ok {
+			c := orangex.NewClient(
+				j.httpClient,
+				apiCfg.Future.BaseURL,
+				apiCfg.APIKey,
+				apiCfg.APISecret,
+				j.sysCfg.Logging,
+			)
+			return c, nil
+		}
+	}
+
 	c, err := infraapp.BuildPublicClient(ctx, exchangeName, j.httpClient, j.log, j.sysCfg.Logging)
 	if err != nil {
 		return nil, err
