@@ -288,8 +288,14 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	q := url.Values{}
 	q.Set("contract", symbol)
 	q.Set("interval", string(interval))
-	q.Set("limit", "35")
-	q.Set("from", strconv.FormatInt(start.Unix(), 10))
+	q.Set("limit", "100")
+
+	if !start.IsZero() {
+		q.Set("from", strconv.FormatInt(start.Unix(), 10))
+	}
+	if !end.IsZero() {
+		q.Set("to", strconv.FormatInt(end.Unix(), 10))
+	}
 
 	var data [][]any
 	err := c.sendRequest(ctx, http.MethodGet, "/futures/usdt/candlesticks", q, nil, &data)

@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
@@ -287,4 +288,41 @@ func TestClient_GateRemainingMethods(t *testing.T) {
 	_, _ = client.GetHistoryPositionsRaw(context.Background(), nil)
 	_, _ = client.GetHistoryOrdersRaw(context.Background(), nil)
 	_, _ = client.GetOrderPNLRaw(context.Background(), nil)
+}
+
+func TestClient_FetchKlines(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/futures/usdt/candlesticks", r.URL.Path)
+
+		q := r.URL.Query()
+		assert.Equal(t, "BTC_USDT", q.Get("contract"))
+		assert.Equal(t, "1m", q.Get("interval"))
+		assert.Equal(t, "1783665240", q.Get("from"))
+		assert.Equal(t, "1783681200", q.Get("to"))
+		assert.Equal(t, "100", q.Get("limit"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			[1783665240, "668", "63888.7", "63889.5", "63889.5", "63875.1"]
+		]`))
+	}))
+	defer server.Close()
+
+	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTC_USDT",
+		exchange.Interval1m,
+		time.Unix(1783665240, 0),
+		time.Unix(1783681200, 0),
+	)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
+
+	assert.Equal(t, int64(1783665240000), klines[0].Timestamp)
+	assert.Equal(t, 63888.7, klines[0].Close)
 }
