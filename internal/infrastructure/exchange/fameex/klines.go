@@ -22,11 +22,15 @@ type fameexKlineItem struct {
 	Vol   xjson.Number `json:"vol"`
 }
 
+type fameexKlinesData struct {
+	Klines []fameexKlineItem `json:"klines"`
+}
+
 type fameexKlinesResponse struct {
-	Code int               `json:"code"`
-	Msg  string            `json:"msg"`
-	Data []fameexKlineItem `json:"data"`
-	Succ bool              `json:"succ"`
+	Code int              `json:"code"`
+	Msg  string           `json:"msg"`
+	Data fameexKlinesData `json:"data"`
+	Succ bool             `json:"succ"`
 }
 
 const (
@@ -121,9 +125,9 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("fameex API error: code=%d msg=%s", res.Code, res.Msg)
 	}
 
-	klines := make([]exchange.Kline, 0, len(res.Data))
-	for i := range res.Data {
-		item := &res.Data[i]
+	klines := make([]exchange.Kline, 0, len(res.Data.Klines))
+	for i := range res.Data.Klines {
+		item := &res.Data.Klines[i]
 		o, _ := item.Open.Float64()
 		h, _ := item.High.Float64()
 		l, _ := item.Low.Float64()

@@ -196,3 +196,25 @@ func TestClient_FetchKlines_Intervals(t *testing.T) {
 		assert.NoError(t, err)
 	}
 }
+
+func TestClient_FetchKlines_Forbidden(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>Sorry, you have been blocked</body></html>`))
+	}))
+	defer server.Close()
+
+	client := lbank.NewClient(server.Client(), server.URL, config.LoggingConfig{})
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTC_USDT",
+		exchange.Interval1m,
+		time.Time{},
+		time.Time{},
+	)
+	assert.NoError(t, err)
+	assert.Nil(t, klines)
+}
