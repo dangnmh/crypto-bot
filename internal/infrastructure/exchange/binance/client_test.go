@@ -951,3 +951,53 @@ func TestClient_BinanceRemainingMethods(t *testing.T) {
 	err = client.SwitchMarginMode(context.Background(), "BTCUSDT", domain.MarginModeIsolated, 10, domain.SideOpenLong)
 	require.NoError(t, err)
 }
+
+func TestClient_FetchKlines(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/fapi/v1/klines", r.URL.Path)
+
+		q := r.URL.Query()
+		assert.Equal(t, "BTCUSDT", q.Get("symbol"))
+		assert.Equal(t, "1m", q.Get("interval"))
+		assert.Equal(t, "1783665240000", q.Get("startTime"))
+		assert.Equal(t, "1783681200000", q.Get("endTime"))
+		assert.Equal(t, "100", q.Get("limit"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			[
+				1783665240000,
+				"63889.5",
+				"63889.5",
+				"63875.1",
+				"63888.7",
+				"668",
+				1783665300000,
+				"42735.07",
+				100,
+				"500",
+				"1000",
+				"0"
+			]
+		]`))
+	}))
+	defer server.Close()
+
+	client := binance.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTCUSDT",
+		exchange.Interval1m,
+		time.Unix(1783665240, 0),
+		time.Unix(1783681200, 0),
+	)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
+
+	assert.Equal(t, int64(1783665240000), klines[0].Timestamp)
+	assert.Equal(t, 63888.7, klines[0].Close)
+}
