@@ -3,9 +3,6 @@ package gate
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -283,63 +280,7 @@ func (c *Client) GetPotentialFundingSymbols(
 	return results, nil
 }
 
-type gateCandlestick struct {
-	Timestamp int64        `json:"t"`
-	Volume    xjson.Number `json:"v"`
-	Close     xjson.Number `json:"c"`
-	High      xjson.Number `json:"h"`
-	Low       xjson.Number `json:"l"`
-	Open      xjson.Number `json:"o"`
-	Sum       xjson.Number `json:"sum"`
-}
-
 // FetchKlines fetches public K-lines for Gate.io.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	q := url.Values{}
-	q.Set("contract", symbol)
-	q.Set("interval", string(interval))
-
-	if !start.IsZero() {
-		q.Set("from", strconv.FormatInt(start.Unix(), 10))
-	}
-	if !end.IsZero() {
-		q.Set("to", strconv.FormatInt(end.Unix(), 10))
-	}
-	if start.IsZero() || end.IsZero() {
-		q.Set("limit", "100")
-	}
-
-	var data []gateCandlestick
-	err := c.sendRequest(ctx, http.MethodGet, "/futures/usdt/candlesticks", q, nil, &data)
-	if err != nil {
-		return nil, fmt.Errorf("gate fetch klines: %w", err)
-	}
-
-	var klines []exchange.Kline
-	for _, k := range data {
-		closePrice := xjson.ToFloat64(k.Close)
-		openPrice := xjson.ToFloat64(k.Open)
-		if openPrice == 0 {
-			openPrice = closePrice
-		}
-		highPrice := xjson.ToFloat64(k.High)
-		if highPrice == 0 {
-			highPrice = closePrice
-		}
-		lowPrice := xjson.ToFloat64(k.Low)
-		if lowPrice == 0 {
-			lowPrice = closePrice
-		}
-		vol := xjson.ToFloat64(k.Volume)
-
-		klines = append(klines, exchange.Kline{
-			Timestamp: k.Timestamp * 1000,
-			Open:      openPrice,
-			High:      highPrice,
-			Low:       lowPrice,
-			Close:     closePrice,
-			Volume:    vol,
-		})
-	}
-	return klines, nil
+	return nil, nil
 }

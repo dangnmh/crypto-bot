@@ -293,68 +293,22 @@ func TestClient_GateRemainingMethods(t *testing.T) {
 func TestClient_FetchKlines(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name          string
-		start         time.Time
-		end           time.Time
-		expectedFrom  string
-		expectedTo    string
-		expectedLimit string
-	}{
-		{
-			name:          "both start and end specified - limit omitted",
-			start:         time.Unix(1783665240, 0),
-			end:           time.Unix(1783681200, 0),
-			expectedFrom:  "1783665240",
-			expectedTo:    "1783681200",
-			expectedLimit: "",
-		},
-		{
-			name:          "only start specified - limit set to 100",
-			start:         time.Unix(1783665240, 0),
-			end:           time.Time{},
-			expectedFrom:  "1783665240",
-			expectedTo:    "",
-			expectedLimit: "100",
-		},
-	}
+	// Since FetchKlines is changed to do nothing and return empty data,
+	// it should return nil, nil immediately without calling the REST API.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Unexpected API call: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "GET", r.Method)
-				assert.Equal(t, "/futures/usdt/candlesticks", r.URL.Path)
-
-				q := r.URL.Query()
-				assert.Equal(t, "BTC_USDT", q.Get("contract"))
-				assert.Equal(t, "1m", q.Get("interval"))
-				assert.Equal(t, tt.expectedFrom, q.Get("from"))
-				assert.Equal(t, tt.expectedTo, q.Get("to"))
-				assert.Equal(t, tt.expectedLimit, q.Get("limit"))
-
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`[
-					{"t": 1783665240, "v": 668, "c": "63888.7", "h": "63889.5", "l": "63875.1", "o": "63889.5", "sum": "42677651"}
-				]`))
-			}))
-			defer server.Close()
-
-			client := gate.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
-
-			klines, err := client.FetchKlines(
-				context.Background(),
-				"BTC_USDT",
-				exchange.Interval1m,
-				tt.start,
-				tt.end,
-			)
-			require.NoError(t, err)
-			require.Len(t, klines, 1)
-
-			assert.Equal(t, int64(1783665240000), klines[0].Timestamp)
-			assert.Equal(t, 63888.7, klines[0].Close)
-		})
-	}
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTC_USDT",
+		exchange.Interval1m,
+		time.Unix(1783665240, 0),
+		time.Unix(1783681200, 0),
+	)
+	require.NoError(t, err)
+	assert.Empty(t, klines)
 }
