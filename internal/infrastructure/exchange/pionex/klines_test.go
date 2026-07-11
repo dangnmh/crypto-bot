@@ -26,6 +26,7 @@ func TestClient_FetchKlines(t *testing.T) {
 		assert.Equal(t, "BTC_USDT_PERP", q.Get("symbol"))
 		assert.Equal(t, "1M", q.Get("interval"))
 		assert.Equal(t, "1783681200000", q.Get("endTime"))
+		assert.Equal(t, "100", q.Get("limit"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{

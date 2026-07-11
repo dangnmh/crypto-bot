@@ -87,6 +87,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	params := map[string]string{
 		"symbol":   cleanSymbol,
 		"interval": mappedInterval,
+		"limit":    "100",
 	}
 
 	if !end.IsZero() {
