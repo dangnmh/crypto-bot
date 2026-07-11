@@ -70,7 +70,6 @@ func toStandardSymbol(sym string) string {
 	return s
 }
 
-//nolint:gocognit,cyclop // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -87,6 +86,15 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, fmt.Errorf("unmarshal fameex tickers: %w", err)
 	}
 
+	results := c.filterFameexTickers(tickers, minVol24h, maxVol24h, whitelist, blacklist)
+	return results, nil
+}
+
+func (c *Client) filterFameexTickers(
+	tickers []fameexTickerItem,
+	minVol24h, maxVol24h float64,
+	whitelist, blacklist []string,
+) []exchange.PotentialFundingResult {
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[toStandardSymbol(sym)] = true
@@ -114,10 +122,7 @@ func (c *Client) GetPotentialFundingSymbols(
 		origSym := toStandardSymbol(item.TickerID)
 
 		// Filter blacklist/whitelist by both formats to be extremely safe
-		if blacklistMap[stdSym] || blacklistMap[origSym] {
-			continue
-		}
-		if len(whitelistMap) > 0 && !whitelistMap[stdSym] && !whitelistMap[origSym] {
+		if !isFameexSymbolAllowed(stdSym, origSym, whitelistMap, blacklistMap) {
 			continue
 		}
 
@@ -140,6 +145,15 @@ func (c *Client) GetPotentialFundingSymbols(
 			Price:      price,
 		})
 	}
+	return results
+}
 
-	return results, nil
+func isFameexSymbolAllowed(stdSym, origSym string, whitelistMap, blacklistMap map[string]bool) bool {
+	if blacklistMap[stdSym] || blacklistMap[origSym] {
+		return false
+	}
+	if len(whitelistMap) > 0 && !whitelistMap[stdSym] && !whitelistMap[origSym] {
+		return false
+	}
+	return true
 }

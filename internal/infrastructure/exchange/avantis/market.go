@@ -41,8 +41,6 @@ type avantisTradingResponse struct {
 }
 
 // GetPotentialFundingSymbols fetches all perpetual contracts, their tickers, and estimated funding rates.
-//
-//nolint:cyclop,gocognit // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -60,6 +58,25 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, fmt.Errorf("unmarshal trading data: %w", err)
 	}
 
+	targetedPairs, feedIDs := c.filterAvantisPairs(&tradingResp, whitelist, blacklist)
+	if len(targetedPairs) == 0 {
+		return nil, nil
+	}
+
+	// 2. Fetch prices from Pyth Network in batch
+	prices, err := c.fetchPythPrices(ctx, feedIDs)
+	if err != nil {
+		c.logger.Debug("failed to fetch pyth prices, using 0", "error", err)
+	}
+
+	results := c.buildAvantisResults(targetedPairs, prices, minVol24h, maxVol24h)
+	return results, nil
+}
+
+func (c *Client) filterAvantisPairs(
+	tradingResp *avantisTradingResponse,
+	whitelist, blacklist []string,
+) ([]avantisPairInfo, []string) {
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[strings.ToUpper(sym)] = true
@@ -92,17 +109,14 @@ func (c *Client) GetPotentialFundingSymbols(
 			}
 		}
 	}
+	return targetedPairs, feedIDs
+}
 
-	if len(targetedPairs) == 0 {
-		return nil, nil
-	}
-
-	// 2. Fetch prices from Pyth Network in batch
-	prices, err := c.fetchPythPrices(ctx, feedIDs)
-	if err != nil {
-		c.logger.Debug("failed to fetch pyth prices, using 0", "error", err)
-	}
-
+func (c *Client) buildAvantisResults(
+	targetedPairs []avantisPairInfo,
+	prices map[string]float64,
+	minVol24h, maxVol24h float64,
+) []exchange.PotentialFundingResult {
 	var results []exchange.PotentialFundingResult
 	for _, pair := range targetedPairs {
 		cleanID := strings.TrimPrefix(strings.ToLower(pair.Feed.FeedID), "0x")
@@ -131,8 +145,7 @@ func (c *Client) GetPotentialFundingSymbols(
 			Price:      price,
 		})
 	}
-
-	return results, nil
+	return results
 }
 
 func (c *Client) fetchPythPrices(ctx context.Context, feedIDs []string) (map[string]float64, error) {

@@ -30,18 +30,16 @@ func TestClient_FetchKlines_Scenarios(t *testing.T) {
 				"code": 0,
 				"msg": "Success",
 				"succ": true,
-				"data": {
-					"klines": [
-						{
-							"high": 63230.9,
-							"vol": 403039.0,
-							"low": 62782.7,
-							"idx": 1783504800000,
-							"close": 62835.3,
-							"open": 62982.3
-						}
-					]
-				}
+				"data": [
+					{
+						"high": 63230.9,
+						"vol": 403039.0,
+						"low": 62782.7,
+						"idx": 1783504800000,
+						"close": 62835.3,
+						"open": 62982.3
+					}
+				]
 			}`,
 			responseCode: http.StatusOK,
 		},

@@ -121,8 +121,6 @@ func chunkSymbols(symbols []string, size int) [][]string {
 }
 
 // GetPotentialFundingSymbols satisfies the ScannerClient interface.
-//
-//nolint:gocognit,cyclop // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -143,6 +141,36 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, fmt.Errorf("trubit api error: %s", refResp.Message)
 	}
 
+	targetSymbols := c.filterTrubitSymbols(&refResp, whitelist, blacklist)
+	if len(targetSymbols) == 0 {
+		return nil, nil
+	}
+
+	// 2. Fetch stats and funding in chunks of 20 symbols
+	marketMap := c.fetchTrubitMarketData(ctx, targetSymbols)
+
+	var results []exchange.PotentialFundingResult
+	for stdSym, data := range marketMap {
+		if minVol24h > 0 && data.vol24h < minVol24h {
+			continue
+		}
+		if maxVol24h > 0 && data.vol24h > maxVol24h {
+			continue
+		}
+
+		results = append(results, exchange.PotentialFundingResult{
+			Symbol:     stdSym,
+			Rate:       data.rate,
+			SettleTime: getNext8HourInterval(),
+			Volume24h:  data.vol24h,
+			Price:      data.lastPrice,
+		})
+	}
+
+	return results, nil
+}
+
+func (c *Client) filterTrubitSymbols(refResp *trubitRefResponse, whitelist, blacklist []string) []string {
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[toStandardSymbol(sym)] = true
@@ -169,20 +197,18 @@ func (c *Client) GetPotentialFundingSymbols(
 
 		targetSymbols = append(targetSymbols, ref.Symbol)
 	}
+	return targetSymbols
+}
 
-	if len(targetSymbols) == 0 {
-		return nil, nil
-	}
+type symbolMarketData struct {
+	lastPrice float64
+	vol24h    float64
+	rate      float64
+	timestamp int64
+}
 
-	// 2. Fetch stats and funding in chunks of 20 symbols
+func (c *Client) fetchTrubitMarketData(ctx context.Context, targetSymbols []string) map[string]*symbolMarketData {
 	chunks := chunkSymbols(targetSymbols, 20)
-
-	type symbolMarketData struct {
-		lastPrice float64
-		vol24h    float64
-		rate      float64
-		timestamp int64
-	}
 	marketMap := make(map[string]*symbolMarketData)
 
 	for _, chunk := range chunks {
@@ -239,24 +265,5 @@ func (c *Client) GetPotentialFundingSymbols(
 			data.timestamp = item.Timestamp
 		}
 	}
-
-	var results []exchange.PotentialFundingResult
-	for stdSym, data := range marketMap {
-		if minVol24h > 0 && data.vol24h < minVol24h {
-			continue
-		}
-		if maxVol24h > 0 && data.vol24h > maxVol24h {
-			continue
-		}
-
-		results = append(results, exchange.PotentialFundingResult{
-			Symbol:     stdSym,
-			Rate:       data.rate,
-			SettleTime: getNext8HourInterval(),
-			Volume24h:  data.vol24h,
-			Price:      data.lastPrice,
-		})
-	}
-
-	return results, nil
+	return marketMap
 }

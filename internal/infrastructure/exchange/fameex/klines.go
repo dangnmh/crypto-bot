@@ -2,6 +2,7 @@ package fameex
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,15 +23,11 @@ type fameexKlineItem struct {
 	Vol   xjson.Number `json:"vol"`
 }
 
-type fameexKlinesData struct {
-	Klines []fameexKlineItem `json:"klines"`
-}
-
 type fameexKlinesResponse struct {
-	Code int              `json:"code"`
-	Msg  string           `json:"msg"`
-	Data fameexKlinesData `json:"data"`
-	Succ bool             `json:"succ"`
+	Code int             `json:"code"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
+	Succ bool            `json:"succ"`
 }
 
 const (
@@ -71,6 +68,20 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("fameex interval map: %w", err)
 	}
 
+	reqURL, err := c.buildKlinesURL(symbol, mappedInterval, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := c.executeKlinesRequest(ctx, reqURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.parseKlinesResponse(body)
+}
+
+func (c *Client) buildKlinesURL(symbol, mappedInterval string, start, end time.Time) (*url.URL, error) {
 	targetBase := strings.Replace(c.baseURL, "api.fameex.com", "openapi.fameex.com", 1)
 
 	reqURL, err := url.Parse(targetBase + "/sapi/v1/klines")
@@ -90,6 +101,10 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 	reqURL.RawQuery = q.Encode()
 
+	return reqURL, nil
+}
+
+func (c *Client) executeKlinesRequest(ctx context.Context, reqURL *url.URL) ([]byte, error) {
 	if c.limiter != nil {
 		if err := c.limiter.Acquire(ctx, reqURL.Path); err != nil {
 			return nil, fmt.Errorf("rate limit acquire: %w", err)
@@ -116,18 +131,33 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	return body, nil
+}
+
+func (c *Client) parseKlinesResponse(body []byte) ([]exchange.Kline, error) {
 	var res fameexKlinesResponse
 	if err := xjson.Unmarshal(body, &res); err != nil {
 		return nil, fmt.Errorf("fameex unmarshal klines: %w", err)
 	}
 
 	if !res.Succ || res.Code != 0 {
+		if res.Code == 8 {
+			c.logger.Warn("FameEX K-line endpoint returned operation failed (returning empty data)", "code", res.Code, "msg", res.Msg)
+			return nil, nil
+		}
 		return nil, fmt.Errorf("fameex API error: code=%d msg=%s", res.Code, res.Msg)
 	}
 
-	klines := make([]exchange.Kline, 0, len(res.Data.Klines))
-	for i := range res.Data.Klines {
-		item := &res.Data.Klines[i]
+	var klinesData []fameexKlineItem
+	if len(res.Data) > 0 {
+		if err := json.Unmarshal(res.Data, &klinesData); err != nil {
+			return nil, fmt.Errorf("fameex unmarshal klines data: %w", err)
+		}
+	}
+
+	klines := make([]exchange.Kline, 0, len(klinesData))
+	for i := range klinesData {
+		item := &klinesData[i]
 		o, _ := item.Open.Float64()
 		h, _ := item.High.Float64()
 		l, _ := item.Low.Float64()

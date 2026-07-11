@@ -145,8 +145,6 @@ func (c *Client) fetchSingleSymbol(
 }
 
 // GetPotentialFundingSymbols satisfies the ScannerClient interface.
-//
-//nolint:gocognit,cyclop // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -162,6 +160,13 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, fmt.Errorf("unmarshal koinbay contracts: %w", err)
 	}
 
+	filtered := c.filterContracts(contracts, whitelist, blacklist)
+	results := c.fetchContractsData(ctx, filtered, minVol24h, maxVol24h)
+
+	return results, nil
+}
+
+func (c *Client) filterContracts(contracts []koinbayContract, whitelist, blacklist []string) []koinbayContract {
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[toStandardSymbol(sym)] = true
@@ -186,19 +191,26 @@ func (c *Client) GetPotentialFundingSymbols(
 		}
 		filtered = append(filtered, contract)
 	}
+	return filtered
+}
 
-	type fetchResult struct {
-		res exchange.PotentialFundingResult
-		err error
-	}
+type fetchResult struct {
+	res exchange.PotentialFundingResult
+	err error
+}
 
-	resultsChan := make(chan fetchResult, len(filtered))
+func (c *Client) fetchContractsData(
+	ctx context.Context,
+	contracts []koinbayContract,
+	minVol24h, maxVol24h float64,
+) []exchange.PotentialFundingResult {
+	resultsChan := make(chan fetchResult, len(contracts))
 	var wg sync.WaitGroup
 
 	// Use a semaphore to limit concurrency to 10
 	sem := make(chan struct{}, 10)
 
-	for _, item := range filtered {
+	for _, item := range contracts {
 		wg.Add(1)
 		go func(rawSym, stdSym string) {
 			defer wg.Done()
@@ -224,5 +236,5 @@ func (c *Client) GetPotentialFundingSymbols(
 		}
 	}
 
-	return results, nil
+	return results
 }

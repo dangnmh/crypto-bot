@@ -68,7 +68,6 @@ func toStandardSymbol(sym string) string {
 	return s
 }
 
-//nolint:gocognit,cyclop // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -99,6 +98,16 @@ func (c *Client) GetPotentialFundingSymbols(
 		tickerMap[item.ContractCode] = item
 	}
 
+	results := c.filterFundingRates(&ratesResp, tickerMap, minVol24h, maxVol24h, whitelist, blacklist)
+	return results, nil
+}
+
+func (c *Client) filterFundingRates(
+	ratesResp *sunxFundingRateResponse,
+	tickerMap map[string]*sunxTickerItem,
+	minVol24h, maxVol24h float64,
+	whitelist, blacklist []string,
+) []exchange.PotentialFundingResult {
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[toStandardSymbol(sym)] = true
@@ -147,5 +156,5 @@ func (c *Client) GetPotentialFundingSymbols(
 			Price:      price,
 		})
 	}
-	return results, nil
+	return results
 }

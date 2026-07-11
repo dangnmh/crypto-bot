@@ -67,8 +67,6 @@ func getNextHourlyInterval() int64 {
 }
 
 // GetPotentialFundingSymbols satisfies the ScannerClient interface.
-//
-//nolint:gocognit,cyclop // Scanner methods are naturally complex
 func (c *Client) GetPotentialFundingSymbols(
 	ctx context.Context,
 	minVol24h, maxVol24h float64,
@@ -84,6 +82,15 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, fmt.Errorf("unmarshal coinbase instruments: %w", err)
 	}
 
+	results := c.filterInstruments(instruments, minVol24h, maxVol24h, whitelist, blacklist)
+	return results, nil
+}
+
+func (c *Client) filterInstruments(
+	instruments []coinbaseInstrument,
+	minVol24h, maxVol24h float64,
+	whitelist, blacklist []string,
+) []exchange.PotentialFundingResult {
 	whitelistMap := make(map[string]bool)
 	for _, sym := range whitelist {
 		whitelistMap[toStandardSymbol(sym)] = true
@@ -130,6 +137,5 @@ func (c *Client) GetPotentialFundingSymbols(
 			Price:      price,
 		})
 	}
-
-	return results, nil
+	return results
 }
