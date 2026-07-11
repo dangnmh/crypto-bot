@@ -55,7 +55,7 @@ func mapBlofinInterval(interval exchange.Interval) (string, error) {
 }
 
 // FetchKlines fetches public K-lines for Blofin.
-func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, _, end time.Time) ([]exchange.Kline, error) {
+func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	cleanSymbol := strings.ToUpper(symbol)
 	if !strings.Contains(cleanSymbol, "-") {
 		cleanSymbol = strings.ReplaceAll(cleanSymbol, "_", "-")
@@ -78,6 +78,11 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	params := map[string]string{
 		"instId": cleanSymbol,
 		"bar":    mappedInterval,
+		"limit":  "100",
+	}
+
+	if !start.IsZero() {
+		params["before"] = fmt.Sprintf("%d", start.UnixMilli())
 	}
 
 	if !end.IsZero() {
