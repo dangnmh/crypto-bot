@@ -24,6 +24,7 @@ func TestClient_FetchKlines(t *testing.T) {
 
 		q := r.URL.Query()
 		assert.Equal(t, "1min", q.Get("kline"))
+		assert.Equal(t, "100", q.Get("size"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -63,6 +64,50 @@ func TestClient_FetchKlines(t *testing.T) {
 	assert.Equal(t, 64323.1, klines[0].Close)
 	assert.Equal(t, 9027.0, klines[0].Volume)
 	assert.Equal(t, 580895.15, klines[0].Amount)
+}
+
+func TestClient_FetchKlines_WithEnd(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/perpetual/public/BTCUSDT/candles", r.URL.Path)
+
+		q := r.URL.Query()
+		assert.Equal(t, "1min", q.Get("kline"))
+		assert.Equal(t, "1783687800000", q.Get("since"))
+		assert.Equal(t, "100", q.Get("size"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": 200,
+			"msg": "success",
+			"data": [
+				[
+					1783687800000,
+					"64293.7",
+					"64325.8",
+					"64305.2",
+					"64323.1",
+					"9027",
+					"580895.15"
+				]
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := hotcoin.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTC_USDT",
+		exchange.Interval1m,
+		time.Time{},
+		time.UnixMilli(1783687800000),
+	)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
 }
 
 func TestClient_FetchKlines_Error(t *testing.T) {

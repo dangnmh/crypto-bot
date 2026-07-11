@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -69,7 +70,7 @@ func parseFloatValue(v any) float64 {
 }
 
 // FetchKlines fetches public K-lines for hotcoin.
-func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, _, _ time.Time) ([]exchange.Kline, error) {
+func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	contractCode := strings.ToUpper(strings.ReplaceAll(symbol, "_", ""))
 
 	mappedInterval, err := mapHotcoinInterval(interval)
@@ -79,6 +80,11 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 
 	params := map[string]string{
 		"kline": mappedInterval,
+		"size":  "100",
+	}
+
+	if !end.IsZero() {
+		params["since"] = fmt.Sprintf("%d", end.UnixMilli())
 	}
 
 	path := fmt.Sprintf("/api/v1/perpetual/public/%s/candles", contractCode)
@@ -121,6 +127,10 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 			Amount:    parseFloatValue(item[6]),
 		})
 	}
+
+	sort.Slice(klines, func(i, j int) bool {
+		return klines[i].Timestamp < klines[j].Timestamp
+	})
 
 	return klines, nil
 }
