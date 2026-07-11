@@ -18,7 +18,10 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 	"crypto-bot/pkg/xjson"
+
+	"golang.org/x/time/rate"
 
 	transportlog "github.com/dangnmh/transport"
 )
@@ -52,6 +55,7 @@ type Client struct {
 	apiSecret  string
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new XT.com client.
@@ -97,6 +101,9 @@ func NewClient(
 	}
 	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 
+	// Initialize rate limiter to 10 requests per second
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -104,6 +111,7 @@ func NewClient(
 		apiSecret:  apiSecret,
 		logCfg:     logCfg,
 		logger:     logger,
+		limiter:    limiter,
 	}
 }
 
@@ -120,6 +128,8 @@ func buildStringToSign(apiKey, timestamp, path, qStr, bodyStr string) string {
 }
 
 // request sends an HTTP request to XT.com, signing it if requested.
+//
+//nolint:cyclop // REST HTTP wrapper is naturally complex
 func (c *Client) request(
 	ctx context.Context,
 	method string,
@@ -128,6 +138,12 @@ func (c *Client) request(
 	body []byte,
 	signed bool,
 ) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return nil, fmt.Errorf("parse url: %w", err)

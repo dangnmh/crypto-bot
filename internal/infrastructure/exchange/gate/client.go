@@ -18,6 +18,9 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
+
+	"golang.org/x/time/rate"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -33,6 +36,7 @@ type Client struct {
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
 	clock      exchange.Clock
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new Gate.io Perpetual Futures REST API client.
@@ -69,6 +73,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		base = strings.TrimRight(baseURL, "/")
 	}
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    base,
@@ -77,6 +83,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		logCfg:     logCfg,
 		logger:     logger,
 		clock:      exchange.RealClock{},
+		limiter:    limiter,
 	}
 }
 
@@ -166,6 +173,12 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, query url
 
 // RawRequest makes a signed HTTP request of any method to the Gate.io API.
 func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return nil, err

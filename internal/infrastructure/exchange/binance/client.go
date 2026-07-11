@@ -19,6 +19,9 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
+
+	"golang.org/x/time/rate"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -34,6 +37,7 @@ type Client struct {
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
 	clock      exchange.Clock
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new Binance Futures REST Client.
@@ -82,6 +86,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		baseURL = "https://fapi.binance.com"
 	}
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -90,6 +96,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		logCfg:     logCfg,
 		logger:     logger,
 		clock:      exchange.RealClock{},
+		limiter:    limiter,
 	}
 }
 
@@ -102,6 +109,12 @@ func (c *Client) SetClock(clk exchange.Clock) {
 
 // request sends a raw HTTP request to the Binance API, automatically signing it if required.
 func (c *Client) request(ctx context.Context, method, path string, params map[string]any, signed bool, result any) error {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(path)
 	if err != nil {
 		return fmt.Errorf("parse path: %w", err)
