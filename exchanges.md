@@ -12,7 +12,7 @@
 - [x] orangex
 - [x] bitmart
 - [x] deepcoin
-- [ ] krakenfutures
+- [x] krakenfutures
 - [x] aster
 - [x] binance
 - [x] gate
