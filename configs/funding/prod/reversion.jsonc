@@ -108,7 +108,7 @@
     "toobit": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "400ms", // 420ms paid funding fee
+      "bufferTime": "350ms", // 400ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 10000000,
       "minFundingRate": 0.7,
