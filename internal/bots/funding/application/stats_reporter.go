@@ -66,15 +66,12 @@ func NewStatsReportJob(
 		"aster", "backpack", "aevo", "apex", "lighter", "tradexyz", "grvt", "pacifica",
 		"extended", "jupiter", "avantis", "btse", "bitmex", "hashkey", "hibt", "hitbtc",
 		"hotcoin", "cryptocom", "woox", "phemex", "blofin", "digifinex", "bydfi", "ju",
-		"echobit", "sunx", "fameex", "fmfw", "coinbase", "koinbay", "trubit",
+		"sunx", "fameex", "fmfw", "coinbase", "koinbay", "trubit",
 	}
 
 	clients := make(map[string]ScannerClient)
 	for _, name := range exchanges {
 		clientExchangeName := name
-		if name == "echobit" {
-			clientExchangeName = "ju"
-		}
 		c, err := infraapp.BuildPublicClient(context.Background(), clientExchangeName, httpClient, log, logCfg)
 		if err != nil {
 			log.Warn("Failed to build public client for stats reporter", slog.String("exchange", name), slog.Any("error", err))

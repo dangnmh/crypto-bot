@@ -297,7 +297,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		q.Set("to", strconv.FormatInt(end.Unix(), 10))
 	}
 
-	var data [][]any
+	var data [][]xjson.Number
 	err := c.sendRequest(ctx, http.MethodGet, "/futures/usdt/candlesticks", q, nil, &data)
 	if err != nil {
 		return nil, fmt.Errorf("gate fetch klines: %w", err)
@@ -308,42 +308,33 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		if len(k) < 6 {
 			continue
 		}
-		tsVal, ok := k[0].(float64)
-		if !ok {
-			tsStr, okStr := k[0].(string)
-			if okStr {
-				if parsed, err := strconv.ParseInt(tsStr, 10, 64); err == nil {
-					tsVal = float64(parsed)
-				} else {
-					continue
-				}
-			} else {
-				continue
-			}
-		}
-		closePrice, err := strconv.ParseFloat(fmt.Sprintf("%v", k[2]), 64)
+		tsVal, err := k[0].Int64()
 		if err != nil {
 			continue
 		}
-		open, err := strconv.ParseFloat(fmt.Sprintf("%v", k[3]), 64)
+		closePrice, err := k[2].Float64()
+		if err != nil {
+			continue
+		}
+		open, err := k[3].Float64()
 		if err != nil {
 			open = closePrice
 		}
-		high, err := strconv.ParseFloat(fmt.Sprintf("%v", k[4]), 64)
+		high, err := k[4].Float64()
 		if err != nil {
 			high = closePrice
 		}
-		low, err := strconv.ParseFloat(fmt.Sprintf("%v", k[5]), 64)
+		low, err := k[5].Float64()
 		if err != nil {
 			low = closePrice
 		}
-		vol, err := strconv.ParseFloat(fmt.Sprintf("%v", k[1]), 64)
+		vol, err := k[1].Float64()
 		if err != nil {
 			vol = 0
 		}
 
 		klines = append(klines, exchange.Kline{
-			Timestamp: int64(tsVal) * 1000,
+			Timestamp: tsVal * 1000,
 			Open:      open,
 			High:      high,
 			Low:       low,

@@ -265,7 +265,6 @@ func main() {
 		"digifinex": digifinexClient,
 		"bydfi":     bydfiClient,
 		"ju":        juClient,
-		"echobit":   juClient,
 		"sunx":      sunxClient,
 		"fameex":    fameexClient,
 		"fmfw":      fmfwClient,
@@ -322,8 +321,6 @@ func main() {
 				displayName = "WOO X"
 			case "ju":
 				displayName = "Ju.com"
-			case "echobit":
-				displayName = "Echobit"
 			case "sunx":
 				displayName = "SunX"
 			}

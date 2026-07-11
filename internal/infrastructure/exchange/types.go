@@ -71,7 +71,6 @@ const (
 	ExchangeWoo           = "woo"
 	ExchangeWoox          = "woox"
 	ExchangeJu            = "ju"
-	ExchangeEchobit       = "echobit"
 	ExchangeBlofin        = "blofin"
 	ExchangeDigifinex     = "digifinex"
 	ExchangeBydfi         = "bydfi"

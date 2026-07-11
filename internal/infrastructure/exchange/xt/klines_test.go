@@ -15,17 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestClient_FetchKlines(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func setupXTMockServer(t *testing.T, expectedTimeParam, expectedTimeVal string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
 		assert.Equal(t, "/future/market/v1/public/q/kline", r.URL.Path)
 
 		q := r.URL.Query()
 		assert.Equal(t, "btc_usdt", q.Get("symbol"))
 		assert.Equal(t, "1m", q.Get("interval"))
-		assert.Equal(t, "1783681200000", q.Get("startTime"))
+		assert.Equal(t, expectedTimeVal, q.Get(expectedTimeParam))
 		assert.Equal(t, "100", q.Get("limit"))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -48,6 +46,12 @@ func TestClient_FetchKlines(t *testing.T) {
 			]
 		}`))
 	}))
+}
+
+func TestClient_FetchKlines(t *testing.T) {
+	t.Parallel()
+
+	server := setupXTMockServer(t, "startTime", "1783681200000")
 	defer server.Close()
 
 	client := xt.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
@@ -74,33 +78,7 @@ func TestClient_FetchKlines(t *testing.T) {
 func TestClient_FetchKlines_WithEnd(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/future/market/v1/public/q/kline", r.URL.Path)
-
-		q := r.URL.Query()
-		assert.Equal(t, "btc_usdt", q.Get("symbol"))
-		assert.Equal(t, "1m", q.Get("interval"))
-		assert.Equal(t, "1783681200000", q.Get("endTime"))
-		assert.Equal(t, "100", q.Get("limit"))
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"returnCode": 0,
-			"msgInfo": "success",
-			"result": [
-				{
-					"t": 1783681200000,
-					"o": "64374",
-					"c": "64394.2",
-					"h": "64450",
-					"l": "64309",
-					"a": "31.4166",
-					"v": "2022077.26553"
-				}
-			]
-		}`))
-	}))
+	server := setupXTMockServer(t, "endTime", "1783681200000")
 	defer server.Close()
 
 	client := xt.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})

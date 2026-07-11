@@ -172,7 +172,6 @@ func main() {
 		"hotcoin":   hotcoin.NewClient(httpPool, "https://api-ct.hotcoin.fit", "", "", logCfg),
 		"cryptocom": cryptocom.NewClient(httpPool, "https://deriv-api.crypto.com/v1", slog.Default()),
 		"ju":        ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
-		"echobit":   ju.NewClient(httpPool, "https://api.jucoin.com", logCfg),
 		"sunx":      sunx.NewClient(httpPool, "https://api.sunx.io", logCfg),
 		"fameex":    fameex.NewClient(httpPool, "https://futuresopenapi.fameex.com", logCfg),
 		"fmfw":      fmfw.NewClient(httpPool, "https://api.fmfw.io/api/3/public", "", "", logCfg),
