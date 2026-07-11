@@ -86,6 +86,12 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 	reqURL.RawQuery = q.Encode()
 
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, reqURL.Path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

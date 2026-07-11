@@ -15,9 +15,11 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 	"crypto-bot/pkg/xjson"
 
 	transportlog "github.com/dangnmh/transport"
+	"golang.org/x/time/rate"
 )
 
 // Client is the Bitmart REST API client.
@@ -30,6 +32,7 @@ type Client struct {
 	logCfg        config.LoggingConfig
 	logger        *slog.Logger
 	clock         exchange.Clock
+	limiter       *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new Bitmart client.
@@ -62,6 +65,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, apiPassphras
 	}
 	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient:    &clientCopy,
 		baseURL:       strings.TrimRight(baseURL, "/"),
@@ -71,6 +76,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, apiPassphras
 		logCfg:        logCfg,
 		logger:        logger,
 		clock:         exchange.RealClock{},
+		limiter:       limiter,
 	}
 }
 
@@ -86,8 +92,14 @@ func (c *Client) request(ctx context.Context, method, path string, query map[str
 	return c.requestFull(ctx, method, path, query, nil, false)
 }
 
-// requestFull executes a signed or unsigned request to the Bitmart API.
+//nolint:cyclop // Request wrappers are naturally complex
 func (c *Client) requestFull(ctx context.Context, method, path string, query map[string]string, body []byte, signed bool) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return nil, fmt.Errorf("parse url: %w", err)

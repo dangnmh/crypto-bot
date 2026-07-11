@@ -17,11 +17,13 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 
 	transportlog "github.com/dangnmh/transport"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+	"golang.org/x/time/rate"
 )
 
 type Client struct {
@@ -33,6 +35,7 @@ type Client struct {
 	logger     *slog.Logger
 	logCfg     config.LoggingConfig
 	clock      exchange.Clock
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase string, logCfg config.LoggingConfig) *Client {
@@ -70,6 +73,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 	}
 	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -79,6 +84,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		logger:     logger,
 		logCfg:     logCfg,
 		clock:      exchange.RealClock{},
+		limiter:    limiter,
 	}
 }
 
@@ -88,7 +94,14 @@ func (c *Client) SetClock(clk exchange.Clock) {
 	}
 }
 
+//nolint:cyclop // Request wrappers are naturally complex
 func (c *Client) request(ctx context.Context, method, path string, params map[string]string, signed bool) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return nil, fmt.Errorf("parse url: %w", err)

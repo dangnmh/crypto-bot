@@ -45,6 +45,12 @@ type orangexResponse struct {
 }
 
 func (c *Client) request(ctx context.Context, path string) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return nil, fmt.Errorf("parse url: %w", err)

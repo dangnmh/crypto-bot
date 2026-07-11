@@ -13,9 +13,11 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 	"crypto-bot/pkg/xjson"
 
 	transportlog "github.com/dangnmh/transport"
+	"golang.org/x/time/rate"
 )
 
 const exchangeName = "orangex"
@@ -27,6 +29,7 @@ type Client struct {
 	apiSecret  string
 	logger     *slog.Logger
 	clock      exchange.Clock
+	limiter    *ratelimit.ExchangeRateLimiter
 
 	// Token cache fields
 	tokenMu       sync.RWMutex
@@ -67,6 +70,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	}
 	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -74,6 +79,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		apiSecret:  apiSecret,
 		logger:     logger,
 		clock:      exchange.RealClock{},
+		limiter:    limiter,
 	}
 }
 
@@ -113,6 +119,12 @@ func nextRequestID() int64 {
 }
 
 func (c *Client) postRPC(ctx context.Context, path, method string, params any, signed bool) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqBody := orangexRPCRequest{
 		JsonRpc: rpcVersion,
 		ID:      nextRequestID(),

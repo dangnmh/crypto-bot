@@ -26,6 +26,12 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 }
 
 func (c *Client) rawRequestPrivate(ctx context.Context, method, path string, params map[string]string, body []byte) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	if params == nil {
 		params = make(map[string]string)
 	}

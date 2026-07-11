@@ -18,8 +18,10 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 
 	transportlog "github.com/dangnmh/transport"
+	"golang.org/x/time/rate"
 
 	"crypto-bot/pkg/xjson"
 )
@@ -34,6 +36,7 @@ type Client struct {
 	logCfg      config.LoggingConfig
 	logger      *slog.Logger
 	clock       exchange.Clock
+	limiter     *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new Bybit client.
@@ -68,6 +71,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient:  &clientCopy,
 		baseURL:     baseURL,
@@ -77,6 +82,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 		logCfg:      logCfg,
 		logger:      logger,
 		clock:       exchange.RealClock{},
+		limiter:     limiter,
 	}
 }
 
@@ -105,8 +111,14 @@ func (c *Client) signRequest(method string, bodyBytes []byte, queryString string
 	return ts, signature
 }
 
-// RawRequest makes a signed HTTP request of any method to the Bybit V5 API.
+//nolint:cyclop // Request wrappers are naturally complex
 func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	var bodyReader io.Reader
 	if len(body) > 0 {
 		bodyReader = bytes.NewReader(body)

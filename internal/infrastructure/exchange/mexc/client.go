@@ -15,8 +15,10 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 
 	transportlog "github.com/dangnmh/transport"
+	"golang.org/x/time/rate"
 
 	"crypto-bot/pkg/xjson"
 )
@@ -30,6 +32,7 @@ type Client struct {
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
 	clock      exchange.Clock
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new MEXC API client using the provided optimized connection pool.
@@ -63,6 +66,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -71,6 +76,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		logCfg:     logCfg,
 		logger:     logger,
 		clock:      exchange.RealClock{},
+		limiter:    limiter,
 	}
 }
 
@@ -169,6 +175,12 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 
 // doRequest executes the HTTP request and returns the response body.
 func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, req.URL.Path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", req.Method, req.URL.Path, err)

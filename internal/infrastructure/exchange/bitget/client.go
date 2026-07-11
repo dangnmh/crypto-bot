@@ -17,7 +17,10 @@ import (
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 	"crypto-bot/pkg/ticker"
+
+	"golang.org/x/time/rate"
 
 	transportlog "github.com/dangnmh/transport"
 
@@ -34,6 +37,7 @@ type Client struct {
 	logCfg     config.LoggingConfig
 	logger     *slog.Logger
 	clock      exchange.Clock
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new Bitget API client using the provided HTTP client.
@@ -84,6 +88,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		baseURL = defaultRestURL
 	}
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: finalClient,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -93,6 +99,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		logCfg:     logCfg,
 		logger:     logger,
 		clock:      exchange.RealClock{},
+		limiter:    limiter,
 	}
 }
 
@@ -201,6 +208,12 @@ func (c *Client) PostCtx(ctx context.Context, path string, body any) ([]byte, er
 }
 
 func (c *Client) doRequest(ctx context.Context, req *http.Request) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, req.URL.Path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP %s %s: %w", req.Method, req.URL.Path, err)

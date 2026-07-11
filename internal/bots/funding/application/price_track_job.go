@@ -56,8 +56,8 @@ func (j *PriceTrackJob) Start(ctx context.Context, _ map[string]strategy.Funding
 	j.cancel = cancel
 
 	c := cron.New(cron.WithLocation(time.Local))
-	// Run every 5 minutes to sweep completed settlements
-	_, err := c.AddFunc("*/5 * * * *", func() {
+	// Run every 7 minutes to sweep completed settlements
+	_, err := c.AddFunc("*/7 * * * *", func() {
 		j.TrackPrePrices(cronCtx)
 		j.TrackAfterPrices(cronCtx)
 	})

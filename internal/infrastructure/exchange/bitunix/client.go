@@ -20,8 +20,10 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/pkg/httpclient"
+	"crypto-bot/pkg/ratelimit"
 
 	transportlog "github.com/dangnmh/transport"
+	"golang.org/x/time/rate"
 )
 
 // Client is the Bitunix REST API client.
@@ -31,6 +33,7 @@ type Client struct {
 	apiKey     string
 	apiSecret  string
 	logger     *slog.Logger
+	limiter    *ratelimit.ExchangeRateLimiter
 }
 
 // NewClient creates a new Bitunix client.
@@ -67,12 +70,15 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 	}
 	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
 	return &Client{
 		httpClient: &clientCopy,
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		apiSecret:  apiSecret,
 		logger:     logger,
+		limiter:    limiter,
 	}
 }
 
@@ -113,6 +119,12 @@ func (c *Client) sign(nonce string, timestamp int64, queryParams string, body []
 }
 
 func (c *Client) request(ctx context.Context, method, path string, query map[string]string, bodyPayload any) ([]byte, error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
 		return nil, fmt.Errorf("parse url: %w", err)
