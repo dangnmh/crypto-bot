@@ -50,17 +50,17 @@ func mapOrangexInterval(interval exchange.Interval) string {
 	return "1"
 }
 
-type orangexKlineResult struct {
-	Volume []xjson.Number `json:"volume"`
-	Ticks  []int64        `json:"ticks"`
-	Status string         `json:"status"`
-	Open   []xjson.Number `json:"open"`
-	Low    []xjson.Number `json:"low"`
-	High   []xjson.Number `json:"high"`
-	Close  []xjson.Number `json:"close"`
+type orangexKlineItem struct {
+	Open   xjson.Number `json:"open"`
+	Close  xjson.Number `json:"close"`
+	High   xjson.Number `json:"high"`
+	Low    xjson.Number `json:"low"`
+	Tick   int64        `json:"tick"`
+	Volume xjson.Number `json:"volume"`
+	Cost   xjson.Number `json:"cost"`
 }
 
-func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) (*orangexKlineResult, error) {
+func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]orangexKlineItem, error) {
 	now := c.clock.Now()
 	startTime := start
 	endTime := end
@@ -96,14 +96,14 @@ func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval excha
 		return nil, err
 	}
 
-	var envelope orangexRPCResponse[orangexKlineResult]
+	var envelope orangexRPCResponse[[]orangexKlineItem]
 	if err := xjson.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("unmarshal klines: %w", err)
 	}
 	if envelope.Error != nil {
 		return nil, envelope.Error
 	}
-	return &envelope.Result, nil
+	return envelope.Result, nil
 }
 
 // FetchKlines fetches public K-lines for orangex.
@@ -113,24 +113,21 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("orangex fetch klines: %w", err)
 	}
 
-	n := len(res.Ticks)
+	n := len(res)
 	if n == 0 {
 		return nil, nil
 	}
 
-	if len(res.Open) < n || len(res.High) < n || len(res.Low) < n || len(res.Close) < n || len(res.Volume) < n {
-		return nil, fmt.Errorf("invalid kline response: array length mismatch")
-	}
-
 	klines := make([]exchange.Kline, 0, n)
 	for i := range n {
+		item := &res[i]
 		klines = append(klines, exchange.Kline{
-			Timestamp: res.Ticks[i],
-			Open:      xjson.ToFloat64(res.Open[i]),
-			High:      xjson.ToFloat64(res.High[i]),
-			Low:       xjson.ToFloat64(res.Low[i]),
-			Close:     xjson.ToFloat64(res.Close[i]),
-			Volume:    xjson.ToFloat64(res.Volume[i]),
+			Timestamp: item.Tick * 1000,
+			Open:      xjson.ToFloat64(item.Open),
+			High:      xjson.ToFloat64(item.High),
+			Low:       xjson.ToFloat64(item.Low),
+			Close:     xjson.ToFloat64(item.Close),
+			Volume:    xjson.ToFloat64(item.Volume),
 		})
 	}
 

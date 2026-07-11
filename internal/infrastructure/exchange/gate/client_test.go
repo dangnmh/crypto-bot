@@ -336,7 +336,7 @@ func TestClient_FetchKlines(t *testing.T) {
 
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`[
-					[1783665240, "668", "63888.7", "63889.5", "63889.5", "63875.1"]
+					{"t": 1783665240, "v": 668, "c": "63888.7", "h": "63889.5", "l": "63875.1", "o": "63889.5", "sum": "42677651"}
 				]`))
 			}))
 			defer server.Close()

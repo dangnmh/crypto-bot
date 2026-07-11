@@ -283,6 +283,16 @@ func (c *Client) GetPotentialFundingSymbols(
 	return results, nil
 }
 
+type gateCandlestick struct {
+	Timestamp int64        `json:"t"`
+	Volume    xjson.Number `json:"v"`
+	Close     xjson.Number `json:"c"`
+	High      xjson.Number `json:"h"`
+	Low       xjson.Number `json:"l"`
+	Open      xjson.Number `json:"o"`
+	Sum       xjson.Number `json:"sum"`
+}
+
 // FetchKlines fetches public K-lines for Gate.io.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	q := url.Values{}
@@ -299,7 +309,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		q.Set("limit", "100")
 	}
 
-	var data [][]xjson.Number
+	var data []gateCandlestick
 	err := c.sendRequest(ctx, http.MethodGet, "/futures/usdt/candlesticks", q, nil, &data)
 	if err != nil {
 		return nil, fmt.Errorf("gate fetch klines: %w", err)
@@ -307,39 +317,26 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 
 	var klines []exchange.Kline
 	for _, k := range data {
-		if len(k) < 6 {
-			continue
+		closePrice := xjson.ToFloat64(k.Close)
+		openPrice := xjson.ToFloat64(k.Open)
+		if openPrice == 0 {
+			openPrice = closePrice
 		}
-		tsVal, err := k[0].Int64()
-		if err != nil {
-			continue
+		highPrice := xjson.ToFloat64(k.High)
+		if highPrice == 0 {
+			highPrice = closePrice
 		}
-		closePrice, err := k[2].Float64()
-		if err != nil {
-			continue
+		lowPrice := xjson.ToFloat64(k.Low)
+		if lowPrice == 0 {
+			lowPrice = closePrice
 		}
-		open, err := k[3].Float64()
-		if err != nil {
-			open = closePrice
-		}
-		high, err := k[4].Float64()
-		if err != nil {
-			high = closePrice
-		}
-		low, err := k[5].Float64()
-		if err != nil {
-			low = closePrice
-		}
-		vol, err := k[1].Float64()
-		if err != nil {
-			vol = 0
-		}
+		vol := xjson.ToFloat64(k.Volume)
 
 		klines = append(klines, exchange.Kline{
-			Timestamp: tsVal * 1000,
-			Open:      open,
-			High:      high,
-			Low:       low,
+			Timestamp: k.Timestamp * 1000,
+			Open:      openPrice,
+			High:      highPrice,
+			Low:       lowPrice,
 			Close:     closePrice,
 			Volume:    vol,
 		})
