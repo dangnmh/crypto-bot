@@ -79,10 +79,14 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	params := map[string]string{
 		"symbol":   cleanSymbol,
 		"interval": mappedInterval,
+		"limit":    "100",
 	}
 
 	if !start.IsZero() {
 		params["startTime"] = fmt.Sprintf("%d", start.UnixMilli())
+	}
+	if !end.IsZero() {
+		params["endTime"] = fmt.Sprintf("%d", end.UnixMilli())
 	}
 
 	body, err := c.request(ctx, "GET", "/future/market/v1/public/q/kline", params, nil, false)

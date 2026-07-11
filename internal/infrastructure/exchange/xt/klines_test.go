@@ -26,6 +26,7 @@ func TestClient_FetchKlines(t *testing.T) {
 		assert.Equal(t, "btc_usdt", q.Get("symbol"))
 		assert.Equal(t, "1m", q.Get("interval"))
 		assert.Equal(t, "1783681200000", q.Get("startTime"))
+		assert.Equal(t, "100", q.Get("limit"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -68,6 +69,51 @@ func TestClient_FetchKlines(t *testing.T) {
 	assert.Equal(t, 64394.2, klines[0].Close)
 	assert.InDelta(t, 31.4018, klines[0].Volume, 0.01)
 	assert.Equal(t, 2022077.26553, klines[0].Amount)
+}
+
+func TestClient_FetchKlines_WithEnd(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/future/market/v1/public/q/kline", r.URL.Path)
+
+		q := r.URL.Query()
+		assert.Equal(t, "btc_usdt", q.Get("symbol"))
+		assert.Equal(t, "1m", q.Get("interval"))
+		assert.Equal(t, "1783681200000", q.Get("endTime"))
+		assert.Equal(t, "100", q.Get("limit"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"returnCode": 0,
+			"msgInfo": "success",
+			"result": [
+				{
+					"t": 1783681200000,
+					"o": "64374",
+					"c": "64394.2",
+					"h": "64450",
+					"l": "64309",
+					"a": "31.4166",
+					"v": "2022077.26553"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := xt.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTC_USDT",
+		exchange.Interval1m,
+		time.Time{},
+		time.Unix(1783681200, 0),
+	)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
 }
 
 func TestClient_FetchKlines_Error(t *testing.T) {
