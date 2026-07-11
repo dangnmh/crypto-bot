@@ -15,7 +15,6 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/aevo"
 	"crypto-bot/internal/infrastructure/exchange/apex"
 	"crypto-bot/internal/infrastructure/exchange/coinbase"
-	"crypto-bot/internal/infrastructure/exchange/koinbay"
 	"crypto-bot/internal/infrastructure/exchange/trubit"
 
 	"crypto-bot/internal/infrastructure/exchange/aster"
@@ -181,7 +180,6 @@ func main() {
 		"digifinex": digifinex.NewClient(httpPool, "https://openapi.digifinex.com", slog.Default()),
 		"bydfi":     bydfi.NewClient(httpPool, "https://api.bydfi.com/api", slog.Default()),
 		"coinbase":  coinbase.NewClient(httpPool, "https://api.international.coinbase.com", logCfg),
-		"koinbay":   koinbay.NewClient(httpPool, "https://futuresopenapi.koinbay.com", logCfg),
 		"trubit":    trubit.NewClient(httpPool, "https://api-futures.trubit.com", logCfg),
 	}
 

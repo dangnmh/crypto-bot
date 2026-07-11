@@ -50,7 +50,6 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/hyperliquid"
 	"crypto-bot/internal/infrastructure/exchange/ju"
 	"crypto-bot/internal/infrastructure/exchange/jupiter"
-	"crypto-bot/internal/infrastructure/exchange/koinbay"
 	"crypto-bot/internal/infrastructure/exchange/krakenfutures"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/exchange/lbank"
@@ -199,8 +198,6 @@ func BuildPublicClient(ctx context.Context, exchangeName string, httpClient *htt
 		return sunx.NewClient(httpClient, "https://api.sunx.com", logCfg), nil
 	case exchange.ExchangeTrubit:
 		return trubit.NewClient(httpClient, "https://api.trubit.com", logCfg), nil
-	case exchange.ExchangeKoinbay:
-		return koinbay.NewClient(httpClient, "https://api.koinbay.com", logCfg), nil
 	case exchange.ExchangeFameex:
 		return fameex.NewClient(httpClient, "https://api.fameex.com", logCfg), nil
 	case "fmfw":

@@ -18,7 +18,6 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/aevo"
 	"crypto-bot/internal/infrastructure/exchange/apex"
 	"crypto-bot/internal/infrastructure/exchange/coinbase"
-	"crypto-bot/internal/infrastructure/exchange/koinbay"
 	"crypto-bot/internal/infrastructure/exchange/trubit"
 
 	"crypto-bot/internal/infrastructure/exchange/aster"
@@ -197,7 +196,6 @@ func main() {
 	jupiterClient := jupiter.NewClient(httpPool, "https://perps-api.jup.ag", logCfg)
 	avantisClient := avantis.NewClient(httpPool, "https://data.avantisfi.com", logCfg)
 	coinbaseClient := coinbase.NewClient(httpPool, "https://api.international.coinbase.com", logCfg)
-	koinbayClient := koinbay.NewClient(httpPool, "https://futuresopenapi.koinbay.com", logCfg)
 	trubitClient := trubit.NewClient(httpPool, "https://api-futures.trubit.com", logCfg)
 
 	// Give a timeout context (30 seconds for extra safety)
@@ -260,7 +258,6 @@ func main() {
 		"phemex":    phemexClient,
 		"blofin":    blofinClient,
 		"coinbase":  coinbaseClient,
-		"koinbay":   koinbayClient,
 		"trubit":    trubitClient,
 		"digifinex": digifinexClient,
 		"bydfi":     bydfiClient,

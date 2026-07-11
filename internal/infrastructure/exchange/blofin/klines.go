@@ -85,6 +85,10 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 
 	if resp.Code != "0" {
+		if resp.Code == "152002" {
+			c.logger.Warn("Blofin K-line endpoint returned parameter instId error (returning empty data)", "code", resp.Code, "msg", resp.Msg)
+			return nil, nil
+		}
 		return nil, fmt.Errorf("blofin API error: code=%s msg=%s", resp.Code, resp.Msg)
 	}
 

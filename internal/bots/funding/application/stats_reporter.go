@@ -66,7 +66,7 @@ func NewStatsReportJob(
 		"aster", "backpack", "aevo", "apex", "lighter", "tradexyz", "grvt", "pacifica",
 		"extended", "jupiter", "avantis", "btse", "bitmex", "hashkey", "hibt", "hitbtc",
 		"hotcoin", "cryptocom", "woox", "phemex", "blofin", "digifinex", "bydfi", "ju",
-		"sunx", "fameex", "fmfw", "coinbase", "koinbay", "trubit",
+		"sunx", "fameex", "fmfw", "coinbase", "trubit",
 	}
 
 	clients := make(map[string]ScannerClient)

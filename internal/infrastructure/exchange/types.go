@@ -93,7 +93,6 @@ const (
 	ExchangeAvantis       = "avantis"
 	ExchangeHotcoin       = "hotcoin"
 	ExchangeCoinbase      = "coinbase"
-	ExchangeKoinbay       = "koinbay"
 	ExchangeTrubit        = "trubit"
 )
 

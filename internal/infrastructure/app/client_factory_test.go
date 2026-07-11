@@ -28,7 +28,7 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 		"aster", "backpack", "aevo", "apex", "lighter", "tradexyz", "grvt", "pacifica",
 		"extended", "jupiter", "avantis", "btse", "bitmex", "hashkey", "hibt", "hitbtc",
 		"hotcoin", "cryptocom", "woox", "phemex", "blofin", "digifinex", "bydfi", "ju",
-		"sunx", "fameex", "fmfw", "coinbase", "koinbay", "trubit",
+		"sunx", "fameex", "fmfw", "coinbase", "trubit",
 	}
 
 	supported := map[string]bool{
@@ -58,7 +58,6 @@ func TestAllExchangesFetchKlinesSupport(t *testing.T) {
 		"blofin":        true,
 		"whitebit":      true,
 		"bydfi":         true,
-		"koinbay":       true,
 		"ju":            true,
 		"fameex":        true,
 		"lbank":         true,

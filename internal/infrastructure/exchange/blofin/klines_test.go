@@ -139,3 +139,27 @@ func TestClient_FetchKlines_Error(t *testing.T) {
 	)
 	assert.Error(t, err)
 }
+
+func TestClient_FetchKlines_InstIdError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": "152002",
+			"msg": "Parameter instId error."
+		}`))
+	}))
+	defer server.Close()
+
+	client := blofin.NewClient(server.Client(), server.URL, slog.Default())
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"LABUSDT",
+		exchange.Interval1m,
+		time.Time{},
+		time.Time{},
+	)
+	assert.NoError(t, err)
+	assert.Nil(t, klines)
+}
