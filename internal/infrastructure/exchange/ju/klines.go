@@ -58,7 +58,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		return nil, fmt.Errorf("ju interval map: %w", err)
 	}
 
-	path := "/v1/spot/public/kline"
+	path := "/v1/future-u/market/public/cg/kline"
 	var qParts []string
 	qParts = append(qParts,
 		"symbol="+url.QueryEscape(symbol),

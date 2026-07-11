@@ -90,3 +90,43 @@ func TestClient_FetchKlines_Error(t *testing.T) {
 	)
 	assert.Error(t, err)
 }
+
+func TestClient_FetchKlines_TimeString(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/futures/market/kline", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"code": 200,
+			"data": [
+				{
+					"open": "64374",
+					"high": "64450",
+					"low": "64309",
+					"close": "64394.2",
+					"quoteVol": "542186",
+					"baseVol": "2138920",
+					"time": "1783681200000"
+				}
+			],
+			"msg": "Success"
+		}`))
+	}))
+	defer server.Close()
+
+	client := bitunix.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	klines, err := client.FetchKlines(
+		context.Background(),
+		"BTC_USDT",
+		exchange.Interval1m,
+		time.Time{},
+		time.Time{},
+	)
+	require.NoError(t, err)
+	require.Len(t, klines, 1)
+	assert.Equal(t, int64(1783681200000), klines[0].Timestamp)
+}

@@ -18,7 +18,7 @@ type bitunixKlineItem struct {
 	Close    xjson.Number `json:"close"`
 	QuoteVol xjson.Number `json:"quoteVol"`
 	BaseVol  xjson.Number `json:"baseVol"`
-	Time     int64        `json:"time"`
+	Time     xjson.Number `json:"time"`
 }
 
 type bitunixKlineResponse struct {
@@ -60,7 +60,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	for i := range resp.Data {
 		item := &resp.Data[i]
 		klines = append(klines, exchange.Kline{
-			Timestamp: item.Time,
+			Timestamp: xjson.ToInt64(item.Time),
 			Open:      xjson.ToFloat64(item.Open),
 			High:      xjson.ToFloat64(item.High),
 			Low:       xjson.ToFloat64(item.Low),

@@ -20,7 +20,7 @@ func TestClient_FetchKlines(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/v1/spot/public/kline", r.URL.Path)
+		assert.Equal(t, "/v1/future-u/market/public/cg/kline", r.URL.Path)
 
 		q := r.URL.Query()
 		assert.Equal(t, "BTC_USDT", q.Get("symbol"))

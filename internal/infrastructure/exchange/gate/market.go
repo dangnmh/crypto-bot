@@ -288,13 +288,15 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	q := url.Values{}
 	q.Set("contract", symbol)
 	q.Set("interval", string(interval))
-	q.Set("limit", "100")
 
 	if !start.IsZero() {
 		q.Set("from", strconv.FormatInt(start.Unix(), 10))
 	}
 	if !end.IsZero() {
 		q.Set("to", strconv.FormatInt(end.Unix(), 10))
+	}
+	if start.IsZero() || end.IsZero() {
+		q.Set("limit", "100")
 	}
 
 	var data [][]xjson.Number

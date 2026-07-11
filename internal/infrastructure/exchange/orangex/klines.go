@@ -59,7 +59,13 @@ func (c *Client) rawGetKlines(ctx context.Context, symbol string, interval excha
 		params["end_timestamp"] = c.clock.Now().UnixMilli()
 	}
 
-	body, err := c.postRPC(ctx, "/private/get_tradingview_chart_data", "/private/get_tradingview_chart_data", params, true)
+	path := "/private/get_tradingview_chart_data"
+	signed := true
+	if c.apiKey == "" {
+		path = "/public/get_tradingview_chart_data"
+		signed = false
+	}
+	body, err := c.postRPC(ctx, path, path, params, signed)
 	if err != nil {
 		return nil, err
 	}

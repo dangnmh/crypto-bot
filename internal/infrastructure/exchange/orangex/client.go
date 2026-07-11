@@ -245,7 +245,8 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 	} else if len(query) > 0 {
 		params = query
 	}
-	return c.postRPC(ctx, path, path, params, true)
+	signed := strings.HasPrefix(path, "/private/")
+	return c.postRPC(ctx, path, path, params, signed)
 }
 
 func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
