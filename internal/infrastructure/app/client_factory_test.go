@@ -130,3 +130,69 @@ func TestBuildPublicClient_CoinbaseBaseURL(t *testing.T) {
 
 	assert.Equal(t, "https://api.international.coinbase.com/api/v1/instruments", requestedURL)
 }
+
+func TestBuildPublicClient_SunXBaseURL(t *testing.T) {
+	t.Parallel()
+
+	var requestedURL string
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requestedURL = req.URL.String()
+			var responseBody string
+			if strings.Contains(req.URL.Path, "batch_funding_rate") {
+				responseBody = `{"status":"ok","data":[]}`
+			} else {
+				responseBody = `{"status":"ok","ticks":[]}`
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+			}, nil
+		}),
+	}
+
+	c, err := app.BuildPublicClient(context.Background(), "sunx", httpClient, slog.Default(), config.LoggingConfig{})
+	require.NoError(t, err)
+
+	type fundingSymbolGetter interface {
+		GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error)
+	}
+
+	getter, ok := c.(fundingSymbolGetter)
+	require.True(t, ok)
+
+	_, err = getter.GetPotentialFundingSymbols(context.Background(), 0, 0, nil, nil)
+	require.NoError(t, err)
+
+	assert.True(t, strings.HasPrefix(requestedURL, "https://api.sunx.io"), "expected URL starting with https://api.sunx.io, got: %s", requestedURL)
+}
+
+func TestBuildPublicClient_TrubitBaseURL(t *testing.T) {
+	t.Parallel()
+
+	var requestedURL string
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requestedURL = req.URL.String()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"code":0,"msg":"ok","result":[]}`)),
+			}, nil
+		}),
+	}
+
+	c, err := app.BuildPublicClient(context.Background(), "trubit", httpClient, slog.Default(), config.LoggingConfig{})
+	require.NoError(t, err)
+
+	type fundingSymbolGetter interface {
+		GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]exchange.PotentialFundingResult, error)
+	}
+
+	getter, ok := c.(fundingSymbolGetter)
+	require.True(t, ok)
+
+	_, err = getter.GetPotentialFundingSymbols(context.Background(), 0, 0, nil, nil)
+	require.NoError(t, err)
+
+	assert.True(t, strings.HasPrefix(requestedURL, "https://api-futures.trubit.com"), "expected URL starting with https://api-futures.trubit.com, got: %s", requestedURL)
+}
