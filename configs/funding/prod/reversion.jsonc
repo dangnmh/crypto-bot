@@ -12,7 +12,7 @@
     "leverage": 6,
     "marginUSD": 5,
     "minVol24USD": 5000000,
-    "minFundingRate": 0.8,
+    "minFundingRate": 0.7,
     "maxCandidateTrade": 1
   },
   "sync": {
@@ -33,6 +33,11 @@
   "scanners": {
     "configured": false,
     "schedule": {
+      "toobit": true,
+      "mexc": true,
+      "bitget": true,
+      "aster": true,
+      "deepcoin": true,
       "kucoin": false, // negative pnl
       "bitmart": false, // negative pnl
       "bitunix": false, // exchange restricted
@@ -44,24 +49,56 @@
       "bybit": false, // very high cancel rate,
       "hotcoin": false, // prevent trade at funding settle
       "weex": false, // no funding oppotunity
-      "toobit": true,
-      "mexc": true,
-      "bitget": true,
-      "aster": true,
-      "deepcoin": true
     }
   },
   "exchanges": {
+    "toobit": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "350ms", // 400ms paid funding fee
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 10000000,
+      "minFundingRate": 0.7,
+      "leverage": 18,
+      "marginUSD": 700,
+      "maxCandidateTrade": 3
+    },
     "mexc": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-70ms", // -100ms dont paid funding fee Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
-      "minVol24USD": 10000000,
-      "minFundingRate": 0.8,
+      "minFundingRate": 0.7,
       "leverage": 10,
-      "marginUSD": 200,
-      "maxCandidateTrade": 2
+      "marginUSD": 150,
+    },
+    "bitget": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-270ms", // -250ms paid funding fee
+      "postSettleTimeout": "0.5s",
+      "minFundingRate": 0.7,
+      "leverage": 10,
+      "marginUSD": 50
+    },
+    "deepcoin": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-20ms", // 0ms paid funding fee
+      "postSettleTimeout": "0.5s",
+      "minFundingRate": 0.7,
+      "leverage": 10,
+      "marginUSD": 50
+    },
+    "aster": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "-80ms", // -50ms paid funding fee
+      "postSettleTimeout": "0.5s",
+      "minVol24USD": 2000000,
+      "minFundingRate": 0.7,
+      "leverage": 2,
+      "marginUSD": 50
     },
     "bybit": {
       "takeProfitPct": 1,
@@ -94,27 +131,6 @@
       "stopLossPct": 2,
       "bufferTime": "-150ms",
       "postSettleTimeout": "0.5s"
-    },
-    "deepcoin": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "-20ms", // 0ms paid funding fee
-      "postSettleTimeout": "0.5s",
-      "minVol24USD": 1000000,
-      "minFundingRate": 0.3,
-      "leverage": 3,
-      "marginUSD": 5
-    },
-    "toobit": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "350ms", // 400ms paid funding fee
-      "postSettleTimeout": "0.5s",
-      "minVol24USD": 10000000,
-      "minFundingRate": 0.7,
-      "leverage": 18,
-      "marginUSD": 700,
-      "maxCandidateTrade": 3
     },
     "bitmart": {
       "takeProfitPct": 1,
@@ -161,26 +177,6 @@
       "minFundingRate": 0.3,
       "leverage": 3,
       "marginUSD": 5
-    },
-    "aster": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "-80ms", // -50ms paid funding fee
-      "postSettleTimeout": "0.5s",
-      "minVol24USD": 2000000,
-      "minFundingRate": 0.7,
-      "leverage": 2,
-      "marginUSD": 50
-    },
-    "bitget": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "-250ms", // -220ms paid funding fee
-      "postSettleTimeout": "0.5s",
-      "minVol24USD": 1000000,
-      "minFundingRate": 0.3,
-      "leverage": 5,
-      "marginUSD": 8
     },
     "hotcoin": {
       "takeProfitPct": 1,
