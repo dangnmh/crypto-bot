@@ -29,6 +29,7 @@ type ContractSpec struct {
 	PriceUnit    float64
 	VolUnit      int
 	MinVol       int
+	MaxVol       int
 	PriceScale   int
 	VolScale     int
 	ContractSize float64

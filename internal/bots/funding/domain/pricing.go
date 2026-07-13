@@ -59,7 +59,7 @@ const minWallLevels = 3
 // to avoid margin overcommit when LastPrice lags behind the orderbook.
 // Falls back to LastPrice if BestBid/BestAsk is unavailable.
 func (c *Candidate) CalculateVolume() float64 {
-	return tradecalc.CalculateVolume(
+	vol := tradecalc.CalculateVolume(
 		c.Config.MarginUSDT,
 		float64(c.Config.Leverage),
 		c.ContractSize,
@@ -67,6 +67,10 @@ func (c *Candidate) CalculateVolume() float64 {
 		float64(c.MinVol),
 		c.VolScale,
 	)
+	if c.MaxVol > 0 && vol > float64(c.MaxVol) {
+		vol = float64(c.MaxVol)
+	}
+	return vol
 }
 
 // ExecutionRefPrice returns the side-appropriate reference price for sizing.
@@ -82,13 +86,17 @@ func (c *Candidate) ExecutionRefPrice() float64 {
 // CalculateVolumeForNotional converts a USDT notional budget into exchange
 // contract volume using the provided reference price.
 func (c *Candidate) CalculateVolumeForNotional(notional, refPrice float64) float64 {
-	return tradecalc.CalculateVolumeForNotional(
+	vol := tradecalc.CalculateVolumeForNotional(
 		notional,
 		refPrice,
 		c.ContractSize,
 		float64(c.MinVol),
 		c.VolScale,
 	)
+	if c.MaxVol > 0 && vol > float64(c.MaxVol) {
+		vol = float64(c.MaxVol)
+	}
+	return vol
 }
 
 // ReversionNotionalUSDT returns the configured IOC notional budget.

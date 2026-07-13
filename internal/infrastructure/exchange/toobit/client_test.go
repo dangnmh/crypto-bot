@@ -232,6 +232,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 						{
 							"filterType": "LOT_SIZE",
 							"minQty": "1",
+							"maxQty": "1000000",
 							"stepSize": "1"
 						}
 					],
@@ -254,6 +255,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	assert.Equal(t, "BTC-SWAP-USDT", details[0].Symbol)
 	assert.Equal(t, 0.0001, details[0].ContractSize)
 	assert.Equal(t, 1, details[0].VolUnit)
+	assert.Equal(t, 1000000, details[0].MaxVol)
 	assert.Equal(t, 1, details[0].PriceScale)
 	assert.Equal(t, 0, details[0].VolScale)
 	assert.Equal(t, 200, details[0].MaxLeverage)

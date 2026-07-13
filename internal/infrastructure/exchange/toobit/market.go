@@ -61,6 +61,7 @@ type toobitFilter struct {
 	TickSize   string `json:"tickSize,omitempty"`
 	StepSize   string `json:"stepSize,omitempty"`
 	MinQty     string `json:"minQty,omitempty"`
+	MaxQty     string `json:"maxQty,omitempty"`
 	MinPrice   string `json:"minPrice,omitempty"`
 }
 
@@ -106,6 +107,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 
 		priceUnit := 0.0
 		minVol := 0.0
+		maxVol := 0.0
 		stepSize := 0.0
 		tickSizeStr := ""
 		stepSizeStr := ""
@@ -117,6 +119,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 				tickSizeStr = f.TickSize
 			case "LOT_SIZE":
 				minVol = decmath.ParseFloat(f.MinQty)
+				maxVol = decmath.ParseFloat(f.MaxQty)
 				stepSize = decmath.ParseFloat(f.StepSize)
 				stepSizeStr = f.StepSize
 			}
@@ -149,6 +152,11 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			}
 		}
 
+		maxVolVal := int(maxVol)
+		if maxVolVal <= 0 {
+			maxVolVal = 1000000000 // default to 1 billion
+		}
+
 		details = append(details, exchange.ContractDetail{
 			Symbol:        raw.Symbol,
 			DisplayName:   displayName,
@@ -161,6 +169,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			MaxLeverage:   maxLeverage,
 			PriceUnit:     priceUnit,
 			MinVol:        int(minVol),
+			MaxVol:        maxVolVal,
 			VolUnit:       int(stepSize),
 			PriceScale:    priceScale,
 			VolScale:      volScale,

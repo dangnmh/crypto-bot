@@ -379,3 +379,34 @@ func TestCalculateVolume_UsesRefPrice(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateVolumeMaxVolCapping(t *testing.T) {
+	t.Parallel()
+
+	c := &domain.Candidate{
+		Config: domain.TradeConfig{MarginUSDT: 100, Leverage: 10},
+		ContractSpec: domain.ContractSpec{
+			ContractSize: 1.0,
+			MinVol:       1,
+			MaxVol:       5,
+			VolScale:     0,
+		},
+		MarketData: domain.MarketData{
+			LastPrice: 10.0,
+		},
+	}
+
+	// Without MaxVol limit, vol would be 100 * 10 / 10 = 100.
+	// With MaxVol = 5, it should be capped to 5.
+	got := c.CalculateVolume()
+	if got != 5 {
+		t.Errorf("CalculateVolume got %.4f, want 5 (capped by MaxVol)", got)
+	}
+
+	// For CalculateVolumeForNotional, desired notional is 500, refPrice 10.
+	// Vol would be 500 / 10 = 50. Capped to 5.
+	gotNotional := c.CalculateVolumeForNotional(500, 10)
+	if gotNotional != 5 {
+		t.Errorf("CalculateVolumeForNotional got %.4f, want 5 (capped by MaxVol)", gotNotional)
+	}
+}
