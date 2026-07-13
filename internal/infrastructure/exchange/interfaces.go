@@ -84,6 +84,12 @@ type MaxLeverageProvider interface {
 	GetMaxLeverage(ctx context.Context, symbol string) (int, error)
 }
 
+// RiskLimitLeverageProvider is an optional interface that exchange REST clients can implement
+// to retrieve the maximum leverage allowed for a symbol given a target position notional value.
+type RiskLimitLeverageProvider interface {
+	GetMaxLeverageForValue(ctx context.Context, symbol string, value float64) (int, error)
+}
+
 // ClosedPnLInfo represents the standardized historical ledger of a closed trade.
 type ClosedPnLInfo struct {
 	Exchange   string

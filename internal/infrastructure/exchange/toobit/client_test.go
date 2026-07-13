@@ -579,6 +579,48 @@ func TestClient_GetMaxLeverage(t *testing.T) {
 	assert.Equal(t, 100, maxLev)
 }
 
+func TestClient_GetMaxLeverageForValue(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/futures/riskLimits", r.URL.Path)
+		assert.Equal(t, "BTC-SWAP-USDT", r.URL.Query().Get("symbol"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[
+			{
+				"level": 1,
+				"quantity": "10.0",
+				"value": "1000000.0",
+				"maintainMargin": "0.005",
+				"initialMargin": "0.01",
+				"maxLeverage": 100
+			},
+			{
+				"level": 2,
+				"quantity": "20.0",
+				"value": "2000000.0",
+				"maintainMargin": "0.01",
+				"initialMargin": "0.02",
+				"maxLeverage": 50
+			}
+		]`))
+	}))
+	defer server.Close()
+
+	client := toobit.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	maxLev, err := client.GetMaxLeverageForValue(context.Background(), "BTC-SWAP-USDT", 1500000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 50, maxLev)
+
+	maxLev, err = client.GetMaxLeverageForValue(context.Background(), "BTC-SWAP-USDT", 500000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 100, maxLev)
+
+	maxLev, err = client.GetMaxLeverageForValue(context.Background(), "BTC-SWAP-USDT", 2500000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 50, maxLev) // fallback to highest level limit
+}
+
 func TestClient_ListenKeys(t *testing.T) {
 	t.Parallel()
 

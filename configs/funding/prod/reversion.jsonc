@@ -59,7 +59,7 @@
       "postSettleTimeout": "0.5s",
       "minVol24USD": 10000000,
       "minFundingRate": 0.7,
-      "leverage": 18,
+      "leverage": 20,
       "marginUSD": 700,
       "maxCandidateTrade": 3
     },
