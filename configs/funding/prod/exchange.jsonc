@@ -139,7 +139,7 @@
       }
     },
     "aster": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://fapi.asterdex.com"
       },

@@ -36,7 +36,6 @@
       "toobit": true,
       "mexc": true,
       "bitget": true,
-      "aster": true,
       "deepcoin": true,
       "kucoin": false, // negative pnl
       "bitmart": false, // negative pnl
@@ -49,6 +48,7 @@
       "bybit": false, // very high cancel rate,
       "hotcoin": false, // prevent trade at funding settle
       "weex": false, // no funding oppotunity
+      "aster": false, // negative pnl
     }
   },
   "exchanges": {
