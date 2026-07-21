@@ -88,7 +88,7 @@
       "postSettleTimeout": "0.5s",
       "minFundingRate": 0.7,
       "leverage": 10,
-      "marginUSD": 50
+      "marginUSD": 100
     },
     "aster": {
       "takeProfitPct": 1,
