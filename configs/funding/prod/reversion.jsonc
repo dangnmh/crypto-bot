@@ -75,11 +75,11 @@
     "bitget": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-270ms", // -250ms paid funding fee
+      "bufferTime": "-300ms", // -270ms paid funding fee
       "postSettleTimeout": "0.5s",
       "minFundingRate": 0.7,
       "leverage": 10,
-      "marginUSD": 100
+      "marginUSD": 50
     },
     "deepcoin": {
       "takeProfitPct": 1,
