@@ -63,7 +63,7 @@
       }
     },
     "deepcoin": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api.deepcoin.com"
       },
@@ -150,7 +150,7 @@
       }
     },
     "bitget": {
-      "enable": true,
+      "enable": false,
       "future": {
         "baseURL": "https://api.bitget.com"
       },
