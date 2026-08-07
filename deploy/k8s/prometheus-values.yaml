@@ -2,7 +2,7 @@ server:
   retention: 30d
   persistentVolume:
     enabled: true
-    size: 8Gi
+    size: 3Gi
     storageClass: "local-path"
   service:
     type: ClusterIP
