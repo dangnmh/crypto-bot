@@ -202,17 +202,17 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				}
 			},
 			expectedInfo: &exchange.ClosedPnLInfo{
-				Exchange:   "mexc",
-				Symbol:     "ID_USDT",
-				EntryPrice: 0.0384,
-				ExitPrice:  0.03832,
-				ClosedSize: 39,
-				GrossPnL:   0.0312,
-				Fee:        0.0089,
-				FundingFee: 0,
-				DurationMs: 8000,
-				NetPnl:     0.0312 - 0.0089,
-				PnLRate:    ((0.0312 - 0.0089) / 3.0059) * 100,
+				Exchange:           "mexc",
+				Symbol:             "ID_USDT",
+				EntryPrice:         0.0384,
+				ExitPrice:          0.03832,
+				ClosedSizeContract: new(39.0),
+				GrossPnL:           0.0312,
+				Fee:                0.0089,
+				FundingFee:         0,
+				DurationMs:         8000,
+				NetPnl:             0.0312 - 0.0089,
+				PnLRate:            ((0.0312 - 0.0089) / 3.0059) * 100,
 			},
 		},
 
@@ -278,7 +278,9 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				assert.Equal(t, tt.expectedInfo.Symbol, info.Symbol)
 				assert.InDelta(t, tt.expectedInfo.EntryPrice, info.EntryPrice, 0.0001)
 				assert.InDelta(t, tt.expectedInfo.ExitPrice, info.ExitPrice, 0.0001)
-				assert.InDelta(t, tt.expectedInfo.ClosedSize, info.ClosedSize, 0.0001)
+				if tt.expectedInfo.ClosedSizeContract != nil && info.ClosedSizeContract != nil {
+					assert.InDelta(t, *tt.expectedInfo.ClosedSizeContract, *info.ClosedSizeContract, 0.0001)
+				}
 				assert.InDelta(t, tt.expectedInfo.GrossPnL, info.GrossPnL, 0.0001)
 				assert.InDelta(t, tt.expectedInfo.Fee, info.Fee, 0.0001)
 				assert.InDelta(t, tt.expectedInfo.FundingFee, info.FundingFee, 0.0001)

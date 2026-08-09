@@ -138,12 +138,13 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		levVal, _ := p.Leverage.Int64()
 
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:       p.Symbol,
-			HoldVol:      absAmt,
-			HoldAvgPrice: avgPx,
-			OpenAvgPrice: avgPx,
-			PositionType: posType,
-			Leverage:     int(levVal),
+			Symbol:          p.Symbol,
+			HoldVolContract: absAmt,
+			RawHoldVol:      absAmt,
+			HoldAvgPrice:    avgPx,
+			OpenAvgPrice:    avgPx,
+			PositionType:    posType,
+			Leverage:        int(levVal),
 		})
 	}
 
@@ -182,7 +183,11 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort { // Short
 			closeSide = domain.SideCloseShort
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+		vol := pos.HoldVolContract
+		if vol == 0 {
+			vol = pos.HoldVolCoin
+		}
+		_ = c.ClosePosition(ctx, symbol, closeSide, vol, domain.PositionModeHedge, pos.Leverage)
 	}
 
 	return nil
@@ -255,15 +260,15 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	duration := max(matchedItem.CloseTime-matchedItem.OpenTime, 0)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "kucoin",
-		Symbol:     matchedItem.Symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   grossPnL,
-		Fee:        tradeFee,
-		FundingFee: fundingFee,
-		DurationMs: duration,
-		NetPnl:     netPnL,
+		Exchange:           "kucoin",
+		Symbol:             matchedItem.Symbol,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closedSize),
+		GrossPnL:           grossPnL,
+		Fee:                tradeFee,
+		FundingFee:         fundingFee,
+		DurationMs:         duration,
+		NetPnl:             netPnL,
 	}, nil
 }

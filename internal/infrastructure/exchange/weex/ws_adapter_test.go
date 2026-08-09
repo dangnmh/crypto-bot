@@ -136,7 +136,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	pos, err := a.ParsePosition(payload)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", pos.Symbol)
-	assert.Equal(t, 0.5, pos.HoldVol)
+	assert.Equal(t, 0.5, pos.HoldVolContract)
 	assert.Equal(t, 20, pos.Leverage)
 	assert.Equal(t, 68500.0, pos.OpenAvgPrice)
 
@@ -158,7 +158,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	pos, err = a.ParsePosition(payloadShort)
 	require.NoError(t, err)
 	assert.Equal(t, "ETHUSDT", pos.Symbol)
-	assert.Equal(t, 1.5, pos.HoldVol)
+	assert.Equal(t, 1.5, pos.HoldVolContract)
 	assert.Equal(t, 10, pos.Leverage)
 	assert.Equal(t, 3450.0, pos.OpenAvgPrice)
 }

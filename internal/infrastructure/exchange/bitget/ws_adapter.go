@@ -295,17 +295,17 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		}
 
 		update := &exchange.PersonalPositionUpdate{
-			Symbol:          p.InstID,
-			HoldVol:         0.0,
-			PositionType:    posType,
-			OpenAvgPrice:    openPx,
-			HoldAvgPrice:    openPx,
-			CloseVol:        closeVol,
-			CloseAvgPrice:   closePx,
-			CloseProfitLoss: realized,
-			Fee:             openFee + closeFee,
-			HoldFee:         settleFee,
-			UpdateTime:      uTime,
+			Symbol:           p.InstID,
+			HoldVolContract:  0.0,
+			PositionType:     posType,
+			OpenAvgPrice:     openPx,
+			HoldAvgPrice:     openPx,
+			CloseVolContract: closeVol,
+			CloseAvgPrice:    closePx,
+			CloseProfitLoss:  realized,
+			Fee:              openFee + closeFee,
+			HoldFee:          settleFee,
+			UpdateTime:       uTime,
 		}
 		return update, nil
 	}
@@ -337,7 +337,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	update := &exchange.PersonalPositionUpdate{
 		Symbol:          sym,
-		HoldVol:         posVal,
+		HoldVolContract: posVal,
 		Leverage:        leverVal,
 		HoldAvgPrice:    avgPx,
 		LiquidatePrice:  liqPx,

@@ -58,12 +58,13 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 			pType = exchange.PositionTypeShort
 		}
 		out = append(out, exchange.Position{
-			Symbol:       p.InstrumentName,
-			PositionType: pType,
-			OpenAvgPrice: xjson.ToFloat64(p.AveragePrice),
-			HoldAvgPrice: xjson.ToFloat64(p.AveragePrice),
-			HoldVol:      sizeVal,
-			Leverage:     int(xjson.ToFloat64(p.Leverage)),
+			Symbol:          p.InstrumentName,
+			PositionType:    pType,
+			OpenAvgPrice:    xjson.ToFloat64(p.AveragePrice),
+			HoldAvgPrice:    xjson.ToFloat64(p.AveragePrice),
+			HoldVolContract: sizeVal,
+			RawHoldVol:      sizeVal,
+			Leverage:        int(xjson.ToFloat64(p.Leverage)),
 		})
 	}
 	return out, nil
@@ -91,7 +92,11 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		} else {
 			side = domain.SideCloseShort
 		}
-		if err := c.ClosePosition(ctx, p.Symbol, side, p.HoldVol, domain.PositionModeHedge, 0); err != nil {
+		vol := p.HoldVolContract
+		if vol == 0 {
+			vol = p.HoldVolCoin
+		}
+		if err := c.ClosePosition(ctx, p.Symbol, side, vol, domain.PositionModeHedge, 0); err != nil {
 			return err
 		}
 	}

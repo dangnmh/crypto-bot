@@ -410,17 +410,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	fundingFee, _ := c.fetchFundingFee(ctx, symbol, orderInfo.CreateTime)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closeMetrics.totalQty,
-		GrossPnL:   closeMetrics.totalPnL,
-		Fee:        closeMetrics.totalFee + openMetrics.totalFee,
-		FundingFee: fundingFee,
-		NetPnl:     closeMetrics.totalPnL - (closeMetrics.totalFee + openMetrics.totalFee) + fundingFee,
-		PnLRate:    pnlRate,
-		DurationMs: durationMs,
+		Exchange:           exchangeName,
+		Symbol:             symbol,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closeMetrics.totalQty),
+		GrossPnL:           closeMetrics.totalPnL,
+		Fee:                closeMetrics.totalFee + openMetrics.totalFee,
+		FundingFee:         fundingFee,
+		NetPnl:             closeMetrics.totalPnL - (closeMetrics.totalFee + openMetrics.totalFee) + fundingFee,
+		PnLRate:            pnlRate,
+		DurationMs:         durationMs,
 	}, nil
 }
 

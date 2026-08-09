@@ -101,7 +101,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		positions = append(positions, exchange.Position{
 			Symbol:          p.Symbol,
-			HoldVol:         size,
+			HoldVolContract: size,
+			RawHoldVol:      size,
 			PositionType:    posType,
 			OpenAvgPrice:    openPrice,
 			HoldAvgPrice:    openPrice,

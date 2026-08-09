@@ -369,27 +369,27 @@ func TestClient_GetOpenPositions(t *testing.T) {
 
 	// 1. Long position in hedge mode
 	assert.Equal(t, "BTC-USDT-SWAP", positions[0].Symbol)
-	assert.Equal(t, 1.0, positions[0].HoldVol)
+	assert.Equal(t, 1.0, positions[0].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType)
 
 	// 2. Short position in hedge mode
 	assert.Equal(t, "BTC-USDT-SWAP", positions[1].Symbol)
-	assert.Equal(t, 1.5, positions[1].HoldVol)
+	assert.Equal(t, 1.5, positions[1].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, positions[1].PositionType)
 
 	// 3. Short position in net mode (negative quantity)
 	assert.Equal(t, "BTC-USDT-SWAP", positions[2].Symbol)
-	assert.Equal(t, 2.5, positions[2].HoldVol)
+	assert.Equal(t, 2.5, positions[2].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, positions[2].PositionType)
 
 	// 4. Margin position in net mode matching base currency (long)
 	assert.Equal(t, "BTC-USDT", positions[3].Symbol)
-	assert.Equal(t, 0.5, positions[3].HoldVol)
+	assert.Equal(t, 0.5, positions[3].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, positions[3].PositionType)
 
 	// 5. Margin position in net mode matching quote currency (short)
 	assert.Equal(t, "BTC-USDT", positions[4].Symbol)
-	assert.Equal(t, 100.0, positions[4].HoldVol)
+	assert.Equal(t, 100.0, positions[4].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, positions[4].PositionType)
 }
 
@@ -803,7 +803,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, "BTC-USDT-SWAP", res.Symbol)
 	assert.Equal(t, 50000.0, res.EntryPrice)
 	assert.Equal(t, 51000.0, res.ExitPrice)
-	assert.Equal(t, 0.1, res.ClosedSize)
+	assert.Equal(t, 0.1, *res.ClosedSizeContract)
 	assert.Equal(t, 100.0, res.GrossPnL)
 	assert.Equal(t, 0.5, res.Fee) // Math.Abs
 	assert.Equal(t, -0.1, res.FundingFee)

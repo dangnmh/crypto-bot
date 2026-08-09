@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -327,6 +328,54 @@ func (c *Client) GetPotentialFundingSymbols(
 	return results, nil
 }
 
-func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
-	return nil, nil
+func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	body, err := c.rawGetTickers(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("toobit get top gainer tickers: %w", err)
+	}
+
+	var rawList []toobitTicker
+	if err := xjson.Unmarshal(body, &rawList); err != nil {
+		return nil, fmt.Errorf("unmarshal toobit top gainer tickers: %w", err)
+	}
+
+	results := make([]exchange.TopGainerResult, 0, len(rawList))
+	for i := range rawList {
+		item := &rawList[i]
+		last, _ := strconv.ParseFloat(item.C, 64)
+		bid, _ := strconv.ParseFloat(item.B, 64)
+		ask, _ := strconv.ParseFloat(item.A, 64)
+		qv, _ := strconv.ParseFloat(item.Qv, 64)
+		pcp, _ := strconv.ParseFloat(item.Pcp, 64)
+
+		if last <= 0 {
+			continue
+		}
+
+		spreadPct := 0.0
+		if bid > 0 && ask > 0 {
+			spreadPct = ((ask - bid) / bid) * 100.0
+		}
+
+		results = append(results, exchange.TopGainerResult{
+			Symbol:        item.S,
+			LastPrice:     last,
+			Bid1:          bid,
+			Ask1:          ask,
+			Volume24hUSDT: qv,
+			Gain24hPct:    pcp,
+			SpreadPct:     spreadPct,
+			Timestamp:     item.T,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Gain24hPct > results[j].Gain24hPct
+	})
+
+	if req.Limit > 0 && req.Limit < len(results) {
+		results = results[:req.Limit]
+	}
+
+	return results, nil
 }

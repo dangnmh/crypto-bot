@@ -263,7 +263,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	update := &exchange.PersonalPositionUpdate{
 		Symbol:          p.InstID,
-		HoldVol:         math.Abs(posVal),
+		HoldVolContract: math.Abs(posVal),
 		Leverage:        leverVal,
 		HoldAvgPrice:    avgPx,
 		LiquidatePrice:  liqPx,

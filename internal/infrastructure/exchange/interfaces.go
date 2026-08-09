@@ -93,17 +93,18 @@ type RiskLimitLeverageProvider interface {
 
 // ClosedPnLInfo represents the standardized historical ledger of a closed trade.
 type ClosedPnLInfo struct {
-	Exchange   string
-	Symbol     string
-	EntryPrice float64
-	ExitPrice  float64
-	ClosedSize float64
-	GrossPnL   float64
-	Fee        float64
-	FundingFee float64
-	DurationMs int64
-	NetPnl     float64
-	PnLRate    float64
+	Exchange           string
+	Symbol             string
+	EntryPrice         float64
+	ExitPrice          float64
+	ClosedSizeContract *float64
+	ClosedSizeCoin     *float64
+	GrossPnL           float64
+	Fee                float64
+	FundingFee         float64
+	DurationMs         int64
+	NetPnl             float64
+	PnLRate            float64
 }
 
 // ClosedPnLProvider is an optional interface that exchange REST clients can implement.

@@ -200,7 +200,11 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort {
 			closeSide = domain.SideCloseShort
 		}
-		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+		vol := pos.HoldVolContract
+		if vol == 0 {
+			vol = pos.HoldVolCoin
+		}
+		err = c.ClosePosition(ctx, symbol, closeSide, vol, domain.PositionModeHedge, pos.Leverage)
 		if err != nil {
 			return err
 		}
@@ -291,17 +295,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   agg.totalRealizedProfit,
-		Fee:        agg.totalFees,
-		FundingFee: fundingFee,
-		DurationMs: duration,
-		NetPnl:     agg.totalRealizedProfit - agg.totalFees + fundingFee,
-		PnLRate:    pnlRate,
+		Exchange:           exchangeName,
+		Symbol:             symbol,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closedSize),
+		GrossPnL:           agg.totalRealizedProfit,
+		Fee:                agg.totalFees,
+		FundingFee:         fundingFee,
+		DurationMs:         duration,
+		NetPnl:             agg.totalRealizedProfit - agg.totalFees + fundingFee,
+		PnLRate:            pnlRate,
 	}, nil
 }
 
@@ -394,7 +398,8 @@ func mapPosition(raw *bitmartPosition) *exchange.Position {
 
 	return &exchange.Position{
 		Symbol:          raw.Symbol,
-		HoldVol:         vol,
+		HoldVolContract: vol,
+		RawHoldVol:      vol,
 		PositionType:    pType,
 		OpenAvgPrice:    avgPrice,
 		HoldAvgPrice:    avgPrice,

@@ -94,12 +94,13 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		levVal, _ := p.Lever.Int64()
 
 		positions = append(positions, exchange.Position{
-			Symbol:       p.InstID,
-			HoldVol:      vol,
-			HoldAvgPrice: entry,
-			OpenAvgPrice: entry,
-			PositionType: posType,
-			Leverage:     int(levVal),
+			Symbol:          p.InstID,
+			HoldVolContract: vol,
+			RawHoldVol:      vol,
+			HoldAvgPrice:    entry,
+			OpenAvgPrice:    entry,
+			PositionType:    posType,
+			Leverage:        int(levVal),
 		})
 	}
 	return positions, nil

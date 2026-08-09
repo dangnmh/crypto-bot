@@ -45,13 +45,14 @@ func (p *hotcoinPosition) toPosition() exchange.Position {
 	leverVal := int(xjson.ToInt64(p.Lever))
 
 	return exchange.Position{
-		Symbol:       symbol,
-		HoldVol:      vol,
-		PositionType: pType,
-		OpenAvgPrice: priceVal,
-		HoldAvgPrice: priceVal,
-		Leverage:     leverVal,
-		Fee:          feeVal,
+		Symbol:          symbol,
+		HoldVolContract: vol,
+		RawHoldVol:      vol,
+		PositionType:    pType,
+		OpenAvgPrice:    priceVal,
+		HoldAvgPrice:    priceVal,
+		Leverage:        leverVal,
+		Fee:             feeVal,
 	}
 }
 
@@ -91,7 +92,7 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	var positions []exchange.Position
 	for i := range rawPositions {
 		pos := rawPositions[i].toPosition()
-		if pos.HoldVol == 0 {
+		if pos.HoldVolContract == 0 && pos.HoldVolCoin == 0 {
 			continue
 		}
 		positions = append(positions, pos)

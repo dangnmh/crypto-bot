@@ -171,7 +171,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	require.NotNil(t, pos)
 
 	assert.Equal(t, "BTC_USDT", pos.Symbol)
-	assert.Equal(t, 1.5, pos.HoldVol)
+	assert.Equal(t, 1.5, pos.HoldVolContract)
 	assert.Equal(t, 95000.0, pos.OpenAvgPrice)
 	assert.Equal(t, 20, pos.Leverage)
 	assert.Equal(t, 1, int(pos.PositionType)) // Long = 1

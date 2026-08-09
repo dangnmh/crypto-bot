@@ -396,15 +396,15 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	closeAvgPrice := decmath.ParseFloat(raw.CloseAvgPrice)
 
 	return &exchange.PersonalPositionUpdate{
-		Symbol:          raw.Symbol,
-		HoldVol:         vol,
-		PositionType:    pType,
-		HoldAvgPrice:    avgPrice,
-		OpenAvgPrice:    avgPrice,
-		CloseVol:        closeVol,
-		CloseAvgPrice:   closeAvgPrice,
-		CloseProfitLoss: pnl,
-		Leverage:        lev,
-		UpdateTime:      a.clock.Now().UnixMilli(),
+		Symbol:           raw.Symbol,
+		HoldVolContract:  vol,
+		PositionType:     pType,
+		HoldAvgPrice:     avgPrice,
+		OpenAvgPrice:     avgPrice,
+		CloseVolContract: closeVol,
+		CloseAvgPrice:    closeAvgPrice,
+		CloseProfitLoss:  pnl,
+		Leverage:         lev,
+		UpdateTime:       a.clock.Now().UnixMilli(),
 	}, nil
 }

@@ -160,7 +160,8 @@ func (o *mexcOrder) toOrderInfo() *exchange.OrderInfo {
 func (p *mexcPosition) toPosition() exchange.Position {
 	return exchange.Position{
 		Symbol:          p.Symbol,
-		HoldVol:         p.HoldVol,
+		HoldVolContract: p.HoldVol,
+		RawHoldVol:      p.HoldVol,
 		PositionType:    exchange.PositionType(p.PositionType),
 		OpenAvgPrice:    p.OpenAvgPrice,
 		HoldAvgPrice:    p.HoldAvgPrice,

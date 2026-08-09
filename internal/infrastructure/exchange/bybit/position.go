@@ -237,12 +237,16 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 	for i := range positions {
 		pos := positions[i]
-		if pos.HoldVol > 0 {
+		vol := pos.HoldVolCoin
+		if vol == 0 {
+			vol = pos.HoldVolContract
+		}
+		if vol > 0 {
 			side := domain.SideCloseShort
 			if pos.PositionType == exchange.PositionTypeLong {
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			err = c.ClosePosition(ctx, symbol, side, vol, domain.PositionModeHedge, pos.Leverage)
 			if err != nil {
 				return err
 			}
@@ -332,16 +336,16 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	duration := max(closeTime-entryCreatedTime, 0)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     row.Symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   grossPnL,
-		Fee:        openFee + closeFee,
-		FundingFee: fdFee,
-		DurationMs: duration,
-		NetPnl:     closedPnl,
+		Exchange:       exchangeName,
+		Symbol:         symbol,
+		EntryPrice:     entryPrice,
+		ExitPrice:      exitPrice,
+		ClosedSizeCoin: new(closedSize),
+		GrossPnL:       grossPnL,
+		Fee:            openFee + closeFee,
+		FundingFee:     fdFee,
+		DurationMs:     duration,
+		NetPnl:         closedPnl,
 	}, nil
 }
 
@@ -357,7 +361,8 @@ func mapPosition(raw bybitPosition) exchange.Position {
 	lev, _ := strconv.Atoi(raw.Leverage)
 	pos := exchange.Position{
 		Symbol:       raw.Symbol,
-		HoldVol:      decmath.ParseFloat(raw.Size),
+		HoldVolCoin:  decmath.ParseFloat(raw.Size),
+		RawHoldVol:   decmath.ParseFloat(raw.Size),
 		HoldAvgPrice: decmath.ParseFloat(avgPrice),
 		OpenAvgPrice: decmath.ParseFloat(avgPrice),
 		Leverage:     lev,

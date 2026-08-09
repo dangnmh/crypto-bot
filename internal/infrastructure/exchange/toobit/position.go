@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/samber/lo"
+
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
@@ -131,7 +133,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		positions = append(positions, exchange.Position{
 			Symbol:          raw.Symbol,
-			HoldVol:         vol,
+			HoldVolContract: vol,
+			RawHoldVol:      vol,
 			PositionType:    pType,
 			OpenAvgPrice:    avgPrice,
 			HoldAvgPrice:    avgPrice,
@@ -174,7 +177,7 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort {
 			closeSide = domain.SideCloseShort
 		}
-		err = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1, pos.Leverage)
+		err = c.ClosePosition(ctx, symbol, closeSide, pos.RawHoldVol, 1, pos.Leverage)
 		if err != nil {
 			return err
 		}
@@ -230,7 +233,9 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 
 	entryPrice, _ := strconv.ParseFloat(row.OpenAvgPrice, 64)
 	exitPrice, _ := strconv.ParseFloat(row.CloseAvgPrice, 64)
-	closedSize, _ := strconv.ParseFloat(row.CloseTotalQty, 64)
+	closedSizeCoin, _ := strconv.ParseFloat(row.CloseTotalQty, 64)
+	closedSizeContract, _ := strconv.ParseFloat(row.Position, 64)
+
 	grossPnL, _ := strconv.ParseFloat(row.RealizedPnlWithoutFee, 64)
 	netPnL, _ := strconv.ParseFloat(row.RealizedPnL, 64)
 	openFee, _ := strconv.ParseFloat(row.OpenFee, 64)
@@ -253,17 +258,18 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   grossPnL,
-		Fee:        math.Abs(openFee) + math.Abs(closeFee),
-		FundingFee: fundingFee,
-		DurationMs: duration,
-		NetPnl:     netPnL,
-		PnLRate:    pnlRate,
+		Exchange:           exchangeName,
+		Symbol:             symbol,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeCoin:     lo.EmptyableToPtr(closedSizeCoin),
+		ClosedSizeContract: lo.EmptyableToPtr(closedSizeContract),
+		GrossPnL:           grossPnL,
+		Fee:                math.Abs(openFee) + math.Abs(closeFee),
+		FundingFee:         fundingFee,
+		DurationMs:         duration,
+		NetPnl:             netPnL,
+		PnLRate:            pnlRate,
 	}, nil
 }
 

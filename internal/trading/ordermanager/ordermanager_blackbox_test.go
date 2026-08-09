@@ -117,7 +117,7 @@ func (m *blackboxExchangeClient) GetOpenPositions(ctx context.Context, symbol st
 		return m.openPositions, nil
 	}
 	return []exchange.Position{
-		{Symbol: symbol, HoldVol: 1.0},
+		{Symbol: symbol, HoldVolContract: 1.0},
 	}, nil
 }
 
@@ -132,16 +132,17 @@ func (m *blackboxExchangeClient) GetOrderPNL(ctx context.Context, symbol, orderI
 		return m.closedPnLInfo, nil
 	}
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "BYBIT",
-		Symbol:     symbol,
-		ClosedSize: 1.0,
-		EntryPrice: 50000.0,
-		ExitPrice:  51000.0,
-		GrossPnL:   1000.0,
-		NetPnl:     980.0,
-		PnLRate:    0.02,
-		Fee:        20.0,
-		FundingFee: 0.0,
+		Exchange:           "BYBIT",
+		Symbol:             symbol,
+		ClosedSizeContract: new(1.0),
+		ClosedSizeCoin:     new(1.0),
+		EntryPrice:         50000.0,
+		ExitPrice:          51000.0,
+		GrossPnL:           1000.0,
+		NetPnl:             980.0,
+		PnLRate:            0.02,
+		Fee:                20.0,
+		FundingFee:         0.0,
 	}, nil
 }
 

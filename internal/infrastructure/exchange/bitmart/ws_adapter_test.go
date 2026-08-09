@@ -215,7 +215,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err := adapter.ParsePosition(posData)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", update.Symbol)
-	assert.Equal(t, 1.5, update.HoldVol)
+	assert.Equal(t, 1.5, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 	assert.Equal(t, 50000.0, update.HoldAvgPrice)
 	assert.Equal(t, 100.5, update.CloseProfitLoss)
@@ -237,7 +237,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(posDirectData)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", update.Symbol)
-	assert.Equal(t, 2.5, update.HoldVol)
+	assert.Equal(t, 2.5, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 	assert.Equal(t, 51000.0, update.HoldAvgPrice)
 	assert.Equal(t, -50.0, update.CloseProfitLoss)
@@ -268,10 +268,10 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(posDocData)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", update.Symbol)
-	assert.Equal(t, 2000.0, update.HoldVol)
+	assert.Equal(t, 2000.0, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 	assert.Equal(t, 19406.2092, update.HoldAvgPrice)
-	assert.Equal(t, 0.0, update.CloseVol)
+	assert.Equal(t, 0.0, update.CloseVolContract)
 	assert.Equal(t, 0.0, update.CloseAvgPrice)
 
 	// 4. Position closed style position
@@ -299,8 +299,8 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(posClosedData)
 	require.NoError(t, err)
 	assert.Equal(t, "PORTALUSDT", update.Symbol)
-	assert.Equal(t, 0.0, update.HoldVol)
-	assert.Equal(t, 10423.0, update.CloseVol)
+	assert.Equal(t, 0.0, update.HoldVolContract)
+	assert.Equal(t, 10423.0, update.CloseVolContract)
 	assert.Equal(t, 0.01442, update.CloseAvgPrice)
 }
 

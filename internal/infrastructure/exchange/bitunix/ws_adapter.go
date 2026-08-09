@@ -404,7 +404,7 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	return &exchange.PersonalPositionUpdate{
 		Symbol:          raw.Symbol,
-		HoldVol:         vol,
+		HoldVolContract: vol,
 		PositionType:    pType,
 		HoldAvgPrice:    avgPrice,
 		OpenAvgPrice:    avgPrice,

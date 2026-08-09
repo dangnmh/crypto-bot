@@ -189,7 +189,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err := adapter.ParsePosition(raw)
 	require.NoError(t, err)
 	assert.Equal(t, "XBTUSDTM", update.Symbol)
-	assert.Equal(t, 5.0, update.HoldVol)
+	assert.Equal(t, 5.0, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, update.PositionType) // 2 for Short
 	assert.Equal(t, 50000.0, update.HoldAvgPrice)
 	assert.Equal(t, 40000.0, update.LiquidatePrice)
@@ -209,7 +209,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	}`)
 	updateLong, err := adapter.ParsePosition(rawLong)
 	require.NoError(t, err)
-	assert.Equal(t, 3.0, updateLong.HoldVol)
+	assert.Equal(t, 3.0, updateLong.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, updateLong.PositionType) // 1 for Long
 	assert.Equal(t, 48000.5, updateLong.HoldAvgPrice)
 
@@ -227,7 +227,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	}`)
 	updateClosedShort, err := adapter.ParsePosition(rawClosedShort)
 	require.NoError(t, err)
-	assert.Equal(t, 0.0, updateClosedShort.HoldVol)
+	assert.Equal(t, 0.0, updateClosedShort.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, updateClosedShort.PositionType) // 2 for Short
 
 	// Test closed long position using positionSide
@@ -244,7 +244,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	}`)
 	updateClosedLong, err := adapter.ParsePosition(rawClosedLong)
 	require.NoError(t, err)
-	assert.Equal(t, 0.0, updateClosedLong.HoldVol)
+	assert.Equal(t, 0.0, updateClosedLong.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, updateClosedLong.PositionType) // 1 for Long
 
 	// Test case from user report
@@ -303,7 +303,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateUserEvent, err := adapter.ParsePosition(rawUserEvent)
 	require.NoError(t, err)
 	assert.Equal(t, "XBTUSDTM", updateUserEvent.Symbol)
-	assert.Equal(t, 1.0, updateUserEvent.HoldVol)
+	assert.Equal(t, 1.0, updateUserEvent.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, updateUserEvent.PositionType) // Short
 	assert.Equal(t, 68094.2, updateUserEvent.HoldAvgPrice)
 	assert.Equal(t, 70130.5725363, updateUserEvent.LiquidatePrice)

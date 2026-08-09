@@ -32,7 +32,7 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 	// Check if this is a PositionClosedEvent containing rich trade metrics
 	var closedEvt PositionClosedEvent
 	err := json.Unmarshal(msg.Payload, &closedEvt)
-	if err == nil && closedEvt.CloseVol > 0 {
+	if err == nil && closedEvt.IsClose() {
 		finalEvt := r.calculateFinalPnL(closedEvt)
 		_ = r.publishEvent(ctx, TopicReversionFinalPnL, finalEvt)
 		completedPrev = finalEvt.BaseReversionEvent
@@ -56,18 +56,10 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 }
 
 func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalPnLEvent {
-	var vol24h float64
-	if cachedVal, found := r.cache.Get(closeEvt.ReqID); found {
-		if cs, ok := cachedVal.(*CycleState); ok {
-			vol24h = cs.Vol24hUSDT
-		}
-	}
-
 	return FinalPnLEvent{
 		BaseReversionEvent: nextNotifyReversionBase(closeEvt.BaseReversionEvent, closeEvt.Symbol, r.deps.Clock.Now()),
 		EntryPrice:         closeEvt.EntryPrice,
 		ClosePrice:         closeEvt.ClosePrice,
-		MaxVol:             closeEvt.CloseVol,
 		GrossPnL:           closeEvt.GrossProfit,
 		NetPnL:             closeEvt.NetProfit,
 		PnLPct:             closeEvt.PnLPct,
@@ -75,7 +67,6 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 		Fees:               closeEvt.Fee,
 		HoldFee:            closeEvt.HoldFee,
 		HoldDurationMs:     closeEvt.HoldDurationMs,
-		Vol24hUSDT:         vol24h,
 	}
 }
 

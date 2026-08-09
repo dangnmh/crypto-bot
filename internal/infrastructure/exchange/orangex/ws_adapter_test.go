@@ -136,7 +136,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if update.Symbol != "BTC-USDT-PERPETUAL" || update.HoldVol != 1.5 || update.HoldAvgPrice != 59000 || update.PositionType != exchange.PositionTypeLong {
+	if update.Symbol != "BTC-USDT-PERPETUAL" || update.HoldVolContract != 1.5 || update.HoldAvgPrice != 59000 || update.PositionType != exchange.PositionTypeLong {
 		t.Errorf("unexpected position update values: %+v", update)
 	}
 

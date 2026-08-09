@@ -713,7 +713,8 @@ func mapPosition(raw pionexPosition) exchange.Position {
 
 	return exchange.Position{
 		Symbol:       raw.Symbol,
-		HoldVol:      absFloat(netSizeVal),
+		HoldVolCoin:  absFloat(netSizeVal),
+		RawHoldVol:   absFloat(netSizeVal),
 		PositionType: posType,
 		OpenAvgPrice: xjson.ToFloat64(raw.AvgPrice),
 		HoldAvgPrice: xjson.ToFloat64(raw.AvgPrice),
@@ -768,12 +769,16 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 	for i := range positions {
 		pos := positions[i]
-		if pos.HoldVol > 0 {
+		vol := pos.HoldVolCoin
+		if vol == 0 {
+			vol = pos.HoldVolContract
+		}
+		if vol > 0 {
 			side := domain.SideCloseShort
 			if pos.PositionType == exchange.PositionTypeLong {
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, pos.Symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			err = c.ClosePosition(ctx, pos.Symbol, side, vol, domain.PositionModeHedge, pos.Leverage)
 			if err != nil {
 				return err
 			}

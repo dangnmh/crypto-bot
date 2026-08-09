@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"crypto-bot/internal/domain"
-	"crypto-bot/internal/infrastructure/exchange"
-
 	"github.com/samber/lo"
 
+	"crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/xjson"
 )
 
@@ -193,16 +192,16 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	duration := max(row.UpdateTime-row.CreateTime, 0)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     row.Symbol,
-		EntryPrice: row.OpenAvgPrice,
-		ExitPrice:  row.CloseAvgPrice,
-		ClosedSize: row.CloseVol,
-		GrossPnL:   row.CloseProfitLoss,
-		Fee:        row.TotalFee,
-		FundingFee: row.HoldFee,
-		DurationMs: duration,
-		NetPnl:     netPnl,
-		PnLRate:    pnlRate,
+		Exchange:           exchangeName,
+		Symbol:             row.Symbol,
+		EntryPrice:         row.OpenAvgPrice,
+		ExitPrice:          row.CloseAvgPrice,
+		ClosedSizeContract: new(row.CloseVol),
+		GrossPnL:           row.CloseProfitLoss,
+		Fee:                row.TotalFee,
+		FundingFee:         row.HoldFee,
+		DurationMs:         duration,
+		NetPnl:             netPnl,
+		PnLRate:            pnlRate,
 	}, nil
 }

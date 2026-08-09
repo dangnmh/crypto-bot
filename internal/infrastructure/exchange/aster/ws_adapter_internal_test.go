@@ -83,7 +83,7 @@ func TestWsAdapterParsePosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition failed: %v", err)
 	}
-	if update.Symbol != "BTCUSDT" || update.HoldVol != 1.5 || update.OpenAvgPrice != 25000.0 || update.PositionType != exchange.PositionTypeLong {
+	if update.Symbol != "BTCUSDT" || update.HoldVolContract != 1.5 || update.OpenAvgPrice != 25000.0 || update.PositionType != exchange.PositionTypeLong {
 		t.Errorf("unexpected PersonalPositionUpdate: %+v", update)
 	}
 
@@ -108,7 +108,7 @@ func TestWsAdapterParsePosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition short failed: %v", err)
 	}
-	if update.HoldVol != 2.5 || update.PositionType != exchange.PositionTypeShort {
+	if update.HoldVolContract != 2.5 || update.PositionType != exchange.PositionTypeShort {
 		t.Errorf("unexpected PersonalPositionUpdate for short: %+v", update)
 	}
 }
@@ -200,7 +200,7 @@ func TestWsAdapterParsePosition_HedgeModeAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition failed: %v", err)
 	}
-	if update.Symbol != "SLXUSDT" || update.HoldVol != 0 || update.PositionType != exchange.PositionTypeUnknown {
+	if update.Symbol != "SLXUSDT" || update.HoldVolContract != 0 || update.PositionType != exchange.PositionTypeUnknown {
 		t.Errorf("unexpected hedge mode position update: %+v", update)
 	}
 
@@ -221,7 +221,7 @@ func TestWsAdapterParsePosition_HedgeModeAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition failed: %v", err)
 	}
-	if update.Symbol != "SLXUSDT" || update.HoldVol != 0 || update.PositionType != exchange.PositionTypeUnknown {
+	if update.Symbol != "SLXUSDT" || update.HoldVolContract != 0 || update.PositionType != exchange.PositionTypeUnknown {
 		t.Errorf("unexpected closed position update: %+v", update)
 	}
 }
@@ -258,8 +258,8 @@ func TestWsAdapterParsePosition_AccountUpdate_Closed(t *testing.T) {
 	if update.Symbol != "SLXUSDT" {
 		t.Errorf("expected symbol SLXUSDT, got %s", update.Symbol)
 	}
-	if update.HoldVol != 0 {
-		t.Errorf("expected hold volume 0, got %f", update.HoldVol)
+	if update.HoldVolContract != 0 {
+		t.Errorf("expected hold volume 0, got %f", update.HoldVolContract)
 	}
 }
 

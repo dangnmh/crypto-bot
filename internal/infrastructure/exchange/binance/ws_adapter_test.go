@@ -116,7 +116,7 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	pos, err := adapter.ParsePosition(rawPos)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", pos.Symbol)
-	assert.Equal(t, 0.5, pos.HoldVol)
+	assert.Equal(t, 0.5, pos.HoldVolCoin)
 	assert.Equal(t, 50000.0, pos.HoldAvgPrice)
 }
 

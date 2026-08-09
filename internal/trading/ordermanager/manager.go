@@ -493,7 +493,11 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 
 	holdVol := 0.0
 	for _, p := range positions {
-		holdVol += p.HoldVol
+		if p.HoldVolContract > 0 {
+			holdVol += p.HoldVolContract
+		} else if p.HoldVolCoin > 0 {
+			holdVol += p.HoldVolCoin
+		}
 	}
 
 	if holdVol <= 0 {
@@ -615,7 +619,11 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, reqID, clien
 		} else if closedInfo != nil {
 			entryPrice = closedInfo.EntryPrice
 			exitPrice = closedInfo.ExitPrice
-			volume = closedInfo.ClosedSize
+			if closedInfo.ClosedSizeContract != nil {
+				volume = *closedInfo.ClosedSizeContract
+			} else if closedInfo.ClosedSizeCoin != nil {
+				volume = *closedInfo.ClosedSizeCoin
+			}
 			grossPnL = closedInfo.GrossPnL
 			netPnL = closedInfo.NetPnl
 			pnlPct = closedInfo.PnLRate

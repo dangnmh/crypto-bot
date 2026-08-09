@@ -173,37 +173,37 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		},
 		{
 			name:        "ioc outcome checked",
-			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideWithFR, Outcome: reversion.IOCOutcomeFilled, HoldVol: 1.25, VolUSDT24h: 60_000_000},
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideWithFR, Outcome: reversion.IOCOutcomeFilled, HoldVolContract: 1.25, VolUSDT24h: 60_000_000},
 			messagePart: "IOC outcome checked",
-			keys:        []string{"orderId", "outcome", "holdVol", "fundingRate", "volusdt24h"},
+			keys:        []string{"orderId", "outcome", "holdVolContract", "fundingRate", "volusdt24h"},
 			notify:      true,
 		},
 		{
 			name:        "ioc outcome checked canceled no fill",
-			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotifyWithFR, Outcome: reversion.IOCOutcomeCanceledNoFill, HoldVol: 0, VolUSDT24h: 60_000_000},
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotifyWithFR, Outcome: reversion.IOCOutcomeCanceledNoFill, HoldVolContract: 0, VolUSDT24h: 60_000_000},
 			messagePart: "IOC order canceled (no fill)",
-			keys:        []string{"orderId", "outcome", "holdVol", "fundingRate", "volusdt24h"},
+			keys:        []string{"orderId", "outcome", "holdVolContract", "fundingRate", "volusdt24h"},
 			notify:      true,
 		},
 		{
 			name:        "ioc outcome checked unknown",
-			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotifyWithFR, Outcome: reversion.IOCOutcomeUnknown, HoldVol: 0, Reason: "mock-err", VolUSDT24h: 60_000_000},
+			event:       reversion.IOCOutcomeCheckedEvent{BaseReversionEvent: baseWithOrderAndSideNoNotifyWithFR, Outcome: reversion.IOCOutcomeUnknown, HoldVolContract: 0, Reason: "mock-err", VolUSDT24h: 60_000_000},
 			messagePart: "IOC outcome unknown",
-			keys:        []string{"orderId", "outcome", "holdVol", "reason", "fundingRate", "volusdt24h"},
+			keys:        []string{"orderId", "outcome", "holdVolContract", "reason", "fundingRate", "volusdt24h"},
 			notify:      true,
 		},
 		{
 			name:        "filled",
-			event:       reversion.OrderFilledEvent{BaseReversionEvent: baseWithOrderAndSide, FillPrice: 60010, FillVol: 2, VolumeUSDT: 120020},
+			event:       reversion.OrderFilledEvent{BaseReversionEvent: baseWithOrderAndSide, FillPrice: 60010, FillVolContract: 2, VolumeUSDT: 120020},
 			messagePart: "Position filled",
-			keys:        []string{"orderId", "fillPrice", "fillVol", "volumeUSDT"},
+			keys:        []string{"orderId", "fillPrice", "fillVolContract", "volumeUSDT"},
 			notify:      true,
 		},
 		{
 			name:        "closed",
-			event:       reversion.PositionClosedEvent{BaseReversionEvent: base, EntryPrice: 60000, ClosePrice: 60100, CloseVol: 2, Reason: "target", NetProfit: 10, Fee: -0.5, HoldFee: -0.1},
+			event:       reversion.PositionClosedEvent{BaseReversionEvent: base, EntryPrice: 60000, ClosePrice: 60100, CloseVolContract: 2, Reason: "target", NetProfit: 10, Fee: -0.5, HoldFee: -0.1},
 			messagePart: "Position closed",
-			keys:        []string{"entryPrice", "closePrice", "closeVol", "reason", "netProfit", "fee", "holdFee"},
+			keys:        []string{"entryPrice", "closePrice", "closeVolContract", "reason", "netProfit", "fee", "holdFee"},
 			notify:      false,
 		},
 		{
@@ -215,23 +215,23 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 		},
 		{
 			name:        "timeout position checked",
-			event:       reversion.TimeoutPositionCheckedEvent{BaseReversionEvent: base, HoldVol: 1.5},
+			event:       reversion.TimeoutPositionCheckedEvent{BaseReversionEvent: base, HoldVolContract: 1.5},
 			messagePart: "Timeout position checked",
-			keys:        []string{"holdVol"},
+			keys:        []string{"holdVolContract"},
 			notify:      true,
 		},
 		{
 			name:        "force close initiated",
-			event:       reversion.ForceCloseInitiatedEvent{BaseReversionEvent: base, HoldVol: 1.5, TimeoutSec: 10.0},
+			event:       reversion.ForceCloseInitiatedEvent{BaseReversionEvent: base, HoldVolContract: 1.5, TimeoutSec: 10.0},
 			messagePart: "CRITICAL: Safety timeout close initiated",
-			keys:        []string{"holdVol", "timeout"},
+			keys:        []string{"holdVolContract", "timeout"},
 			notify:      true,
 		},
 		{
 			name:        "force close completed",
-			event:       reversion.ForceCloseCompletedEvent{BaseReversionEvent: base, HoldVol: 1.5, CloseRetryCount: 2, Succeeded: true},
+			event:       reversion.ForceCloseCompletedEvent{BaseReversionEvent: base, HoldVolContract: 1.5, CloseRetryCount: 2, Succeeded: true},
 			messagePart: "Force close completed",
-			keys:        []string{"holdVol", "retries", "succeeded"},
+			keys:        []string{"holdVolContract", "retries", "succeeded"},
 			notify:      true,
 		},
 		{
@@ -378,6 +378,7 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 		OrderID:     "ord-12345",
 		ExternalID:  "client-abc",
 		FundingRate: -0.002,
+		Vol24hUSDT:  1500000.00,
 	}
 
 	evt := reversion.FinalPnLEvent{
@@ -390,7 +391,6 @@ func TestFinalPnLEvent_GetMessage(t *testing.T) {
 		NetPnL:             12.50,
 		PnLPct:             0.18,
 		HoldDurationMs:     134000, // 2m 14s
-		Vol24hUSDT:         1500000.00,
 	}
 
 	msg := evt.GetMessage()

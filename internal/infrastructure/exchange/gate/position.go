@@ -214,17 +214,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: sumVol,
-		GrossPnL:   grossPnL,
-		Fee:        totalFee,
-		FundingFee: fundingFee,
-		DurationMs: durationMs,
-		NetPnl:     netPnL,
-		PnLRate:    pnlRate,
+		Exchange:           exchangeName,
+		Symbol:             symbol,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(sumVol),
+		GrossPnL:           grossPnL,
+		Fee:                totalFee,
+		FundingFee:         fundingFee,
+		DurationMs:         durationMs,
+		NetPnl:             netPnL,
+		PnLRate:            pnlRate,
 	}, nil
 }
 
@@ -259,14 +259,18 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 	for i := range positions {
 		pos := &positions[i]
-		if pos.HoldVol > 0 {
+		vol := pos.HoldVolContract
+		if vol == 0 {
+			vol = pos.HoldVolCoin
+		}
+		if vol > 0 {
 			var side domain.Side
 			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			} else { // Short
 				side = domain.SideCloseShort
 			}
-			posErr := c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage) // default hedge mode close
+			posErr := c.ClosePosition(ctx, symbol, side, vol, domain.PositionModeHedge, pos.Leverage) // default hedge mode close
 			if posErr != nil {
 				return posErr
 			}
@@ -382,11 +386,12 @@ func mapPosition(raw gatePosition) exchange.Position {
 	sizeVal, _ := raw.Size.Int64()
 	levVal, _ := raw.Leverage.Int64()
 	pos := exchange.Position{
-		Symbol:       raw.Contract,
-		HoldVol:      float64(decmath.AbsInt64(sizeVal)),
-		HoldAvgPrice: decmath.ParseFloat(raw.EntryPrice),
-		OpenAvgPrice: decmath.ParseFloat(raw.EntryPrice),
-		Leverage:     int(levVal),
+		Symbol:          raw.Contract,
+		HoldVolContract: float64(decmath.AbsInt64(sizeVal)),
+		RawHoldVol:      float64(decmath.AbsInt64(sizeVal)),
+		HoldAvgPrice:    decmath.ParseFloat(raw.EntryPrice),
+		OpenAvgPrice:    decmath.ParseFloat(raw.EntryPrice),
+		Leverage:        int(levVal),
 	}
 
 	if sizeVal > 0 {

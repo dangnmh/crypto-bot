@@ -530,17 +530,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "xt",
-		Symbol:     toStandardSymbol(symbol),
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   grossPnL,
-		Fee:        fee,
-		FundingFee: fundingFee,
-		DurationMs: matchedItem.CloseTime - matchedItem.OpenTime,
-		NetPnl:     grossPnL + fee + fundingFee,
-		PnLRate:    pnlRate,
+		Exchange:           "xt",
+		Symbol:             toStandardSymbol(symbol),
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closedSize),
+		GrossPnL:           grossPnL,
+		Fee:                fee,
+		FundingFee:         fundingFee,
+		DurationMs:         matchedItem.CloseTime - matchedItem.OpenTime,
+		NetPnl:             grossPnL + fee + fundingFee,
+		PnLRate:            pnlRate,
 	}, nil
 }
 

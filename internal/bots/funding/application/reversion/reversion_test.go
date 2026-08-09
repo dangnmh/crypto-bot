@@ -247,7 +247,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 		DealAvgPrice: 60005.0,
 	}, nil).AnyTimes()
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVol: 1},
+		{Symbol: "BTC_USDT", HoldVolContract: 1},
 	}, nil).AnyTimes()
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
@@ -260,15 +260,16 @@ func TestStrategy_Execute_Success(t *testing.T) {
 				defer close(watcherDone)
 				time.Sleep(100 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      1.5,
-					OpenAvgPrice: 60005.0,
+					Symbol:          "BTC_USDT",
+					HoldVolContract: 1.5,
+					OpenAvgPrice:    60005.0,
 				})
 				time.Sleep(100 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      0.0,
-					OpenAvgPrice: 60100.0,
+					Symbol:           "BTC_USDT",
+					HoldVolContract:  0.0,
+					CloseVolContract: 1.5,
+					OpenAvgPrice:     60100.0,
 				})
 			}()
 		},
@@ -468,7 +469,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		DealAvgPrice: 60005.0,
 	}, nil).AnyTimes()
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVol: 1},
+		{Symbol: "BTC_USDT", HoldVolContract: 1},
 	}, nil).AnyTimes()
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
@@ -479,15 +480,16 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 				defer close(watcherDone)
 				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      1.5,
-					OpenAvgPrice: 60005.0,
+					Symbol:          "BTC_USDT",
+					HoldVolContract: 1.5,
+					OpenAvgPrice:    60005.0,
 				})
 				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      0.0,
-					OpenAvgPrice: 60100.0,
+					Symbol:           "BTC_USDT",
+					HoldVolContract:  0.0,
+					CloseVolContract: 1.5,
+					OpenAvgPrice:     60100.0,
 				})
 			}()
 		},
@@ -700,7 +702,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		DealAvgPrice: 60005.0,
 	}, nil).AnyTimes()
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVol: 1},
+		{Symbol: "BTC_USDT", HoldVolContract: 1},
 	}, nil).AnyTimes()
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
@@ -712,15 +714,16 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 				defer close(watcherDone)
 				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      1.5,
-					OpenAvgPrice: 60005.0,
+					Symbol:          "BTC_USDT",
+					HoldVolContract: 1.5,
+					OpenAvgPrice:    60005.0,
 				})
 				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      0.0,
-					OpenAvgPrice: 60100.0,
+					Symbol:           "BTC_USDT",
+					HoldVolContract:  0.0,
+					CloseVolContract: 1.5,
+					OpenAvgPrice:     60100.0,
 				})
 			}()
 		},
@@ -991,7 +994,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		DealAvgPrice: 60005.0,
 	}, nil).AnyTimes()
 	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVol: 1},
+		{Symbol: "BTC_USDT", HoldVolContract: 1},
 	}, nil).AnyTimes()
 	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
@@ -1003,15 +1006,16 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 				defer close(watcherDone)
 				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      1.5,
-					OpenAvgPrice: 60005.0,
+					Symbol:          "BTC_USDT",
+					HoldVolContract: 1.5,
+					OpenAvgPrice:    60005.0,
 				})
 				time.Sleep(50 * time.Millisecond)
 				cb(exchange.PersonalPositionUpdate{
-					Symbol:       "BTC_USDT",
-					HoldVol:      0.0,
-					OpenAvgPrice: 60100.0,
+					Symbol:           "BTC_USDT",
+					HoldVolContract:  0.0,
+					CloseVolContract: 1.5,
+					OpenAvgPrice:     60100.0,
 				})
 			}()
 		},

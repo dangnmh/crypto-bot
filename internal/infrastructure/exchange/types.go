@@ -234,7 +234,9 @@ type TopGainerResult struct {
 // Position holds position information.
 type Position struct {
 	Symbol          string       `json:"symbol"`
-	HoldVol         float64      `json:"holdVol"`
+	HoldVolContract float64      `json:"holdVolContract,omitempty"`
+	HoldVolCoin     float64      `json:"holdVolCoin,omitempty"`
+	RawHoldVol      float64      `json:"rawHoldVol,omitempty"`
 	PositionType    PositionType `json:"positionType"`
 	OpenAvgPrice    float64      `json:"openAvgPrice"`
 	HoldAvgPrice    float64      `json:"holdAvgPrice"`
@@ -380,17 +382,19 @@ type PersonalTrackOrderUpdate struct {
 
 // PersonalPositionUpdate represents push.personal.position data.
 type PersonalPositionUpdate struct {
-	Symbol          string       `json:"symbol"`
-	HoldVol         float64      `json:"holdVol"`
-	PositionType    PositionType `json:"positionType"`
-	OpenAvgPrice    float64      `json:"openAvgPrice"`
-	HoldAvgPrice    float64      `json:"holdAvgPrice"`
-	CloseVol        float64      `json:"closeVol"`
-	CloseAvgPrice   float64      `json:"closeAvgPrice"`
-	CloseProfitLoss float64      `json:"closeProfitLoss"`
-	Fee             float64      `json:"fee"`
-	HoldFee         float64      `json:"holdFee"`
-	Leverage        int          `json:"leverage,omitempty"`
-	LiquidatePrice  float64      `json:"liquidatePrice,omitempty"`
-	UpdateTime      int64        `json:"updateTime,omitempty"`
+	Symbol           string       `json:"symbol"`
+	HoldVolContract  float64      `json:"holdVolContract,omitempty"`
+	HoldVolCoin      float64      `json:"holdVolCoin,omitempty"`
+	PositionType     PositionType `json:"positionType"`
+	OpenAvgPrice     float64      `json:"openAvgPrice"`
+	HoldAvgPrice     float64      `json:"holdAvgPrice"`
+	CloseVolContract float64      `json:"closeVolContract,omitempty"`
+	CloseVolCoin     float64      `json:"closeVolCoin,omitempty"`
+	CloseAvgPrice    float64      `json:"closeAvgPrice"`
+	CloseProfitLoss  float64      `json:"closeProfitLoss"`
+	Fee              float64      `json:"fee"`
+	HoldFee          float64      `json:"holdFee"`
+	Leverage         int          `json:"leverage,omitempty"`
+	LiquidatePrice   float64      `json:"liquidatePrice,omitempty"`
+	UpdateTime       int64        `json:"updateTime,omitempty"`
 }

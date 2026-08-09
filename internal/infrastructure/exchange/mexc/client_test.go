@@ -521,7 +521,7 @@ func TestClient_ChangeLeverage(t *testing.T) {
 func TestClient_GetOpenPositions(t *testing.T) {
 	t.Parallel()
 	positions := []exchange.Position{
-		{Symbol: "BTC_USDT", HoldVol: 10},
+		{Symbol: "BTC_USDT", HoldVolContract: 10},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(mustJSON(t, mexc.APIResponse[[]exchange.Position]{Success: true, Code: 0, Data: positions}))

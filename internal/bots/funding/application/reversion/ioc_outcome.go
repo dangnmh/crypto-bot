@@ -33,12 +33,12 @@ func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmitte
 	_ = r.deps.Clock.Sleep(ctx, time.Second*2)
 	poll := r.pollIOCOrder(ctx, evt.Symbol, evt.OrderID)
 
-	holdVol, err := r.getHoldVolume(ctx, evt.Symbol)
+	holdVolContract, holdVolCoin, err := r.getHoldVolume(ctx, evt.Symbol)
 	if err != nil {
 		poll.reason = err.Error()
 	}
 
-	outcome, reason := classifyIOCOutcome(poll.order, holdVol, poll.dealVol, poll.reason)
+	outcome, reason := classifyIOCOutcome(poll.order, holdVolContract, poll.dealVol, poll.reason)
 
 	timeout := time.Duration(evt.Candidate.Config.FundingReversion.PostSettleTimeout)
 	if timeout <= 0 {
@@ -50,7 +50,8 @@ func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmitte
 		OrderState:         poll.lastState,
 		DealVol:            poll.dealVol,
 		DealAvgPrice:       poll.dealAvgPrice,
-		HoldVol:            holdVol,
+		HoldVolContract:    holdVolContract,
+		HoldVolCoin:        holdVolCoin,
 		Outcome:            outcome,
 		Reason:             reason,
 		CheckedAt:          r.deps.Clock.Now(),

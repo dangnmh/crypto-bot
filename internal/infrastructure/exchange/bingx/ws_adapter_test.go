@@ -216,7 +216,7 @@ func TestWsAdapter_PrivateParsersAndPrivateURLFunc(t *testing.T) {
 	pos, err := adapter.ParsePosition(positionRaw)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT", pos.Symbol)
-	assert.Equal(t, 0.002, pos.HoldVol)
+	assert.Equal(t, 0.002, pos.HoldVolContract)
 	assert.Equal(t, 60100.0, pos.HoldAvgPrice)
 	assert.Equal(t, 1.0, pos.CloseProfitLoss)
 	assert.Equal(t, exchange.PositionTypeLong, pos.PositionType) // LONG

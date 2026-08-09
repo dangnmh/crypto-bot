@@ -118,12 +118,13 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		posType := mapPositionType(pos.PosSide, posVal, pos.InstID, pos.PosCcy)
 
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:       pos.InstID,
-			HoldVol:      holdVol,
-			HoldAvgPrice: avgPx,
-			OpenAvgPrice: avgPx,
-			PositionType: posType,
-			Leverage:     lev,
+			Symbol:          pos.InstID,
+			HoldVolContract: holdVol,
+			RawHoldVol:      holdVol,
+			HoldAvgPrice:    avgPx,
+			OpenAvgPrice:    avgPx,
+			PositionType:    posType,
+			Leverage:        lev,
 		})
 	}
 
@@ -155,12 +156,16 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 	for i := range positions {
 		pos := positions[i]
-		if pos.HoldVol > 0 {
+		vol := pos.HoldVolContract
+		if vol == 0 {
+			vol = pos.HoldVolCoin
+		}
+		if vol > 0 {
 			side := domain.SideCloseShort
 			if pos.PositionType == exchange.PositionTypeLong { // Long
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			err = c.ClosePosition(ctx, symbol, side, vol, domain.PositionModeHedge, pos.Leverage)
 			if err != nil {
 				return err
 			}
@@ -232,16 +237,16 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     pos.InstID,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   closedPnl,
-		Fee:        math.Abs(feeVal),
-		FundingFee: fundingFeeVal,
-		DurationMs: duration,
-		NetPnl:     netPnlVal,
-		PnLRate:    pnlRate,
+		Exchange:           exchangeName,
+		Symbol:             pos.InstID,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closedSize),
+		GrossPnL:           closedPnl,
+		Fee:                math.Abs(feeVal),
+		FundingFee:         fundingFeeVal,
+		DurationMs:         duration,
+		NetPnl:             netPnlVal,
+		PnLRate:            pnlRate,
 	}, nil
 }

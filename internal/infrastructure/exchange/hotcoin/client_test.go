@@ -487,7 +487,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, "BTC_USDT", pnl.Symbol)
 	assert.Equal(t, 96000.0, pnl.ExitPrice)
 	assert.Equal(t, 95000.0, pnl.EntryPrice)
-	assert.Equal(t, 1.0, pnl.ClosedSize)
+	assert.Equal(t, 1.0, *pnl.ClosedSizeContract)
 	assert.Equal(t, 1000.0, pnl.GrossPnL)
 	assert.Equal(t, 0.0002, pnl.Fee)
 	assert.Equal(t, 0.0, pnl.FundingFee)
@@ -651,7 +651,7 @@ func TestClient_GetOpenPositions_DirectArray(t *testing.T) {
 
 	pos := positions[0]
 	assert.Equal(t, "BTC_USDT", pos.Symbol)
-	assert.Equal(t, 1.5, pos.HoldVol)
+	assert.Equal(t, 1.5, pos.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, pos.PositionType)
 	assert.Equal(t, 50000.0, pos.OpenAvgPrice)
 	assert.Equal(t, 50000.0, pos.HoldAvgPrice)
@@ -689,14 +689,14 @@ func TestClient_GetOpenPositions_WrappedEnvelope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, positions, 1)
 
-	pos := positions[0]
-	assert.Equal(t, "BTC_USDT", pos.Symbol)
-	assert.Equal(t, 2.0, pos.HoldVol)
-	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
-	assert.Equal(t, 51000.0, pos.OpenAvgPrice)
-	assert.Equal(t, 51000.0, pos.HoldAvgPrice)
-	assert.Equal(t, 20, pos.Leverage)
-	assert.Equal(t, 0.2, pos.Fee)
+	pos2 := positions[0]
+	assert.Equal(t, "BTC_USDT", pos2.Symbol)
+	assert.Equal(t, 2.0, pos2.HoldVolContract)
+	assert.Equal(t, exchange.PositionTypeShort, pos2.PositionType)
+	assert.Equal(t, 51000.0, pos2.OpenAvgPrice)
+	assert.Equal(t, 51000.0, pos2.HoldAvgPrice)
+	assert.Equal(t, 20, pos2.Leverage)
+	assert.Equal(t, 0.2, pos2.Fee)
 }
 
 func TestClient_GetOpenPositions_Errors(t *testing.T) {

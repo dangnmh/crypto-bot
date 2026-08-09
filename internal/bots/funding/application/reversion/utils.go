@@ -21,6 +21,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/patrickmn/go-cache"
+	"github.com/samber/lo"
 )
 
 const (
@@ -281,6 +282,8 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		SettleTime:    prev.SettleTime,
 		Side:          prev.Side,
 		FundingRate:   prev.FundingRate,
+		Vol24hUSDT:    prev.Vol24hUSDT,
+		ContractSize:  prev.ContractSize,
 	}
 }
 
@@ -375,6 +378,24 @@ func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEven
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }
 
+func (r *StatelessRunner) determineFillPrice(ctx context.Context, pos exchange.PersonalPositionUpdate) float64 {
+	fillPrice := pos.OpenAvgPrice
+	if fillPrice == 0 {
+		fillPrice = pos.HoldAvgPrice
+	}
+	return fillPrice
+}
+
+func normalizeVolume(volContract, volCoin, contractSize float64) (float64, float64) {
+	if volContract == 0 && volCoin > 0 && contractSize > 0 {
+		volContract = volCoin / contractSize
+	}
+	if volCoin == 0 && volContract > 0 && contractSize > 0 {
+		volCoin = volContract * contractSize
+	}
+	return volContract, volCoin
+}
+
 func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
 	if _, found := r.cache.Get(prev.ReqID); !found {
 		r.log.DebugContext(ctx, "Ignoring position update; cycle already cleaned up or inactive", slog.String("req_id", prev.ReqID))
@@ -388,24 +409,18 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 		contractSize = cd.ContractSize
 	}
 
-	fillPrice := pos.OpenAvgPrice
-	if fillPrice == 0 {
-		fillPrice = pos.HoldAvgPrice
-	}
-	if fillPrice == 0 {
-		if pd, err := r.deps.PriceStore.GetPrice(ctx, pos.Symbol, 5*time.Second); err == nil {
-			fillPrice = pd.LastPrice
-		}
-	}
+	fillPrice := r.determineFillPrice(ctx, pos)
 
 	side := shared.SideOpenLong
 	closeSide := shared.SideCloseLong
-	if pos.PositionType == exchange.PositionTypeShort { // Short position
+	if pos.PositionType == exchange.PositionTypeShort {
 		side = shared.SideOpenShort
 		closeSide = shared.SideCloseShort
 	}
 
-	if pos.HoldVol > 0 {
+	holdVolContract, holdVolCoin := normalizeVolume(pos.HoldVolContract, pos.HoldVolCoin, contractSize)
+
+	if holdVolContract > 0 || holdVolCoin > 0 {
 		base := nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now())
 		if base.OrderID == "" {
 			if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
@@ -417,13 +432,14 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 			Side:               side,
 			CloseSide:          closeSide,
 			FillPrice:          fillPrice,
-			FillVol:            pos.HoldVol,
-			VolumeUSDT:         fillPrice * pos.HoldVol * contractSize,
+			FillVolContract:    holdVolContract,
+			FillVolCoin:        holdVolCoin,
+			VolumeUSDT:         fillPrice * holdVolCoin,
 		}
 		go func() {
 			_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
 		}()
-	} else if pos.HoldVol == 0 {
+	} else {
 		evt, err := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
 		if err != nil {
 			r.log.ErrorContext(ctx, "Failed to build closed event", slog.Any("pos", pos), slog.Any("error", err))
@@ -458,62 +474,27 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		closePrice = pos.CloseAvgPrice
 	}
 
+	closeVolContract, closeVolCoin := normalizeVolume(pos.CloseVolContract, pos.CloseVolCoin, contractSize)
+	volUSDT := closeVolCoin * closePrice
+
 	evt := PositionClosedEvent{
 		BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
 		EntryPrice:         fillPrice,
 		ClosePrice:         closePrice,
-		CloseVol:           pos.CloseVol,
+		CloseVolContract:   closeVolContract,
+		CloseVolCoin:       closeVolCoin,
 		Reason:             "exchange_push",
 		GrossProfit:        pos.CloseProfitLoss,
 		NetProfit:          pos.CloseProfitLoss - pos.Fee + pos.HoldFee,
 		PnLPct:             calculatePnLPct(fillPrice, closePrice, side),
-		VolumeUSDT:         pos.CloseVol * closePrice * contractSize,
+		VolumeUSDT:         volUSDT,
 		Fee:                pos.Fee,
 		HoldFee:            pos.HoldFee,
 		Method:             "watcher",
 	}
 
-	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
-		// Wait 5 seconds before calling GetRecentClosedPnL to let exchange update trade database
-		_ = r.deps.Clock.Sleep(ctx, 30*time.Second)
-
-		var orderID string
-		var closedInfo *exchange.ClosedPnLInfo
-
-		bo := backoff.WithContext(
-			backoff.WithMaxRetries(
-				backoff.NewExponentialBackOff(
-					backoff.WithInitialInterval(2*time.Second),
-					backoff.WithMaxInterval(time.Second*10),
-					backoff.WithRandomizationFactor(0.5)),
-				10),
-			ctx,
-		)
-
-		err := backoff.Retry(func() error {
-			var err error
-			orderID, err = r.resolveOrderID(prev.ReqID, prev.OrderID)
-			if err != nil {
-				return err
-			}
-			closedInfo, err = provider.GetOrderPNL(ctx, pos.Symbol, orderID)
-			return err
-		}, bo)
-		if err != nil {
-			return nil, err
-		}
-
-		evt.OrderID = orderID
-		evt.EntryPrice = closedInfo.EntryPrice
-		evt.ClosePrice = closedInfo.ExitPrice
-		evt.CloseVol = closedInfo.ClosedSize
-		evt.GrossProfit = closedInfo.GrossPnL
-		evt.Fee = closedInfo.Fee
-		evt.HoldFee = closedInfo.FundingFee
-		evt.PnLPct = closedInfo.PnLRate
-		evt.NetProfit = closedInfo.NetPnl
-		evt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
-		evt.HoldDurationMs = closedInfo.DurationMs
+	if err := r.enrichFromClosedPnLProvider(ctx, pos.Symbol, prev, contractSize, &evt); err != nil {
+		return nil, err
 	}
 
 	if evt.OrderID == "" {
@@ -523,6 +504,64 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 	}
 
 	return &evt, nil
+}
+
+func (r *StatelessRunner) enrichFromClosedPnLProvider(
+	ctx context.Context,
+	symbol string,
+	prev BaseReversionEvent,
+	contractSize float64,
+	evt *PositionClosedEvent,
+) error {
+	provider, ok := r.deps.Client.(exchange.ClosedPnLProvider)
+	if !ok {
+		return nil
+	}
+
+	_ = r.deps.Clock.Sleep(ctx, 30*time.Second)
+
+	var orderID string
+	var closedInfo *exchange.ClosedPnLInfo
+
+	bo := backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewExponentialBackOff(
+				backoff.WithInitialInterval(2*time.Second),
+				backoff.WithMaxInterval(time.Second*10),
+				backoff.WithRandomizationFactor(0.5)),
+			10),
+		ctx,
+	)
+
+	err := backoff.Retry(func() error {
+		var err error
+		orderID, err = r.resolveOrderID(prev.ReqID, prev.OrderID)
+		if err != nil {
+			return err
+		}
+		closedInfo, err = provider.GetOrderPNL(ctx, symbol, orderID)
+		return err
+	}, bo)
+	if err != nil {
+		return err
+	}
+
+	evt.OrderID = orderID
+	evt.EntryPrice = closedInfo.EntryPrice
+	evt.ClosePrice = closedInfo.ExitPrice
+	evt.CloseVolContract = lo.FromPtr(closedInfo.ClosedSizeContract)
+	evt.CloseVolCoin = lo.FromPtr(closedInfo.ClosedSizeCoin)
+	evt.CloseVolContract, evt.CloseVolCoin = normalizeVolume(evt.CloseVolContract, evt.CloseVolCoin, contractSize)
+
+	evt.GrossProfit = closedInfo.GrossPnL
+	evt.Fee = closedInfo.Fee
+	evt.HoldFee = closedInfo.FundingFee
+	evt.PnLPct = closedInfo.PnLRate
+	evt.NetProfit = closedInfo.NetPnl
+	evt.VolumeUSDT = evt.CloseVolCoin * closedInfo.ExitPrice
+	evt.HoldDurationMs = closedInfo.DurationMs
+
+	return nil
 }
 
 func (r *StatelessRunner) resolveOrderID(reqID, orderID string) (string, error) {

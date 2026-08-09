@@ -353,7 +353,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.Len(t, positions, 1)
 
 	assert.Equal(t, "BTCUSDT", positions[0].Symbol)
-	assert.Equal(t, 1.5, positions[0].HoldVol)
+	assert.Equal(t, 1.5, positions[0].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType)
 	assert.Equal(t, 50000.0, positions[0].HoldAvgPrice)
 	assert.Equal(t, 100.5, positions[0].CloseProfitLoss)
@@ -389,7 +389,7 @@ func TestClient_GetOpenPositions_DirectArray(t *testing.T) {
 	require.Len(t, positions, 1)
 
 	assert.Equal(t, "REUSDT", positions[0].Symbol)
-	assert.Equal(t, 2.0, positions[0].HoldVol)
+	assert.Equal(t, 2.0, positions[0].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, positions[0].PositionType)
 	assert.Equal(t, 0.57456, positions[0].HoldAvgPrice)
 	assert.Equal(t, -0.0244, positions[0].CloseProfitLoss)
@@ -718,7 +718,7 @@ func TestClient_GetOrderPNL_Canceled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "bitmart", res.Exchange)
 	assert.Equal(t, "BTCUSDT", res.Symbol)
-	assert.Equal(t, 0.0, res.ClosedSize)
+	assert.Nil(t, res.ClosedSizeContract)
 }
 
 func TestClient_GetOrderPNL_Filled_OpenLong(t *testing.T) {
@@ -791,7 +791,7 @@ func TestClient_GetOrderPNL_Filled_OpenLong(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "bitmart", res.Exchange)
-	assert.Equal(t, 10.0, res.ClosedSize)
+	assert.Equal(t, 10.0, *res.ClosedSizeContract)
 	assert.InDelta(t, 60000.0, res.ExitPrice, 1e-9)
 	assert.Equal(t, 100.0, res.GrossPnL)
 	assert.Equal(t, 2.0, res.Fee)
@@ -947,7 +947,7 @@ func TestClient_GetOrderPNL_OpeningOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "bitmart", res.Exchange)
-	assert.Equal(t, 10423.0, res.ClosedSize)
+	assert.Equal(t, 10423.0, *res.ClosedSizeContract)
 	assert.InDelta(t, 0.01442, res.ExitPrice, 1e-9)
 	assert.Equal(t, -0.31269, res.GrossPnL)
 	assert.Equal(t, 0.01799842, res.Fee)

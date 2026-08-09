@@ -148,12 +148,13 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		lev := int(xjson.ToInt64(pos.Leverage))
 
 		openPositions = append(openPositions, exchange.Position{
-			Symbol:       posSym,
-			HoldVol:      holdVol,
-			HoldAvgPrice: avgPx,
-			OpenAvgPrice: avgPx,
-			PositionType: posType,
-			Leverage:     lev,
+			Symbol:          posSym,
+			HoldVolContract: holdVol,
+			RawHoldVol:      holdVol,
+			HoldAvgPrice:    avgPx,
+			OpenAvgPrice:    avgPx,
+			PositionType:    posType,
+			Leverage:        lev,
 		})
 	}
 
@@ -223,16 +224,16 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     matchedPos.Symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   grossPnL,
-		Fee:        openFee + closeFee,
-		FundingFee: fundingFee,
-		DurationMs: duration,
-		NetPnl:     netPnl,
-		PnLRate:    pnlRate,
+		Exchange:           exchangeName,
+		Symbol:             symbol,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closedSize),
+		GrossPnL:           grossPnL,
+		Fee:                openFee + closeFee,
+		FundingFee:         fundingFee,
+		DurationMs:         duration,
+		NetPnl:             netPnl,
+		PnLRate:            pnlRate,
 	}, nil
 }

@@ -36,7 +36,7 @@ func TestClient_GetOpenPositions_APIError(t *testing.T) {
 
 func TestClient_GetOpenPositions_NoSymbol(t *testing.T) {
 	t.Parallel()
-	positions := []exchange.Position{{Symbol: "BTC_USDT", HoldVol: 10}}
+	positions := []exchange.Position{{Symbol: "BTC_USDT", HoldVolContract: 10}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify no symbol param is sent when empty.
 		assert.Empty(t, r.URL.Query().Get("symbol"))

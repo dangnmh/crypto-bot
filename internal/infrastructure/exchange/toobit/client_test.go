@@ -525,7 +525,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.Len(t, positions, 1)
 
 	assert.Equal(t, "BTC-SWAP-USDT", positions[0].Symbol)
-	assert.Equal(t, 0.5, positions[0].HoldVol)
+	assert.Equal(t, 0.5, positions[0].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, positions[0].PositionType)
 }
 
@@ -854,11 +854,68 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, "BTC-SWAP-USDT", info.Symbol)
 	assert.Equal(t, 24000.0, info.EntryPrice)
 	assert.Equal(t, 25000.0, info.ExitPrice)
-	assert.Equal(t, 10.0, info.ClosedSize)
+	assert.Equal(t, 10.0, *info.ClosedSizeCoin)
+	assert.Equal(t, 10.0, *info.ClosedSizeContract)
 	assert.Equal(t, 1000.5, info.GrossPnL)
 	assert.Equal(t, 0.2, info.Fee)
 	assert.Equal(t, -0.3, info.FundingFee)
 	assert.Equal(t, int64(86400000), info.DurationMs)
 	assert.Equal(t, 1000.0, info.NetPnl)
 	assert.InDelta(t, 4.16666667, info.PnLRate, 0.0001)
+}
+
+func TestClient_GetTopGainer(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/quote/v1/contract/ticker/24hr", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[
+			{
+				"s": "ETH-SWAP-USDT",
+				"c": "3000.0",
+				"b": "2999.0",
+				"a": "3001.0",
+				"qv": "500000.0",
+				"pcp": "5.5",
+				"t": 1600000000000
+			},
+			{
+				"s": "SOL-SWAP-USDT",
+				"c": "150.0",
+				"b": "149.9",
+				"a": "150.1",
+				"qv": "1000000.0",
+				"pcp": "12.0",
+				"t": 1600000000000
+			},
+			{
+				"s": "BTC-SWAP-USDT",
+				"c": "60000.0",
+				"b": "59990.0",
+				"a": "60010.0",
+				"qv": "2000000.0",
+				"pcp": "1.2",
+				"t": 1600000000000
+			}
+		]`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := toobit.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	t.Run("limit 2 top gainers", func(t *testing.T) {
+		t.Parallel()
+		res, err := client.GetTopGainer(context.Background(), exchange.TopGainerRequest{Limit: 2})
+		require.NoError(t, err)
+		require.Len(t, res, 2)
+
+		assert.Equal(t, "SOL-SWAP-USDT", res[0].Symbol)
+		assert.Equal(t, 12.0, res[0].Gain24hPct)
+		assert.Equal(t, 1000000.0, res[0].Volume24hUSDT)
+		assert.InDelta(t, 0.1334, res[0].SpreadPct, 0.001)
+
+		assert.Equal(t, "ETH-SWAP-USDT", res[1].Symbol)
+		assert.Equal(t, 5.5, res[1].Gain24hPct)
+	})
 }

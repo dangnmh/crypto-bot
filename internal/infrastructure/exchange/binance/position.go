@@ -133,7 +133,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		positions = append(positions, exchange.Position{
 			Symbol:       raw.Symbol,
-			HoldVol:      math.Abs(amt),
+			HoldVolCoin:  math.Abs(amt),
+			RawHoldVol:   math.Abs(amt),
 			HoldAvgPrice: entryPrice,
 			OpenAvgPrice: entryPrice,
 			PositionType: posType,
@@ -169,12 +170,16 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 
 	for i := range positions {
 		pos := positions[i]
-		if pos.HoldVol > 0 {
+		vol := pos.HoldVolCoin
+		if vol == 0 {
+			vol = pos.HoldVolContract
+		}
+		if vol > 0 {
 			side := domain.SideCloseShort
 			if pos.PositionType == exchange.PositionTypeLong {
 				side = domain.SideCloseLong
 			}
-			err = c.ClosePosition(ctx, symbol, side, pos.HoldVol, domain.PositionModeHedge, pos.Leverage)
+			err = c.ClosePosition(ctx, symbol, side, vol, domain.PositionModeHedge, pos.Leverage)
 			if err != nil {
 				return err
 			}
@@ -252,16 +257,16 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   agg.totalRealizedPnl,
-		Fee:        fee,
-		FundingFee: fdFee,
-		DurationMs: durationMs,
-		NetPnl:     agg.totalRealizedPnl - fee + fdFee,
+		Exchange:       exchangeName,
+		Symbol:         symbol,
+		EntryPrice:     entryPrice,
+		ExitPrice:      exitPrice,
+		ClosedSizeCoin: new(closedSize),
+		GrossPnL:       agg.totalRealizedPnl,
+		Fee:            fee,
+		FundingFee:     fdFee,
+		DurationMs:     durationMs,
+		NetPnl:         agg.totalRealizedPnl - fee + fdFee,
 	}, nil
 }
 

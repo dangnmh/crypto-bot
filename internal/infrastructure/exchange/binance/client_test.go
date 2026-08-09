@@ -301,7 +301,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 
 	p := positions[0]
 	assert.Equal(t, "BTCUSDT", p.Symbol)
-	assert.Equal(t, 0.5, p.HoldVol)
+	assert.Equal(t, 0.5, p.HoldVolCoin)
 	assert.Equal(t, 50000.0, p.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, p.PositionType) // Long
 }
@@ -872,7 +872,9 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				assert.Equal(t, "BTCUSDT", res.Symbol)
 				assert.InDelta(t, tc.expectedEntry, res.EntryPrice, 0.0001)
 				assert.InDelta(t, tc.expectedExit, res.ExitPrice, 0.0001)
-				assert.InDelta(t, tc.expectedSize, res.ClosedSize, 0.0001)
+				if res.ClosedSizeCoin != nil {
+					assert.InDelta(t, tc.expectedSize, *res.ClosedSizeCoin, 0.0001)
+				}
 				assert.InDelta(t, tc.expectedGross, res.GrossPnL, 0.0001)
 				assert.InDelta(t, tc.expectedFee, res.Fee, 0.0001)
 				assert.InDelta(t, tc.expectedFunding, res.FundingFee, 0.0001)

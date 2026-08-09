@@ -87,7 +87,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
 		EntryPrice:         100,
 		ClosePrice:         101,
-		CloseVol:           2,
+		CloseVolContract:   2,
 		GrossProfit:        2,
 		NetProfit:          1.8,
 		PnLPct:             1.0,
@@ -103,7 +103,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 
 	payload, err := json.Marshal(PositionClosedEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-		CloseVol:           2,
+		CloseVolContract:   2,
 		EntryPrice:         100,
 		ClosePrice:         101,
 	})
@@ -147,19 +147,19 @@ func TestStatelessRunnerHandlePositionUpdateFallbacks(t *testing.T) {
 	runner.cache.Set("test-req-2", &CycleState{ReqID: "test-req-2"}, cache.DefaultExpiration)
 
 	runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
-		Symbol:       "BTC_USDT",
-		PositionType: 2,
-		HoldVol:      1,
+		Symbol:          "BTC_USDT",
+		PositionType:    2,
+		HoldVolContract: 1,
 	}, BaseReversionEvent{ReqID: "test-req-1", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
 	runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
-		Symbol:          "BTC_USDT",
-		HoldVol:         0,
-		CloseVol:        1,
-		OpenAvgPrice:    100,
-		CloseAvgPrice:   101,
-		CloseProfitLoss: 1,
-		Fee:             -0.1,
-		HoldFee:         -0.01,
+		Symbol:           "BTC_USDT",
+		HoldVolContract:  0,
+		CloseVolContract: 1,
+		OpenAvgPrice:     100,
+		CloseAvgPrice:    101,
+		CloseProfitLoss:  1,
+		Fee:              -0.1,
+		HoldFee:          -0.01,
 	}, BaseReversionEvent{ReqID: "test-req-2", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady})
 }
 
@@ -200,16 +200,17 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 		client := &mockClosedPnLClient{
 			Client: mockCli,
 			closedInfo: &exchange.ClosedPnLInfo{
-				Exchange:   "mock",
-				Symbol:     "BTC_USDT",
-				EntryPrice: 100,
-				ExitPrice:  105,
-				ClosedSize: 2.0,
-				GrossPnL:   10.0,
-				Fee:        1.0,
-				DurationMs: 60000,
-				NetPnl:     9.0,
-				PnLRate:    5.0,
+				Exchange:           "mock",
+				Symbol:             "BTC_USDT",
+				EntryPrice:         100,
+				ExitPrice:          105,
+				ClosedSizeContract: new(2.0),
+				ClosedSizeCoin:     new(2.0),
+				GrossPnL:           10.0,
+				Fee:                1.0,
+				DurationMs:         60000,
+				NetPnl:             9.0,
+				PnLRate:            5.0,
 			},
 		}
 
@@ -218,10 +219,11 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 
 		runner := &StatelessRunner{
 			deps: strategy.Deps{
-				Clock:      clock,
-				PriceStore: priceStore,
-				Client:     client,
-				Notifier:   mockNotifier,
+				Clock:         clock,
+				PriceStore:    priceStore,
+				ContractStore: contractStore,
+				Client:        client,
+				Notifier:      mockNotifier,
 			},
 			bus:   bus,
 			log:   reversionTestLogger(),
@@ -234,14 +236,14 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 		require.NoError(t, err)
 
 		runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
-			Symbol:          "BTC_USDT",
-			HoldVol:         0,
-			CloseVol:        1,
-			OpenAvgPrice:    100,
-			CloseAvgPrice:   101,
-			CloseProfitLoss: 1,
-			Fee:             -0.1,
-			HoldFee:         -0.01,
+			Symbol:           "BTC_USDT",
+			HoldVolContract:  0,
+			CloseVolContract: 1,
+			OpenAvgPrice:     100,
+			CloseAvgPrice:    101,
+			CloseProfitLoss:  1,
+			Fee:              -0.1,
+			HoldFee:          -0.01,
 		}, BaseReversionEvent{ReqID: "test-req-enrich", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady, OrderID: "ord_123"})
 
 		select {
@@ -254,7 +256,7 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 
 		assert.Equal(t, 100.0, closedEvt.EntryPrice)
 		assert.Equal(t, 105.0, closedEvt.ClosePrice)
-		assert.Equal(t, 2.0, closedEvt.CloseVol)
+		assert.Equal(t, 2.0, closedEvt.CloseVolContract)
 		assert.Equal(t, 10.0, closedEvt.GrossProfit)
 		assert.Equal(t, 1.0, closedEvt.Fee)
 		assert.Equal(t, 9.0, closedEvt.NetProfit)
@@ -293,14 +295,14 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 		cancel() // Cancel context immediately to prevent long backoff retry sleeps
 
 		runner.handlePositionUpdate(ctx, exchange.PersonalPositionUpdate{
-			Symbol:          "BTC_USDT",
-			HoldVol:         0,
-			CloseVol:        1,
-			OpenAvgPrice:    100,
-			CloseAvgPrice:   101,
-			CloseProfitLoss: 1,
-			Fee:             -0.1,
-			HoldFee:         -0.01,
+			Symbol:           "BTC_USDT",
+			HoldVolContract:  0,
+			CloseVolContract: 1,
+			OpenAvgPrice:     100,
+			CloseAvgPrice:    101,
+			CloseProfitLoss:  1,
+			Fee:              -0.1,
+			HoldFee:          -0.01,
 		}, BaseReversionEvent{ReqID: "test-req-fallback", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady, OrderID: "ord_123"})
 
 		select {
@@ -540,12 +542,12 @@ func TestWatcherFillBeforeOutcomeDoesNotDuplicateOrderFilled(t *testing.T) {
 	reqID := "trace-req-no-duplicate-fill"
 	require.NoError(t, runner.publishEvent(context.Background(), TopicReversionOrderFilled, OrderFilledEvent{
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-fill"},
-		FillVol:            1,
+		FillVolContract:    1,
 	}))
 	require.NoError(t, runner.handleIOCOutcomeChecked(context.Background(), IOCOutcomeCheckedEvent{
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-fill"},
 		Outcome:            IOCOutcomeFilled,
-		HoldVol:            1,
+		HoldVolContract:    1,
 	}))
 
 	assert.Equal(t, 1, countTopic(bus, TopicReversionOrderFilled))
@@ -592,10 +594,14 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 			}, nil).AnyTimes()
 			client.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return(nil, nil)
 
+			cs := mocks.NewMockContractReader(ctrl)
+			cs.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{ContractSize: 1.0}, nil).AnyTimes()
+
 			runner := &StatelessRunner{
 				deps: strategy.Deps{
-					Client: client,
-					Clock:  clock,
+					Client:        client,
+					Clock:         clock,
+					ContractStore: cs,
 				},
 				bus:   bus,
 				log:   reversionTestLogger(),
@@ -645,7 +651,7 @@ func TestIOCPartialFillSchedulesTimeoutGuard(t *testing.T) {
 	require.NoError(t, runner.handleIOCOutcomeChecked(context.Background(), IOCOutcomeCheckedEvent{
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: "ord-partial"},
 		Outcome:            IOCOutcomePartialFilled,
-		HoldVol:            0.5,
+		HoldVolContract:    0.5,
 	}))
 
 	assert.Equal(t, 1, countTopic(bus, TopicReversionTimeoutGuardScheduled))
@@ -685,7 +691,7 @@ func TestTimeoutForceClosePathCompletes(t *testing.T) {
 		BaseReversionEvent: BaseReversionEvent{ReqID: reqID, Symbol: "BTC_USDT", OrderID: ioc.OrderID, Side: ioc.Side},
 		Timeout:            10 * time.Second,
 		StartedAt:          clock.Now().Add(-10 * time.Second),
-		HoldVol:            1.25,
+		HoldVolContract:    1.25,
 	}))
 
 	initiated := timelineEvent[ForceCloseInitiatedEvent](t, bus, TopicReversionForceCloseInitiated)
@@ -856,8 +862,8 @@ func TestStatelessRunnerTimeoutHelpers(t *testing.T) {
 
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVol: 1.5},
-		{Symbol: "BTC_USDT", HoldVol: 0.5},
+		{Symbol: "BTC_USDT", HoldVolContract: 1.5},
+		{Symbol: "BTC_USDT", HoldVolContract: 0.5},
 	}, nil)
 	client.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(errors.New("close failed"))
 	client.EXPECT().CloseAllPositions(gomock.Any(), "ETH_USDT").Return(nil)
@@ -876,9 +882,13 @@ func TestStatelessRunnerTimeoutHelpers(t *testing.T) {
 		log: reversionTestLogger(),
 	}
 
-	holdVol, err := runner.getHoldVolume(context.Background(), "BTC_USDT")
+	mockContractStore := mocks.NewMockContractReader(ctrl)
+	mockContractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{ContractSize: 0.001}, nil).AnyTimes()
+	runner.deps.ContractStore = mockContractStore
+
+	holdVolContract, _, err := runner.getHoldVolume(context.Background(), "BTC_USDT")
 	require.NoError(t, err)
-	assert.Equal(t, 2.0, holdVol)
+	assert.Equal(t, 2.0, holdVolContract)
 
 	retries, err := runner.forceClosePosition(context.Background(), "BTC_USDT", 1)
 	require.ErrorContains(t, err, "close failed")
@@ -907,11 +917,15 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 	t.Cleanup(func() { _ = bus.Close() })
 	n := mocks.NewMockNotifier(ctrl)
 	n.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockContractStore := mocks.NewMockContractReader(ctrl)
+	mockContractStore.EXPECT().GetContract(gomock.Any(), gomock.Any()).Return(&store.ContractData{ContractSize: 1.0}, nil).AnyTimes()
+
 	runner := &StatelessRunner{
 		deps: strategy.Deps{
-			Client:   client,
-			Clock:    clock,
-			Notifier: n,
+			Client:        client,
+			Clock:         clock,
+			Notifier:      n,
+			ContractStore: mockContractStore,
 		},
 		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{
 			Symbol: "BTC_USDT",

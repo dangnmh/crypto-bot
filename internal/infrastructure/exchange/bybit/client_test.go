@@ -370,7 +370,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.Len(t, positions, 1)
 	p := positions[0]
 	assert.Equal(t, "BTCUSDT", p.Symbol)
-	assert.Equal(t, 1.5, p.HoldVol)
+	assert.Equal(t, 1.5, p.HoldVolCoin)
 	assert.Equal(t, 50000.0, p.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, p.PositionType) // Long
 }
@@ -584,7 +584,7 @@ func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	pos, err := adapter.ParsePosition(rawPos)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", pos.Symbol)
-	assert.Equal(t, 2.0, pos.HoldVol)
+	assert.Equal(t, 2.0, pos.HoldVolCoin)
 	assert.Equal(t, exchange.PositionTypeLong, pos.PositionType)
 
 	// Check extractor routing
@@ -902,7 +902,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 				assert.Equal(t, tt.wantSymbol, info.Symbol)
 				assert.Equal(t, 50000.0, info.EntryPrice)
 				assert.Equal(t, 51000.0, info.ExitPrice)
-				assert.Equal(t, 1.0, info.ClosedSize)
+				assert.Equal(t, 1.0, *info.ClosedSizeCoin)
 				assert.Equal(t, 1021.05, info.GrossPnL)
 				assert.Equal(t, 21.0, info.Fee)
 				assert.Equal(t, -0.05, info.FundingFee)

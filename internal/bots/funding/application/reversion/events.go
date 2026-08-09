@@ -66,28 +66,29 @@ const (
 )
 
 const (
-	keySymbol      = "symbol"
-	keyFundingRate = "fundingRate"
-	keyVolume      = "volume"
-	keyOrderID     = "orderId"
-	keyError       = "error"
-	keyClosePrice  = "closePrice"
-	keyReason      = "reason"
-	keyEntryPrice  = "entryPrice"
-	keyFee         = "fee"
-	keyHoldFee     = "holdFee"
-	keyTimeout     = "timeout"
-	keyPassed      = "passed"
-	keyBestBid     = "bestBid"
-	keyBestAsk     = "bestAsk"
-	keyLastPrice   = "lastPrice"
-	keyIOCPrice    = "iocPrice"
-	keySlippage    = "slippage"
-	keyLatencyRTT  = "latencyRTTMs"
-	keyHoldVol     = "holdVol"
-	keyOutcome     = "outcome"
-	keyVolumeUSDT  = "volumeUSDT"
-	keyVolUSDT24h  = "volusdt24h"
+	keySymbol          = "symbol"
+	keyFundingRate     = "fundingRate"
+	keyVolume          = "volume"
+	keyOrderID         = "orderId"
+	keyError           = "error"
+	keyClosePrice      = "closePrice"
+	keyReason          = "reason"
+	keyEntryPrice      = "entryPrice"
+	keyFee             = "fee"
+	keyHoldFee         = "holdFee"
+	keyTimeout         = "timeout"
+	keyPassed          = "passed"
+	keyBestBid         = "bestBid"
+	keyBestAsk         = "bestAsk"
+	keyLastPrice       = "lastPrice"
+	keyIOCPrice        = "iocPrice"
+	keySlippage        = "slippage"
+	keyLatencyRTT      = "latencyRTTMs"
+	keyHoldVolContract = "holdVolContract"
+	keyHoldVolCoin     = "holdVolCoin"
+	keyOutcome         = "outcome"
+	keyVolumeUSDT      = "volumeUSDT"
+	keyVolUSDT24h      = "volusdt24h"
 )
 
 type EventColor string
@@ -127,6 +128,8 @@ type BaseReversionEvent struct {
 	SettleTime    time.Time   `json:"settle_time"`
 	Side          shared.Side `json:"side,omitempty"`
 	FundingRate   float64     `json:"funding_rate,omitempty"`
+	Vol24hUSDT    float64     `json:"vol_24h_usdt,omitempty"`
+	ContractSize  float64     `json:"contract_size,omitempty"`
 }
 
 func (b BaseReversionEvent) GetFlow() string     { return b.Flow }
@@ -351,15 +354,16 @@ func (e IOCSubmittedEvent) ShouldNotify() bool { return e.SendNotify || e.Error 
 
 type IOCOutcomeCheckedEvent struct {
 	BaseReversionEvent
-	OrderState   shared.OrderState `json:"order_state"`
-	DealVol      float64           `json:"deal_vol"`
-	DealAvgPrice float64           `json:"deal_avg_price"`
-	HoldVol      float64           `json:"hold_vol"`
-	Outcome      IOCOutcome        `json:"outcome"`
-	Reason       ReversionReason   `json:"reason"`
-	CheckedAt    time.Time         `json:"checked_at"`
-	Timeout      time.Duration     `json:"timeout"`
-	VolUSDT24h   float64           `json:"vol_usdt_24h"`
+	OrderState      shared.OrderState `json:"order_state"`
+	DealVol         float64           `json:"deal_vol"`
+	DealAvgPrice    float64           `json:"deal_avg_price"`
+	HoldVolContract float64           `json:"hold_vol_contract,omitempty"`
+	HoldVolCoin     float64           `json:"hold_vol_coin,omitempty"`
+	Outcome         IOCOutcome        `json:"outcome"`
+	Reason          ReversionReason   `json:"reason"`
+	CheckedAt       time.Time         `json:"checked_at"`
+	Timeout         time.Duration     `json:"timeout"`
+	VolUSDT24h      float64           `json:"vol_usdt_24h"`
 }
 
 func (e IOCOutcomeCheckedEvent) GetMessage() string {
@@ -375,10 +379,11 @@ func (e IOCOutcomeCheckedEvent) GetMessage() string {
 
 func (e IOCOutcomeCheckedEvent) GetDataMap() map[string]any {
 	m := map[string]any{
-		keyOutcome:     string(e.Outcome),
-		keyHoldVol:     e.HoldVol,
-		keyFundingRate: e.FundingRate,
-		keyVolUSDT24h:  e.VolUSDT24h,
+		keyOutcome:         string(e.Outcome),
+		keyHoldVolContract: e.HoldVolContract,
+		keyHoldVolCoin:     e.HoldVolCoin,
+		keyFundingRate:     e.FundingRate,
+		keyVolUSDT24h:      e.VolUSDT24h,
 	}
 	if e.OrderID != "" {
 		m[keyOrderID] = e.OrderID
@@ -411,25 +416,27 @@ func (e IOCOutcomeCheckedEvent) GetColor() EventColor {
 
 type OrderFilledEvent struct {
 	BaseReversionEvent
-	Side        shared.Side `json:"side"`
-	CloseSide   shared.Side `json:"close_side"`
-	FillPrice   float64     `json:"fill_price"`
-	FillVol     float64     `json:"fill_vol"`
-	VolumeUSDT  float64     `json:"volume_usdt"`
-	Fee         float64     `json:"fee,omitempty"`
-	Profit      float64     `json:"profit,omitempty"`
-	HoldFee     float64     `json:"hold_fee,omitempty"`
-	SlippagePct float64     `json:"slippage_pct,omitempty"`
-	TPPrice     float64     `json:"tp_price,omitempty"`
-	SLPrice     float64     `json:"sl_price,omitempty"`
+	Side            shared.Side `json:"side"`
+	CloseSide       shared.Side `json:"close_side"`
+	FillPrice       float64     `json:"fill_price"`
+	FillVolContract float64     `json:"fill_vol_contract,omitempty"`
+	FillVolCoin     float64     `json:"fill_vol_coin,omitempty"`
+	VolumeUSDT      float64     `json:"volume_usdt"`
+	Fee             float64     `json:"fee,omitempty"`
+	Profit          float64     `json:"profit,omitempty"`
+	HoldFee         float64     `json:"hold_fee,omitempty"`
+	SlippagePct     float64     `json:"slippage_pct,omitempty"`
+	TPPrice         float64     `json:"tp_price,omitempty"`
+	SLPrice         float64     `json:"sl_price,omitempty"`
 }
 
 func (e OrderFilledEvent) GetMessage() string { return "Position filled" }
 func (e OrderFilledEvent) GetDataMap() map[string]any {
 	m := map[string]any{
-		"fillPrice":   e.FillPrice,
-		"fillVol":     e.FillVol,
-		keyVolumeUSDT: e.VolumeUSDT,
+		"fillPrice":       e.FillPrice,
+		"fillVolContract": e.FillVolContract,
+		"fillVolCoin":     e.FillVolCoin,
+		keyVolumeUSDT:     e.VolumeUSDT,
 	}
 	if e.OrderID != "" {
 		m[keyOrderID] = e.OrderID
@@ -439,31 +446,35 @@ func (e OrderFilledEvent) GetDataMap() map[string]any {
 
 type PositionClosedEvent struct {
 	BaseReversionEvent
-	EntryPrice      float64 `json:"entry_price"`
-	ClosePrice      float64 `json:"close_price"`
-	CloseVol        float64 `json:"close_vol"`
-	Reason          string  `json:"reason"`
-	GrossProfit     float64 `json:"gross_profit"`
-	NetProfit       float64 `json:"net_profit"`
-	PnLPct          float64 `json:"pnl_pct"`
-	VolumeUSDT      float64 `json:"volume_usdt"`
-	Fee             float64 `json:"fee"`
-	HoldFee         float64 `json:"hold_fee"`
-	HoldDurationMs  int64   `json:"hold_duration_ms"`
-	TPPriceTouched  bool    `json:"tp_price_touched,omitempty"`
-	SLPriceTouched  bool    `json:"sl_price_touched,omitempty"`
-	Method          string  `json:"method,omitempty"`
-	CloseRetryCount int     `json:"close_retry_count,omitempty"`
+	EntryPrice       float64 `json:"entry_price"`
+	ClosePrice       float64 `json:"close_price"`
+	CloseVolContract float64 `json:"close_vol_contract,omitempty"`
+	CloseVolCoin     float64 `json:"close_vol_coin,omitempty"`
+	Reason           string  `json:"reason"`
+	GrossProfit      float64 `json:"gross_profit"`
+	NetProfit        float64 `json:"net_profit"`
+	PnLPct           float64 `json:"pnl_pct"`
+	VolumeUSDT       float64 `json:"volume_usdt"`
+	Fee              float64 `json:"fee"`
+	HoldFee          float64 `json:"hold_fee"`
+	HoldDurationMs   int64   `json:"hold_duration_ms"`
+	TPPriceTouched   bool    `json:"tp_price_touched,omitempty"`
+	SLPriceTouched   bool    `json:"sl_price_touched,omitempty"`
+	Method           string  `json:"method,omitempty"`
+	CloseRetryCount  int     `json:"close_retry_count,omitempty"`
+}
+
+func (e PositionClosedEvent) IsClose() bool {
+	return e.Topic == TopicReversionPositionClosed || e.CloseVolContract > 0 || e.CloseVolCoin > 0
 }
 
 func (e PositionClosedEvent) GetMessage() string {
 	return "Position closed: " + e.Reason
 }
 func (e PositionClosedEvent) GetDataMap() map[string]any {
-	return map[string]any{
+	m := map[string]any{
 		keyEntryPrice:    e.EntryPrice,
 		keyClosePrice:    e.ClosePrice,
-		"closeVol":       e.CloseVol,
 		keyReason:        e.Reason,
 		"netProfit":      e.NetProfit,
 		keyFee:           e.Fee,
@@ -471,6 +482,13 @@ func (e PositionClosedEvent) GetDataMap() map[string]any {
 		keyVolumeUSDT:    e.VolumeUSDT,
 		"holdDurationMs": e.HoldDurationMs,
 	}
+	if e.CloseVolContract > 0 {
+		m["closeVolContract"] = e.CloseVolContract
+	}
+	if e.CloseVolCoin > 0 {
+		m["closeVolCoin"] = e.CloseVolCoin
+	}
+	return m
 }
 func (e PositionClosedEvent) GetColor() EventColor {
 	if e.NetProfit > 0 {
@@ -498,10 +516,11 @@ func (e TimeoutGuardScheduledEvent) GetDataMap() map[string]any {
 
 type TimeoutPositionCheckedEvent struct {
 	BaseReversionEvent
-	Timeout   time.Duration `json:"timeout"`
-	StartedAt time.Time     `json:"started_at"`
-	HoldVol   float64       `json:"hold_vol"`
-	Error     string        `json:"error,omitempty"`
+	Timeout         time.Duration `json:"timeout"`
+	StartedAt       time.Time     `json:"started_at"`
+	HoldVolContract float64       `json:"hold_vol_contract,omitempty"`
+	HoldVolCoin     float64       `json:"hold_vol_coin,omitempty"`
+	Error           string        `json:"error,omitempty"`
 }
 
 func (e TimeoutPositionCheckedEvent) GetMessage() string {
@@ -511,7 +530,7 @@ func (e TimeoutPositionCheckedEvent) GetMessage() string {
 	return "Timeout position checked"
 }
 func (e TimeoutPositionCheckedEvent) GetDataMap() map[string]any {
-	m := map[string]any{keyHoldVol: e.HoldVol}
+	m := map[string]any{keyHoldVolContract: e.HoldVolContract, keyHoldVolCoin: e.HoldVolCoin}
 	if e.Error != "" {
 		m[keyError] = e.Error
 	}
@@ -521,24 +540,26 @@ func (e TimeoutPositionCheckedEvent) ShouldNotify() bool { return e.SendNotify |
 
 type ForceCloseInitiatedEvent struct {
 	BaseReversionEvent
-	Timeout    time.Duration `json:"timeout"`
-	StartedAt  time.Time     `json:"started_at"`
-	HoldVol    float64       `json:"hold_vol"`
-	TimeoutSec float64       `json:"timeout_sec"`
+	Timeout         time.Duration `json:"timeout"`
+	StartedAt       time.Time     `json:"started_at"`
+	HoldVolContract float64       `json:"hold_vol_contract,omitempty"`
+	HoldVolCoin     float64       `json:"hold_vol_coin,omitempty"`
+	TimeoutSec      float64       `json:"timeout_sec"`
 }
 
 func (e ForceCloseInitiatedEvent) GetMessage() string {
 	return "CRITICAL: Safety timeout close initiated"
 }
 func (e ForceCloseInitiatedEvent) GetDataMap() map[string]any {
-	return map[string]any{keyHoldVol: e.HoldVol, keyTimeout: e.TimeoutSec}
+	return map[string]any{keyHoldVolContract: e.HoldVolContract, keyHoldVolCoin: e.HoldVolCoin, keyTimeout: e.TimeoutSec}
 }
 
 type ForceCloseCompletedEvent struct {
 	BaseReversionEvent
 	Timeout         time.Duration `json:"timeout"`
 	StartedAt       time.Time     `json:"started_at"`
-	HoldVol         float64       `json:"hold_vol"`
+	HoldVolContract float64       `json:"hold_vol_contract,omitempty"`
+	HoldVolCoin     float64       `json:"hold_vol_coin,omitempty"`
 	CloseRetryCount int           `json:"close_retry_count"`
 	Succeeded       bool          `json:"succeeded"`
 	Error           string        `json:"error,omitempty"`
@@ -551,7 +572,7 @@ func (e ForceCloseCompletedEvent) GetMessage() string {
 	return "Force close completed"
 }
 func (e ForceCloseCompletedEvent) GetDataMap() map[string]any {
-	m := map[string]any{keyHoldVol: e.HoldVol, "retries": e.CloseRetryCount, "succeeded": e.Succeeded}
+	m := map[string]any{keyHoldVolContract: e.HoldVolContract, keyHoldVolCoin: e.HoldVolCoin, "retries": e.CloseRetryCount, "succeeded": e.Succeeded}
 	if e.Error != "" {
 		m[keyError] = e.Error
 	}
@@ -566,7 +587,8 @@ type TimeoutEvent struct {
 	ForceCloseAttempted bool            `json:"force_close_attempted,omitempty"`
 	ForceCloseSucceeded bool            `json:"force_close_succeeded,omitempty"`
 	CloseRetryCount     int             `json:"close_retry_count,omitempty"`
-	HoldVol             float64         `json:"hold_vol,omitempty"`
+	HoldVolContract     float64         `json:"hold_vol_contract,omitempty"`
+	HoldVolCoin         float64         `json:"hold_vol_coin,omitempty"`
 	HoldDurationMs      int64           `json:"hold_duration_ms,omitempty"`
 	Error               string          `json:"error,omitempty"`
 }
@@ -626,7 +648,6 @@ type FinalPnLEvent struct {
 	BaseReversionEvent
 	EntryPrice     float64 `json:"entry_price"`
 	ClosePrice     float64 `json:"close_price"`
-	MaxVol         float64 `json:"max_vol"`
 	GrossPnL       float64 `json:"gross_pnl"`
 	NetPnL         float64 `json:"net_pnl"`
 	PnLPct         float64 `json:"pnl_pct"`
@@ -634,7 +655,6 @@ type FinalPnLEvent struct {
 	Fees           float64 `json:"fees"`
 	HoldFee        float64 `json:"hold_fees"`
 	HoldDurationMs int64   `json:"hold_duration_ms"`
-	Vol24hUSDT     float64 `json:"vol_24h_usdt"`
 }
 
 func (e FinalPnLEvent) GetMessage() string {

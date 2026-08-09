@@ -450,8 +450,8 @@ func TestGetOpenPositions(t *testing.T) {
 	if res[0].Symbol != "BTC_USDT_PERP" {
 		t.Errorf("expected BTC_USDT_PERP, got %s", res[0].Symbol)
 	}
-	if res[0].HoldVol != 1.5 {
-		t.Errorf("expected holdVol 1.5, got %v", res[0].HoldVol)
+	if res[0].HoldVolCoin != 1.5 {
+		t.Errorf("expected holdVolCoin 1.5, got %v", res[0].HoldVolCoin)
 	}
 	if res[0].PositionType != exchange.PositionTypeLong {
 		t.Errorf("expected PositionTypeLong, got %v", res[0].PositionType)

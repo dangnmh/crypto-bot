@@ -707,17 +707,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	durationMs := calculateDurationMs(match, orderInfo.CreateTime)
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeBitunixName,
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   grossPnL,
-		Fee:        fee,
-		FundingFee: fundingFee,
-		NetPnl:     netPnL,
-		PnLRate:    pnlRate,
-		DurationMs: durationMs,
+		Exchange:       exchangeBitunixName,
+		Symbol:         symbol,
+		EntryPrice:     entryPrice,
+		ExitPrice:      exitPrice,
+		ClosedSizeCoin: new(closedSize),
+		GrossPnL:       grossPnL,
+		Fee:            fee,
+		FundingFee:     fundingFee,
+		NetPnl:         netPnL,
+		PnLRate:        pnlRate,
+		DurationMs:     durationMs,
 	}, nil
 }
 

@@ -337,7 +337,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
 	assert.Equal(t, "BTC-USDT", positions[0].Symbol)
-	assert.Equal(t, 0.5, positions[0].HoldVol)
+	assert.Equal(t, 0.5, positions[0].HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, positions[0].PositionType) // Short
 }
 
@@ -569,7 +569,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 
 	assert.Equal(t, "BTC-USDT", closedInfo.Symbol)
 	assert.Equal(t, 50000.0, closedInfo.EntryPrice)
-	assert.Equal(t, 0.5, closedInfo.ClosedSize)
+	assert.Equal(t, 0.5, *closedInfo.ClosedSizeCoin)
 	assert.Equal(t, 150.50, closedInfo.GrossPnL)
 	assert.Equal(t, 5.50, closedInfo.Fee)
 	assert.Equal(t, -2.00, closedInfo.FundingFee)

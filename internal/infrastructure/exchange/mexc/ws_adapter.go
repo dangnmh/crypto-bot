@@ -240,7 +240,8 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	type updateAlias exchange.PersonalPositionUpdate
 	var raw struct {
 		updateAlias
-		PositionID json.RawMessage `json:"positionId"`
+		HoldVol  float64 `json:"holdVol"`
+		CloseVol float64 `json:"closeVol"`
 	}
 
 	if err := xjson.Unmarshal(msg.Data, &raw); err != nil {
@@ -248,6 +249,12 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	update := exchange.PersonalPositionUpdate(raw.updateAlias)
+	if update.HoldVolContract == 0 && raw.HoldVol > 0 {
+		update.HoldVolContract = raw.HoldVol
+	}
+	if update.CloseVolContract == 0 && raw.CloseVol > 0 {
+		update.CloseVolContract = raw.CloseVol
+	}
 
 	return &update, nil
 }

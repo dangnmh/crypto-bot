@@ -153,7 +153,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err := adapter.ParsePosition(posArrayData)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", update.Symbol)
-	assert.Equal(t, 0.5, update.HoldVol)
+	assert.Equal(t, 0.5, update.HoldVolContract)
 	assert.Equal(t, 55000.0, update.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 	assert.Equal(t, 20, update.Leverage)
@@ -177,7 +177,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateSingle, err := adapter.ParsePosition(posSingleData)
 	require.NoError(t, err)
 	assert.Equal(t, "ETHUSDT", updateSingle.Symbol)
-	assert.Equal(t, 1.2, updateSingle.HoldVol)
+	assert.Equal(t, 1.2, updateSingle.HoldVolContract)
 	assert.Equal(t, 3000.0, updateSingle.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeShort, updateSingle.PositionType)
 	assert.Equal(t, 10, updateSingle.Leverage)
@@ -202,7 +202,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateClose, err := adapter.ParsePosition(posCloseData)
 	require.NoError(t, err)
 	assert.Equal(t, "POWRUSDT", updateClose.Symbol)
-	assert.Equal(t, 0.0, updateClose.HoldVol) // Should be 0 since Event is CLOSE
+	assert.Equal(t, 0.0, updateClose.HoldVolContract) // Should be 0 since Event is CLOSE
 	assert.Equal(t, 0.05121, updateClose.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeShort, updateClose.PositionType)
 	assert.Equal(t, 5, updateClose.Leverage)

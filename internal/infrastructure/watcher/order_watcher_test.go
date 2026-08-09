@@ -30,14 +30,14 @@ func TestOrderWatcher_OnPositionUpdate_Callback(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	w.PublishPosition(exchange.PersonalPositionUpdate{
-		Symbol:       "BTC_USDT",
-		HoldVol:      2,
-		HoldAvgPrice: 100,
+		Symbol:          "BTC_USDT",
+		HoldVolContract: 2,
+		HoldAvgPrice:    100,
 	})
 
 	select {
 	case update := <-called:
-		assert.Equal(t, 2.0, update.HoldVol)
+		assert.Equal(t, 2.0, update.HoldVolContract)
 		assert.Equal(t, 100.0, update.HoldAvgPrice)
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "timeout waiting for position callback")
@@ -83,13 +83,13 @@ func TestOrderWatcher_PositionRoutingBySymbol(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "ETH_USDT", HoldVol: 3})
-	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "BTC_USDT", HoldVol: 1})
+	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "ETH_USDT", HoldVolContract: 3})
+	w.PublishPosition(exchange.PersonalPositionUpdate{Symbol: "BTC_USDT", HoldVolContract: 1})
 
 	select {
 	case update := <-called:
 		assert.Equal(t, "BTC_USDT", update.Symbol)
-		assert.Equal(t, 1.0, update.HoldVol)
+		assert.Equal(t, 1.0, update.HoldVolContract)
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "timeout waiting for position callback")
 	}

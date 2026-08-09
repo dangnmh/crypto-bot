@@ -464,17 +464,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	totalFee := totalFee1 + totalFee2
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   "aster",
-		Symbol:     symbol,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: entryQtySum,
-		GrossPnL:   grossPnl,
-		Fee:        totalFee,
-		FundingFee: fundingFee,
-		NetPnl:     grossPnl - totalFee + fundingFee,
-		PnLRate:    pnlRate,
-		DurationMs: durationMs,
+		Exchange:       "aster",
+		Symbol:         symbol,
+		EntryPrice:     entryPrice,
+		ExitPrice:      exitPrice,
+		ClosedSizeCoin: new(entryQtySum),
+		GrossPnL:       grossPnl,
+		Fee:            totalFee,
+		FundingFee:     fundingFee,
+		NetPnl:         grossPnl - totalFee + fundingFee,
+		PnLRate:        pnlRate,
+		DurationMs:     durationMs,
 	}, nil
 }
 

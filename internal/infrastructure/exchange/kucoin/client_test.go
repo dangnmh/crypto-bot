@@ -403,7 +403,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
 	assert.Equal(t, "XBTUSDTM", positions[0].Symbol)
-	assert.Equal(t, 10.0, positions[0].HoldVol)
+	assert.Equal(t, 10.0, positions[0].HoldVolContract)
 }
 
 func TestClient_CancelAllOpenOrders_and_CloseAll(t *testing.T) {
@@ -673,7 +673,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	assert.Equal(t, "XBTUSDTM", res.Symbol)
 	assert.Equal(t, 93859.8, res.EntryPrice)
 	assert.Equal(t, 94443.5, res.ExitPrice)
-	assert.Equal(t, 2.0, res.ClosedSize)
+	assert.Equal(t, 2.0, *res.ClosedSizeContract)
 	assert.Equal(t, 0.5837, res.GrossPnL)
 	assert.Equal(t, 0.03766066, res.Fee)
 	assert.Equal(t, -0.03389521, res.FundingFee)

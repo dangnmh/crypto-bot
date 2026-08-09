@@ -355,7 +355,11 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		if pos.PositionType == exchange.PositionTypeShort { // Short.
 			closeSide = domain.SideCloseShort
 		}
-		_ = c.ClosePosition(ctx, symbol, closeSide, pos.HoldVol, 1, pos.Leverage)
+		vol := pos.HoldVolContract
+		if vol == 0 {
+			vol = pos.HoldVolCoin
+		}
+		_ = c.ClosePosition(ctx, symbol, closeSide, vol, 1, pos.Leverage)
 	}
 
 	return nil

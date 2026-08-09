@@ -387,17 +387,17 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchange.ExchangeDeepcoin,
-		Symbol:     pos.InstID,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closedSize,
-		GrossPnL:   closedPnl,
-		Fee:        feeVal,
-		FundingFee: fundingFeeVal,
-		NetPnl:     netPnlVal,
-		PnLRate:    pnlRate,
-		DurationMs: duration,
+		Exchange:           exchange.ExchangeDeepcoin,
+		Symbol:             pos.InstID,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closedSize),
+		GrossPnL:           closedPnl,
+		Fee:                feeVal,
+		FundingFee:         fundingFeeVal,
+		NetPnl:             netPnlVal,
+		PnLRate:            pnlRate,
+		DurationMs:         duration,
 	}, nil
 }
 

@@ -303,7 +303,7 @@ func TestClient_PositionAndMargin(t *testing.T) {
 	ctx := context.Background()
 
 	positions, err := client.GetOpenPositions(ctx, "BTC-USDT-PERPETUAL")
-	if err != nil || len(positions) != 1 || positions[0].HoldVol != 1.0 {
+	if err != nil || len(positions) != 1 || positions[0].HoldVolContract != 1.0 {
 		t.Fatalf("GetOpenPositions failed: %v, positions=%+v", err, positions)
 	}
 
@@ -376,8 +376,8 @@ func TestClient_PnLAndWarmup(t *testing.T) {
 	if pnl.ExitPrice != 61000.0 {
 		t.Errorf("expected ExitPrice 61000.0, got %f", pnl.ExitPrice)
 	}
-	if pnl.ClosedSize != 1.0 {
-		t.Errorf("expected ClosedSize 1.0, got %f", pnl.ClosedSize)
+	if pnl.ClosedSizeContract == nil || *pnl.ClosedSizeContract != 1.0 {
+		t.Errorf("expected ClosedSizeContract 1.0, got %v", pnl.ClosedSizeContract)
 	}
 	if pnl.Fee != 2.5 {
 		t.Errorf("expected Fee 2.5, got %f", pnl.Fee)

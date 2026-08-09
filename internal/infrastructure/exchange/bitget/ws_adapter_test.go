@@ -103,7 +103,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err := adapter.ParsePosition(raw)
 	require.NoError(t, err)
 	assert.Equal(t, "BTCUSDT", update.Symbol)
-	assert.Equal(t, 1.0, update.HoldVol)
+	assert.Equal(t, 1.0, update.HoldVolContract)
 	assert.Equal(t, 10, update.Leverage)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
@@ -128,7 +128,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateFallback, err := adapter.ParsePosition(rawFallback)
 	require.NoError(t, err)
 	assert.Equal(t, "ETHUSDT", updateFallback.Symbol)
-	assert.Equal(t, 1.5, updateFallback.HoldVol)
+	assert.Equal(t, 1.5, updateFallback.HoldVolContract)
 	assert.Equal(t, 20, updateFallback.Leverage)
 	assert.Equal(t, exchange.PositionTypeShort, updateFallback.PositionType)
 
@@ -138,11 +138,11 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateHistory, err := adapter.ParsePosition(rawHistory)
 	require.NoError(t, err)
 	assert.Equal(t, "BIRBUSDT", updateHistory.Symbol)
-	assert.Equal(t, 0.0, updateHistory.HoldVol)
+	assert.Equal(t, 0.0, updateHistory.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, updateHistory.PositionType)
 	assert.Equal(t, 0.07637, updateHistory.OpenAvgPrice)
 	assert.Equal(t, 0.07637, updateHistory.HoldAvgPrice)
-	assert.Equal(t, 196.0, updateHistory.CloseVol)
+	assert.Equal(t, 196.0, updateHistory.CloseVolContract)
 	assert.Equal(t, 0.07651, updateHistory.CloseAvgPrice)
 	assert.Equal(t, -0.02679000, updateHistory.CloseProfitLoss)
 	assert.InDelta(t, -0.01797829, updateHistory.Fee, 1e-9) // openFee + closeFee = -0.00898111 + -0.00899718 = -0.01797829

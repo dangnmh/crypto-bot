@@ -77,7 +77,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err := adapter.ParsePosition(rawLong)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
-	assert.Equal(t, 1.0, update.HoldVol)
+	assert.Equal(t, 1.0, update.HoldVolContract)
 	assert.Equal(t, 10, update.Leverage)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
@@ -101,7 +101,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(rawShort)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
-	assert.Equal(t, 1.5, update.HoldVol)
+	assert.Equal(t, 1.5, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 
 	// 3. Short position in net mode (negative quantity)
@@ -124,7 +124,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(rawNetShort)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
-	assert.Equal(t, 2.5, update.HoldVol)
+	assert.Equal(t, 2.5, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 
 	// 4. Margin position in net mode matching base currency (long)
@@ -148,7 +148,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(rawMarginLong)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT", update.Symbol)
-	assert.Equal(t, 0.5, update.HoldVol)
+	assert.Equal(t, 0.5, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
 	// 5. Margin position in net mode matching quote currency (short)
@@ -172,7 +172,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err = adapter.ParsePosition(rawMarginShort)
 	require.NoError(t, err)
 	assert.Equal(t, "BTC-USDT", update.Symbol)
-	assert.Equal(t, 100.0, update.HoldVol)
+	assert.Equal(t, 100.0, update.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, update.PositionType)
 }
 

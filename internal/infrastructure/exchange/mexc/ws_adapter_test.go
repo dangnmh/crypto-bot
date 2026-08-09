@@ -164,8 +164,8 @@ func TestWsAdapter_ParseFuturePersonalPositionSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParsePosition spec failed: %v", err)
 	}
-	if position.Symbol != "BTC_USDT" || position.HoldVol != 10 {
-		t.Fatalf("unexpected position parse: symbol=%s hold=%v", position.Symbol, position.HoldVol)
+	if position.Symbol != "BTC_USDT" || position.HoldVolContract != 10 {
+		t.Fatalf("unexpected position parse: symbol=%s hold=%v", position.Symbol, position.HoldVolContract)
 	}
 }
 

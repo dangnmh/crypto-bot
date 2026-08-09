@@ -168,7 +168,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	pos, err := adapter.ParsePosition(payload1)
 	require.NoError(t, err)
 	assert.Equal(t, "ALICE-SWAP-USDT", pos.Symbol)
-	assert.Equal(t, 1224.0, pos.HoldVol)
+	assert.Equal(t, 1224.0, pos.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
 	assert.Equal(t, 0.1225, pos.HoldAvgPrice)
 	assert.Equal(t, 0.0, pos.CloseProfitLoss)

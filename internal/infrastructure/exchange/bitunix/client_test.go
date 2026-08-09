@@ -457,7 +457,7 @@ func TestClient_TradeAndPosition(t *testing.T) {
 	positions, err := client.GetOpenPositions(context.Background(), "BTCUSDT")
 	require.NoError(t, err)
 	require.Len(t, positions, 1)
-	assert.Equal(t, 0.1, positions[0].HoldVol)
+	assert.Equal(t, 0.1, positions[0].HoldVolContract)
 
 	// Test ClosePosition
 	err = client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 0, domain.PositionModeHedge, 0)

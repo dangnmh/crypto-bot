@@ -220,11 +220,11 @@ func (a *WsAdapter) ParsePosition(msg []byte) (*exchange.PersonalPositionUpdate,
 	}
 	holdVol := xjson.ToFloat64(p.Size)
 	return &exchange.PersonalPositionUpdate{
-		Symbol:       p.InstrumentName,
-		HoldVol:      holdVol,
-		OpenAvgPrice: xjson.ToFloat64(p.EntryPrice),
-		HoldAvgPrice: xjson.ToFloat64(p.EntryPrice),
-		PositionType: pType,
+		Symbol:          p.InstrumentName,
+		HoldVolContract: holdVol,
+		OpenAvgPrice:    xjson.ToFloat64(p.EntryPrice),
+		HoldAvgPrice:    xjson.ToFloat64(p.EntryPrice),
+		PositionType:    pType,
 	}, nil
 }
 

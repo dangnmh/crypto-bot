@@ -69,7 +69,7 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 		return ctx.Err()
 	}
 
-	holdVol, err := r.getHoldVolume(ctx, evt.Symbol)
+	holdVolContract, holdVolCoin, err := r.getHoldVolume(ctx, evt.Symbol)
 	errText := ""
 	if err != nil {
 		errText = err.Error()
@@ -80,7 +80,8 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Timeout:            timeout,
 		StartedAt:          evt.StartedAt,
-		HoldVol:            holdVol,
+		HoldVolContract:    holdVolContract,
+		HoldVolCoin:        holdVolCoin,
 		Error:              errText,
 	}
 	return r.publishEvent(ctx, TopicReversionTimeoutPositionChecked, next)
@@ -92,7 +93,7 @@ func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt 
 		return nil
 	}
 
-	if evt.HoldVol <= 0 {
+	if evt.HoldVolContract <= 0 && evt.HoldVolCoin <= 0 {
 		timeoutEvt := TimeoutEvent{
 			BaseReversionEvent:  nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 			Timeout:             evt.Timeout,
@@ -106,7 +107,8 @@ func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt 
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
 		Timeout:            evt.Timeout,
 		StartedAt:          evt.StartedAt,
-		HoldVol:            evt.HoldVol,
+		HoldVolContract:    evt.HoldVolContract,
+		HoldVolCoin:        evt.HoldVolCoin,
 		TimeoutSec:         evt.Timeout.Seconds(),
 	}
 	return r.publishEvent(ctx, TopicReversionForceCloseInitiated, initEvt)
@@ -115,7 +117,8 @@ func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt 
 func (r *StatelessRunner) forceCloseTimedOutPosition(
 	ctx context.Context,
 	prev BaseReversionEvent,
-	holdVol float64,
+	holdVolContract float64,
+	holdVolCoin float64,
 	timeout time.Duration,
 	startedAt time.Time,
 ) {
@@ -134,7 +137,8 @@ func (r *StatelessRunner) forceCloseTimedOutPosition(
 		BaseReversionEvent: nextReversionBase(prev, symbol, r.deps.Clock.Now()),
 		Timeout:            timeout,
 		StartedAt:          startedAt,
-		HoldVol:            holdVol,
+		HoldVolContract:    holdVolContract,
+		HoldVolCoin:        holdVolCoin,
 		CloseRetryCount:    retries,
 		Succeeded:          err == nil,
 		Error:              errText,
@@ -143,7 +147,7 @@ func (r *StatelessRunner) forceCloseTimedOutPosition(
 }
 
 func (r *StatelessRunner) handleForceCloseInitiated(ctx context.Context, evt ForceCloseInitiatedEvent) error {
-	r.forceCloseTimedOutPosition(ctx, evt.BaseReversionEvent, evt.HoldVol, evt.Timeout, evt.StartedAt)
+	r.forceCloseTimedOutPosition(ctx, evt.BaseReversionEvent, evt.HoldVolContract, evt.HoldVolCoin, evt.Timeout, evt.StartedAt)
 	return nil
 }
 
@@ -161,7 +165,8 @@ func (r *StatelessRunner) handleForceCloseCompleted(ctx context.Context, evt For
 		ForceCloseAttempted: true,
 		ForceCloseSucceeded: true,
 		CloseRetryCount:     evt.CloseRetryCount,
-		HoldVol:             evt.HoldVol,
+		HoldVolContract:     evt.HoldVolContract,
+		HoldVolCoin:         evt.HoldVolCoin,
 		HoldDurationMs:      now.Sub(evt.StartedAt).Milliseconds(),
 	}
 	return r.publishEvent(ctx, TopicReversionTimeout, timeoutEvt)
@@ -175,7 +180,8 @@ func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) e
 
 	closeEvt := PositionClosedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
-		CloseVol:           evt.HoldVol,
+		CloseVolContract:   evt.HoldVolContract,
+		CloseVolCoin:       evt.HoldVolCoin,
 		Reason:             "timeout_force_close",
 		Method:             string(reversionMethodFallbackClose),
 		HoldDurationMs:     evt.HoldDurationMs,
@@ -214,13 +220,6 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 		return
 	}
 
-	// Fallback: WS update was not received in time.
-	// Try to enrich from ClosedPnLProvider first to fetch actual prices/profits.
-	contractSize := 1.0
-	if cd, err := r.deps.ContractStore.GetContract(ctx, evt.Symbol); err == nil && cd.ContractSize > 0 {
-		contractSize = cd.ContractSize
-	}
-
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
 		var orderID string
 		var closedInfo *exchange.ClosedPnLInfo
@@ -248,13 +247,23 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 		if err == nil && closedInfo != nil {
 			closeEvt.EntryPrice = closedInfo.EntryPrice
 			closeEvt.ClosePrice = closedInfo.ExitPrice
-			closeEvt.CloseVol = closedInfo.ClosedSize
+			if closedInfo.ClosedSizeContract != nil {
+				closeEvt.CloseVolContract = *closedInfo.ClosedSizeContract
+			}
+			if closedInfo.ClosedSizeCoin != nil {
+				closeEvt.CloseVolCoin = *closedInfo.ClosedSizeCoin
+			}
+			contractSize := evt.ContractSize
+			if contractSize <= 0 {
+				contractSize = 1.0
+			}
+			closeEvt.CloseVolContract, closeEvt.CloseVolCoin = normalizeVolume(closeEvt.CloseVolContract, closeEvt.CloseVolCoin, contractSize)
 			closeEvt.GrossProfit = closedInfo.GrossPnL
 			closeEvt.Fee = closedInfo.Fee
 			closeEvt.HoldFee = closedInfo.FundingFee
 			closeEvt.PnLPct = closedInfo.PnLRate
 			closeEvt.NetProfit = closedInfo.NetPnl
-			closeEvt.VolumeUSDT = closedInfo.ClosedSize * closedInfo.ExitPrice * contractSize
+			closeEvt.VolumeUSDT = closeEvt.CloseVolCoin * closedInfo.ExitPrice
 			closeEvt.HoldDurationMs = closedInfo.DurationMs
 		} else {
 			r.log.WarnContext(ctx, "Failed to enrich fallback close event from closed PnL history", slog.Any("error", err))
@@ -293,14 +302,20 @@ func (r *StatelessRunner) publishReversionCritical(ctx context.Context, prev Bas
 	_ = r.publishEvent(ctx, TopicReversionAbort, abortEvt)
 }
 
-func (r *StatelessRunner) getHoldVolume(ctx context.Context, symbol string) (float64, error) {
+func (r *StatelessRunner) getHoldVolume(ctx context.Context, symbol string) (float64, float64, error) {
 	positions, err := r.deps.Client.GetOpenPositions(ctx, symbol)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	var totalVol float64
+	contractSize := 1.0
+	if cd, err := r.deps.ContractStore.GetContract(ctx, symbol); err == nil && cd.ContractSize > 0 {
+		contractSize = cd.ContractSize
+	}
+	var totalContract, totalCoin float64
 	for i := range positions {
-		totalVol += positions[i].HoldVol
+		cVol, coinVol := normalizeVolume(positions[i].HoldVolContract, positions[i].HoldVolCoin, contractSize)
+		totalContract += cVol
+		totalCoin += coinVol
 	}
-	return totalVol, nil
+	return totalContract, totalCoin, nil
 }

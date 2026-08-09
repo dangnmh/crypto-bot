@@ -83,10 +83,6 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 }
 
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	a.activeSubsMu.Lock()
-	a.activeSubs[symbol] = true
-	a.activeSubsMu.Unlock()
-
 	msg := map[string]any{
 		wsAction:   "1",
 		wsSymbol:   normalizeDeepcoinSymbol(symbol),
@@ -94,7 +90,13 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 		wsLocalNo:  6,
 		wsResumeNo: -1,
 	}
-	return a.pool.SubscribePublic(ctx, symbol+":ticker", msg)
+	if err := a.pool.SubscribePublic(ctx, symbol+":ticker", msg); err != nil {
+		return err
+	}
+	a.activeSubsMu.Lock()
+	a.activeSubs[symbol] = true
+	a.activeSubsMu.Unlock()
+	return nil
 }
 
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
@@ -298,9 +300,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 
 	reconstructed := reconstructDeepcoinSymbol(raw.I)
 	return &exchange.PersonalPositionUpdate{
-		Symbol:       reconstructed,
-		HoldVol:      qty,
-		HoldAvgPrice: openPx,
-		PositionType: posType,
+		Symbol:          reconstructed,
+		HoldVolContract: qty,
+		HoldAvgPrice:    openPx,
+		PositionType:    posType,
 	}, nil
 }

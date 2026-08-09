@@ -395,15 +395,15 @@ func calculateClosedPnLInfo(
 	durationMs := parseDurationMs(orderInfo.CreateTime, lastDealTimeStr)
 
 	return &exchange.ClosedPnLInfo{
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: closeQty,
-		GrossPnL:   grossPnL,
-		Fee:        openFee + closeFee,
-		FundingFee: 0, // Option A: Zero fallback chosen (Hotcoin lacks private billing/ledger REST history endpoints)
-		NetPnl:     grossPnL - (openFee + closeFee),
-		PnLRate:    pnlRate,
-		DurationMs: durationMs,
+		EntryPrice:         entryPrice,
+		ExitPrice:          exitPrice,
+		ClosedSizeContract: new(closeQty),
+		GrossPnL:           grossPnL,
+		Fee:                openFee + closeFee,
+		FundingFee:         0, // Option A: Zero fallback chosen (Hotcoin lacks private billing/ledger REST history endpoints)
+		NetPnl:             grossPnL - (openFee + closeFee),
+		PnLRate:            pnlRate,
+		DurationMs:         durationMs,
 	}
 }
 

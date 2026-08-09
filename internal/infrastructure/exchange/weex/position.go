@@ -63,12 +63,13 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 		levVal, _ := strconv.Atoi(raw.Leverage)
 
 		positions = append(positions, exchange.Position{
-			Symbol:       strings.ToUpper(raw.Symbol),
-			HoldVol:      vol,
-			PositionType: pType,
-			OpenAvgPrice: avgPrice,
-			HoldAvgPrice: avgPrice,
-			Leverage:     levVal,
+			Symbol:          strings.ToUpper(raw.Symbol),
+			HoldVolContract: vol,
+			RawHoldVol:      vol,
+			PositionType:    pType,
+			OpenAvgPrice:    avgPrice,
+			HoldAvgPrice:    avgPrice,
+			Leverage:        levVal,
 		})
 	}
 

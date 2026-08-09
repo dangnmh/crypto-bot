@@ -478,12 +478,12 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	lev := int(xjson.ToInt64(msg.Data.Leverage))
 
 	return &exchange.PersonalPositionUpdate{
-		Symbol:       symbol,
-		HoldVol:      vol,
-		PositionType: pType,
-		OpenAvgPrice: avgPrice,
-		HoldAvgPrice: avgPrice,
-		Leverage:     lev,
-		UpdateTime:   time.Now().UnixMilli(),
+		Symbol:          symbol,
+		HoldVolContract: vol,
+		PositionType:    pType,
+		OpenAvgPrice:    avgPrice,
+		HoldAvgPrice:    avgPrice,
+		Leverage:        lev,
+		UpdateTime:      time.Now().UnixMilli(),
 	}, nil
 }

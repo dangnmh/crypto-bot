@@ -161,7 +161,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 	// Entry price weighted: ((60000 * 0.5) + (61000 * 1.0)) / 1.5 = 60666.666...
 	assert.InDelta(t, 60666.67, pnl.EntryPrice, 0.01)
 	assert.Equal(t, 61000.0, pnl.ExitPrice)
-	assert.Equal(t, 1.5, pnl.ClosedSize)
+	assert.Equal(t, 1.5, *pnl.ClosedSizeContract)
 	assert.Equal(t, 1500.0, pnl.GrossPnL)
 	assert.Equal(t, 4.5, pnl.Fee)
 	assert.Equal(t, -0.2722, pnl.FundingFee)

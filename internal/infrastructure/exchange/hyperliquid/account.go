@@ -82,7 +82,8 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 
 		positions = append(positions, exchange.Position{
 			Symbol:       p.Coin,
-			HoldVol:      math.Abs(szi),
+			HoldVolCoin:  math.Abs(szi),
+			RawHoldVol:   math.Abs(szi),
 			HoldAvgPrice: entryPrice,
 			OpenAvgPrice: entryPrice,
 			PositionType: posSide,
@@ -149,15 +150,15 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	}
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:   exchangeName,
-		Symbol:     latestFill.Coin,
-		EntryPrice: entryPrice,
-		ExitPrice:  exitPrice,
-		ClosedSize: agg.totalQty,
-		GrossPnL:   agg.totalRealizedPnl,
-		Fee:        agg.totalCommission,
-		FundingFee: 0,
-		DurationMs: 0,
+		Exchange:       exchangeName,
+		Symbol:         latestFill.Coin,
+		EntryPrice:     entryPrice,
+		ExitPrice:      exitPrice,
+		ClosedSizeCoin: new(agg.totalQty),
+		GrossPnL:       agg.totalRealizedPnl,
+		Fee:            agg.totalCommission,
+		FundingFee:     0,
+		DurationMs:     0,
 	}, nil
 }
 

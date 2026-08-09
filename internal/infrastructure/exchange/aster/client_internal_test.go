@@ -451,10 +451,10 @@ func TestAsterAdditionalCoverage_Positions(t *testing.T) {
 	if err != nil || len(pos) != 2 {
 		t.Fatalf("GetOpenPositions failed or unexpected length: %v, len=%d", err, len(pos))
 	}
-	if pos[0].Symbol != "BTCUSDT" || pos[0].PositionType != exchange.PositionTypeLong || pos[0].HoldVol != 1.5 {
+	if pos[0].Symbol != "BTCUSDT" || pos[0].PositionType != exchange.PositionTypeLong || pos[0].HoldVolContract != 1.5 {
 		t.Errorf("unexpected long position mapping: %+v", pos[0])
 	}
-	if pos[1].Symbol != "ETHUSDT" || pos[1].PositionType != exchange.PositionTypeShort || pos[1].HoldVol != 2.0 {
+	if pos[1].Symbol != "ETHUSDT" || pos[1].PositionType != exchange.PositionTypeShort || pos[1].HoldVolContract != 2.0 {
 		t.Errorf("unexpected short position mapping: %+v", pos[1])
 	}
 

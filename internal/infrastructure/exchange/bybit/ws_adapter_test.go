@@ -66,7 +66,7 @@ func TestWsAdapter_ParsePositionBybitSchema(t *testing.T) {
 	require.NotNil(t, pos)
 
 	assert.Equal(t, "BTCUSDT", pos.Symbol)
-	assert.Equal(t, 0.0, pos.HoldVol)
+	assert.Equal(t, 0.0, pos.HoldVolCoin)
 	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
 	assert.Equal(t, 10, pos.Leverage)
 	assert.Equal(t, 1.26, pos.CloseProfitLoss)
@@ -96,7 +96,7 @@ func TestWsAdapter_ParsePositionAvgPriceFallback(t *testing.T) {
 	require.NotNil(t, pos)
 
 	assert.Equal(t, "IDUSDT", pos.Symbol)
-	assert.Equal(t, 497.0, pos.HoldVol)
+	assert.Equal(t, 497.0, pos.HoldVolCoin)
 	assert.Equal(t, 0.03016, pos.HoldAvgPrice)
 	assert.Equal(t, 0.03016, pos.OpenAvgPrice)
 	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
@@ -117,7 +117,7 @@ func TestWsAdapter_ParsePositionSelectsActiveRow(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pos)
 
-	assert.Equal(t, 2.0, pos.HoldVol)
+	assert.Equal(t, 2.0, pos.HoldVolCoin)
 	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
 	assert.Equal(t, 60000.0, pos.HoldAvgPrice)
 }
@@ -137,7 +137,7 @@ func TestWsAdapter_ParsePositionSelectsRecentlyClosedRow(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pos)
 
-	assert.Equal(t, 0.0, pos.HoldVol)
+	assert.Equal(t, 0.0, pos.HoldVolCoin)
 	assert.Equal(t, exchange.PositionTypeShort, pos.PositionType)
 	assert.Equal(t, 0.00567, pos.CloseProfitLoss)
 }

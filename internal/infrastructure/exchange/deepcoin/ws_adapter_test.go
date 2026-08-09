@@ -79,7 +79,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	update, err := adapter.ParsePosition(payload)
 	assert.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", update.Symbol)
-	assert.Equal(t, 55.0, update.HoldVol)
+	assert.Equal(t, 55.0, update.HoldVolContract)
 	assert.Equal(t, 29393.10, update.HoldAvgPrice)
 	assert.Equal(t, exchange.PositionTypeLong, update.PositionType)
 
@@ -88,7 +88,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	userUpdate, err := adapter.ParsePosition(userPayload)
 	assert.NoError(t, err)
 	assert.Equal(t, "JST-USDT-SWAP", userUpdate.Symbol)
-	assert.Equal(t, 15.0, userUpdate.HoldVol)
+	assert.Equal(t, 15.0, userUpdate.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeLong, userUpdate.PositionType)
 
 	// Test position close event (volume 0)
@@ -110,7 +110,7 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	updateClose, err := adapter.ParsePosition(closePayload)
 	assert.NoError(t, err)
 	assert.Equal(t, "BTC-USDT-SWAP", updateClose.Symbol)
-	assert.Equal(t, 0.0, updateClose.HoldVol)
+	assert.Equal(t, 0.0, updateClose.HoldVolContract)
 	assert.Equal(t, exchange.PositionTypeUnknown, updateClose.PositionType)
 }
 
