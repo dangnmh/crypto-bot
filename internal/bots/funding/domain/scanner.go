@@ -140,7 +140,11 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 		if absFR < sc.MinFundingRate {
 			continue
 		}
-		if sc.MinVol24USD > 0 && t.AmountUSDT24 < sc.MinVol24USD {
+		amtUSDT := t.AmountUSDT24
+		if amtUSDT == 0 && t.Volume24 > 0 && t.LastPrice > 0 {
+			amtUSDT = t.Volume24 * t.LastPrice
+		}
+		if sc.MinVol24USD > 0 && amtUSDT < sc.MinVol24USD {
 			continue
 		}
 
@@ -154,7 +158,7 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 				BestBid:      t.BestBid,
 				BestAsk:      t.BestAsk,
 				Volume24:     t.Volume24,
-				AmountUSDT24: t.AmountUSDT24,
+				AmountUSDT24: amtUSDT,
 			},
 		}
 

@@ -150,6 +150,85 @@ func TestClient_GetTickers_Single(t *testing.T) {
 	}
 }
 
+func TestClient_GetTickers_Amount24Fallback(t *testing.T) {
+	t.Parallel()
+	type rawMexcTicker struct {
+		Symbol    string  `json:"symbol"`
+		LastPrice float64 `json:"lastPrice"`
+		Bid1      float64 `json:"bid1"`
+		Ask1      float64 `json:"ask1"`
+		Volume24  float64 `json:"volume24"`
+		Amount24  float64 `json:"amount24"` // 0 in response
+		Timestamp int64   `json:"timestamp"`
+	}
+
+	tickers := []rawMexcTicker{
+		{Symbol: "KAITO_USDT", LastPrice: 0.70, Bid1: 0.699, Ask1: 0.701, Volume24: 1000000, Amount24: 0},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := json.Marshal(tickers)
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[json.RawMessage]{Success: true, Code: 0, Data: raw}))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	got, err := client.GetTickers(context.Background(), "")
+	if err != nil {
+		t.Fatalf("GetTickers failed: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 ticker, got %d", len(got))
+	}
+	if got[0].AmountUSDT24 != 700000.0 {
+		t.Errorf("AmountUSDT24 fallback: want 700000, got %f", got[0].AmountUSDT24)
+	}
+}
+
+// ── GetTopGainer ─────────────────────────────────────────────────────.
+
+func TestClient_GetTopGainer(t *testing.T) {
+	t.Parallel()
+	type rawMexcTicker struct {
+		Symbol       string  `json:"symbol"`
+		LastPrice    float64 `json:"lastPrice"`
+		Bid1         float64 `json:"bid1"`
+		Ask1         float64 `json:"ask1"`
+		Volume24     float64 `json:"volume24"`
+		Amount24     float64 `json:"amount24"`
+		Timestamp    int64   `json:"timestamp"`
+		RiseFallRate float64 `json:"riseFallRate"`
+	}
+
+	tickers := []rawMexcTicker{
+		{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50000, Amount24: 1000000, RiseFallRate: 0.02},
+		{Symbol: "SOL_USDT", LastPrice: 150, Bid1: 149.5, Ask1: 150, Amount24: 500000, RiseFallRate: 0.15},
+		{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3000, Amount24: 800000, RiseFallRate: 0.05},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := json.Marshal(tickers)
+		_, _ = w.Write(mustJSON(t, mexc.APIResponse[json.RawMessage]{Success: true, Code: 0, Data: raw}))
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+	got, err := client.GetTopGainer(context.Background(), exchange.TopGainerRequest{Limit: 2})
+	if err != nil {
+		t.Fatalf("GetTopGainer failed: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 gainers, got %d", len(got))
+	}
+
+	if got[0].Symbol != "SOL_USDT" || got[0].Gain24hPct != 15.0 {
+		t.Errorf("expected SOL_USDT as #1 gainer, got %s with %f%%", got[0].Symbol, got[0].Gain24hPct)
+	}
+	if got[1].Symbol != "ETH_USDT" || got[1].Gain24hPct != 5.0 {
+		t.Errorf("expected ETH_USDT as #2 gainer, got %s with %f%%", got[1].Symbol, got[1].Gain24hPct)
+	}
+}
+
 // ── GetFundingRates ───────────────────────────────────────────────────.
 
 //nolint:dupl // test
@@ -592,4 +671,85 @@ func TestClient_MexcRemainingMethods(t *testing.T) {
 	_, _ = client.GetOrderDealsRaw(context.Background(), nil)
 	_, _ = client.GetClosedPnLRaw(context.Background(), nil)
 	_, _ = client.GetOrderPNLRaw(context.Background(), nil)
+}
+
+func TestClient_GetMaxLeverageForValue(t *testing.T) {
+	t.Parallel()
+
+	contractDetailJSON := `{
+		"success": true,
+		"code": 0,
+		"data": [
+			{
+				"symbol": "BTC_USDT",
+				"contractSize": 0.0001,
+				"maxLeverage": 500,
+				"riskLimitType": "BY_VOLUME",
+				"riskLimitCustom": [
+					{"level": 1, "maxVol": 50000, "maxLeverage": 500},
+					{"level": 2, "maxVol": 310000, "maxLeverage": 200},
+					{"level": 3, "maxVol": 480000, "maxLeverage": 100}
+				]
+			},
+			{
+				"symbol": "SOL_USDT",
+				"contractSize": 1.0,
+				"maxLeverage": 125,
+				"riskLimitType": "BY_VALUE",
+				"riskLimitCustom": [
+					{"level": 1, "maxVol": 100000, "maxLeverage": 125},
+					{"level": 2, "maxVol": 500000, "maxLeverage": 50}
+				]
+			}
+		]
+	}`
+
+	tickersJSON := `{
+		"success": true,
+		"code": 0,
+		"data": [
+			{
+				"symbol": "BTC_USDT",
+				"lastPrice": 100000.0,
+				"bid1": 99990.0,
+				"ask1": 100010.0,
+				"volume24": 1000000.0,
+				"amount24": 100000000.0
+			}
+		]
+	}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/contract/detail":
+			_, _ = w.Write([]byte(contractDetailJSON))
+		case "/api/v1/contract/ticker":
+			_, _ = w.Write([]byte(tickersJSON))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client := newTestClient(srv)
+
+	// Test 1: BTC_USDT low value ($1,000 USDT) -> 100 contracts <= 50,000 level 1 -> leverage 500
+	lev1, err := client.GetMaxLeverageForValue(context.Background(), "BTC_USDT", 1000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 500, lev1)
+
+	// Test 2: BTC_USDT high value ($1,000,000 USDT at $100,000 price) -> 100,000 contracts > 50,000 (level 1) & <= 310,000 (level 2) -> leverage 200
+	lev2, err := client.GetMaxLeverageForValue(context.Background(), "BTC_USDT", 1000000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 200, lev2)
+
+	// Test 3: SOL_USDT BY_VALUE ($50,000 USDT <= 100,000) -> leverage 125
+	lev3, err := client.GetMaxLeverageForValue(context.Background(), "SOL_USDT", 50000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 125, lev3)
+
+	// Test 4: SOL_USDT BY_VALUE ($200,000 USDT <= 500,000) -> leverage 50
+	lev4, err := client.GetMaxLeverageForValue(context.Background(), "SOL_USDT", 200000.0)
+	require.NoError(t, err)
+	assert.Equal(t, 50, lev4)
 }

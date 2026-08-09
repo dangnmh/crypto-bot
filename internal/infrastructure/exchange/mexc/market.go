@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
@@ -16,40 +18,51 @@ import (
 // Explicit request/response structs for market data endpoints.
 
 type mexcContractDetail struct {
-	Symbol                    string   `json:"symbol"`
-	DisplayName               string   `json:"displayName"`
-	DisplayNameEn             string   `json:"displayNameEn"`
-	PositionOpenType          int      `json:"positionOpenType"`
-	BaseCoin                  string   `json:"baseCoin"`
-	QuoteCoin                 string   `json:"quoteCoin"`
-	SettleCoin                string   `json:"settleCoin"`
-	ContractSize              float64  `json:"contractSize"`
-	MinLeverage               int      `json:"minLeverage"`
-	MaxLeverage               int      `json:"maxLeverage"`
-	PriceScale                int      `json:"priceScale"`
-	VolScale                  int      `json:"volScale"`
-	AmountScale               int      `json:"amountScale"`
-	PriceUnit                 float64  `json:"priceUnit"`
-	VolUnit                   int      `json:"volUnit"`
-	MinVol                    int      `json:"minVol"`
-	MaxVol                    int      `json:"maxVol"`
-	BidLimitPriceRate         float64  `json:"bidLimitPriceRate"`
-	AskLimitPriceRate         float64  `json:"askLimitPriceRate"`
-	TakerFeeRate              float64  `json:"takerFeeRate"`
-	MakerFeeRate              float64  `json:"makerFeeRate"`
-	MaintenanceMarginRate     float64  `json:"maintenanceMarginRate"`
-	InitialMarginRate         float64  `json:"initialMarginRate"`
-	RiskBaseVol               int      `json:"riskBaseVol"`
-	RiskIncrVol               int      `json:"riskIncrVol"`
-	RiskIncrMmr               float64  `json:"riskIncrMmr"`
-	RiskIncrImr               float64  `json:"riskIncrImr"`
-	RiskLevelLimit            int      `json:"riskLevelLimit"`
-	PriceCoefficientVariation float64  `json:"priceCoefficientVariation"`
-	IndexOrigin               []string `json:"indexOrigin"`
-	State                     int      `json:"state"`
-	IsNew                     bool     `json:"isNew"`
-	IsHot                     bool     `json:"isHot"`
-	IsHidden                  bool     `json:"isHidden"`
+	Symbol                    string              `json:"symbol"`
+	DisplayName               string              `json:"displayName"`
+	DisplayNameEn             string              `json:"displayNameEn"`
+	PositionOpenType          int                 `json:"positionOpenType"`
+	BaseCoin                  string              `json:"baseCoin"`
+	QuoteCoin                 string              `json:"quoteCoin"`
+	SettleCoin                string              `json:"settleCoin"`
+	ContractSize              float64             `json:"contractSize"`
+	MinLeverage               int                 `json:"minLeverage"`
+	MaxLeverage               int                 `json:"maxLeverage"`
+	PriceScale                int                 `json:"priceScale"`
+	VolScale                  int                 `json:"volScale"`
+	AmountScale               int                 `json:"amountScale"`
+	PriceUnit                 float64             `json:"priceUnit"`
+	VolUnit                   int                 `json:"volUnit"`
+	MinVol                    int                 `json:"minVol"`
+	MaxVol                    int                 `json:"maxVol"`
+	BidLimitPriceRate         float64             `json:"bidLimitPriceRate"`
+	AskLimitPriceRate         float64             `json:"askLimitPriceRate"`
+	TakerFeeRate              float64             `json:"takerFeeRate"`
+	MakerFeeRate              float64             `json:"makerFeeRate"`
+	MaintenanceMarginRate     float64             `json:"maintenanceMarginRate"`
+	InitialMarginRate         float64             `json:"initialMarginRate"`
+	RiskBaseVol               int                 `json:"riskBaseVol"`
+	RiskIncrVol               int                 `json:"riskIncrVol"`
+	RiskIncrMmr               float64             `json:"riskIncrMmr"`
+	RiskIncrImr               float64             `json:"riskIncrImr"`
+	RiskLevelLimit            int                 `json:"riskLevelLimit"`
+	PriceCoefficientVariation float64             `json:"priceCoefficientVariation"`
+	IndexOrigin               []string            `json:"indexOrigin"`
+	State                     int                 `json:"state"`
+	IsNew                     bool                `json:"isNew"`
+	IsHot                     bool                `json:"isHot"`
+	IsHidden                  bool                `json:"isHidden"`
+	RiskLimitType             string              `json:"riskLimitType"`
+	RiskLimitMode             string              `json:"riskLimitMode"`
+	RiskLimitCustom           []mexcRiskLimitTier `json:"riskLimitCustom"`
+}
+
+type mexcRiskLimitTier struct {
+	Level       int     `json:"level"`
+	MaxVol      float64 `json:"maxVol"`
+	MMR         float64 `json:"mmr"`
+	IMR         float64 `json:"imr"`
+	MaxLeverage int     `json:"maxLeverage"`
 }
 
 type mexcTickersRequest struct {
@@ -57,13 +70,24 @@ type mexcTickersRequest struct {
 }
 
 type mexcTicker struct {
-	Symbol    string  `json:"symbol"`
-	LastPrice float64 `json:"lastPrice"`
-	Bid1      float64 `json:"bid1"`
-	Ask1      float64 `json:"ask1"`
-	Volume24  float64 `json:"volume24"`
-	Amount24  float64 `json:"amount24"`
-	Timestamp int64   `json:"timestamp"`
+	ContractID    int     `json:"contractId"`
+	Symbol        string  `json:"symbol"`
+	LastPrice     float64 `json:"lastPrice"`
+	Bid1          float64 `json:"bid1"`
+	Ask1          float64 `json:"ask1"`
+	Volume24      float64 `json:"volume24"`
+	Amount24      float64 `json:"amount24"`
+	HoldVol       float64 `json:"holdVol"`
+	Lower24Price  float64 `json:"lower24Price"`
+	High24Price   float64 `json:"high24Price"`
+	RiseFallRate  float64 `json:"riseFallRate"`
+	RiseFallValue float64 `json:"riseFallValue"`
+	IndexPrice    float64 `json:"indexPrice"`
+	FairPrice     float64 `json:"fairPrice"`
+	FundingRate   float64 `json:"fundingRate"`
+	MaxBidPrice   float64 `json:"maxBidPrice"`
+	MinAskPrice   float64 `json:"minAskPrice"`
+	Timestamp     int64   `json:"timestamp"`
 }
 
 type mexcFundingRateRequest struct {
@@ -90,12 +114,30 @@ type mexcFundingRateHistory struct {
 
 // Private raw methods invoking the MEXC API.
 
-func (c *Client) getRawContractDetails(ctx context.Context) ([]mexcContractDetail, error) {
-	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/detail", nil, nil)
+func (c *Client) getRawContractDetails(ctx context.Context, symbol string) ([]mexcContractDetail, error) {
+	params := map[string]string{}
+	if symbol != "" {
+		params[paramSymbol] = symbol
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, "/api/v1/contract/detail", params, nil)
 	if err != nil {
 		return nil, err
 	}
-	return ParseResponse[[]mexcContractDetail](body, "contract_details")
+	raw, err := ParseResponse[json.RawMessage](body, "contract_details")
+	if err != nil {
+		return nil, err
+	}
+
+	var list []mexcContractDetail
+	if err := xjson.Unmarshal(raw, &list); err == nil {
+		return list, nil
+	}
+
+	var single mexcContractDetail
+	if err := xjson.Unmarshal(raw, &single); err != nil {
+		return nil, fmt.Errorf("parse contract details: %w", err)
+	}
+	return []mexcContractDetail{single}, nil
 }
 
 func (c *Client) getRawTickers(ctx context.Context, req mexcTickersRequest) ([]mexcTicker, error) {
@@ -171,7 +213,7 @@ func (c *Client) getRawFundingRateHistory(ctx context.Context, req mexcFundingRa
 
 // GetContractDetails returns all contract specifications.
 func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
-	rawList, err := c.getRawContractDetails(ctx)
+	rawList, err := c.getRawContractDetails(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -248,18 +290,64 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 	}
 
 	tickers := make([]exchange.Ticker, 0, len(rawList))
-	for _, raw := range rawList {
+	for i := range rawList {
+		raw := &rawList[i]
+		amtUSDT := raw.Amount24
+		if amtUSDT == 0 && raw.Volume24 > 0 && raw.LastPrice > 0 {
+			amtUSDT = raw.Volume24 * raw.LastPrice
+		}
 		tickers = append(tickers, exchange.Ticker{
 			Symbol:       raw.Symbol,
 			LastPrice:    raw.LastPrice,
 			Bid1:         raw.Bid1,
 			Ask1:         raw.Ask1,
 			Volume24:     raw.Volume24,
-			AmountUSDT24: raw.Amount24,
+			AmountUSDT24: amtUSDT,
 			Timestamp:    raw.Timestamp,
 		})
 	}
 	return tickers, nil
+}
+
+// GetTopGainer returns tickers sorted by 24h price change percentage descending.
+func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	rawList, err := c.getRawTickers(ctx, mexcTickersRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("mexc get top gainer: %w", err)
+	}
+
+	results := make([]exchange.TopGainerResult, 0, len(rawList))
+	for i := range rawList {
+		raw := &rawList[i]
+		volUSDT := raw.Amount24
+		if volUSDT == 0 {
+			volUSDT = raw.Volume24 * raw.LastPrice
+		}
+		spreadPct := 0.0
+		if raw.Bid1 > 0 && raw.Ask1 > 0 {
+			spreadPct = ((raw.Ask1 - raw.Bid1) / raw.Bid1) * 100.0
+		}
+		results = append(results, exchange.TopGainerResult{
+			Symbol:        raw.Symbol,
+			LastPrice:     raw.LastPrice,
+			Bid1:          raw.Bid1,
+			Ask1:          raw.Ask1,
+			Volume24hUSDT: volUSDT,
+			Gain24hPct:    raw.RiseFallRate * 100.0,
+			SpreadPct:     spreadPct,
+			Timestamp:     raw.Timestamp,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Gain24hPct > results[j].Gain24hPct
+	})
+
+	if req.Limit > 0 && req.Limit < len(results) {
+		results = results[:req.Limit]
+	}
+
+	return results, nil
 }
 
 // GetFundingRateHistory returns funding rate history for a symbol.
@@ -299,6 +387,9 @@ func filterMexcTickers(tickers []mexcTicker, minVol24h, maxVol24h float64, white
 		}
 
 		vol := t.Amount24
+		if vol == 0 && t.Volume24 > 0 && t.LastPrice > 0 {
+			vol = t.Volume24 * t.LastPrice
+		}
 		if vol < minVol24h {
 			continue
 		}
@@ -468,4 +559,82 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		})
 	}
 	return klines, nil
+}
+
+var _ exchange.RiskLimitLeverageProvider = (*Client)(nil)
+
+func findTargetDetail(rawList []mexcContractDetail, symbol string) (*mexcContractDetail, error) {
+	for i := range rawList {
+		if rawList[i].Symbol == symbol {
+			return &rawList[i], nil
+		}
+	}
+	if len(rawList) > 0 {
+		return &rawList[0], nil
+	}
+	return nil, fmt.Errorf("mexc contract detail not found for symbol %s", symbol)
+}
+
+func (c *Client) computeTargetCompare(ctx context.Context, symbol string, value float64, detail *mexcContractDetail) float64 {
+	if strings.EqualFold(detail.RiskLimitType, "BY_VALUE") {
+		return value
+	}
+
+	var lastPrice float64
+	if tickers, err := c.GetTickers(ctx, symbol); err == nil && len(tickers) > 0 {
+		lastPrice = tickers[0].LastPrice
+	}
+
+	switch {
+	case lastPrice > 0 && detail.ContractSize > 0:
+		return value / (detail.ContractSize * lastPrice)
+	case detail.ContractSize > 0:
+		return value / detail.ContractSize
+	default:
+		return value
+	}
+}
+
+// GetMaxLeverageForValue implements exchange.RiskLimitLeverageProvider.
+// It queries risk limits for the specified symbol and returns the maximum leverage allowed for a target position value in USDT.
+func (c *Client) GetMaxLeverageForValue(ctx context.Context, symbol string, value float64) (int, error) {
+	rawList, err := c.getRawContractDetails(ctx, symbol)
+	if err != nil {
+		return 0, fmt.Errorf("mexc get contract detail for %s: %w", symbol, err)
+	}
+
+	targetDetail, err := findTargetDetail(rawList, symbol)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(targetDetail.RiskLimitCustom) == 0 {
+		if targetDetail.MaxLeverage > 0 {
+			return targetDetail.MaxLeverage, nil
+		}
+		return 0, fmt.Errorf("mexc no risk limit tiers or max leverage for symbol %s", symbol)
+	}
+
+	sort.Slice(targetDetail.RiskLimitCustom, func(i, j int) bool {
+		return targetDetail.RiskLimitCustom[i].Level < targetDetail.RiskLimitCustom[j].Level
+	})
+
+	targetCompare := c.computeTargetCompare(ctx, symbol, value, targetDetail)
+
+	for _, tier := range targetDetail.RiskLimitCustom {
+		if targetCompare <= tier.MaxVol && tier.MaxLeverage > 0 {
+			return tier.MaxLeverage, nil
+		}
+	}
+
+	lastTier := targetDetail.RiskLimitCustom[len(targetDetail.RiskLimitCustom)-1]
+	if lastTier.MaxLeverage > 0 {
+		return lastTier.MaxLeverage, nil
+	}
+
+	if targetDetail.MaxLeverage > 0 {
+		return targetDetail.MaxLeverage, nil
+	}
+
+	return 0, fmt.Errorf("mexc could not determine max leverage for symbol %s value %f", symbol, value)
 }

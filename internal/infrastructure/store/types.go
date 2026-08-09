@@ -57,10 +57,14 @@ type FundingData struct {
 
 // TickerDataFromExchange converts an exchange.Ticker to TickerData.
 func TickerDataFromExchange(t *exchange.Ticker) *TickerData {
+	amt := t.AmountUSDT24
+	if amt == 0 && t.Volume24 > 0 && t.LastPrice > 0 {
+		amt = t.Volume24 * t.LastPrice
+	}
 	return &TickerData{
 		Symbol:       t.Symbol,
 		Volume24:     t.Volume24,
-		AmountUSDT24: t.AmountUSDT24,
+		AmountUSDT24: amt,
 		LastPrice:    t.LastPrice,
 		BestBid:      t.Bid1,
 		BestAsk:      t.Ask1,

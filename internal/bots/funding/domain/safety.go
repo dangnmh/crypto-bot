@@ -33,7 +33,12 @@ const minutesPerDay = 24 * 60
 func (c *Candidate) EvaluateSafety(limits SafetyLimits) *SafetyResult {
 	result := &SafetyResult{Passed: true}
 
+	if c.AmountUSDT24 == 0 && c.Volume24 > 0 && c.LastPrice > 0 {
+		c.AmountUSDT24 = c.Volume24 * c.LastPrice
+	}
+
 	desiredNotional := c.ReversionNotionalUSDT()
+
 	result.DesiredNotionalUSDT = desiredNotional
 	result.ActualNotionalUSDT = desiredNotional
 

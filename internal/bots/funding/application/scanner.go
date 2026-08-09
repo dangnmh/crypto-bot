@@ -356,6 +356,11 @@ func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.Tic
 		intent.Side, intent.CloseSide, intent.RefPriceType = shared.SideOpenShort, shared.SideCloseShort, refPriceBestBid
 	}
 
+	amtUSDT := td.AmountUSDT24
+	if amtUSDT == 0 && td.Volume24 > 0 && td.LastPrice > 0 {
+		amtUSDT = td.Volume24 * td.LastPrice
+	}
+
 	return domain.Candidate{
 		Config:      ToTradeConfig(sc),
 		TradeIntent: intent,
@@ -364,7 +369,7 @@ func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.Tic
 			BestBid:      td.BestBid,
 			BestAsk:      td.BestAsk,
 			Volume24:     td.Volume24,
-			AmountUSDT24: td.AmountUSDT24,
+			AmountUSDT24: amtUSDT,
 		},
 	}
 }

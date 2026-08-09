@@ -22,10 +22,10 @@
     "funding": "30s"
   },
   "safety": {
-    "maxImpactRatio": 15,
+    "maxImpactRatio": 20,
     "maxLatency": "400ms", // Abort if RTT > 400ms
     "maxPriceDiffPercent": 0.8,
-    "maxSymbolUSDTPrice": 50
+    "maxSymbolUSDTPrice": 100
   },
   "notifier": {
     "enable": true
@@ -60,7 +60,7 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 20,
-      "marginUSD": 900,
+      "marginUSD": 1000,
       "maxCandidateTrade": 3
     },
     "mexc": {
@@ -71,7 +71,7 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 20,
-      "marginUSD": 530,
+      "marginUSD": 600,
     },
     "bitget": {
       "takeProfitPct": 1,

@@ -144,6 +144,10 @@ make destroy-all
 
 ```
 ssh -v -p 2222 -N -L 39373:127.0.0.1:39373 dangnmh@26.128.244.94
+
+sudo ip link set dev zttqh5ck5q mtu 1200
+ssh -v -N -L 39373:127.0.0.1:39373 dangnmh@10.67.135.194
+
 export KUBECONFIG=./deploy/k8s/k3d-kubeconfig.yaml
 
 kubectl port-forward svc/loki-stack-grafana 3000:80

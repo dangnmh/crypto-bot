@@ -15,4 +15,7 @@ Before suggesting code is complete, ensure it passes the quality gates.
 - `make cover`
 
 
+## 4. Git Commit Policy
+- Never auto-commit code (`git commit`). Always leave code changes in the working directory for user review unless explicitly instructed by the user to commit.
+
 *When in doubt, refer to [`docs/tech/coding_conventions.md`](docs/tech/coding_conventions.md) and [`docs/tech/testing_conventions.md`](docs/tech/testing_conventions.md) for extended technical documentation and standards.*

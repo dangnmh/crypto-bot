@@ -31,6 +31,24 @@ func TestTickerDataFromExchange(t *testing.T) {
 	assert.False(t, td.UpdatedAt.IsZero())
 }
 
+func TestTickerDataFromExchange_Amount24Fallback(t *testing.T) {
+	t.Parallel()
+
+	input := &exchange.Ticker{
+		Symbol:       "KAITO_USDT",
+		Volume24:     1000000,
+		AmountUSDT24: 0, // 0 in response
+		LastPrice:    0.70,
+		Bid1:         0.699,
+		Ask1:         0.701,
+	}
+
+	td := store.TickerDataFromExchange(input)
+
+	assert.Equal(t, "KAITO_USDT", td.Symbol)
+	assert.Equal(t, 700000.0, td.AmountUSDT24)
+}
+
 func TestContractDataFromExchange(t *testing.T) {
 	t.Parallel()
 
