@@ -33,3 +33,7 @@ func (c *Client) GetPotentialFundingSymbols(
 ) ([]exchange.PotentialFundingResult, error) {
 	return c.hlClient.GetPotentialFundingSymbols(ctx, minVol24h, maxVol24h, whitelist, blacklist)
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

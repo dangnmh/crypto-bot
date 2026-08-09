@@ -164,3 +164,7 @@ func getNextFundingTime(timestampUs int64) int64 {
 	nextSecs := ((secs / interval) + 1) * interval
 	return nextSecs * 1000
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

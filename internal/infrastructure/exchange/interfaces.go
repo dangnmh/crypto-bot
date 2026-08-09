@@ -11,6 +11,7 @@ import (
 // Satisfied by *Client. Enables mock-based testing without hitting the real exchange.
 type MarketDataProvider interface {
 	GetTickers(ctx context.Context, symbol string) ([]Ticker, error)
+	GetTopGainer(ctx context.Context, req TopGainerRequest) ([]TopGainerResult, error)
 	GetContractDetails(ctx context.Context) ([]ContractDetail, error)
 	GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error)
 	GetServerTime(ctx context.Context) (int64, error)

@@ -622,6 +622,45 @@ func (c *MockClientGetServerTimeCall) DoAndReturn(f func(context.Context) (int64
 	return c
 }
 
+// GetTopGainer mocks base method.
+func (m *MockClient) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTopGainer", ctx, req)
+	ret0, _ := ret[0].([]exchange.TopGainerResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTopGainer indicates an expected call of GetTopGainer.
+func (mr *MockClientMockRecorder) GetTopGainer(ctx, req any) *MockClientGetTopGainerCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTopGainer", reflect.TypeOf((*MockClient)(nil).GetTopGainer), ctx, req)
+	return &MockClientGetTopGainerCall{Call: call}
+}
+
+// MockClientGetTopGainerCall wrap *gomock.Call
+type MockClientGetTopGainerCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockClientGetTopGainerCall) Return(arg0 []exchange.TopGainerResult, arg1 error) *MockClientGetTopGainerCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockClientGetTopGainerCall) Do(f func(context.Context, exchange.TopGainerRequest) ([]exchange.TopGainerResult, error)) *MockClientGetTopGainerCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockClientGetTopGainerCall) DoAndReturn(f func(context.Context, exchange.TopGainerRequest) ([]exchange.TopGainerResult, error)) *MockClientGetTopGainerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetTickers mocks base method.
 func (m *MockClient) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	m.ctrl.T.Helper()

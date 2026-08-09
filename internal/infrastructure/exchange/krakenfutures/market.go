@@ -184,3 +184,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 func (c *Client) GetServerTime(ctx context.Context) (int64, error) {
 	return time.Now().UnixMilli(), nil
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

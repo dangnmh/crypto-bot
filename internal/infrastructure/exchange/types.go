@@ -214,6 +214,23 @@ type FundingRateResult struct {
 	SettleTime int64   `json:"settleTime"`
 }
 
+// TopGainerRequest specifies options when requesting top gaining tickers.
+type TopGainerRequest struct {
+	Limit int `json:"limit,omitempty"`
+}
+
+// TopGainerResult holds calculated 24h ticker metrics for top gainer scanning.
+type TopGainerResult struct {
+	Symbol        string  `json:"symbol"`
+	LastPrice     float64 `json:"lastPrice"`
+	Bid1          float64 `json:"bid1"`
+	Ask1          float64 `json:"ask1"`
+	Volume24hUSDT float64 `json:"volume24hUsdt"`
+	Gain24hPct    float64 `json:"gain24hPct"`
+	SpreadPct     float64 `json:"spreadPct"`
+	Timestamp     int64   `json:"timestamp"`
+}
+
 // Position holds position information.
 type Position struct {
 	Symbol          string       `json:"symbol"`

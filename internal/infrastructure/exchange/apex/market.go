@@ -137,3 +137,7 @@ func parsePrice(item *apexTickerItem) (float64, error) {
 	}
 	return 0, fmt.Errorf("no valid price found")
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

@@ -284,3 +284,35 @@ func (c *Client) GetPotentialFundingSymbols(
 
 	return results, nil
 }
+
+func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	tickers, err := c.GetTickers(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	results := make([]exchange.TopGainerResult, 0, len(tickers))
+	for _, t := range tickers {
+		volUSDT := t.AmountUSDT24
+		if volUSDT == 0 {
+			volUSDT = t.Volume24 * t.LastPrice
+		}
+		spreadPct := 0.0
+		if t.Bid1 > 0 && t.Ask1 > 0 {
+			spreadPct = ((t.Ask1 - t.Bid1) / t.Bid1) * 100.0
+		}
+		results = append(results, exchange.TopGainerResult{
+			Symbol:        t.Symbol,
+			LastPrice:     t.LastPrice,
+			Bid1:          t.Bid1,
+			Ask1:          t.Ask1,
+			Volume24hUSDT: volUSDT,
+			Gain24hPct:    0.0,
+			SpreadPct:     spreadPct,
+			Timestamp:     t.Timestamp,
+		})
+	}
+	if req.Limit > 0 && req.Limit < len(results) {
+		results = results[:req.Limit]
+	}
+	return results, nil
+}

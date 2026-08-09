@@ -379,3 +379,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 	}
 	return klines, nil
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

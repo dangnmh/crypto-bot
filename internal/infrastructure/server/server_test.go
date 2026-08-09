@@ -39,6 +39,9 @@ func (s *stubClient) GetTickers(ctx context.Context, symbol string) ([]exchange.
 	}
 	return nil, nil
 }
+func (s *stubClient) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}
 func (s *stubClient) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {
 	return nil, nil
 }
@@ -146,6 +149,9 @@ type stubClientNoClosedPnL struct {
 }
 
 func (s *stubClientNoClosedPnL) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
+	return nil, nil
+}
+func (s *stubClientNoClosedPnL) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
 	return nil, nil
 }
 func (s *stubClientNoClosedPnL) GetContractDetails(ctx context.Context) ([]exchange.ContractDetail, error) {

@@ -252,6 +252,7 @@ func TestWsAdapterParsePosition_AccountUpdate_Closed(t *testing.T) {
 	}
 	if update == nil {
 		t.Fatalf("expected non-nil position update")
+		return
 	}
 
 	if update.Symbol != "SLXUSDT" {

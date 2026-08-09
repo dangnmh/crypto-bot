@@ -23,6 +23,9 @@ type stubClient struct {
 func (s *stubClient) GetTickers(_ context.Context, _ string) ([]exchange.Ticker, error) {
 	return nil, nil
 }
+func (s *stubClient) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}
 func (s *stubClient) GetContractDetails(_ context.Context) ([]exchange.ContractDetail, error) {
 	return nil, nil
 }

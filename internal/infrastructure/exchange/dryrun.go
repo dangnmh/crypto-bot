@@ -35,6 +35,10 @@ func (d *DryRunClient) GetTickers(ctx context.Context, symbol string) ([]Ticker,
 	return d.inner.GetTickers(ctx, symbol)
 }
 
+func (d *DryRunClient) GetTopGainer(ctx context.Context, req TopGainerRequest) ([]TopGainerResult, error) {
+	return d.inner.GetTopGainer(ctx, req)
+}
+
 func (d *DryRunClient) GetContractDetails(ctx context.Context) ([]ContractDetail, error) {
 	return d.inner.GetContractDetails(ctx)
 }

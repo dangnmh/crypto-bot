@@ -206,3 +206,7 @@ func (c *Client) filterAndCombine(
 
 	return results
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

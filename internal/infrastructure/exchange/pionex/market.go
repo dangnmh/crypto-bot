@@ -443,3 +443,7 @@ func (c *Client) GetRiskTableRaw(ctx context.Context, params map[string]string) 
 func (c *Client) GetSymbolsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
 	return c.rawRequestPublic(ctx, "GET", "/api/v1/common/symbols", params)
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}

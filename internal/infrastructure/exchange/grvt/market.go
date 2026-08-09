@@ -204,3 +204,7 @@ func isAllowedSymbol(symbolUpper, baseUpper string, whitelistMap, blacklistMap m
 	}
 	return true
 }
+
+func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	return nil, nil
+}
