@@ -37,7 +37,7 @@
     "enable": false
   },
   "scanners": {
-    "configured": false,
+    "configured": true,
     "schedule": {
       "mexc": false,
       "xt": false
