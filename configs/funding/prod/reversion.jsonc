@@ -22,7 +22,7 @@
     "funding": "30s"
   },
   "safety": {
-    "maxImpactRatio": 20,
+    "maxImpactRatio": 30,
     "maxLatency": "400ms", // Abort if RTT > 400ms
     "maxPriceDiffPercent": 0.8,
     "maxSymbolUSDTPrice": 100
@@ -72,7 +72,7 @@
     "mexc": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "-60ms", // -70ms dont paid funding fee, Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "bufferTime": "-50ms", // -70ms.-60ms dont paid funding fee, Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
