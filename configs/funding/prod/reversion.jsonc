@@ -39,26 +39,26 @@
   "scanners": {
     "configured": false,
     "schedule": {
-      "toobit": true,
-      "mexc": true,
-      "bitget": false, // negative pnl
-      "deepcoin": false, // exchange restricted
-      "kucoin": false, // negative pnl
-      "bitmart": false, // negative pnl
-      "bitunix": false, // exchange restricted
-      "okx": false, // no funding oppotunity
-      "xt": false, // negative pnl
-      "gate": false, // rare oppotunity, negative pnl,
-      "binance": false, // negative pnl,
-      "orangex": false, // negative pnl,
-      "bybit": false, // very high cancel rate,
-      "hotcoin": false, // prevent trade at funding settle
-      "weex": false, // no funding oppotunity
-      "aster": false, // negative pnl
+      "toobit_futures": true,
+      "mexc_futures": true,
+      "bitget_futures": false, // negative pnl
+      "deepcoin_futures": false, // exchange restricted
+      "kucoin_futures": false, // negative pnl
+      "bitmart_futures": false, // negative pnl
+      "bitunix_futures": false, // exchange restricted
+      "okx_futures": false, // no funding oppotunity
+      "xt_futures": false, // negative pnl
+      "gate_futures": false, // rare oppotunity, negative pnl,
+      "binance_futures": false, // negative pnl,
+      "orangex_futures": false, // negative pnl,
+      "bybit_futures": false, // very high cancel rate,
+      "hotcoin_futures": false, // prevent trade at funding settle
+      "weex_futures": false, // no funding oppotunity
+      "aster_futures": false // negative pnl
     }
   },
   "exchanges": {
-    "toobit": {
+    "toobit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
       "bufferTime": "390ms", // 350ms dont paid funding fee, 400ms paid funding fee
@@ -69,7 +69,7 @@
       "marginUSD": 1000,
       "maxCandidateTrade": 3
     },
-    "mexc": {
+    "mexc_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
       "bufferTime": "-50ms", // -70ms.-60ms dont paid funding fee, Fire at T - (Latency/2 + Buffer) the bigger the earlier
@@ -77,9 +77,9 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 20,
-      "marginUSD": 600,
+      "marginUSD": 600
     },
-    "bitget": {
+    "bitget_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-320ms", // -300ms paid funding fee
@@ -88,7 +88,7 @@
       "leverage": 10,
       "marginUSD": 50
     },
-    "deepcoin": {
+    "deepcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-20ms", // 0ms paid funding fee
@@ -97,7 +97,7 @@
       "leverage": 20,
       "marginUSD": 100
     },
-    "aster": {
+    "aster_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-80ms", // -50ms paid funding fee
@@ -107,25 +107,25 @@
       "leverage": 2,
       "marginUSD": 50
     },
-    "bybit": {
+    "bybit_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "0ms", // 0ms high cancel rate 50ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
-    "binance": {
+    "binance_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-200ms", // -200ms fill bad price -150ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
-    "kucoin": {
+    "kucoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-250ms", // -200ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
-    "okx": {
+    "okx_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "0ms",
@@ -133,13 +133,13 @@
       "minVol24USD": 1000000,
       "minFundingRate": 0.3
     },
-    "gate": {
+    "gate_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-150ms",
       "postSettleTimeout": "0.5s"
     },
-    "bitmart": {
+    "bitmart_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-100ms", // -50ms paid funding fee
@@ -149,7 +149,7 @@
       "leverage": 3,
       "marginUSD": 5
     },
-    "weex": {
+    "weex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-200ms", // -150ms paid funding fee
@@ -159,13 +159,13 @@
       "leverage": 3,
       "marginUSD": 5
     },
-    "bitunix": {
+    "bitunix_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "250ms", // 200ms dont get funding fee 300ms paid funding fee
       "postSettleTimeout": "0.5s"
     },
-    "xt": {
+    "xt_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-550ms", // -500ms paid funding fee
@@ -175,7 +175,7 @@
       "leverage": 3,
       "marginUSD": 5
     },
-    "orangex": {
+    "orangex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "300ms", // 100ms dont paid funding fee, 250ms cancel high cancel rate
@@ -185,7 +185,7 @@
       "leverage": 3,
       "marginUSD": 5
     },
-    "hotcoin": {
+    "hotcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "0ms",

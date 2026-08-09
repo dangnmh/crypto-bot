@@ -83,6 +83,9 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 	registerEventSubscription(ctx, runner, TopicReversionTPSLRequired, func(ctx context.Context, r *StatelessRunner, evt TPSLRequiredEvent) error {
 		return r.handleTPSLRequired(ctx, evt)
 	})
+	registerEventSubscription(ctx, runner, TopicReversionOrderFilled, func(ctx context.Context, r *StatelessRunner, evt OrderFilledEvent) error {
+		return nil
+	})
 
 	// Stage 3
 	registerEventSubscription(ctx, runner, TopicReversionTimeoutGuardScheduled, func(ctx context.Context, r *StatelessRunner, evt TimeoutGuardScheduledEvent) error {

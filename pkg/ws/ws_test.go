@@ -1262,6 +1262,9 @@ func TestPool_UnsubscribeDuringDisconnect(t *testing.T) {
 	err := pool.SubscribePublic(ctx, "topic1", map[string]string{"method": "sub.topic1"})
 	require.NoError(t, err)
 
+	// Allow pool to process server-side disconnect
+	time.Sleep(50 * time.Millisecond)
+
 	// Unsubscribe topic1 while disconnected
 	err = pool.UnsubscribePublic(ctx, "topic1", map[string]string{"method": "unsub.topic1"})
 	require.NoError(t, err)

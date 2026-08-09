@@ -25,19 +25,19 @@ func TestExternalOrderID(t *testing.T) {
 
 	settleTime := time.Date(2026, 6, 9, 11, 4, 1, 0, time.UTC)
 	id := orders.ExternalOrderID("BTC_USDT", settleTime, "bybit")
-	assert.Equal(t, "09062026180401BYBITBTC", id)
+	assert.Equal(t, "09062026180401BTCBYBIT", id)
 	assert.LessOrEqual(t, len(id), 32)
 
 	idLong := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "bybit")
-	assert.Equal(t, "09062026180401BYBITALONGANDVERYC", idLong)
+	assert.Equal(t, "09062026180401ALONGANDVERYCOMPLE", idLong)
 	assert.Equal(t, 32, len(idLong))
 
 	idGate := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "gate")
-	assert.Equal(t, "09062026180401GATEALONGANDVE", idGate)
+	assert.Equal(t, "09062026180401ALONGANDVERYCO", idGate)
 	assert.Equal(t, 28, len(idGate))
 
 	idOrangex := orders.ExternalOrderID("ALONGANDVERYCOMPLEXSYMBOLNAMEHERE", settleTime, "orangex")
-	assert.Equal(t, "09062026180401ORANGEXALONGANDV", idOrangex)
+	assert.Equal(t, "09062026180401ALONGANDVERYCOMP", idOrangex)
 	assert.Equal(t, 30, len(idOrangex))
 }
 

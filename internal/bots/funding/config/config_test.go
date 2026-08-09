@@ -101,9 +101,11 @@ func sysWithDefaults(defaults testDefaults) *config.SystemConfig {
 		SystemConfig: sysconfig.SystemConfig{
 			ExchangeConfig: sysconfig.ExchangeConfig{
 				"mexc": sysconfig.APIConfig{
-					Enable:    true,
-					Future:    sysconfig.RESTConfig{BaseURL: "https://mexc.test"},
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
+					Future: &sysconfig.RESTConfig{
+						Enable:    true,
+						BaseURL:   "https://mexc.test",
+						WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
+					},
 					APIKey:    "mock-key",
 					APISecret: "mock-secret",
 				},

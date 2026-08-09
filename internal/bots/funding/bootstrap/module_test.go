@@ -46,13 +46,16 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 		"exchange": {
 			"mexc": {
 				"enable": true,
-				"future": {"baseURL": "https://example.test"},
-				"websocket": {"wsURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
+				"future": {
+					"enable": true,
+					"baseURL": "https://example.test",
+					"websocket": {"wsURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
+				}
 			}
 		}
 	}`), 0o600))
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[
-		{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 10, "leverage": 5}
+		{"symbol": "BTC_USDT", "exchange": "mexc_futures", "marginUSDT": 10, "leverage": 5}
 	]`), 0o600))
 	blacklistPath := filepath.Join(dir, "blacklist.jsonc")
 	reversionPath := filepath.Join(dir, "reversion.jsonc")

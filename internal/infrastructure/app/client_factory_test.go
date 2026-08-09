@@ -197,3 +197,93 @@ func TestBuildPublicClient_TrubitBaseURL(t *testing.T) {
 
 	assert.True(t, strings.HasPrefix(requestedURL, "https://api-futures.trubit.com"), "expected URL starting with https://api-futures.trubit.com, got: %s", requestedURL)
 }
+
+func TestDefaultProviderFactories_SpotFuturesEnabled(t *testing.T) {
+	t.Parallel()
+
+	sysCfg := &config.SystemConfig{
+		ExchangeConfig: config.ExchangeConfig{
+			"mexc": config.APIConfig{
+				Spot:   &config.RESTConfig{Enable: true, BaseURL: "https://api.mexc.com"},
+				Future: &config.RESTConfig{Enable: false, BaseURL: "https://contract.mexc.com"},
+			},
+			"toobit": config.APIConfig{
+				Spot:   &config.RESTConfig{Enable: false, BaseURL: "https://api.toobit.com"},
+				Future: &config.RESTConfig{Enable: true, BaseURL: "https://api.toobit.com"},
+			},
+		},
+	}
+
+	factories := app.DefaultProviderFactories()
+	factoryMap := make(map[string]app.ProviderFactory)
+	for _, f := range factories {
+		factoryMap[f.Name()] = f
+	}
+
+	require.Contains(t, factoryMap, "mexc_spot")
+	require.Contains(t, factoryMap, "mexc_futures")
+	require.Contains(t, factoryMap, "toobit_spot")
+	require.Contains(t, factoryMap, "toobit_futures")
+
+	assert.True(t, factoryMap["mexc_spot"].Enabled(sysCfg))
+	assert.False(t, factoryMap["mexc_futures"].Enabled(sysCfg))
+	assert.False(t, factoryMap["toobit_spot"].Enabled(sysCfg))
+	assert.True(t, factoryMap["toobit_futures"].Enabled(sysCfg))
+}
+
+func TestDefaultProviderFactories_BothSpotAndFuturesEnabled(t *testing.T) {
+	t.Parallel()
+
+	sysCfg := &config.SystemConfig{
+		ExchangeConfig: config.ExchangeConfig{
+			"mexc": config.APIConfig{
+				Spot: &config.EndpointConfig{
+					Enable:  true,
+					BaseURL: "https://api.mexc.com",
+					WebSocket: config.WebSocketConfig{
+						WSURL:             "wss://wbs.mexc.com/ws",
+						MaxPairsPerWSConn: 30,
+					},
+				},
+				Future: &config.EndpointConfig{
+					Enable:  true,
+					BaseURL: "https://contract.mexc.com",
+					WebSocket: config.WebSocketConfig{
+						WSURL:             "wss://contract.mexc.com/edge",
+						MaxPairsPerWSConn: 30,
+					},
+				},
+			},
+		},
+	}
+
+	factories := app.DefaultProviderFactories()
+	factoryMap := make(map[string]app.ProviderFactory)
+	for _, f := range factories {
+		factoryMap[f.Name()] = f
+	}
+
+	assert.NotContains(t, factoryMap, "mexc")
+	require.Contains(t, factoryMap, "mexc_spot")
+	require.Contains(t, factoryMap, "mexc_futures")
+
+	assert.True(t, factoryMap["mexc_spot"].Enabled(sysCfg))
+	assert.True(t, factoryMap["mexc_futures"].Enabled(sysCfg))
+
+	cfg := app.ProviderFactoryConfig{
+		SystemConfig: sysCfg,
+		HTTPClient:   &http.Client{},
+		Logger:       slog.Default(),
+		Bus:          nil,
+	}
+
+	spotProv, err := factoryMap["mexc_spot"].Build(context.Background(), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, spotProv)
+	assert.Equal(t, "mexc_spot", spotProv.Name)
+
+	futuresProv, err := factoryMap["mexc_futures"].Build(context.Background(), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, futuresProv)
+	assert.Equal(t, "mexc_futures", futuresProv.Name)
+}

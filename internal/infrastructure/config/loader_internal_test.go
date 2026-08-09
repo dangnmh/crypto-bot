@@ -26,27 +26,23 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 
 	disabled := APIConfig{}
 	complete := APIConfig{
-		Enable:    true,
-		Future:    RESTConfig{BaseURL: "https://api.example.com"},
+		Future:    &RESTConfig{Enable: true, BaseURL: "https://api.example.com"},
 		APIKey:    "key",
 		APISecret: "secret",
 	}
 	completeKucoin := APIConfig{
-		Enable:        true,
-		Future:        RESTConfig{BaseURL: "https://api.example.com"},
+		Future:        &RESTConfig{Enable: true, BaseURL: "https://api.example.com"},
 		APIKey:        "key",
 		APISecret:     "secret",
 		APIPassphrase: "pass",
 	}
 	missingKey := APIConfig{
-		Enable:    true,
-		Future:    RESTConfig{BaseURL: "https://api.example.com"},
+		Future:    &RESTConfig{Enable: true, BaseURL: "https://api.example.com"},
 		APISecret: "secret",
 	}
 
 	completeBingx := APIConfig{
-		Enable:    true,
-		Future:    RESTConfig{BaseURL: "https://api.example.com"},
+		Future:    &RESTConfig{Enable: true, BaseURL: "https://api.example.com"},
 		APIKey:    "key",
 		APISecret: "secret",
 	}
@@ -58,8 +54,7 @@ func TestInternalCredentialCompletenessHelpers(t *testing.T) {
 	assert.True(t, exchangeCredentialsComplete("kucoin", completeKucoin))
 	assert.False(t, exchangeCredentialsComplete("kucoin", complete))
 	completeOkx := APIConfig{
-		Enable:        true,
-		Future:        RESTConfig{BaseURL: "https://api.example.com"},
+		Future:        &RESTConfig{Enable: true, BaseURL: "https://api.example.com"},
 		APIKey:        "key",
 		APISecret:     "secret",
 		APIPassphrase: "pass",
@@ -93,9 +88,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "mexc missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"mexc": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://mexc.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
 				APISecret: "secret",
 			}}},
 			wantErr: "mexc: API key and secret are required",
@@ -103,19 +96,15 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "mexc missing secret",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"mexc": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://mexc.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
-				APIKey:    "key",
+				Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
+				APIKey: "key",
 			}}},
 			wantErr: "mexc: API key and secret are required",
 		},
 		{
 			name: "gate missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://gate.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://gate.example", WebSocket: WebSocketConfig{WSURL: "wss://gate.example"}},
 				APISecret: "secret",
 			}}},
 			wantErr: "gate: API key and secret are required",
@@ -123,18 +112,15 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "gate missing secret",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://gate.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
-				APIKey:    "key",
+				Future: &RESTConfig{Enable: true, BaseURL: "https://gate.example", WebSocket: WebSocketConfig{WSURL: "wss://gate.example"}},
+				APIKey: "key",
 			}}},
 			wantErr: "gate: API key and secret are required",
 		},
 		{
 			name: "gate missing websocket url",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://gate.example"},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://gate.example"},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
@@ -143,9 +129,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "kucoin missing passphrase",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"kucoin": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://kucoin.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://kucoin.example", WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"}},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
@@ -154,9 +138,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "okx missing passphrase",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"okx": APIConfig{
-				Enable:    true,
-				Future:    RESTConfig{BaseURL: "https://okx.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://okx.example"},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://okx.example", WebSocket: WebSocketConfig{WSURL: "wss://okx.example"}},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
@@ -165,9 +147,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "kucoin missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"kucoin": APIConfig{
-				Enable:        true,
-				Future:        RESTConfig{BaseURL: "https://kucoin.example"},
-				WebSocket:     WebSocketConfig{WSURL: "wss://kucoin.example"},
+				Future:        &RESTConfig{Enable: true, BaseURL: "https://kucoin.example", WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"}},
 				APISecret:     "secret",
 				APIPassphrase: "pass",
 			}}},
@@ -180,7 +160,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 			t.Parallel()
 
 			// Check missing all active exchanges logic
-			if tt.cfg.ExchangeConfig == nil || (!tt.cfg.ExchangeConfig["mexc"].Enable && !tt.cfg.ExchangeConfig["gate"].Enable && !tt.cfg.ExchangeConfig["okx"].Enable && !tt.cfg.ExchangeConfig["binance"].Enable && !tt.cfg.ExchangeConfig["bitget"].Enable && !tt.cfg.ExchangeConfig["kucoin"].Enable) {
+			if tt.cfg.ExchangeConfig == nil || (!tt.cfg.ExchangeConfig["mexc"].IsEnabled() && !tt.cfg.ExchangeConfig["gate"].IsEnabled() && !tt.cfg.ExchangeConfig["okx"].IsEnabled() && !tt.cfg.ExchangeConfig["binance"].IsEnabled() && !tt.cfg.ExchangeConfig["bitget"].IsEnabled() && !tt.cfg.ExchangeConfig["kucoin"].IsEnabled()) {
 				err := fmt.Errorf("at least one active exchange must be enabled")
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -214,9 +194,7 @@ func TestValidateExchangeConfig_AccountType(t *testing.T) {
 
 			cfg := ExchangeConfig{
 				"bybit": APIConfig{
-					Enable:      true,
-					Future:      RESTConfig{BaseURL: "https://bybit.example"},
-					WebSocket:   WebSocketConfig{PublicURL: "wss://bybit-public.example", PrivateURL: "wss://bybit-private.example"},
+					Future:      &RESTConfig{Enable: true, BaseURL: "https://bybit.example", WebSocket: WebSocketConfig{PublicURL: "wss://bybit-public.example", PrivateURL: "wss://bybit-private.example"}},
 					APIKey:      "key",
 					APISecret:   "secret",
 					AccountType: tt.accountType,
@@ -239,12 +217,34 @@ func TestValidateExchangeConfig_AccountTypeOnlyAppliesToBybit(t *testing.T) {
 
 	cfg := ExchangeConfig{
 		"mexc": APIConfig{
-			Enable:      true,
-			Future:      RESTConfig{BaseURL: "https://mexc.example"},
-			WebSocket:   WebSocketConfig{WSURL: "wss://mexc.example"},
+			Future:      &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
 			APIKey:      "key",
 			APISecret:   "secret",
 			AccountType: "ignored",
+		},
+	}
+
+	require.NoError(t, ValidateExchangeConfig(cfg))
+}
+
+func TestValidateExchangeConfig_DisabledFutureEndpointNotValidatedWhenSpotEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := ExchangeConfig{
+		"mexc": APIConfig{
+			Spot: &RESTConfig{
+				Enable:  true,
+				BaseURL: "https://api.mexc.com",
+				WebSocket: WebSocketConfig{
+					WSURL: "wss://wbs.mexc.com/ws",
+				},
+			},
+			Future: &RESTConfig{
+				Enable:  false,
+				BaseURL: "",
+			},
+			APIKey:    "key",
+			APISecret: "secret",
 		},
 	}
 
@@ -257,20 +257,18 @@ func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
 			"mexc": APIConfig{
-				Future:    RESTConfig{BaseURL: "https://mexc.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"},
+				Future: &RESTConfig{BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
 			},
 			"gate": APIConfig{
-				Future:    RESTConfig{BaseURL: "https://gate.example"},
-				WebSocket: WebSocketConfig{WSURL: "wss://gate.example"},
+				Future: &RESTConfig{BaseURL: "https://gate.example", WebSocket: WebSocketConfig{WSURL: "wss://gate.example"}},
 			},
 		},
 	}
 
 	applySystemDefaults(cfg)
 
-	assert.Equal(t, 30, cfg.ExchangeConfig["mexc"].WebSocket.MaxPairsPerWSConn)
-	assert.Equal(t, 30, cfg.ExchangeConfig["gate"].WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig["mexc"].GetFutureEndpoint().WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig["gate"].GetFutureEndpoint().WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
@@ -282,7 +280,7 @@ func TestInternalApplyBitwardenFallbackRequiresConfig(t *testing.T) {
 	assert.False(t, hasBitwardenConfig())
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			"mexc": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+			"mexc": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example"}},
 		},
 	}
 	err := applyBitwardenFallback(cfg)
@@ -323,13 +321,13 @@ func TestInternalApplyBitwardenFallbackTrimsAndToleratesOptionalSecrets(t *testi
 
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			"mexc":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
-			"gate":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
-			"bybit":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
-			"bitget": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
-			"kucoin": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
-			"bingx":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
-			"okx":    APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://okx.example"}},
+			"mexc":   APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example"}},
+			"gate":   APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://gate.example"}},
+			"bybit":  APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://bybit.example"}},
+			"bitget": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://bitget.example"}},
+			"kucoin": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://kucoin.example"}},
+			"bingx":  APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://bingx.example"}},
+			"okx":    APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://okx.example"}},
 		},
 	}
 
@@ -357,7 +355,7 @@ func TestInternalApplyBitwardenFallbackTrimsAndToleratesOptionalSecrets(t *testi
 	}
 	err = applyBitwardenFallback(&SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			"mexc": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
+			"mexc": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example"}},
 		},
 	})
 	require.ErrorContains(t, err, "login failed")
@@ -395,13 +393,13 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
-			"mexc":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}},
-			"gate":   APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://gate.example"}},
-			"bybit":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bybit.example"}},
-			"bitget": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bitget.example"}},
-			"kucoin": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://kucoin.example"}},
-			"bingx":  APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://bingx.example"}},
-			"okx":    APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://okx.example"}},
+			"mexc":   APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example"}},
+			"gate":   APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://gate.example"}},
+			"bybit":  APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://bybit.example"}},
+			"bitget": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://bitget.example"}},
+			"kucoin": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://kucoin.example"}},
+			"bingx":  APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://bingx.example"}},
+			"okx":    APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://okx.example"}},
 		},
 	}
 	require.NoError(t, applyBitwardenFallback(cfg))
@@ -429,6 +427,6 @@ func TestInternalApplyBitwardenFallbackFillsMissingFields(t *testing.T) {
 		return nil, errors.New("boom")
 	}
 	require.ErrorContains(t, applyBitwardenFallback(&SystemConfig{
-		ExchangeConfig: ExchangeConfig{"mexc": APIConfig{Enable: true, Future: RESTConfig{BaseURL: "https://mexc.example"}}},
+		ExchangeConfig: ExchangeConfig{"mexc": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example"}}},
 	}), "bitwarden fallback failed")
 }

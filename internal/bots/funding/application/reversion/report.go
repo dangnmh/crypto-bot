@@ -239,6 +239,7 @@ func (r *StatelessRunner) recordStage2State(state *CycleState, val any) bool {
 		state.SettleTime = evt.SettleTime
 		state.FillPrice = evt.FillPrice
 		state.ActualSlippage = evt.SlippagePct
+		state.OrderFilled = true
 		return true
 	case PositionClosedEvent:
 		state.SettleTime = evt.SettleTime

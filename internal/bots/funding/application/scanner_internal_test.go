@@ -203,7 +203,7 @@ func TestScannerJob_ScanError(t *testing.T) {
 
 	job := NewScannerJob(
 		[]Scanner{mScanner},
-		nil,
+		&app.Engine{Providers: map[string]*app.ExchangeProvider{}},
 		nil,
 		sniperTestLogger(),
 	)
@@ -532,7 +532,8 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 		},
 	}
 
-	job := NewScannerJob(nil, nil, cfg, sniperTestLogger())
+	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
+	job := NewScannerJob(nil, engine, cfg, sniperTestLogger())
 
 	// Candidate meets all thresholds
 	candOk := domain.Candidate{

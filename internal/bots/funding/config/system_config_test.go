@@ -22,13 +22,13 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"mexc": {
-				"enable": true,
 				"future": {
-					"baseURL": "https://test.api.com"
-				},
-				"websocket": {
-					"wsURL": "wss://test.example.com",
-					"maxPairsPerWSConn": 25
+					"enable": true,
+					"baseURL": "https://test.api.com",
+					"websocket": {
+						"wsURL": "wss://test.example.com",
+						"maxPairsPerWSConn": 25
+					}
 				}
 			}
 		}
@@ -105,13 +105,13 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"mexc": {
-				"enable": true,
 				"future": {
-					"baseURL": "https://test.api.com"
-				},
-				"websocket": {
-					"wsURL": "wss://test.example.com",
-					"maxPairsPerWSConn": 25
+					"enable": true,
+					"baseURL": "https://test.api.com",
+					"websocket": {
+						"wsURL": "wss://test.example.com",
+						"maxPairsPerWSConn": 25
+					}
 				}
 			}
 		}
@@ -152,12 +152,14 @@ func TestLoadSystemConfig_InvalidBybitAccountType(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"bybit": {
-				"enable": true,
-				"future": {"baseURL": "https://api.bybit.com"},
-				"websocket": {
-					"publicURL": "wss://stream.bybit.com/v5/public/linear",
-					"privateURL": "wss://stream.bybit.com/v5/private",
-					"maxPairsPerWSConn": 30
+				"future": {
+					"enable": true,
+					"baseURL": "https://api.bybit.com",
+					"websocket": {
+						"publicURL": "wss://stream.bybit.com/v5/public/linear",
+						"privateURL": "wss://stream.bybit.com/v5/private",
+						"maxPairsPerWSConn": 30
+					}
 				},
 				"accountType": "classic"
 			}
@@ -188,9 +190,11 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"mexc": {
-				"enable": true,
-				"future": {"baseURL": "https://test.api.com"},
-				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+				"future": {
+					"enable": true,
+					"baseURL": "https://test.api.com",
+					"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+				}
 			}
 		}
 	}`
@@ -248,9 +252,11 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"mexc": {
-				"enable": true,
-				"future": {"baseURL": "https://test.api.com"},
-				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+				"future": {
+					"enable": true,
+					"baseURL": "https://test.api.com",
+					"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+				}
 			}
 		}
 	}`
@@ -289,9 +295,11 @@ func TestLoadSystemConfig_WithExplicitExchange(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"mexc": {
-				"enable": true,
-				"future": {"baseURL": "https://test.api.com"},
-				"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+				"future": {
+					"enable": true,
+					"baseURL": "https://test.api.com",
+					"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+				}
 			}
 		}
 	}`
@@ -301,7 +309,7 @@ func TestLoadSystemConfig_WithExplicitExchange(t *testing.T) {
 
 	cfg, err := config.LoadSystemConfig(sysPath, exchPath)
 	require.NoError(t, err)
-	require.True(t, cfg.ExchangeConfig["mexc"].Enable)
+	require.True(t, cfg.ExchangeConfig["mexc"].IsEnabled())
 }
 
 func TestLoadSystemConfig_InvalidTradeSide(t *testing.T) {
@@ -315,13 +323,13 @@ func TestLoadSystemConfig_InvalidTradeSide(t *testing.T) {
 	exchContent := `{
 		"exchange": {
 			"mexc": {
-				"enable": true,
 				"future": {
-					"baseURL": "https://test.api.com"
-				},
-				"websocket": {
-					"wsURL": "wss://test.example.com",
-					"maxPairsPerWSConn": 25
+					"enable": true,
+					"baseURL": "https://test.api.com",
+					"websocket": {
+						"wsURL": "wss://test.example.com",
+						"maxPairsPerWSConn": 25
+					}
 				}
 			}
 		}

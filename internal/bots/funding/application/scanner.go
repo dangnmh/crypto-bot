@@ -121,6 +121,14 @@ func (j *ScannerJob) tick(ctx context.Context) {
 	wg.Wait()
 }
 
+func matchExchangeName(a, b string) bool {
+	return strings.EqualFold(a, b)
+}
+
+func (j *ScannerJob) getEngineProvider(exchangeName string) (*app.ExchangeProvider, error) {
+	return j.engine.GetProvider(exchangeName)
+}
+
 func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	j.statesMu.Lock()
 	defer j.statesMu.Unlock()
@@ -154,10 +162,8 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 
 	// Time window check: only trigger if we are within 15 minutes before the settlement time
 	now := time.Now()
-	if j.engine != nil {
-		if prov, err := j.engine.GetProvider(c.Config.Exchange); err == nil {
-			now = prov.TimeSync.Now()
-		}
+	if prov, err := j.getEngineProvider(c.Config.Exchange); err == nil {
+		now = prov.TimeSync.Now()
 	}
 	if now.Add(15 * time.Minute).Before(settle) {
 		j.log.Debug("Skipping trigger: too early for settlement",
@@ -205,7 +211,7 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 	)
 
 	eventTimestamp := time.Now()
-	if prov, err := j.engine.GetProvider(candidate.Config.Exchange); err == nil {
+	if prov, err := j.getEngineProvider(candidate.Config.Exchange); err == nil {
 		eventTimestamp = prov.TimeSync.Now()
 	}
 
@@ -267,6 +273,11 @@ func NewConfiguredScanner(
 	}
 }
 
+func (s *ConfiguredScanner) getStoreSet(exchangeName string) (strategy.FundingStoreSet, bool) {
+	set, ok := s.stores[exchangeName]
+	return set, ok
+}
+
 // Scan loops over configured symbols and verifies them within the 60-second settlement window.
 func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	var opportunities []ScanOpportunity
@@ -286,7 +297,7 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 			continue
 		}
 
-		storeSet, ok := s.stores[symCfg.Exchange]
+		storeSet, ok := s.getStoreSet(symCfg.Exchange)
 		if !ok {
 			s.log.WarnContext(ctx, "Store set not found for exchange", slog.String("exchange", symCfg.Exchange))
 			continue
@@ -444,6 +455,14 @@ func NewScheduleScanner(
 	}
 }
 
+func (s *ScheduleScanner) resolveExchangeReversionConfig(exchangeName string) (config.ExchangeReversionConfig, bool) {
+	if s.cfg == nil || s.cfg.Reversion == nil || s.cfg.Reversion.Exchanges == nil {
+		return config.ExchangeReversionConfig{}, false
+	}
+	cfg, ok := s.cfg.Reversion.Exchanges[exchangeName]
+	return cfg, ok
+}
+
 // Scan queries tickers, filters by volume, fetches funding rates, and builds candidate opportunities.
 func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	var opportunities []ScanOpportunity
@@ -456,7 +475,7 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	}
 
 	minVol := s.cfg.Reversion.Default.MinVol24USD
-	if specific, exists := s.cfg.Reversion.Exchanges[s.exchange]; exists {
+	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
 		if specific.MinVol24USD > 0 {
 			minVol = specific.MinVol24USD
 		}
@@ -526,7 +545,7 @@ func (s *ScheduleScanner) selectBestOpportunities(opportunities []ScanOpportunit
 	var exchConfig config.ExchangeReversionConfig
 	if s.cfg.Reversion != nil {
 		exchConfig = s.cfg.Reversion.Default
-		if specific, exists := s.cfg.Reversion.Exchanges[s.exchange]; exists {
+		if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
 			config.MergeExchangeReversionConfig(&exchConfig, specific)
 		}
 	}
@@ -540,7 +559,7 @@ func (s *ScheduleScanner) selectBestOpportunities(opportunities []ScanOpportunit
 	if totalMarginUSD <= 0 {
 		for i := range s.cfg.Symbols {
 			sym := &s.cfg.Symbols[i]
-			if strings.EqualFold(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
+			if matchExchangeName(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
 				totalMarginUSD = sym.MarginUSDT
 				break
 			}
@@ -605,7 +624,7 @@ func (s *ScheduleScanner) processResult(
 	// Resolve MarginUSDT dynamically: try to find a static symbol configuration for the same exchange first
 	for i := range s.cfg.Symbols {
 		sym := &s.cfg.Symbols[i]
-		if strings.EqualFold(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
+		if matchExchangeName(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
 			symCfg.MarginUSDT = sym.MarginUSDT
 			break
 		}

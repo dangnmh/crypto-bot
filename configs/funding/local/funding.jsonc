@@ -2,12 +2,18 @@
   // ── Per-Symbol configs ──
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
-  // {
-  //   "symbol": "SIREN_USDT",
-  //   "marginUSDT": 3,
-  //   "exchange": "mexc",
-  //   "simulateSettle": "2026-06-18T22:10:00.000+07:00"
-  // },
+  {
+    "symbol": "KAITO_USDT",
+    "marginUSDT": 3,
+    "exchange": "mexc_futures",
+    "simulateSettle": "2026-08-09T23:05:00.000+07:00"
+  },
+  {
+    "symbol": "GUA-SWAP-USDT",
+    "marginUSDT": 3,
+    "exchange": "toobit_futures",
+    "simulateSettle": "2026-08-09T23:05:00.000+07:00"
+  },
   // {
   //   "symbol": "PRLUSDT",
   //   "marginUSDT": 3,
@@ -37,12 +43,6 @@
   //   "marginUSDT": 3,
   //   "exchange": "gate",
   //   "simulateSettle": "2026-06-18T22:30:00.000+07:00"
-  // },
-  // {
-  //   "symbol": "0G-SWAP-USDT",
-  //   "marginUSDT": 3,
-  //   "exchange": "toobit",
-  //   "simulateSettle": "2026-06-25T17:50:00.000+07:00"
   // },
   // {
   //   "symbol": "PORTALUSDT",
@@ -98,10 +98,10 @@
   //     "exchange": "hotcoin",
   //     "simulateSettle": "2026-07-06T20:35:00.000+07:00"
   //   },
-  {
-    "symbol": "XCN-USDT-SWAP",
-    "marginUSDT": 3,
-    "exchange": "deepcoin",
-    "simulateSettle": "2026-07-07T17:50:00.000+07:00"
-  },
+  // {
+  //   "symbol": "XCN-USDT-SWAP",
+  //   "marginUSDT": 3,
+  //   "exchange": "deepcoin_futures",
+  //   "simulateSettle": "2026-07-07T17:50:00.000+07:00"
+  // }
 ]

@@ -155,7 +155,22 @@ func (c *Config) validate() error {
 }
 
 func (c *Config) exchangeConfigured(name string) bool {
-	return c.System.ExchangeConfig[name].Enable
+	name = strings.ToLower(strings.TrimSpace(name))
+	if cfg, ok := c.System.ExchangeConfig[name]; ok {
+		return cfg.IsEnabled()
+	}
+	baseName := strings.TrimSuffix(strings.TrimSuffix(name, "_spot"), "_futures")
+	apiCfg, ok := c.System.ExchangeConfig[baseName]
+	if !ok {
+		return false
+	}
+	if strings.HasSuffix(name, "_futures") {
+		return apiCfg.Future != nil && apiCfg.Future.Enable
+	}
+	if strings.HasSuffix(name, "_spot") {
+		return apiCfg.Spot != nil && apiCfg.Spot.Enable
+	}
+	return apiCfg.IsEnabled()
 }
 
 func newValidator() *validator.Validate {

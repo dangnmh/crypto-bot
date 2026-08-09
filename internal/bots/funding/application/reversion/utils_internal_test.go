@@ -305,11 +305,16 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 			HoldFee:          -0.01,
 		}, BaseReversionEvent{ReqID: "test-req-fallback", Symbol: "BTC_USDT", Topic: TopicReversionPositionWatchReady, OrderID: "ord_123"})
 
+		var closedEvt PositionClosedEvent
 		select {
-		case <-ch:
-			t.Fatal("expected no closed event to be published on enrichment failure")
-		case <-time.After(10 * time.Millisecond):
-			// Success: no event published when enrichment fails
+		case msg := <-ch:
+			require.NoError(t, json.Unmarshal(msg.Payload, &closedEvt))
+			msg.Ack()
+			assert.Equal(t, 100.0, closedEvt.EntryPrice)
+			assert.Equal(t, 101.0, closedEvt.ClosePrice)
+			assert.Equal(t, 1.0, closedEvt.CloseVolContract)
+		case <-time.After(2 * time.Second):
+			t.Fatal("timeout waiting for fallback closed event")
 		}
 	})
 }
@@ -933,8 +938,9 @@ func TestStatelessRunnerTimeoutGuardNoFillAndMissingConfig(t *testing.T) {
 				PostSettleTimeout: 10_000_000,
 			},
 		}}},
-		bus: bus,
-		log: reversionTestLogger(),
+		bus:   bus,
+		log:   reversionTestLogger(),
+		cache: cache.New(5*time.Minute, 10*time.Minute),
 	}
 
 	cand := reversionTestCandidate()

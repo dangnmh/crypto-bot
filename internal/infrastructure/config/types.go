@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -20,6 +21,8 @@ type WebSocketConfig struct {
 	PublicURL         string `json:"publicURL"`
 	MarketURL         string `json:"marketURL"`
 	PrivateURL        string `json:"privateURL"`
+	SpotWSURL         string `json:"spotWSURL,omitempty"`
+	FutureWSURL       string `json:"futureWSURL,omitempty"`
 	MaxPairsPerWSConn int    `json:"maxPairsPerWSConn"`
 }
 
@@ -44,19 +47,61 @@ func (c WebSocketConfig) PrivateEndpoint() string {
 	return c.WSURL
 }
 
-type RESTConfig struct {
+type APIEndpointConfig struct {
 	BaseURL string `json:"baseURL"`
 }
 
+type EndpointConfig struct {
+	Enable    bool              `json:"enable"`
+	BaseURL   string            `json:"baseURL"`
+	API       APIEndpointConfig `json:"api"`
+	WebSocket WebSocketConfig   `json:"websocket"`
+}
+
+func (e *EndpointConfig) UnmarshalJSON(data []byte) error {
+	type Alias EndpointConfig
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if e.BaseURL == "" && e.API.BaseURL != "" {
+		e.BaseURL = e.API.BaseURL
+	}
+	return nil
+}
+
+type RESTConfig = EndpointConfig
+
 // APIConfig holds API connection parameters.
 type APIConfig struct {
-	Enable        bool            `json:"enable"`
-	Future        RESTConfig      `json:"future"`
-	WebSocket     WebSocketConfig `json:"websocket"`
+	Spot          *EndpointConfig `json:"spot,omitempty"`
+	Future        *EndpointConfig `json:"future,omitempty"`
 	APIKey        string          `json:"-"`
 	APISecret     string          `json:"-"`
 	APIPassphrase string          `json:"-"`
 	AccountType   string          `json:"accountType,omitempty"`
+}
+
+func (a APIConfig) IsEnabled() bool {
+	return (a.Spot != nil && a.Spot.Enable) || (a.Future != nil && a.Future.Enable)
+}
+
+func (a APIConfig) GetSpotEndpoint() EndpointConfig {
+	if a.Spot != nil {
+		return *a.Spot
+	}
+	return EndpointConfig{}
+}
+
+func (a APIConfig) GetFutureEndpoint() EndpointConfig {
+	if a.Future != nil {
+		return *a.Future
+	}
+	return EndpointConfig{}
 }
 
 const (

@@ -69,6 +69,18 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 		return ctx.Err()
 	}
 
+	if cachedVal, found := r.cache.Get(evt.ReqID); found {
+		if state, ok := cachedVal.(*CycleState); ok {
+			state.mu.Lock()
+			isDone := state.OrderFilled && (state.ClosePrice > 0 || state.Status == StatusCompleted || state.Status == StatusAborted) || state.Status == StatusAborted
+			state.mu.Unlock()
+			if isDone {
+				r.log.DebugContext(ctx, "Timeout guard skipping execution; cycle already completed", slog.String("req_id", evt.ReqID))
+				return nil
+			}
+		}
+	}
+
 	holdVolContract, holdVolCoin, err := r.getHoldVolume(ctx, evt.Symbol)
 	errText := ""
 	if err != nil {
@@ -88,6 +100,23 @@ func (r *StatelessRunner) waitTimeoutDeadline(ctx context.Context, evt TimeoutGu
 }
 
 func (r *StatelessRunner) handleTimeoutPositionChecked(ctx context.Context, evt TimeoutPositionCheckedEvent) error {
+	if cachedVal, found := r.cache.Get(evt.ReqID); found {
+		if state, ok := cachedVal.(*CycleState); ok {
+			state.mu.Lock()
+			isDone := state.OrderFilled && (state.ClosePrice > 0 || state.Status == StatusCompleted || state.Status == StatusAborted) || state.Status == StatusAborted
+			orderFilled := state.OrderFilled
+			state.mu.Unlock()
+			if isDone {
+				r.log.DebugContext(ctx, "Timeout position check skipping; cycle already completed", slog.String("req_id", evt.ReqID))
+				return nil
+			}
+			if orderFilled && evt.HoldVolContract <= 0 && evt.HoldVolCoin <= 0 {
+				r.log.DebugContext(ctx, "Timeout guard: position filled and already closed", slog.String("req_id", evt.ReqID))
+				return nil
+			}
+		}
+	}
+
 	if evt.Error != "" {
 		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("position query failed: "+evt.Error))
 		return nil

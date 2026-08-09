@@ -28,9 +28,11 @@ func TestEngineBuilder_WithOptionalDependenciesBuilds(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			"mexc": sysconfig.APIConfig{
-				Enable:    true,
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.example.com",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				},
 				APIKey:    "key",
 				APISecret: "secret",
 			},
@@ -44,7 +46,7 @@ func TestEngineBuilder_WithOptionalDependenciesBuilds(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 	require.NotNil(t, e)
-	assert.Len(t, e.Providers, 1)
+	assert.Contains(t, e.Providers, "mexc_futures")
 	require.NoError(t, e.Shutdown(context.Background()))
 }
 
@@ -53,9 +55,11 @@ func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			"mexc": sysconfig.APIConfig{
-				Enable:    true,
-				Future:    sysconfig.RESTConfig{BaseURL: ""},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				},
 				APIKey:    "key",
 				APISecret: "secret",
 			},
@@ -74,9 +78,11 @@ func TestEngineBuilder_MissingWSURL(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			"mexc": sysconfig.APIConfig{
-				Enable:    true,
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "", MaxPairsPerWSConn: 10},
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.example.com",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "", MaxPairsPerWSConn: 10},
+				},
 				APIKey:    "key",
 				APISecret: "secret",
 			},
@@ -95,9 +101,11 @@ func TestEngineBuilder_InvalidMaxPairs(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			"mexc": sysconfig.APIConfig{
-				Enable:    true,
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.example.com",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
+				},
 				APIKey:    "key",
 				APISecret: "secret",
 			},
@@ -116,9 +124,11 @@ func TestEngineBuilder_MissingAPIKey(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			"mexc": sysconfig.APIConfig{
-				Enable:    true,
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.example.com",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				},
 				APIKey:    "",
 				APISecret: "secret",
 			},
@@ -137,9 +147,11 @@ func TestEngineBuilder_MissingAPISecret(t *testing.T) {
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
 			"mexc": sysconfig.APIConfig{
-				Enable:    true,
-				Future:    sysconfig.RESTConfig{BaseURL: "https://api.example.com"},
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.example.com",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				},
 				APIKey:    "key",
 				APISecret: "",
 			},

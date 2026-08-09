@@ -480,9 +480,14 @@ func loadConfigForExchange(exchangeName string) (*sysconfig.SystemConfig, error)
 	}
 	cfg.ExchangeConfig = exchCfg.ExchangeConfig
 
-	// Force enable the target exchange so InitializeBase processes its credentials
+	// Force enable the target exchange endpoints so InitializeBase processes its credentials
 	apiCfg := cfg.ExchangeConfig[exchangeName]
-	apiCfg.Enable = true
+	if apiCfg.Spot != nil {
+		apiCfg.Spot.Enable = true
+	}
+	if apiCfg.Future != nil {
+		apiCfg.Future.Enable = true
+	}
 	cfg.ExchangeConfig[exchangeName] = apiCfg
 
 	if err := sysconfig.InitializeBase(cfg); err != nil {

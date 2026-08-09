@@ -16,9 +16,10 @@ func ExternalUniqueID(symbol string, settleTime time.Time, exchange string) stri
 	loc := time.FixedZone("GMT+7", 7*60*60)
 	settleLocal := settleTime.In(loc)
 	settleStr := settleLocal.Format("02012006150405")
+	exchange = strings.ReplaceAll(exchange, "_", "")
 
-	// 3. Concatenate: settleStr + exchange + symFiltered
-	rawID := settleStr + exchange + symFiltered
+	// 3. Concatenate: settleStr + symFiltered + exchange
+	rawID := settleStr + symFiltered + exchange
 
 	// 4. Upper case the whole string
 	return strings.ToUpper(rawID)
@@ -30,11 +31,11 @@ func ExternalOrderID(symbol string, settleTime time.Time, exchange string) strin
 	maxLen := 32
 
 	switch {
-	case strings.EqualFold(exchange, "gate"):
+	case strings.Contains(strings.ToLower(exchange), "gate"):
 		maxLen = 28
-	case strings.EqualFold(exchange, "orangex"):
+	case strings.Contains(strings.ToLower(exchange), "orangex"):
 		maxLen = 30
-	case strings.EqualFold(exchange, "deepcoin"):
+	case strings.Contains(strings.ToLower(exchange), "deepcoin"):
 		maxLen = 20
 	}
 

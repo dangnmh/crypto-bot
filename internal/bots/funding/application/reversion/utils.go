@@ -396,6 +396,86 @@ func normalizeVolume(volContract, volCoin, contractSize float64) (float64, float
 	return volContract, volCoin
 }
 
+func (r *StatelessRunner) isCycleOpened(reqID string) bool {
+	cachedVal, found := r.cache.Get(reqID)
+	if !found {
+		return false
+	}
+	state, ok := cachedVal.(*CycleState)
+	if !ok {
+		return false
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.OrderFilled || state.FillPrice > 0
+}
+
+func (r *StatelessRunner) markCycleFilled(reqID string, fillPrice float64) {
+	if cachedVal, found := r.cache.Get(reqID); found {
+		if state, ok := cachedVal.(*CycleState); ok {
+			state.mu.Lock()
+			state.OrderFilled = true
+			if fillPrice > 0 {
+				state.FillPrice = fillPrice
+			}
+			state.mu.Unlock()
+		}
+	}
+}
+
+func (r *StatelessRunner) handleOpenPositionUpdate(
+	ctx context.Context,
+	pos exchange.PersonalPositionUpdate,
+	prev BaseReversionEvent,
+	fillPrice float64,
+	side, closeSide shared.Side,
+	holdVolContract, holdVolCoin float64,
+) {
+	r.markCycleFilled(prev.ReqID, fillPrice)
+
+	base := nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now())
+	if base.OrderID == "" {
+		if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
+			base.OrderID = resolved
+		}
+	}
+	evt := OrderFilledEvent{
+		BaseReversionEvent: base,
+		Side:               side,
+		CloseSide:          closeSide,
+		FillPrice:          fillPrice,
+		FillVolContract:    holdVolContract,
+		FillVolCoin:        holdVolCoin,
+		VolumeUSDT:         fillPrice * holdVolCoin,
+	}
+	go func() {
+		_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
+	}()
+}
+
+func (r *StatelessRunner) handleClosedPositionUpdate(
+	ctx context.Context,
+	pos exchange.PersonalPositionUpdate,
+	prev BaseReversionEvent,
+	fillPrice float64,
+	side shared.Side,
+	contractSize float64,
+) {
+	if !r.isCycleOpened(prev.ReqID) && pos.CloseProfitLoss == 0 && pos.OpenAvgPrice == 0 {
+		r.log.DebugContext(ctx, "Ignoring 0 volume position update for unopened position", slog.String("req_id", prev.ReqID), slog.String("symbol", pos.Symbol))
+		return
+	}
+
+	evt, err := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
+	if err != nil {
+		r.log.ErrorContext(ctx, "Failed to build closed event", slog.Any("pos", pos), slog.Any("error", err))
+		return
+	}
+	go func() {
+		_ = r.publishEvent(ctx, TopicReversionPositionClosed, evt)
+	}()
+}
+
 func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
 	if _, found := r.cache.Get(prev.ReqID); !found {
 		r.log.DebugContext(ctx, "Ignoring position update; cycle already cleaned up or inactive", slog.String("req_id", prev.ReqID))
@@ -421,33 +501,9 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 	holdVolContract, holdVolCoin := normalizeVolume(pos.HoldVolContract, pos.HoldVolCoin, contractSize)
 
 	if holdVolContract > 0 || holdVolCoin > 0 {
-		base := nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now())
-		if base.OrderID == "" {
-			if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
-				base.OrderID = resolved
-			}
-		}
-		evt := OrderFilledEvent{
-			BaseReversionEvent: base,
-			Side:               side,
-			CloseSide:          closeSide,
-			FillPrice:          fillPrice,
-			FillVolContract:    holdVolContract,
-			FillVolCoin:        holdVolCoin,
-			VolumeUSDT:         fillPrice * holdVolCoin,
-		}
-		go func() {
-			_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
-		}()
+		r.handleOpenPositionUpdate(ctx, pos, prev, fillPrice, side, closeSide, holdVolContract, holdVolCoin)
 	} else {
-		evt, err := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
-		if err != nil {
-			r.log.ErrorContext(ctx, "Failed to build closed event", slog.Any("pos", pos), slog.Any("error", err))
-			return
-		}
-		go func() {
-			_ = r.publishEvent(ctx, TopicReversionPositionClosed, evt)
-		}()
+		r.handleClosedPositionUpdate(ctx, pos, prev, fillPrice, side, contractSize)
 	}
 }
 
@@ -494,7 +550,7 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 	}
 
 	if err := r.enrichFromClosedPnLProvider(ctx, pos.Symbol, prev, contractSize, &evt); err != nil {
-		return nil, err
+		r.log.WarnContext(ctx, "ClosedPnLProvider enrichment failed; using position update metrics", slog.String("symbol", pos.Symbol), slog.Any("error", err))
 	}
 
 	if evt.OrderID == "" {

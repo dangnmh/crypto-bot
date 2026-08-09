@@ -1,202 +1,210 @@
 {
   "exchange": {
     "mexc": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.mexc.com"
-      },
-      "websocket": {
-        "wsURL": "wss://contract.mexc.com/edge"
+        "enable": true,
+        "baseURL": "https://api.mexc.com",
+        "websocket": {
+          "wsURL": "wss://contract.mexc.com/edge",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "bybit": {
-      "enable": true,
+      "accountType": "unified",
       "future": {
-        "baseURL": "https://api.bybit.com"
-      },
-      "websocket": {
-        "publicURL": "wss://stream.bybit.com/v5/public/linear",
-        "privateURL": "wss://stream.bybit.com/v5/private",
-        "maxPairsPerWSConn": 30
-      },
-      "accountType": "unified"
+        "enable": true,
+        "baseURL": "https://api.bybit.com",
+        "websocket": {
+          "publicURL": "wss://stream.bybit.com/v5/public/linear",
+          "privateURL": "wss://stream.bybit.com/v5/private",
+          "maxPairsPerWSConn": 30
+        }
+      }
     },
     "binance": {
-      "enable": true,
       "future": {
-        "baseURL": "https://fapi.binance.com"
-      },
-      "websocket": {
-        "wsURL": "wss://fstream.binance.com/ws",
-        "publicURL": "wss://fstream.binance.com/public/ws",
-        "marketURL": "wss://fstream.binance.com/market/ws",
-        "privateURL": "wss://fstream.binance.com/private/ws"
+        "enable": true,
+        "baseURL": "https://fapi.binance.com",
+        "websocket": {
+          "wsURL": "wss://fstream.binance.com/ws",
+          "publicURL": "wss://fstream.binance.com/public/ws",
+          "marketURL": "wss://fstream.binance.com/market/ws",
+          "privateURL": "wss://fstream.binance.com/private/ws",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "kucoin": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api-futures.kucoin.com"
-      },
-      "websocket": {
-        "publicURL": "wss://ws-api-futures.kucoin.com",
-        "privateURL": "wss://ws-api-futures.kucoin.com"
+        "enable": true,
+        "baseURL": "https://api-futures.kucoin.com",
+        "websocket": {
+          "publicURL": "wss://ws-api-futures.kucoin.com",
+          "privateURL": "wss://ws-api-futures.kucoin.com",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "okx": {
-      "enable": true,
       "future": {
-        "baseURL": "https://openapi.okx.com"
-      },
-      "websocket": {
-        "privateURL": "wss://ws.okx.com:8443/ws/v5/private",
-        "publicURL": "wss://ws.okx.com:8443/ws/v5/public"
+        "enable": true,
+        "baseURL": "https://openapi.okx.com",
+        "websocket": {
+          "publicURL": "wss://ws.okx.com:8443/ws/v5/public",
+          "privateURL": "wss://ws.okx.com:8443/ws/v5/private",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "gate": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.gateio.ws/api/v4"
-      },
-      "websocket": {
-        "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt"
+        "enable": true,
+        "baseURL": "https://api.gateio.ws/api/v4",
+        "websocket": {
+          "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "deepcoin": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.deepcoin.com"
-      },
-      "websocket": {
-        "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
-        "privateURL": "wss://stream.deepcoin.com/v1/private"
+        "enable": true,
+        "baseURL": "https://api.deepcoin.com",
+        "websocket": {
+          "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
+          "privateURL": "wss://stream.deepcoin.com/v1/private",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "hyperliquid": {
-      "enable": false,
       "future": {
-        "baseURL": "https://api.hyperliquid.xyz"
-      },
-      "websocket": {
-        "wsURL": "wss://api.hyperliquid.xyz/ws"
+        "enable": false,
+        "baseURL": "https://api.hyperliquid.xyz",
+        "websocket": {
+          "wsURL": "wss://api.hyperliquid.xyz/ws",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "bitget": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.bitget.com"
-      },
-      "websocket": {
-        "publicURL": "wss://ws.bitget.com/v2/ws/public",
-        "privateURL": "wss://ws.bitget.com/v2/ws/private"
+        "enable": true,
+        "baseURL": "https://api.bitget.com",
+        "websocket": {
+          "publicURL": "wss://ws.bitget.com/v2/ws/public",
+          "privateURL": "wss://ws.bitget.com/v2/ws/private",
+          "maxPairsPerWSConn": 30
+        }
       }
     },
     "bingx": {
-      "enable": false,
       "future": {
-        "baseURL": "https://open-api.bingx.com"
-      },
-      "websocket": {
-        "wsURL": "wss://open-api-ws.bingx.com/market"
+        "enable": false,
+        "baseURL": "https://open-api.bingx.com",
+        "websocket": {
+          "wsURL": "wss://open-api-ws.bingx.com/market"
+        }
       }
     },
     "toobit": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.toobit.com"
-      },
-      "websocket": {
-        "publicURL": "wss://stream.toobit.com/quote/ws/v1",
-        "privateURL": "wss://stream.toobit.com",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://api.toobit.com",
+        "websocket": {
+          "publicURL": "wss://stream.toobit.com/quote/ws/v1",
+          "privateURL": "wss://stream.toobit.com",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "bitmart": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api-cloud-v2.bitmart.com"
-      },
-      "websocket": {
-        "publicURL": "wss://openapi-ws-v2.bitmart.com/api?protocol=1.1",
-        "privateURL": "wss://openapi-ws-v2.bitmart.com/user?protocol=1.1",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://api-cloud-v2.bitmart.com",
+        "websocket": {
+          "publicURL": "wss://openapi-ws-v2.bitmart.com/api?protocol=1.1",
+          "privateURL": "wss://openapi-ws-v2.bitmart.com/user?protocol=1.1",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "weex": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api-contract.weex.com"
-      },
-      "websocket": {
-        "publicURL": "wss://ws-contract.weex.com/v3/ws/public",
-        "privateURL": "wss://ws-contract.weex.com/v3/ws/private",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://api-contract.weex.com",
+        "websocket": {
+          "publicURL": "wss://ws-contract.weex.com/v3/ws/public",
+          "privateURL": "wss://ws-contract.weex.com/v3/ws/private",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "bitunix": {
-      "enable": true,
       "future": {
-        "baseURL": "https://fapi.bitunix.com"
-      },
-      "websocket": {
-        "publicURL": "wss://fapi.bitunix.com/public/",
-        "privateURL": "wss://fapi.bitunix.com/private/",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://fapi.bitunix.com",
+        "websocket": {
+          "publicURL": "wss://fapi.bitunix.com/public/",
+          "privateURL": "wss://fapi.bitunix.com/private/",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "xt": {
-      "enable": true,
       "future": {
-        "baseURL": "https://fapi.xt.com"
-      },
-      "websocket": {
-        "publicURL": "wss://fstream.xt.com/ws/market",
-        "privateURL": "wss://fstream.xt.com/ws/user",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://fapi.xt.com",
+        "websocket": {
+          "publicURL": "wss://fstream.xt.com/ws/market",
+          "privateURL": "wss://fstream.xt.com/ws/user",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "orangex": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.orangex.com/api/v1"
-      },
-      "websocket": {
-        "publicURL": "wss://api.orangex.com/ws/api/v1",
-        "privateURL": "wss://api.orangex.com/ws/api/v1",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://api.orangex.com/api/v1",
+        "websocket": {
+          "publicURL": "wss://api.orangex.com/ws/api/v1",
+          "privateURL": "wss://api.orangex.com/ws/api/v1",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "aster": {
-      "enable": true,
       "future": {
-        "baseURL": "https://fapi.asterdex.com"
-      },
-      "websocket": {
-        "publicURL": "wss://fstream.asterdex.com/ws",
-        "privateURL": "wss://fstream.asterdex.com/ws",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://fapi.asterdex.com",
+        "websocket": {
+          "publicURL": "wss://fstream.asterdex.com/ws",
+          "privateURL": "wss://fstream.asterdex.com/ws",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "pionex": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api.pionex.com"
-      },
-      "websocket": {
-        "publicURL": "wss://ws.pionex.com/wsPub",
-        "privateURL": "wss://ws.pionex.com/wsUA",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://api.pionex.com",
+        "websocket": {
+          "publicURL": "wss://ws.pionex.com/wsPub",
+          "privateURL": "wss://ws.pionex.com/wsUA",
+          "maxPairsPerWSConn": 20
+        }
       }
     },
     "hotcoin": {
-      "enable": true,
       "future": {
-        "baseURL": "https://api-ct.hotcoin.fit"
-      },
-      "websocket": {
-        "publicURL": "wss://wss-ct.hotcoin.fit/",
-        "privateURL": "wss://wss-ct.hotcoin.fit/",
-        "maxPairsPerWSConn": 20
+        "enable": true,
+        "baseURL": "https://api-ct.hotcoin.fit",
+        "websocket": {
+          "publicURL": "wss://wss-ct.hotcoin.fit/",
+          "privateURL": "wss://wss-ct.hotcoin.fit/",
+          "maxPairsPerWSConn": 20
+        }
       }
     }
   }

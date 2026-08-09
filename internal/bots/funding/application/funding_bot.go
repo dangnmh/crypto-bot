@@ -77,7 +77,8 @@ func NewFundingBot(
 			if len(symbols) > 0 {
 				opts = append(opts, app.WithFunding(prov.Client, fundingSyncDuration, symbols))
 			}
-			storesMap[name] = app.NewCentralStore(opts...)
+			storeSet := app.NewCentralStore(opts...)
+			storesMap[name] = storeSet
 		}
 	}
 

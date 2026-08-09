@@ -37,14 +37,14 @@
     "enable": false
   },
   "scanners": {
-    "configured": true,
+    "configured": false,
     "schedule": {
-      "mexc": false,
-      "xt": false
+      "mexc_futures": true,
+      "toobit_futures": true
     }
   },
   "exchanges": {
-    "mexc": {
+    "mexc_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
@@ -52,113 +52,113 @@
       // "minVol24USD": 1000000,
       // "minFundingRate": 0.3
     },
-    "bybit": {
+    "toobit_futures": {
+      "takeProfitPct": 1,
+      "stopLossPct": 2,
+      "bufferTime": "30ms",
+      "postSettleTimeout": "3s"
+    },
+    "bybit_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-200ms",
       "postSettleTimeout": "300s"
     },
-    "binance": {
+    "binance_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-250ms",
       "postSettleTimeout": "300s"
     },
-    "kucoin": {
+    "kucoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-350ms",
       "postSettleTimeout": "300s"
     },
-    "okx": {
+    "okx_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "0ms",
       "postSettleTimeout": "300s"
     },
-    "gate": {
+    "gate_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "-50ms",
       "postSettleTimeout": "300s"
     },
-    "deepcoin": {
+    "deepcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "0ms",
       "postSettleTimeout": "300s"
     },
-    "hyperliquid": {
+    "hyperliquid_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "bitget": {
+    "bitget_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "bingx": {
+    "bingx_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "toobit": {
+    "bitmart_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "bitmart": {
+    "weex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "weex": {
+    "bitunix_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "bitunix": {
+    "xt_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "xt": {
+    "orangex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "orangex": {
+    "aster_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "aster": {
+    "pionex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
     },
-    "pionex": {
+    "hotcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "30ms",
       "postSettleTimeout": "300s"
-    },
-    "hotcoin": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "300s",
     }
   }
   // Reversion exit is intentionally static: IOC entry with server-side TP/SL.

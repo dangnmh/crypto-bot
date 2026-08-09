@@ -4,6 +4,7 @@
   // ══════════════════════════════════════════════════════════════
   // Các cặp symbol được liệt kê ở đây sẽ bị loại bỏ hoàn toàn khỏi bot.
   // Định dạng chuẩn: "SYMBOL_BASE_QUOTE" hoặc "SYMBOL_BASEUSDT" (tùy sàn).
+
   // 1. common: Áp dụng cho TẤT CẢ các sàn
   "common": [
     // Top 10 coins with stable funding rates
@@ -58,23 +59,40 @@
     "TRX-USDT-SWAP",
     "TRX"
   ],
+
   // 2. Blacklist riêng biệt theo từng sàn giao dịch
-  "mexc": [],
-  "gate": [],
-  "deepcoin": [],
-  "bybit": [],
-  "binance": [],
-  "okx": [],
-  "kucoin": [],
-  "toobit": [
+  "mexc_spot": [],
+  "mexc_futures": [],
+  "gate_spot": [],
+  "gate_futures": [],
+  "deepcoin_spot": [],
+  "deepcoin_futures": [],
+  "bybit_spot": [],
+  "bybit_futures": [],
+  "binance_spot": [],
+  "binance_futures": [],
+  "okx_spot": [],
+  "okx_futures": [],
+  "kucoin_spot": [],
+  "kucoin_futures": [],
+  "toobit_spot": [],
+  "toobit_futures": [
     "DEXE-SWAP-USDT"
   ],
-  "bitmart": [],
-  "weex": [],
-  "bitunix": [],
-  "xt": [],
-  "orangex": [],
-  "aster": [],
-  "bitget": [],
-  "hotcoin": []
+  "bitmart_spot": [],
+  "bitmart_futures": [],
+  "weex_spot": [],
+  "weex_futures": [],
+  "bitunix_spot": [],
+  "bitunix_futures": [],
+  "xt_spot": [],
+  "xt_futures": [],
+  "orangex_spot": [],
+  "orangex_futures": [],
+  "aster_spot": [],
+  "aster_futures": [],
+  "bitget_spot": [],
+  "bitget_futures": [],
+  "hotcoin_spot": [],
+  "hotcoin_futures": []
 }

@@ -82,7 +82,7 @@ func InitializeBase(c *SystemConfig) error {
 // HasEnabledExchange checks if at least one exchange configuration is enabled.
 func (c *SystemConfig) HasEnabledExchange() bool {
 	for name := range c.ExchangeConfig {
-		if c.ExchangeConfig[name].Enable {
+		if c.ExchangeConfig[name].IsEnabled() {
 			return true
 		}
 	}
@@ -92,7 +92,7 @@ func (c *SystemConfig) HasEnabledExchange() bool {
 func fallbackExchangeSecrets(c *SystemConfig, loader bitwardenSecretLoader) {
 	for _, exch := range SupportedExchanges {
 		apiCfg := c.ExchangeConfig[exch]
-		if apiCfg.Enable {
+		if apiCfg.IsEnabled() {
 			fallbackSingleExchangeSecret(exch, &apiCfg, loader)
 			c.ExchangeConfig[exch] = apiCfg
 		}
@@ -159,7 +159,7 @@ func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
 }
 
 func exchangeCredentialsComplete(name string, c APIConfig) bool {
-	if !c.Enable {
+	if !c.IsEnabled() {
 		return true
 	}
 	spec := ExchangeSpecs[name]
@@ -193,32 +193,61 @@ func ValidateExchangeConfig(m ExchangeConfig) error {
 		if !supported {
 			return fmt.Errorf("unsupported exchange configured: %s", name)
 		}
-		if !cfg.Enable {
+		if !cfg.IsEnabled() {
 			continue
 		}
-		if spec.RequiresPassphrase && cfg.APIPassphrase == "" {
-			return fmt.Errorf("%s: API passphrase is required", name)
-		}
-		if spec.Validate != nil {
-			if err := spec.Validate(cfg); err != nil {
-				return fmt.Errorf("%s: %w", name, err)
-			}
-		}
-		if !isValidURL(cfg.Future.BaseURL) {
-			return fmt.Errorf("%s: invalid future base URL: %s", name, cfg.Future.BaseURL)
-		}
-		if !isValidURL(cfg.WebSocket.PublicEndpoint()) || !isValidURL(cfg.WebSocket.PrivateEndpoint()) {
-			return fmt.Errorf("%s: invalid websocket endpoint URL", name)
-		}
-		if cfg.APIKey == "" || cfg.APISecret == "" {
-			return fmt.Errorf("%s: API key and secret are required", name)
+		if err := validateSingleExchangeConfig(name, cfg, spec); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+func validateSingleExchangeConfig(name string, cfg APIConfig, spec ExchangeSpec) error {
+	if spec.RequiresPassphrase && cfg.APIPassphrase == "" {
+		return fmt.Errorf("%s: API passphrase is required", name)
+	}
+	if spec.Validate != nil {
+		if err := spec.Validate(cfg); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+
+	futureEP := cfg.GetFutureEndpoint()
+	spotEP := cfg.GetSpotEndpoint()
+
+	if cfg.Future != nil && (cfg.Future.Enable || cfg.Spot == nil) {
+		if err := validateEndpoint(name, futureEP); err != nil {
+			return err
+		}
+	}
+	if cfg.Spot != nil && (cfg.Spot.Enable || cfg.Future == nil) {
+		if err := validateEndpoint(name, spotEP); err != nil {
+			return err
+		}
+	}
+	if cfg.APIKey == "" || cfg.APISecret == "" {
+		return fmt.Errorf("%s: API key and secret are required", name)
+	}
+	return nil
+}
+
+func validateEndpoint(name string, ep EndpointConfig) error {
+	if !isValidURL(ep.BaseURL) {
+		return fmt.Errorf("%s: invalid base URL: %s", name, ep.BaseURL)
+	}
+	if !isValidURL(ep.WebSocket.PublicEndpoint()) || !isValidURL(ep.WebSocket.PrivateEndpoint()) {
+		return fmt.Errorf("%s: invalid websocket endpoint URL", name)
+	}
+	return nil
+}
+
 func IsSupportedExchange(name string) bool {
-	return slices.Contains(SupportedExchanges, name)
+	if slices.Contains(SupportedExchanges, name) {
+		return true
+	}
+	baseName := strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(name), "_spot"), "_futures")
+	return slices.Contains(SupportedExchanges, baseName)
 }
 
 func isValidURL(rawURL string) bool {
@@ -250,7 +279,10 @@ func applySystemDefaults(c *SystemConfig) {
 }
 
 func applyExchangeWSDefaults(cfg *APIConfig) {
-	if cfg.Future.BaseURL != "" && cfg.WebSocket.MaxPairsPerWSConn <= 0 {
-		cfg.WebSocket.MaxPairsPerWSConn = 30
+	if cfg.Future != nil && cfg.Future.BaseURL != "" && cfg.Future.WebSocket.MaxPairsPerWSConn <= 0 {
+		cfg.Future.WebSocket.MaxPairsPerWSConn = 30
+	}
+	if cfg.Spot != nil && cfg.Spot.BaseURL != "" && cfg.Spot.WebSocket.MaxPairsPerWSConn <= 0 {
+		cfg.Spot.WebSocket.MaxPairsPerWSConn = 30
 	}
 }
