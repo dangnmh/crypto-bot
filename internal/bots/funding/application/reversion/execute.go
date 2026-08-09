@@ -113,9 +113,7 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 	})
 
 	// Database persistence subscriber
-	if runner.reportRepo != nil {
-		subscribeTopic(ctx, bus, runner.log, TopicReversionTradeReport, runner.handleReportPersistence)
-	}
+	subscribeTopic(ctx, bus, runner.log, TopicReversionTradeReport, runner.handleReportPersistence)
 }
 
 func (r *StatelessRunner) handleReportPersistence(ctx context.Context, msg *message.Message) error {

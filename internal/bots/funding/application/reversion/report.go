@@ -112,10 +112,6 @@ var _cacheMu sync.Mutex
 
 // recordEventState updates the in-memory cache when new events are emitted.
 func (r *StatelessRunner) recordEventState(topic string, rawEvt any) {
-	if r.cache == nil {
-		return
-	}
-
 	revEvt, ok := rawEvt.(ReversionEvent)
 	if !ok {
 		return
@@ -175,7 +171,7 @@ func (r *StatelessRunner) recordStage1State(state *CycleState, val any) bool {
 		state.CandidateFoundTime = evt.Timestamp
 		state.MarginUSDT = evt.Candidate.Config.MarginUSDT
 		state.Leverage = evt.Candidate.Config.Leverage
-		state.Vol24hUSDT = evt.Candidate.AmountUSDT24
+		state.Vol24hUSDT = evt.Candidate.Vol24USDT
 		return true
 	case ArmMarketReadyEvent:
 		state.SettleTime = evt.SettleTime

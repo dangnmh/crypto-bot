@@ -205,13 +205,14 @@ func providePriceTickRepository(db *gorm.DB) domain.FundingPriceTickRepository {
 
 func providePriceTrackJob(
 	reportRepo domain.SymbolFundingReportRepository,
+	cfg *fundingconfig.Config,
 	sysCfg *fundingconfig.SystemConfig,
 	engine *infraapp.Engine,
 	tickRepo domain.FundingPriceTickRepository,
 	httpClient *http.Client,
 	log *slog.Logger,
 ) *application.PriceTrackJob {
-	return application.NewPriceTrackJob(reportRepo, sysCfg, engine, tickRepo, httpClient, log)
+	return application.NewPriceTrackJob(reportRepo, cfg, sysCfg, engine, tickRepo, httpClient, log)
 }
 
 func provideStatsReportJob(

@@ -126,7 +126,7 @@ func TestPriceTrackJob_TrackPrePrices_Success(t *testing.T) {
 	}
 
 	sysCfg := &fundingconfig.SystemConfig{}
-	job := application.NewPriceTrackJob(reportRepo, sysCfg, engine, tickRepo, nil, slog.Default())
+	job := application.NewPriceTrackJob(reportRepo, nil, sysCfg, engine, tickRepo, nil, slog.Default())
 
 	job.TrackPrePrices(context.Background())
 
@@ -177,7 +177,7 @@ func TestPriceTrackJob_TrackPrePrices_Fallback(t *testing.T) {
 	}
 
 	sysCfg := &fundingconfig.SystemConfig{}
-	job := application.NewPriceTrackJob(reportRepo, sysCfg, engine, tickRepo, nil, slog.Default())
+	job := application.NewPriceTrackJob(reportRepo, nil, sysCfg, engine, tickRepo, nil, slog.Default())
 
 	job.TrackPrePrices(context.Background())
 
@@ -210,7 +210,7 @@ func TestPriceTrackJob_TrackPrePrices_UnsupportedError(t *testing.T) {
 	}
 
 	sysCfg := &fundingconfig.SystemConfig{}
-	job := application.NewPriceTrackJob(reportRepo, sysCfg, engine, tickRepo, nil, slog.Default())
+	job := application.NewPriceTrackJob(reportRepo, nil, sysCfg, engine, tickRepo, nil, slog.Default())
 
 	job.TrackPrePrices(context.Background())
 
@@ -263,10 +263,24 @@ func TestPriceTrackJob_TrackAfterPrices_Success(t *testing.T) {
 	}
 
 	sysCfg := &fundingconfig.SystemConfig{}
-	job := application.NewPriceTrackJob(reportRepo, sysCfg, engine, tickRepo, nil, slog.Default())
+	job := application.NewPriceTrackJob(reportRepo, nil, sysCfg, engine, tickRepo, nil, slog.Default())
 
 	job.TrackAfterPrices(context.Background())
 
 	assert.Equal(t, 2, len(tickRepo.savedTicks))
 	assert.True(t, reportRepo.afterFetchedUpdates[201])
+}
+
+func TestPriceTrackJob_Disabled(t *testing.T) {
+	t.Parallel()
+	cfg := &fundingconfig.Config{
+		Reversion: &fundingconfig.ReversionConfig{
+			PriceTracker: fundingconfig.PriceTrackerConfig{
+				Enabled: false,
+			},
+		},
+	}
+	job := application.NewPriceTrackJob(nil, cfg, &fundingconfig.SystemConfig{}, nil, nil, nil, slog.Default())
+	err := job.Start(context.Background(), nil)
+	assert.NoError(t, err)
 }

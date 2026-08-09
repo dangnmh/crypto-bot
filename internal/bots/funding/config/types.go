@@ -54,12 +54,22 @@ type ReversionNotifierConfig struct {
 	Enabled bool `json:"enable"`
 }
 
+type StatsReporterConfig struct {
+	Enabled bool `json:"enable"`
+}
+
+type PriceTrackerConfig struct {
+	Enabled bool `json:"enable"`
+}
+
 type ReversionConfig struct {
 	RawFundingReversionConfig
-	Sync     SyncConfig              `json:"sync"`
-	Safety   SafetyConfig            `json:"safety"`
-	Scanners ScannersConfig          `json:"scanners"`
-	Notifier ReversionNotifierConfig `json:"notifier"`
+	Sync          SyncConfig              `json:"sync"`
+	Safety        SafetyConfig            `json:"safety"`
+	Scanners      ScannersConfig          `json:"scanners"`
+	Notifier      ReversionNotifierConfig `json:"notifier"`
+	StatsReporter StatsReporterConfig     `json:"statsReporter"`
+	PriceTracker  PriceTrackerConfig      `json:"priceTracker"`
 }
 
 // FundingConfig represents the array of symbol configurations loaded from funding.jsonc.

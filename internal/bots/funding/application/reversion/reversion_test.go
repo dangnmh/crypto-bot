@@ -25,7 +25,7 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	gocache "github.com/patrickmn/go-cache"
+	cache "github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -204,11 +204,11 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice:    60000.0,
-			BestBid:      59990.0,
-			BestAsk:      60000.0,
-			Volume24:     1000,
-			AmountUSDT24: 60000000,
+			LastPrice: 60000.0,
+			BestBid:   59990.0,
+			BestAsk:   60000.0,
+			Volume24:  1000,
+			Vol24USDT: 60000000,
 		},
 	}
 
@@ -286,7 +286,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &fakeTradeReportRepository{}
-	c := gocache.New(5*time.Minute, 10*time.Minute)
+	c := cache.New(5*time.Minute, 10*time.Minute)
 	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
@@ -424,11 +424,11 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice:    60000.0,
-			BestBid:      59990.0,
-			BestAsk:      60000.0,
-			Volume24:     1000,
-			AmountUSDT24: 60000000,
+			LastPrice: 60000.0,
+			BestBid:   59990.0,
+			BestAsk:   60000.0,
+			Volume24:  1000,
+			Vol24USDT: 60000000,
 		},
 	}
 
@@ -511,7 +511,9 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	repo := &fakeTradeReportRepository{}
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{
@@ -656,11 +658,11 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice:    60000.0,
-			BestBid:      59990.0,
-			BestAsk:      60000.0,
-			Volume24:     1000,
-			AmountUSDT24: 60000000,
+			LastPrice: 60000.0,
+			BestBid:   59990.0,
+			BestAsk:   60000.0,
+			Volume24:  1000,
+			Vol24USDT: 60000000,
 		},
 	}
 
@@ -730,7 +732,9 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	repo := &fakeTradeReportRepository{}
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{
@@ -937,11 +941,11 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 			MakerFeeRate: 0.0002,
 		},
 		MarketData: domain.MarketData{
-			LastPrice:    60000.0,
-			BestBid:      59990.0,
-			BestAsk:      60000.0,
-			Volume24:     1000,
-			AmountUSDT24: 60000000,
+			LastPrice: 60000.0,
+			BestBid:   59990.0,
+			BestAsk:   60000.0,
+			Volume24:  1000,
+			Vol24USDT: 60000000,
 		},
 	}
 
@@ -1019,7 +1023,9 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
 	require.NoError(t, err)
 
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, nil, nil, slog.Default())
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	repo := &fakeTradeReportRepository{}
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
 	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
 
 	stores := map[string]strategy.FundingStoreSet{

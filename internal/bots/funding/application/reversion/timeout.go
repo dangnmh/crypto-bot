@@ -186,12 +186,10 @@ func (r *StatelessRunner) handleTimeout(ctx context.Context, evt TimeoutEvent) e
 	// to arrive first and calculate the rich PnL. In unit tests, we run synchronously to ensure
 	// determinism.
 	var isTest bool
-	if r.deps.Clock != nil {
-		typeName := fmt.Sprintf("%T", r.deps.Clock)
-		lower := strings.ToLower(typeName)
-		if strings.Contains(lower, "mock") || strings.Contains(lower, "manual") {
-			isTest = true
-		}
+	typeName := fmt.Sprintf("%T", r.deps.Clock)
+	lower := strings.ToLower(typeName)
+	if strings.Contains(lower, "mock") || strings.Contains(lower, "manual") {
+		isTest = true
 	}
 
 	if isTest {
@@ -211,21 +209,16 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 		return
 	}
 
-	reqID := evt.ReqID
-	if reqID != "" {
-		if _, loaded := completedCleanups.LoadAndDelete(reqID); loaded {
-			// Already cleaned up by WS update or another event.
-			return
-		}
+	if _, loaded := completedCleanups.LoadAndDelete(evt.ReqID); loaded {
+		// Already cleaned up by WS update or another event.
+		return
 	}
 
 	// Fallback: WS update was not received in time.
 	// Try to enrich from ClosedPnLProvider first to fetch actual prices/profits.
 	contractSize := 1.0
-	if r.deps.ContractStore != nil {
-		if cd, err := r.deps.ContractStore.GetContract(ctx, evt.Symbol); err == nil && cd.ContractSize > 0 {
-			contractSize = cd.ContractSize
-		}
+	if cd, err := r.deps.ContractStore.GetContract(ctx, evt.Symbol); err == nil && cd.ContractSize > 0 {
+		contractSize = cd.ContractSize
 	}
 
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
@@ -268,7 +261,7 @@ func (r *StatelessRunner) runFallbackCleanup(ctx context.Context, evt TimeoutEve
 		}
 	}
 
-	r.log.WarnContext(ctx, "WS position update not received within fallback window; forcing fallback cleanup", slog.String("req_id", reqID))
+	r.log.WarnContext(ctx, "WS position update not received within fallback window; forcing fallback cleanup", slog.String("req_id", evt.ReqID))
 	_ = r.publishEvent(ctx, TopicReversionPositionClosed, closeEvt)
 }
 

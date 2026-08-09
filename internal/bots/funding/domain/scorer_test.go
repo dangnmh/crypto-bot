@@ -18,7 +18,7 @@ func TestScoreAndRank(t *testing.T) {
 				},
 			},
 			MarketData: domain.MarketData{
-				AmountUSDT24: 1000000, // 10^6 -> log10=6 -> score=0.6 -> CoinScore = 1.5 * 10000 * 0.6 = 9000
+				Vol24USDT: 1000000, // 10^6 -> log10=6 -> score=0.6 -> CoinScore = 1.5 * 10000 * 0.6 = 9000
 			},
 		},
 		{
@@ -30,7 +30,7 @@ func TestScoreAndRank(t *testing.T) {
 				},
 			},
 			MarketData: domain.MarketData{
-				AmountUSDT24: 100, // 10^2 -> log10=2 -> score=0.2 -> CoinScore = 2.0 * 10000 * 0.2 = 4000
+				Vol24USDT: 100, // 10^2 -> log10=2 -> score=0.2 -> CoinScore = 2.0 * 10000 * 0.2 = 4000
 			},
 		},
 		{
@@ -42,7 +42,7 @@ func TestScoreAndRank(t *testing.T) {
 				},
 			},
 			MarketData: domain.MarketData{
-				AmountUSDT24: 10000000000, // 10^10 -> log10=10 -> score=1.0 (capped) -> CoinScore = 0.5 * 10000 * 1.0 = 5000
+				Vol24USDT: 10000000000, // 10^10 -> log10=10 -> score=1.0 (capped) -> CoinScore = 0.5 * 10000 * 1.0 = 5000
 			},
 		},
 		{
@@ -54,14 +54,14 @@ func TestScoreAndRank(t *testing.T) {
 				},
 			},
 			MarketData: domain.MarketData{
-				AmountUSDT24: 1000000,
+				Vol24USDT: 1000000,
 			},
 		},
 		{
 			TradeIntent: domain.TradeIntent{Symbol: "COIN_NIL_SAFETY"},
 			TradePlan:   domain.TradePlan{SafetyResult: nil}, // Should be filtered out
 			MarketData: domain.MarketData{
-				AmountUSDT24: 1000000,
+				Vol24USDT: 1000000,
 			},
 		},
 	}

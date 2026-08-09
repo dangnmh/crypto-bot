@@ -77,6 +77,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{Symbol: "BTC_USDT"}}},
 		bus:       bus,
 		log:       reversionTestLogger(),
+		cache:     cache.New(5*time.Minute, 10*time.Minute),
 	}
 
 	ctx := context.Background()
@@ -128,14 +129,22 @@ func TestStatelessRunnerHandlePositionUpdateFallbacks(t *testing.T) {
 	bus := eventbus.New(reversionTestLogger())
 	t.Cleanup(func() { _ = bus.Close() })
 
+	contractStore := mocks.NewMockContractReader(ctrl)
+	contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{ContractSize: 1.0}, nil).AnyTimes()
+
 	runner := &StatelessRunner{
 		deps: strategy.Deps{
-			Clock:      clock,
-			PriceStore: priceStore,
+			Clock:         clock,
+			PriceStore:    priceStore,
+			ContractStore: contractStore,
 		},
-		bus: bus,
-		log: reversionTestLogger(),
+		bus:   bus,
+		log:   reversionTestLogger(),
+		cache: cache.New(5*time.Minute, 10*time.Minute),
 	}
+
+	runner.cache.Set("test-req-1", &CycleState{ReqID: "test-req-1"}, cache.DefaultExpiration)
+	runner.cache.Set("test-req-2", &CycleState{ReqID: "test-req-2"}, cache.DefaultExpiration)
 
 	runner.handlePositionUpdate(context.Background(), exchange.PersonalPositionUpdate{
 		Symbol:       "BTC_USDT",
@@ -179,6 +188,9 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 		BestAsk:   101,
 	}, nil).AnyTimes()
 
+	contractStore := mocks.NewMockContractReader(ctrl)
+	contractStore.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(&store.ContractData{ContractSize: 1.0}, nil).AnyTimes()
+
 	mockCli := mocks.NewMockClient(ctrl)
 	mockNotifier := mocks.NewMockNotifier(ctrl)
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -211,9 +223,11 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 				Client:     client,
 				Notifier:   mockNotifier,
 			},
-			bus: bus,
-			log: reversionTestLogger(),
+			bus:   bus,
+			log:   reversionTestLogger(),
+			cache: cache.New(5*time.Minute, 10*time.Minute),
 		}
+		runner.cache.Set("test-req-enrich", &CycleState{ReqID: "test-req-enrich"}, cache.DefaultExpiration)
 
 		var closedEvt PositionClosedEvent
 		ch, err := bus.Subscribe(context.Background(), TopicReversionPositionClosed)
@@ -260,14 +274,17 @@ func TestStatelessRunnerHandlePositionUpdate_ClosedPnLEnrichment(t *testing.T) {
 
 		runner := &StatelessRunner{
 			deps: strategy.Deps{
-				Clock:      clock,
-				PriceStore: priceStore,
-				Client:     client,
-				Notifier:   mockNotifier,
+				Clock:         clock,
+				PriceStore:    priceStore,
+				ContractStore: contractStore,
+				Client:        client,
+				Notifier:      mockNotifier,
 			},
-			bus: bus,
-			log: reversionTestLogger(),
+			bus:   bus,
+			log:   reversionTestLogger(),
+			cache: cache.New(5*time.Minute, 10*time.Minute),
 		}
+		runner.cache.Set("test-req-fallback", &CycleState{ReqID: "test-req-fallback"}, cache.DefaultExpiration)
 
 		ch, err := bus.Subscribe(context.Background(), TopicReversionPositionClosed)
 		require.NoError(t, err)
@@ -318,11 +335,6 @@ func TestStatelessRunnerGetSymbolAndWaitUntilBranches(t *testing.T) {
 func TestPublishEventWithoutBusOrNotification(t *testing.T) {
 	t.Parallel()
 
-	runner := &StatelessRunner{log: reversionTestLogger()}
-	require.NoError(t, runner.publishEvent(context.Background(), TopicReversionCompleted, ReversionCompletedEvent{
-		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
-	}))
-
 	ctrl := gomock.NewController(t)
 	clock := mocks.NewMockClock(ctrl)
 	clock.EXPECT().Now().Return(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)).AnyTimes()
@@ -331,9 +343,19 @@ func TestPublishEventWithoutBusOrNotification(t *testing.T) {
 
 	bus := eventbus.New(reversionTestLogger())
 	t.Cleanup(func() { _ = bus.Close() })
-	runner.bus = bus
-	runner.deps.Clock = clock
-	runner.deps.Notifier = n
+
+	runner := &StatelessRunner{
+		deps: strategy.Deps{
+			Clock:    clock,
+			Notifier: n,
+		},
+		bus: bus,
+		log: reversionTestLogger(),
+	}
+
+	require.NoError(t, runner.publishEvent(context.Background(), TopicReversionCompleted, ReversionCompletedEvent{
+		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
+	}))
 
 	require.NoError(t, runner.publishEvent(context.Background(), TopicReversionError, ErrorEvent{
 		BaseReversionEvent: BaseReversionEvent{Symbol: "BTC_USDT"},
@@ -455,20 +477,26 @@ func TestPositionWatcherArmedBeforeIOCSubmit(t *testing.T) {
 		},
 	)
 
+	mockNotifier := mocks.NewMockNotifier(ctrl)
+	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	runner := &StatelessRunner{
 		deps: strategy.Deps{
 			Client:        client,
 			OrderNotifier: watcher,
 			Clock:         clock,
+			Notifier:      mockNotifier,
 		},
+		notifier: mockNotifier,
 		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{
 			Symbol: "BTC_USDT",
 			FundingReversion: fundingdomain.FundingReversionConfig{
 				PostSettleTimeout: 10_000_000_000,
 			},
 		}}},
-		bus: bus,
-		log: reversionTestLogger(),
+		bus:   bus,
+		log:   reversionTestLogger(),
+		cache: cache.New(5*time.Minute, 10*time.Minute),
 	}
 
 	candidate := reversionTestCandidate()
@@ -504,8 +532,9 @@ func TestWatcherFillBeforeOutcomeDoesNotDuplicateOrderFilled(t *testing.T) {
 				PostSettleTimeout: 10_000_000_000,
 			},
 		}}},
-		bus: bus,
-		log: reversionTestLogger(),
+		bus:   bus,
+		log:   reversionTestLogger(),
+		cache: cache.New(5*time.Minute, 10*time.Minute),
 	}
 
 	reqID := "trace-req-no-duplicate-fill"
@@ -568,8 +597,9 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 					Client: client,
 					Clock:  clock,
 				},
-				bus: bus,
-				log: reversionTestLogger(),
+				bus:   bus,
+				log:   reversionTestLogger(),
+				cache: cache.New(5*time.Minute, 10*time.Minute),
 			}
 
 			submitted := IOCSubmittedEvent{
@@ -577,11 +607,11 @@ func TestIOCNoPositionOutcomesAbortWithoutTimeoutGuard(t *testing.T) {
 				Candidate:          reversionTestCandidate(),
 			}
 			submitted.Candidate.FundingRate = 0.0055
-			submitted.Candidate.AmountUSDT24 = 120_000_000
+			submitted.Candidate.Vol24USDT = 120_000_000
 			outcome := runner.resolveIOCOutcome(context.Background(), submitted)
 			assert.Equal(t, tt.wantReason, outcome.Reason)
 			assert.Equal(t, submitted.Candidate.FundingRate, outcome.FundingRate)
-			assert.Equal(t, submitted.Candidate.AmountUSDT24, outcome.VolUSDT24h)
+			assert.Equal(t, submitted.Candidate.Vol24USDT, outcome.VolUSDT24h)
 			require.NoError(t, runner.handleIOCOutcomeChecked(context.Background(), outcome))
 
 			abort := timelineEvent[AbortEvent](t, bus, TopicReversionAbort)
@@ -606,8 +636,9 @@ func TestIOCPartialFillSchedulesTimeoutGuard(t *testing.T) {
 				PostSettleTimeout: 10_000_000_000,
 			},
 		}}},
-		bus: bus,
-		log: reversionTestLogger(),
+		bus:   bus,
+		log:   reversionTestLogger(),
+		cache: cache.New(5*time.Minute, 10*time.Minute),
 	}
 
 	reqID := "trace-req-partial-fill"
@@ -640,8 +671,9 @@ func TestTimeoutForceClosePathCompletes(t *testing.T) {
 			Clock:    clock,
 			Notifier: mockNotifier,
 		},
-		bus: bus,
-		log: reversionTestLogger(),
+		bus:   bus,
+		log:   reversionTestLogger(),
+		cache: cache.New(5*time.Minute, 10*time.Minute),
 	}
 
 	reqID := "trace-req-force-close"
@@ -984,11 +1016,11 @@ func reversionTestCandidate() fundingdomain.Candidate {
 			ContractSize: 0.001,
 		},
 		MarketData: fundingdomain.MarketData{
-			LastPrice:    60000,
-			BestBid:      59990,
-			BestAsk:      60000,
-			Volume24:     1000,
-			AmountUSDT24: 60_000_000,
+			LastPrice: 60000,
+			BestBid:   59990,
+			BestAsk:   60000,
+			Volume24:  1000,
+			Vol24USDT: 60_000_000,
 		},
 		TradePlan: fundingdomain.TradePlan{
 			Volume: 1,
@@ -1119,23 +1151,17 @@ func TestResolveOrderID(t *testing.T) {
 	t.Parallel()
 
 	// Scenario 1: orderID is not empty
-	runner := &StatelessRunner{}
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	runner := &StatelessRunner{cache: c}
 	res, err := runner.resolveOrderID("req-1", "order-123")
 	assert.NoError(t, err)
 	assert.Equal(t, "order-123", res)
 
-	// Scenario 2: orderID is empty, cache is nil
+	// Scenario 2: orderID is empty, request ID not found in cache
 	res, err = runner.resolveOrderID("req-2", "")
 	assert.Error(t, err)
 	assert.Empty(t, res)
 	assert.Contains(t, err.Error(), "order ID is empty and could not be resolved from cache")
-
-	// Scenario 3: orderID is empty, cache is not nil, but request ID not found in cache
-	c := cache.New(5*time.Minute, 10*time.Minute)
-	runner = &StatelessRunner{cache: c}
-	res, err = runner.resolveOrderID("req-3", "")
-	assert.Error(t, err)
-	assert.Empty(t, res)
 
 	// Scenario 4: orderID is empty, cache has state, but IOCOrderID is empty
 	state := &CycleState{

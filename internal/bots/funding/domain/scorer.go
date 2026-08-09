@@ -17,7 +17,7 @@ func ScoreAndRank(candidates []Candidate) []Candidate {
 
 		// Score = expectedProfit × liquidityScore
 		// liquidityScore: higher volume = more liquid = better
-		liquidityScore := math.Log10(c.AmountUSDT24+1) / 10.0
+		liquidityScore := math.Log10(c.Vol24USDT+1) / 10.0
 		if liquidityScore > 1 {
 			liquidityScore = 1
 		}

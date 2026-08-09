@@ -56,6 +56,13 @@ func (r *StatelessRunner) handleCleanup(ctx context.Context, msg *message.Messag
 }
 
 func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalPnLEvent {
+	var vol24h float64
+	if cachedVal, found := r.cache.Get(closeEvt.ReqID); found {
+		if cs, ok := cachedVal.(*CycleState); ok {
+			vol24h = cs.Vol24hUSDT
+		}
+	}
+
 	return FinalPnLEvent{
 		BaseReversionEvent: nextNotifyReversionBase(closeEvt.BaseReversionEvent, closeEvt.Symbol, r.deps.Clock.Now()),
 		EntryPrice:         closeEvt.EntryPrice,
@@ -68,16 +75,12 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 		Fees:               closeEvt.Fee,
 		HoldFee:            closeEvt.HoldFee,
 		HoldDurationMs:     closeEvt.HoldDurationMs,
-		Vol24hUSDT:         closeEvt.Vol24hUSDT,
+		Vol24hUSDT:         vol24h,
 	}
 }
 
 // compileAndPublishReport compiles the reversion cycle's final report, publishes it, and evicts from the cache.
 func (r *StatelessRunner) compileAndPublishReport(ctx context.Context, reqID, topic, errorMsg string) {
-	if r.cache == nil || reqID == "" {
-		return
-	}
-
 	cachedVal, found := r.cache.Get(reqID)
 	if !found {
 		return

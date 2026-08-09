@@ -518,7 +518,7 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			opp := opportunities[0]
 			assert.Equal(t, tt.expectedSymbol, opp.Candidate.Symbol)
 			assert.Equal(t, tt.expectedRate, opp.Candidate.FundingRate)
-			assert.Equal(t, tt.expectedVolume, opp.Candidate.AmountUSDT24)
+			assert.Equal(t, tt.expectedVolume, opp.Candidate.Vol24USDT)
 		})
 	}
 }
@@ -547,7 +547,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 			FundingRate: 0.005,
 		},
 		MarketData: domain.MarketData{
-			AmountUSDT24: 2000000,
+			Vol24USDT: 2000000,
 		},
 	}
 	assert.True(t, job.shouldTrigger(candOk, time.Now().Add(10*time.Minute)))
@@ -559,7 +559,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 
 	// Candidate fails volume check
 	candLowVol := candOk
-	candLowVol.AmountUSDT24 = 500000
+	candLowVol.Vol24USDT = 500000
 	assert.False(t, job.shouldTrigger(candLowVol, time.Now().Add(10*time.Minute)))
 
 	// Candidate is blacklisted

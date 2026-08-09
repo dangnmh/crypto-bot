@@ -33,8 +33,8 @@ const minutesPerDay = 24 * 60
 func (c *Candidate) EvaluateSafety(limits SafetyLimits) *SafetyResult {
 	result := &SafetyResult{Passed: true}
 
-	if c.AmountUSDT24 == 0 && c.Volume24 > 0 && c.LastPrice > 0 {
-		c.AmountUSDT24 = c.Volume24 * c.LastPrice
+	if c.Vol24USDT == 0 && c.Volume24 > 0 && c.LastPrice > 0 {
+		c.Vol24USDT = c.Volume24 * c.LastPrice
 	}
 
 	desiredNotional := c.ReversionNotionalUSDT()
@@ -42,16 +42,16 @@ func (c *Candidate) EvaluateSafety(limits SafetyLimits) *SafetyResult {
 	result.DesiredNotionalUSDT = desiredNotional
 	result.ActualNotionalUSDT = desiredNotional
 
-	if limits.MinVol24USD > 0 && c.AmountUSDT24 < limits.MinVol24USD {
+	if limits.MinVol24USD > 0 && c.Vol24USDT < limits.MinVol24USD {
 		result.Passed = false
-		result.RejectReason = fmt.Sprintf("24h volume %.4f below minimum %.4f", c.AmountUSDT24, limits.MinVol24USD)
+		result.RejectReason = fmt.Sprintf("24h volume %.4f below minimum %.4f", c.Vol24USDT, limits.MinVol24USD)
 		return result
 	}
 
 	// Impact ratio is measured against average one-minute turnover:
 	// maxNotional = amount24hUSD / 1440 * maxImpactRatio.
-	if c.AmountUSDT24 > 0 {
-		result.AvgMinuteVolumeUSDT = decmath.Div(c.AmountUSDT24, minutesPerDay)
+	if c.Vol24USDT > 0 {
+		result.AvgMinuteVolumeUSDT = decmath.Div(c.Vol24USDT, minutesPerDay)
 		result.MaxSafeNotionalUSDT = decmath.Mul(result.AvgMinuteVolumeUSDT, limits.MaxImpactRatio)
 		if result.MaxSafeNotionalUSDT > 0 && desiredNotional > result.MaxSafeNotionalUSDT {
 			result.ActualNotionalUSDT = result.MaxSafeNotionalUSDT

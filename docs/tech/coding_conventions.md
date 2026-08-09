@@ -266,3 +266,15 @@ Soft limit of 99 characters per line. Wrap before hitting the limit, but it is n
 ### 9.4 Use Field Tags in Marshaled Structs
 
 Every struct field that is serialized to JSON, YAML, or similar must have the appropriate struct tag. This makes the serialization contract explicit and protects against renames.
+
+---
+
+## 10. Dependency Injection & Context Non-Nil Guarantees
+
+### 10.1 No Defensive Nil or Empty Checks for Injected Dependencies and Event IDs
+
+- All core components and dependencies (e.g. `cache`, `Clock`, `Client`, `Notifier`) are strictly provided via Dependency Injection (`fx`).
+- Required event context fields (such as `ReqID` on `BaseReversionEvent`) are guaranteed to exist via upstream message validation.
+- **Do NOT write defensive `nil` or empty string checks** (e.g., `if r.cache != nil`, `if reqID != ""`) for required components or fields in application logic.
+- **Unit and Integration Tests:** Test setups must provide valid dependency instances or test mocks rather than passing `nil` or omitting required fields.
+

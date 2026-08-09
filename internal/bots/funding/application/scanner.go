@@ -365,11 +365,11 @@ func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.Tic
 		Config:      ToTradeConfig(sc),
 		TradeIntent: intent,
 		MarketData: domain.MarketData{
-			LastPrice:    td.LastPrice,
-			BestBid:      td.BestBid,
-			BestAsk:      td.BestAsk,
-			Volume24:     td.Volume24,
-			AmountUSDT24: amtUSDT,
+			LastPrice: td.LastPrice,
+			BestBid:   td.BestBid,
+			BestAsk:   td.BestAsk,
+			Volume24:  td.Volume24,
+			Vol24USDT: amtUSDT,
 		},
 	}
 }
@@ -555,7 +555,7 @@ func (s *ScheduleScanner) selectBestOpportunities(opportunities []ScanOpportunit
 		if rateI != rateJ {
 			return rateI > rateJ
 		}
-		return opportunities[i].Candidate.AmountUSDT24 > opportunities[j].Candidate.AmountUSDT24
+		return opportunities[i].Candidate.Vol24USDT > opportunities[j].Candidate.Vol24USDT
 	})
 
 	// 3. Limit to maxCandidate config
@@ -673,22 +673,22 @@ func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Tic
 		Config:      ToTradeConfig(sc),
 		TradeIntent: intent,
 		MarketData: domain.MarketData{
-			LastPrice:    td.LastPrice,
-			BestBid:      td.Bid1,
-			BestAsk:      td.Ask1,
-			Volume24:     td.Volume24,
-			AmountUSDT24: td.AmountUSDT24,
+			LastPrice: td.LastPrice,
+			BestBid:   td.Bid1,
+			BestAsk:   td.Ask1,
+			Volume24:  td.Volume24,
+			Vol24USDT: td.AmountUSDT24,
 		},
 	}
 }
 
 func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 	minVol := c.Config.MinVol24USD
-	if minVol > 0 && c.AmountUSDT24 < minVol {
+	if minVol > 0 && c.Vol24USDT < minVol {
 		j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
 			slog.String("exchange", c.Config.Exchange),
 			slog.String("symbol", c.Symbol),
-			slog.Float64("vol24h", c.AmountUSDT24),
+			slog.Float64("vol24h", c.Vol24USDT),
 			slog.Float64("minVol", minVol),
 		)
 		return false

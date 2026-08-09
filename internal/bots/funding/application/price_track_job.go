@@ -26,13 +26,22 @@ type PriceTrackJob struct {
 	log        *slog.Logger
 	cron       *cron.Cron
 	cancel     context.CancelFunc
+	cfg        *fundingconfig.Config
 	sysCfg     *fundingconfig.SystemConfig
 	httpClient *http.Client
+}
+
+func isPriceTrackerEnabled(cfg *fundingconfig.Config) bool {
+	if cfg == nil || cfg.Reversion == nil {
+		return false
+	}
+	return cfg.Reversion.PriceTracker.Enabled
 }
 
 // NewPriceTrackJob creates a new PriceTrackJob.
 func NewPriceTrackJob(
 	reportRepo domain.SymbolFundingReportRepository,
+	cfg *fundingconfig.Config,
 	sysCfg *fundingconfig.SystemConfig,
 	engine *infraapp.Engine,
 	tickRepo domain.FundingPriceTickRepository,
@@ -43,6 +52,7 @@ func NewPriceTrackJob(
 		reportRepo: reportRepo,
 		tickRepo:   tickRepo,
 		engine:     engine,
+		cfg:        cfg,
 		sysCfg:     sysCfg,
 		httpClient: httpClient,
 		log:        log.With("subsystem", "price_tracker"),
@@ -51,6 +61,11 @@ func NewPriceTrackJob(
 
 // Start registers the background cron scheduler.
 func (j *PriceTrackJob) Start(ctx context.Context, _ map[string]strategy.FundingStoreSet) error {
+	if !isPriceTrackerEnabled(j.cfg) {
+		j.log.InfoContext(ctx, "⏸️ Price tracker is disabled in configuration, skipping cron loop")
+		return nil
+	}
+
 	j.log.InfoContext(ctx, "🚀 Starting background price tracker (K-line fetcher) cron loop")
 
 	cronCtx, cancel := context.WithCancel(ctx)

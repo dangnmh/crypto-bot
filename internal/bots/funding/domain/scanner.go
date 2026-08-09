@@ -17,11 +17,11 @@ import (
 
 // MarketData holds live market prices from the store/WS.
 type MarketData struct {
-	LastPrice    float64
-	BestBid      float64
-	BestAsk      float64
-	Volume24     float64
-	AmountUSDT24 float64
+	LastPrice float64
+	BestBid   float64
+	BestAsk   float64
+	Volume24  float64
+	Vol24USDT float64
 }
 
 // ContractSpec holds exchange contract specifications.
@@ -154,11 +154,11 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 				FundingRate: t.FundingRate,
 			},
 			MarketData: MarketData{
-				LastPrice:    t.LastPrice,
-				BestBid:      t.BestBid,
-				BestAsk:      t.BestAsk,
-				Volume24:     t.Volume24,
-				AmountUSDT24: amtUSDT,
+				LastPrice: t.LastPrice,
+				BestBid:   t.BestBid,
+				BestAsk:   t.BestAsk,
+				Volume24:  t.Volume24,
+				Vol24USDT: amtUSDT,
 			},
 		}
 

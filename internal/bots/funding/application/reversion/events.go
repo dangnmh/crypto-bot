@@ -334,7 +334,7 @@ func (e IOCSubmittedEvent) GetDataMap() map[string]any {
 		keyIOCPrice:    e.IntendedPrice,
 		keyVolume:      e.Candidate.Volume,
 		keyFundingRate: e.Candidate.FundingRate,
-		keyVolUSDT24h:  e.Candidate.AmountUSDT24,
+		keyVolUSDT24h:  e.Candidate.Vol24USDT,
 	}
 	if e.OrderID != "" {
 		m[keyOrderID] = e.OrderID
@@ -454,7 +454,6 @@ type PositionClosedEvent struct {
 	SLPriceTouched  bool    `json:"sl_price_touched,omitempty"`
 	Method          string  `json:"method,omitempty"`
 	CloseRetryCount int     `json:"close_retry_count,omitempty"`
-	Vol24hUSDT      float64 `json:"vol_24h_usdt"`
 }
 
 func (e PositionClosedEvent) GetMessage() string {

@@ -132,66 +132,53 @@ func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
 	local := *r
 	local.exchange = exch
 	local.symbol = symbol
-	var clonedLog *slog.Logger
-	if r.log != nil {
-		clonedLog = r.log.With("exchange", exch, "req", reqID, "symbol", symbol)
-	} else {
-		clonedLog = slog.Default()
-	}
+	clonedLog := r.log.With("exchange", exch, "req", reqID, "symbol", symbol)
 	local.log = clonedLog
 
-	if r.engine != nil {
-		prov, err := r.engine.GetProvider(exch)
-		if err != nil {
-			r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
-			return r
-		}
-		stores := r.stores[exch]
-		if stores == nil {
-			r.log.Error("Failed to locate stores for clone", slog.String("exchange", exch))
-			return r
-		}
+	prov, err := r.engine.GetProvider(exch)
+	if err != nil {
+		r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
+		return r
+	}
+	stores := r.stores[exch]
+	if stores == nil {
+		r.log.Error("Failed to locate stores for clone", slog.String("exchange", exch))
+		return r
+	}
 
-		var clock shared.Clock = prov.TimeSync
-		if r.clock != nil {
-			clock = r.clock
-		}
+	var clock shared.Clock = prov.TimeSync
+	if r.clock != nil {
+		clock = r.clock
+	}
 
-		var orderNotifier infrawatcher.OrderNotifier = prov.Watcher
-		if r.orderNotifier != nil {
-			orderNotifier = r.orderNotifier
-		}
+	var orderNotifier infrawatcher.OrderNotifier = prov.Watcher
+	if r.orderNotifier != nil {
+		orderNotifier = r.orderNotifier
+	}
 
-		var wsSub infraws.Subscriber = prov.Adapter
-		if r.wsSub != nil {
-			wsSub = r.wsSub
-		}
+	var wsSub infraws.Subscriber = prov.Adapter
+	if r.wsSub != nil {
+		wsSub = r.wsSub
+	}
 
-		local.deps = strategy.Deps{
-			Client:        prov.Client,
-			WsSub:         wsSub,
-			OrderNotifier: orderNotifier,
-			TickerStore:   stores.Ticker(),
-			ContractStore: stores.Contract(),
-			PriceStore:    stores.Price(),
-			FundingStore:  stores.Funding(),
-			DepthStore:    stores.Depth(),
-			Clock:         clock,
-			Log:           clonedLog,
-			Notifier:      r.notifier,
-			EventBus:      r.engine.Bus,
-		}
-	} else {
-		local.deps.Log = clonedLog
+	local.deps = strategy.Deps{
+		Client:        prov.Client,
+		WsSub:         wsSub,
+		OrderNotifier: orderNotifier,
+		TickerStore:   stores.Ticker(),
+		ContractStore: stores.Contract(),
+		PriceStore:    stores.Price(),
+		FundingStore:  stores.Funding(),
+		DepthStore:    stores.Depth(),
+		Clock:         clock,
+		Log:           clonedLog,
+		Notifier:      r.notifier,
+		EventBus:      r.engine.Bus,
 	}
 	return &local
 }
 
 func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payload any) error {
-	if r.bus == nil {
-		return nil
-	}
-
 	payload = stampEventTrace(topic, payload)
 	r.log.InfoContext(ctx, "Reversion: Publishing event", slog.String("topic", topic), slog.Any("payload", payload))
 
@@ -202,25 +189,23 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 
 	// Check if the event wants to trigger a notification
 	if revEvt, ok := payload.(ReversionEvent); ok && revEvt.ShouldNotify() {
-		if r.deps.Notifier != nil {
-			level := notifier.LevelTrading
-			if topic == TopicReversionAbort || topic == TopicReversionError {
-				level = notifier.LevelCritical
-			}
+		level := notifier.LevelTrading
+		if topic == TopicReversionAbort || topic == TopicReversionError {
+			level = notifier.LevelCritical
+		}
 
-			evt := notifier.Event{
-				Level:     level,
-				Exchange:  revEvt.GetExchange(),
-				Symbol:    revEvt.GetSymbol(),
-				Message:   revEvt.GetMessage(),
-				Color:     string(revEvt.GetColor()),
-				Data:      revEvt.GetDataMap(),
-				Timestamp: r.deps.Clock.Now(),
-			}
+		evt := notifier.Event{
+			Level:     level,
+			Exchange:  revEvt.GetExchange(),
+			Symbol:    revEvt.GetSymbol(),
+			Message:   revEvt.GetMessage(),
+			Color:     string(revEvt.GetColor()),
+			Data:      revEvt.GetDataMap(),
+			Timestamp: r.deps.Clock.Now(),
+		}
 
-			go func() {
-				_ = r.deps.Notifier.Send(ctx, evt)
-			}()
+		if err := r.deps.Notifier.Send(ctx, evt); err != nil {
+			r.log.ErrorContext(ctx, "Failed to send notification", slog.Any("error", err))
 		}
 	}
 
@@ -391,20 +376,16 @@ func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEven
 }
 
 func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
-	if r.cache != nil {
-		if _, found := r.cache.Get(prev.ReqID); !found {
-			r.log.DebugContext(ctx, "Ignoring position update; cycle already cleaned up or inactive", slog.String("req_id", prev.ReqID))
-			return
-		}
+	if _, found := r.cache.Get(prev.ReqID); !found {
+		r.log.DebugContext(ctx, "Ignoring position update; cycle already cleaned up or inactive", slog.String("req_id", prev.ReqID))
+		return
 	}
 
 	r.log.Debug("Position update received", slog.Any("pos", pos))
 
 	contractSize := 1.0
-	if r.deps.ContractStore != nil {
-		if cd, err := r.deps.ContractStore.GetContract(ctx, pos.Symbol); err == nil && cd.ContractSize > 0 {
-			contractSize = cd.ContractSize
-		}
+	if cd, err := r.deps.ContractStore.GetContract(ctx, pos.Symbol); err == nil && cd.ContractSize > 0 {
+		contractSize = cd.ContractSize
 	}
 
 	fillPrice := pos.OpenAvgPrice
@@ -477,15 +458,6 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		closePrice = pos.CloseAvgPrice
 	}
 
-	var vol24h float64
-	if r.cache != nil {
-		if cachedVal, found := r.cache.Get(prev.ReqID); found {
-			if cs, ok := cachedVal.(*CycleState); ok {
-				vol24h = cs.Vol24hUSDT
-			}
-		}
-	}
-
 	evt := PositionClosedEvent{
 		BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
 		EntryPrice:         fillPrice,
@@ -499,7 +471,6 @@ func (r *StatelessRunner) buildAndEnrichClosedEvent(
 		Fee:                pos.Fee,
 		HoldFee:            pos.HoldFee,
 		Method:             "watcher",
-		Vol24hUSDT:         vol24h,
 	}
 
 	if provider, ok := r.deps.Client.(exchange.ClosedPnLProvider); ok {
@@ -558,15 +529,13 @@ func (r *StatelessRunner) resolveOrderID(reqID, orderID string) (string, error) 
 	if orderID != "" {
 		return orderID, nil
 	}
-	if r.cache != nil {
-		if cachedVal, found := r.cache.Get(reqID); found {
-			if state, ok := cachedVal.(*CycleState); ok {
-				state.mu.Lock()
-				resolved := state.IOCOrderID
-				state.mu.Unlock()
-				if resolved != "" {
-					return resolved, nil
-				}
+	if cachedVal, found := r.cache.Get(reqID); found {
+		if state, ok := cachedVal.(*CycleState); ok {
+			state.mu.Lock()
+			resolved := state.IOCOrderID
+			state.mu.Unlock()
+			if resolved != "" {
+				return resolved, nil
 			}
 		}
 	}

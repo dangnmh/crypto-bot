@@ -30,8 +30,14 @@
   "notifier": {
     "enable": true
   },
+  "statsReporter": {
+    "enable": false
+  },
+  "priceTracker": {
+    "enable": false
+  },
   "scanners": {
-    "configured": true,
+    "configured": false,
     "schedule": {
       "mexc": false,
       "xt": false

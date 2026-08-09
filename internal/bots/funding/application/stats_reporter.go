@@ -45,6 +45,13 @@ type StatsReportJob struct {
 	cancel     context.CancelFunc
 }
 
+func isStatsReporterEnabled(cfg *fundingconfig.Config) bool {
+	if cfg == nil || cfg.Reversion == nil {
+		return false
+	}
+	return cfg.Reversion.StatsReporter.Enabled
+}
+
 // NewStatsReportJob creates a new StatsReportJob.
 //
 //nolint:goconst // Public base URLs are raw strings, making them constants is unnecessary code churn
@@ -56,33 +63,38 @@ func NewStatsReportJob(
 	n notifier.Notifier,
 	log *slog.Logger,
 ) *StatsReportJob {
-	logCfg := sysCfg.Logging
-
-	exchanges := []string{
-		"mexc", "gate", "bybit", "okx", "kucoin", "binance", "hyperliquid", "bitget",
-		"bingx", "zoomex", "deepcoin", "gemini", "toobit", "weex", "batonex", "bitmart",
-		"coinw", "krakenfutures", "bitunix", "xt", "htx", "lbank", "mandala", "orangex",
-		"pionex", "poloniex", "deribit", "delta", "coinex", "bitfinex", "whitebit", "dydx",
-		"aster", "backpack", "aevo", "apex", "lighter", "tradexyz", "grvt", "pacifica",
-		"extended", "jupiter", "avantis", "btse", "bitmex", "hashkey", "hibt", "hitbtc",
-		"hotcoin", "cryptocom", "woox", "phemex", "blofin", "digifinex", "bydfi", "ju",
-		"sunx", "fameex", "fmfw", "coinbase", "trubit",
-	}
-
+	subLog := log.With("subsystem", "stats_reporter")
 	clients := make(map[string]ScannerClient)
-	for _, name := range exchanges {
-		clientExchangeName := name
-		c, err := infraapp.BuildPublicClient(context.Background(), clientExchangeName, httpClient, log, logCfg)
-		if err != nil {
-			log.Warn("Failed to build public client for stats reporter", slog.String("exchange", name), slog.Any("error", err))
-			continue
+
+	if isStatsReporterEnabled(cfg) {
+		logCfg := sysCfg.Logging
+		exchanges := []string{
+			"mexc", "gate", "bybit", "okx", "kucoin", "binance", "hyperliquid", "bitget",
+			"bingx", "zoomex", "deepcoin", "gemini", "toobit", "weex", "batonex", "bitmart",
+			"coinw", "krakenfutures", "bitunix", "xt", "htx", "lbank", "mandala", "orangex",
+			"pionex", "poloniex", "deribit", "delta", "coinex", "bitfinex", "whitebit", "dydx",
+			"aster", "backpack", "aevo", "apex", "lighter", "tradexyz", "grvt", "pacifica",
+			"extended", "jupiter", "avantis", "btse", "bitmex", "hashkey", "hibt", "hitbtc",
+			"hotcoin", "cryptocom", "woox", "phemex", "blofin", "digifinex", "bydfi", "ju",
+			"sunx", "fameex", "fmfw", "coinbase", "trubit",
 		}
-		scanner, ok := c.(ScannerClient)
-		if !ok {
-			log.Warn("Client does not implement ScannerClient", slog.String("exchange", name))
-			continue
+
+		for _, name := range exchanges {
+			clientExchangeName := name
+			c, err := infraapp.BuildPublicClient(context.Background(), clientExchangeName, httpClient, log, logCfg)
+			if err != nil {
+				subLog.Warn("Failed to build public client for stats reporter", slog.String("exchange", name), slog.Any("error", err))
+				continue
+			}
+			scanner, ok := c.(ScannerClient)
+			if !ok {
+				subLog.Warn("Client does not implement ScannerClient", slog.String("exchange", name))
+				continue
+			}
+			clients[name] = scanner
 		}
-		clients[name] = scanner
+	} else {
+		subLog.Info("Stats reporter is disabled in config, skipping client initialization")
 	}
 
 	return &StatsReportJob{
@@ -91,13 +103,18 @@ func NewStatsReportJob(
 		httpClient: httpClient,
 		repo:       repo,
 		notifier:   n,
-		log:        log.With("subsystem", "stats_reporter"),
+		log:        subLog,
 		Clients:    clients,
 	}
 }
 
 // Start registers the background cron scheduler.
 func (j *StatsReportJob) Start(ctx context.Context, _ map[string]strategy.FundingStoreSet) error {
+	if !isStatsReporterEnabled(j.cfg) {
+		j.log.InfoContext(ctx, "⏸️ Stats reporter is disabled in configuration, skipping cron loop")
+		return nil
+	}
+
 	j.log.InfoContext(ctx, "🚀 Starting background stats reporter cron loop")
 
 	cronCtx, cancel := context.WithCancel(ctx)

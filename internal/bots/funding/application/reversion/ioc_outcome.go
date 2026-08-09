@@ -55,7 +55,7 @@ func (r *StatelessRunner) resolveIOCOutcome(ctx context.Context, evt IOCSubmitte
 		Reason:             reason,
 		CheckedAt:          r.deps.Clock.Now(),
 		Timeout:            timeout,
-		VolUSDT24h:         evt.Candidate.AmountUSDT24,
+		VolUSDT24h:         evt.Candidate.Vol24USDT,
 	}
 }
 

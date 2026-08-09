@@ -30,6 +30,12 @@
   "notifier": {
     "enable": true
   },
+  "statsReporter": {
+    "enable": true
+  },
+  "priceTracker": {
+    "enable": true
+  },
   "scanners": {
     "configured": false,
     "schedule": {

@@ -181,6 +181,29 @@ func TestStatsReportJob_Tick(t *testing.T) {
 	assert.Contains(t, client.blacklist, "BTC-USDT")
 }
 
+func TestStatsReportJob_Disabled(t *testing.T) {
+	t.Parallel()
+	cfg := &fundingconfig.Config{
+		Reversion: &fundingconfig.ReversionConfig{
+			StatsReporter: fundingconfig.StatsReporterConfig{
+				Enabled: false,
+			},
+		},
+	}
+	job := application.NewStatsReportJob(
+		cfg,
+		&fundingconfig.SystemConfig{},
+		&http.Client{},
+		&mockReportRepository{},
+		&mockNotifier{},
+		testLogger(),
+	)
+	assert.Empty(t, job.Clients)
+
+	err := job.Start(context.Background(), nil)
+	assert.NoError(t, err)
+}
+
 func testLogger() *slog.Logger {
 	return slog.Default()
 }
