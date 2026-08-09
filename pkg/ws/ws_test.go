@@ -3,6 +3,7 @@ package ws_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1131,4 +1132,412 @@ func TestClient_HandshakeHeaders(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("handshake headers not received")
 	}
+}
+
+func TestPool_SymbolLimitOverflowScaling(t *testing.T) {
+	t.Parallel()
+
+	var connectionCount atomic.Int32
+	receivedMsgs := make(chan string, 10)
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		connectionCount.Add(1)
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			receivedMsgs <- string(data)
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Limit to max 2 symbols per connection
+	pool := ws.NewPool(wsURL(srv), 2, slog.Default())
+	defer pool.Close()
+
+	symbols := []string{"BTC:ticker", "ETH:ticker", "SOL:ticker", "XRP:ticker", "DOGE:ticker"}
+	for _, sym := range symbols {
+		err := pool.SubscribePublic(ctx, sym, map[string]string{"sub": sym})
+		require.NoError(t, err)
+	}
+
+	// Wait to collect all 5 subscribe messages
+	received := make(map[string]bool)
+	for range len(symbols) {
+		select {
+		case msg := <-receivedMsgs:
+			received[msg] = true
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for all subscriptions across scaled connections")
+		}
+	}
+
+	assert.Equal(t, 5, len(received))
+	// 5 topics with max 2 per connection requires at least 3 connections spawned!
+	assert.GreaterOrEqual(t, connectionCount.Load(), int32(3))
+}
+
+func TestPool_ReplaysPrivateSubscriptionsOnReconnect(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 2)
+	var connections atomic.Int32
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		connIdx := connections.Add(1)
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			received <- string(data)
+
+			// Drop the first connection after receiving the initial private message
+			if connIdx == 1 {
+				conn.Close()
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool := ws.NewPool(wsURL(srv), 30, slog.Default())
+	defer pool.Close()
+
+	pool.Connect(ctx)
+	err := pool.WaitReady(ctx)
+	require.NoError(t, err)
+
+	err = pool.SendPrivate(ctx, map[string]string{"op": "auth_filter"})
+	require.NoError(t, err)
+
+	// We should receive 2 messages: 1 from initial SendPrivate, 1 replayed upon reconnect
+	for range 2 {
+		select {
+		case msg := <-received:
+			assert.Contains(t, msg, "auth_filter")
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for private subscription replay on reconnect")
+		}
+	}
+}
+
+func TestPool_UnsubscribeDuringDisconnect(t *testing.T) {
+	t.Parallel()
+
+	receivedMsgs := make(chan string, 10)
+	var connCount atomic.Int32
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		idx := connCount.Add(1)
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			receivedMsgs <- string(data)
+
+			// Force disconnect on first conn after receiving first sub
+			if idx == 1 && strings.Contains(string(data), "sub.topic1") {
+				conn.Close()
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool := ws.NewPool(wsURL(srv), 30, slog.Default())
+	defer pool.Close()
+
+	err := pool.SubscribePublic(ctx, "topic1", map[string]string{"method": "sub.topic1"})
+	require.NoError(t, err)
+
+	// Unsubscribe topic1 while disconnected
+	err = pool.UnsubscribePublic(ctx, "topic1", map[string]string{"method": "unsub.topic1"})
+	require.NoError(t, err)
+
+	// Subscribe topic2
+	err = pool.SubscribePublic(ctx, "topic2", map[string]string{"method": "sub.topic2"})
+	require.NoError(t, err)
+
+	// Verify that topic2 is received, but topic1 is not re-subscribed
+	hasTopic2 := false
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+Loop:
+	for {
+		select {
+		case msg := <-receivedMsgs:
+			if strings.Contains(msg, "sub.topic2") {
+				hasTopic2 = true
+				break Loop
+			}
+		case <-timer.C:
+			break Loop
+		}
+	}
+
+	assert.True(t, hasTopic2, "topic2 should be subscribed and active")
+}
+
+func TestPool_MultipleSequentialDisconnectReplays(t *testing.T) {
+	t.Parallel()
+
+	receivedMsgs := make(chan string, 20)
+	var connCounter atomic.Int32
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		idx := connCounter.Add(1)
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			receivedMsgs <- string(data)
+
+			// Drop connection 1 and connection 2 after reading first message to force sequential reconnects
+			if (idx == 1 || idx == 2) && strings.Contains(string(data), "sub.persist") {
+				conn.Close()
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	pool := ws.NewPool(wsURL(srv), 30, slog.Default())
+	defer pool.Close()
+
+	err := pool.SubscribePublic(ctx, "persist_topic", map[string]string{"method": "sub.persist"})
+	require.NoError(t, err)
+
+	// Expect 3 occurrences of sub.persist (initial + 2 reconnect replays)
+	replays := 0
+	for replays < 3 {
+		select {
+		case msg := <-receivedMsgs:
+			if strings.Contains(msg, "sub.persist") {
+				replays++
+			}
+		case <-ctx.Done():
+			t.Fatalf("timeout waiting for 3 sequential reconnect replays, got %d", replays)
+		}
+	}
+
+	assert.Equal(t, 3, replays)
+}
+
+func TestPool_HighConcurrencySubscribeUnsubscribeBurst(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool := ws.NewPool(wsURL(srv), 5, slog.Default())
+	defer pool.Close()
+
+	var wg sync.WaitGroup
+	workers := 50
+
+	for i := range workers {
+		topic := fmt.Sprintf("topic_%d", i)
+		wg.Add(1)
+		go func(tName string) {
+			defer wg.Done()
+			_ = pool.SubscribePublic(ctx, tName, map[string]string{"op": "sub", "topic": tName})
+			time.Sleep(10 * time.Millisecond)
+			if i%2 == 0 {
+				_ = pool.UnsubscribePublic(ctx, tName, map[string]string{"op": "unsub", "topic": tName})
+			}
+		}(topic)
+	}
+
+	wg.Wait()
+}
+
+func TestPool_ContextCancellationDuringDial(t *testing.T) {
+	t.Parallel()
+
+	// Use an unroutable port to force dial block/delay
+	badURL := "ws://127.0.0.1:59999"
+	pool := ws.NewPool(badURL, 10, slog.Default())
+	defer pool.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := pool.SubscribePublic(ctx, "timeout_topic", map[string]string{"method": "sub"})
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled))
+}
+
+func TestPool_MultiURLIndependentScaling(t *testing.T) {
+	t.Parallel()
+
+	var conn1Count, conn2Count atomic.Int32
+
+	srv1 := startTestWS(t, func(conn *websocket.Conn) {
+		conn1Count.Add(1)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv1.Close()
+
+	srv2 := startTestWS(t, func(conn *websocket.Conn) {
+		conn2Count.Add(1)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	})
+	defer srv2.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Limit to max 2 symbols per connection
+	pool := ws.NewPool(wsURL(srv1), 2, slog.Default())
+	defer pool.Close()
+
+	// Subscribe 3 topics on URL 1 (requires 2 connections)
+	require.NoError(t, pool.SubscribePublicWithURL(ctx, wsURL(srv1), "url1_t1", map[string]string{"sub": "1"}))
+	require.NoError(t, pool.SubscribePublicWithURL(ctx, wsURL(srv1), "url1_t2", map[string]string{"sub": "2"}))
+	require.NoError(t, pool.SubscribePublicWithURL(ctx, wsURL(srv1), "url1_t3", map[string]string{"sub": "3"}))
+
+	// Subscribe 2 topics on URL 2 (requires 1 connection)
+	require.NoError(t, pool.SubscribePublicWithURL(ctx, wsURL(srv2), "url2_t1", map[string]string{"sub": "a"}))
+	require.NoError(t, pool.SubscribePublicWithURL(ctx, wsURL(srv2), "url2_t2", map[string]string{"sub": "b"}))
+
+	assert.Equal(t, int32(2), conn1Count.Load(), "URL 1 should spawn 2 connections for 3 topics with maxPairs=2")
+	assert.Equal(t, int32(1), conn2Count.Load(), "URL 2 should spawn 1 connection for 2 topics with maxPairs=2")
+}
+
+func TestClient_CustomPingPongHandler(t *testing.T) {
+	t.Parallel()
+
+	pongSent := make(chan string, 1)
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		// Send custom exchange ping payload
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"ping":12345}`))
+
+		// Wait for custom pong response
+		_, msg, err := conn.ReadMessage()
+		if err == nil {
+			pongSent <- string(msg)
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	customPing := func(conn *websocket.Conn, data []byte) bool {
+		if strings.Contains(string(data), `"ping":12345`) {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`{"pong":12345}`))
+			return true
+		}
+		return false
+	}
+
+	c := ws.NewClient(wsURL(srv), nil, ws.WithCustomPingHandler(customPing))
+	defer c.Close()
+
+	go c.Connect(ctx)
+	require.NoError(t, c.WaitReady(ctx))
+
+	select {
+	case pongMsg := <-pongSent:
+		assert.Contains(t, pongMsg, `"pong":12345`)
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for custom pong response")
+	}
+}
+
+func TestPool_PrivateAuthReconnectFlow(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 3)
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			msg := string(data)
+			received <- msg
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	authHook := func(c *ws.Client) {
+		_ = c.SendJSON(map[string]string{"op": "login"})
+	}
+
+	pool := ws.NewPoolWithURLs(
+		wsURL(srv),
+		wsURL(srv),
+		30,
+		slog.Default(),
+		nil,
+		[]ws.ClientOption{ws.WithOnConnected(authHook)},
+	)
+	defer pool.Close()
+
+	pool.Connect(ctx)
+	require.NoError(t, pool.WaitReady(ctx))
+
+	err := pool.SendPrivate(ctx, map[string]string{"op": "sub_private"})
+	require.NoError(t, err)
+
+	// Verify both auth login and private message were received
+	authReceived := false
+	subReceived := false
+
+	for range 2 {
+		select {
+		case msg := <-received:
+			if strings.Contains(msg, "login") {
+				authReceived = true
+			}
+			if strings.Contains(msg, "sub_private") {
+				subReceived = true
+			}
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for auth login and private message")
+		}
+	}
+
+	assert.True(t, authReceived)
+	assert.True(t, subReceived)
 }

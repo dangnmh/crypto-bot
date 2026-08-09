@@ -174,10 +174,10 @@ func (c *Client) Connect(ctx context.Context) {
 			c.onConnected(c)
 		}
 
-		c.markReady()
 		if c.onReady != nil {
 			c.onReady(c)
 		}
+		c.markReady()
 
 		connCtx, cancelConn := context.WithCancel(ctx)
 		// Start heartbeat and read loop.
@@ -359,7 +359,7 @@ func (c *Client) processMessage(data []byte) {
 func (c *Client) SendJSON(msg any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.conn == nil {
+	if c.conn == nil || !c.connected {
 		return nil
 	}
 	data, err := json.Marshal(msg)

@@ -16,6 +16,7 @@ type Pool struct {
 	privateOptions []ClientOption
 
 	privateClient *Client
+	privateMsgs   []any
 
 	mu             sync.RWMutex
 	publicClients  []*Client
@@ -65,7 +66,11 @@ func NewPoolWithURLs(
 func (p *Pool) Connect(ctx context.Context) {
 	p.mu.Lock()
 	if p.privateClient == nil {
-		p.privateClient = NewClient(p.privateURL, p.logger, p.privateOptions...)
+		opts := append([]ClientOption{}, p.privateOptions...)
+		opts = append(opts, WithOnReady(func(c *Client) {
+			p.replayPrivateSubscriptions(c)
+		}))
+		p.privateClient = NewClient(p.privateURL, p.logger, opts...)
 		p.attachHandlers(p.privateClient)
 		go p.privateClient.Connect(ctx)
 	}
@@ -144,16 +149,16 @@ func (p *Pool) Close() {
 	}
 }
 
-// getOrCreatePublicClientIdx returns the index of an available public client or creates a new one.
-// The boolean return value indicates whether a new client connection was spawned.
-// Callers must hold p.mu.Lock().
-func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context, targetURL string) (int, bool, error) {
+// getOrCreatePublicClientIdx returns the index of an available public client or allocates a new one.
+// Returns (clientIndex, isNewlySpawned, client).
+// Callers MUST hold p.mu.Lock(). This method does NOT block on network connection or dial.
+func (p *Pool) getOrCreatePublicClientIdx(targetURL string) (int, bool, *Client) {
 	if targetURL == "" {
 		targetURL = p.publicURL
 	}
 	for i, count := range p.clientSubCount {
 		if count < p.maxPairs && p.publicClients[i].url == targetURL {
-			return i, false, nil
+			return i, false, p.publicClients[i]
 		}
 	}
 
@@ -167,13 +172,7 @@ func (p *Pool) getOrCreatePublicClientIdx(ctx context.Context, targetURL string)
 	p.publicClients = append(p.publicClients, newClient)
 	p.clientSubCount = append(p.clientSubCount, 0)
 
-	p.logger.InfoContext(ctx, "🌊 Spawning new public WS connection", slog.Int("pool_idx", idx), slog.String("url", targetURL))
-	go newClient.Connect(ctx)
-	if err := newClient.WaitReady(ctx); err != nil {
-		return 0, false, err
-	}
-
-	return idx, true, nil
+	return idx, true, newClient
 }
 
 func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
@@ -193,6 +192,19 @@ func (p *Pool) replayPublicSubscriptions(idx int, client *Client) {
 	}
 }
 
+func (p *Pool) replayPrivateSubscriptions(client *Client) {
+	p.mu.RLock()
+	msgs := make([]any, len(p.privateMsgs))
+	copy(msgs, p.privateMsgs)
+	p.mu.RUnlock()
+
+	for _, msg := range msgs {
+		if err := client.SendJSON(msg); err != nil {
+			p.logger.Warn("🟡 Private WS subscription replay failed", slog.Any("error", err))
+		}
+	}
+}
+
 // SubscribePublic tracks a subscription topic and routes it to an available public client.
 func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg any) error {
 	return p.SubscribePublicWithURL(ctx, p.publicURL, topic, msg)
@@ -200,16 +212,17 @@ func (p *Pool) SubscribePublic(ctx context.Context, topic string, msg any) error
 
 // SubscribePublicWithURL tracks a subscription topic and routes it to an available public client for the specific URL.
 func (p *Pool) SubscribePublicWithURL(ctx context.Context, targetURL, topic string, msg any) error {
+	if targetURL == "" {
+		targetURL = p.publicURL
+	}
+
 	p.mu.Lock()
 	idx, exists := p.topicRouting[topic]
 	var newlySpawned bool
+	var client *Client
+
 	if !exists {
-		var err error
-		idx, newlySpawned, err = p.getOrCreatePublicClientIdx(ctx, targetURL)
-		if err != nil {
-			p.mu.Unlock()
-			return err
-		}
+		idx, newlySpawned, client = p.getOrCreatePublicClientIdx(targetURL)
 		p.topicRouting[topic] = idx
 		p.clientSubCount[idx]++
 		p.subscriptions[topic] = publicSubscription{
@@ -217,19 +230,40 @@ func (p *Pool) SubscribePublicWithURL(ctx context.Context, targetURL, topic stri
 			subscribeMsg: msg,
 			clientIdx:    idx,
 		}
+	} else {
+		sub := p.subscriptions[topic]
+		sub.subscribeMsg = msg
+		p.subscriptions[topic] = sub
+		client = p.publicClients[idx]
 	}
-	client := p.publicClients[idx]
 	p.mu.Unlock()
 
 	select {
 	case <-ctx.Done():
+		p.mu.Lock()
+		if !exists {
+			p.clientSubCount[idx]--
+		}
+		delete(p.topicRouting, topic)
+		delete(p.subscriptions, topic)
+		p.mu.Unlock()
 		return ctx.Err()
 	default:
 	}
 
 	if newlySpawned {
-		// If the connection was newly spawned, replayPublicSubscriptions has already
-		// sent or is about to send the subscription message on ready.
+		p.logger.InfoContext(ctx, "🌊 Spawning new public WS connection", slog.Int("pool_idx", idx), slog.String("url", targetURL))
+		go client.Connect(ctx)
+		if err := client.WaitReady(ctx); err != nil {
+			p.mu.Lock()
+			if !exists {
+				p.clientSubCount[idx]--
+			}
+			delete(p.topicRouting, topic)
+			delete(p.subscriptions, topic)
+			p.mu.Unlock()
+			return err
+		}
 		return nil
 	}
 
@@ -254,7 +288,6 @@ func (p *Pool) UnsubscribePublicWithURL(ctx context.Context, topic string, msg a
 	p.clientSubCount[idx]--
 	sub := p.subscriptions[topic]
 	sub.unsubscribeMsg = msg
-	p.subscriptions[topic] = sub
 	delete(p.topicRouting, topic)
 	delete(p.subscriptions, topic)
 	p.mu.Unlock()
@@ -281,9 +314,10 @@ func (p *Pool) PrivateURL() string {
 
 // SendPrivate routes a generic JSON payload to the private authenticated client.
 func (p *Pool) SendPrivate(ctx context.Context, msg any) error {
-	p.mu.RLock()
+	p.mu.Lock()
+	p.privateMsgs = append(p.privateMsgs, msg)
 	pc := p.privateClient
-	p.mu.RUnlock()
+	p.mu.Unlock()
 
 	if pc != nil {
 		select {
