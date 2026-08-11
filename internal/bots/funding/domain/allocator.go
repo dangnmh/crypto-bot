@@ -112,11 +112,11 @@ func allocateSingleCandidateMargin(
 		candidateMarginLimit = maxCandidateMargin
 	}
 
-	// Step 3: Compute market impact volume ceiling (maxImpactRatio % of 1-minute volume).
+	// Step 3: Compute market impact volume ceiling (maxImpactRatio is normalized ratio of 1-minute volume).
 	volMinuteUSDT := c.Vol24USDT / 1440.0
 	var maxTradeVolUSDT float64
 	if maxImpactRatio > 0 && volMinuteUSDT > 0 {
-		maxTradeVolUSDT = (maxImpactRatio / 100.0) * volMinuteUSDT
+		maxTradeVolUSDT = maxImpactRatio * volMinuteUSDT
 	}
 
 	// Step 4: Calculate target trade position volume based on candidate leverage & market impact cap.

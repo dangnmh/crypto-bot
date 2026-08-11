@@ -26,7 +26,7 @@
     "funding": "30s"
   },
   "safety": {
-    "maxImpactRatio": 100,
+    "maxImpactRatio": 150,
     "maxLatency": "400ms", // Abort if RTT > 400ms
     "maxPriceDiffPercent": 0.8,
     "maxSymbolUSDTPrice": 100

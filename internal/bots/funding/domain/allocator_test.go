@@ -106,7 +106,7 @@ func TestAscendingVolumeMarginAllocator_AllocateMargins(t *testing.T) {
 			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
 		}
 
-		res := allocator.AllocateMargins(ctx, []domain.Candidate{c}, 100.0, 100.0, 5.0, nil, nil)
+		res := allocator.AllocateMargins(ctx, []domain.Candidate{c}, 100.0, 100.0, 0.05, nil, nil)
 
 		assert.Len(t, res, 1)
 		assert.InDelta(t, 0.5, res[0].Config.MarginUSDT, 0.001)

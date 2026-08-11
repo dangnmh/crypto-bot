@@ -1005,7 +1005,7 @@ func TestScheduleScanner_ImpactRatioSurplusRedistribution(t *testing.T) {
 	cfg := &config.Config{
 		Reversion: &config.ReversionConfig{
 			Safety: config.SafetyConfig{
-				MaxImpactRatio: 5.0,
+				MaxImpactRatio: 0.05,
 			},
 			RawFundingReversionConfig: config.RawFundingReversionConfig{
 				Default: config.ExchangeReversionConfig{
