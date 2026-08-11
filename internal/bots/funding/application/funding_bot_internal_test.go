@@ -152,12 +152,13 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 	}
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		engine,
 		map[string]strategy.FundingStoreSet{
@@ -170,6 +171,7 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -182,12 +184,13 @@ func TestConfiguredScanner_disabledSymbol(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		nil,
@@ -199,6 +202,7 @@ func TestConfiguredScanner_disabledSymbol(t *testing.T) {
 			return "", false
 		},
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -264,12 +268,13 @@ func TestScannerJob_Run(t *testing.T) {
 		TimeSync: ts,
 	}
 
-	job := NewScannerJob(
+	job, err := NewScannerJob(
 		[]Scanner{mScanner},
 		engine,
-		nil,
+		&config.Config{Reversion: &config.ReversionConfig{}},
 		sniperTestLogger(),
 	)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()

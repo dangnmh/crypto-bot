@@ -22,7 +22,8 @@ func TestNewFundingBot(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		Symbols: []config.SymbolConfig{},
+		Reversion: &config.ReversionConfig{},
+		Symbols:   []config.SymbolConfig{},
 	}
 	sysCfg := &config.SystemConfig{}
 	engine := &app.Engine{
@@ -45,7 +46,9 @@ func TestNewFundingBot(t *testing.T) {
 func TestFundingBot_Stop(t *testing.T) {
 	t.Parallel()
 
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
+	}
 	sysCfg := &config.SystemConfig{}
 	engine := &app.Engine{
 		Bus: eventbus.New(slog.Default()),
@@ -69,7 +72,8 @@ func TestFundingBot_Run_CancelledContext(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		Symbols: []config.SymbolConfig{},
+		Reversion: &config.ReversionConfig{},
+		Symbols:   []config.SymbolConfig{},
 	}
 	sysCfg := &config.SystemConfig{}
 	engine := &app.Engine{
@@ -98,6 +102,7 @@ func TestNewFundingBot_WithBlacklist(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 100, Leverage: 5},
 			{Symbol: "ETH_USDT", Exchange: "mexc", MarginUSDT: 100, Leverage: 5},

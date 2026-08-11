@@ -93,15 +93,19 @@ type RawFundingReversionConfig struct {
 }
 
 type ExchangeReversionConfig struct {
-	TakeProfitPct     float64        `json:"takeProfitPct"`
-	StopLossPct       float64        `json:"stopLossPct"`
-	BufferTime        types.Duration `json:"bufferTime"`
-	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
-	Leverage          int            `json:"leverage"`
-	MarginUSD         float64        `json:"marginUSD"`
-	MinVol24USD       float64        `json:"minVol24USD"`
-	MinFundingRate    float64        `json:"minFundingRate"`
-	MaxCandidateTrade int            `json:"maxCandidateTrade"`
+	TakeProfitPct           float64        `json:"takeProfitPct" validate:"omitempty,gt=0"`
+	StopLossPct             float64        `json:"stopLossPct" validate:"omitempty,gt=0"`
+	BufferTime              types.Duration `json:"bufferTime"`
+	PostSettleTimeout       types.Duration `json:"postSettleTimeout"`
+	Leverage                int            `json:"leverage" validate:"omitempty,gt=0"`
+	MarginUSD               float64        `json:"marginUSD" validate:"omitempty,gt=0"`
+	MinVol24USD             float64        `json:"minVol24USD" validate:"omitempty,gte=0"`
+	MinFundingRate          float64        `json:"minFundingRate" validate:"omitempty,gte=0"`
+	MaxCandidateTrade       int            `json:"maxCandidateTrade" validate:"omitempty,gt=0"`
+	MaxMarginUSDOfCandidate float64        `json:"maxMarginUSDOfCandidate,omitempty" validate:"omitempty,gt=0"`
+	ScoringRateWeight       float64        `json:"scoringRateWeight,omitempty" validate:"omitempty,gt=0"`
+	ScoringVolumeWeight     float64        `json:"scoringVolumeWeight,omitempty" validate:"omitempty,gt=0"`
+	MaxVolumeScore          float64        `json:"maxVolumeScore,omitempty" validate:"omitempty,gt=0"`
 }
 
 type BlacklistConfig map[string][]string

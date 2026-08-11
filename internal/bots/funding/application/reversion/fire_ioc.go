@@ -65,7 +65,7 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 	}
 
 	// Preemptively set the configured leverage on the exchange before the fire window to eliminate any order placement latency.
-	leverage := r.determineLeverage(ctx, evt.Symbol, &evt.Candidate)
+	leverage := evt.Candidate.Config.Leverage
 
 	if leverage > 0 && !r.deps.Client.SupportLeverageOnOrder() {
 		r.log.InfoContext(ctx, "Adjusting leverage before fire window", slog.String("symbol", evt.Symbol), slog.Int("leverage", leverage))
@@ -86,8 +86,6 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 			return fmt.Errorf("change leverage failed: %w", err)
 		}
 	}
-
-	evt.Candidate.Config.Leverage = leverage
 
 	latencyMs := r.deps.Clock.LatencyMs()
 	oneWayMs := latencyMs / 2
@@ -292,60 +290,4 @@ func (r *StatelessRunner) publishTPSLBackground(ctx context.Context, evt TPSLReq
 	if err := r.publishEvent(detached, TopicReversionTPSLRequired, evt); err != nil {
 		r.log.Error("Failed to publish TopicReversionTPSLRequired", slog.Any("error", err))
 	}
-}
-
-func (r *StatelessRunner) determineLeverage(ctx context.Context, symbol string, candidate *fundingdomain.Candidate) int {
-	leverage := candidate.Config.Leverage
-	if candidate.MaxLeverage > 0 && leverage > candidate.MaxLeverage {
-		r.log.InfoContext(ctx, "Configured leverage exceeds symbol max leverage, adjusting to max",
-			slog.String("symbol", symbol),
-			slog.Int("configured", leverage),
-			slog.Int("max", candidate.MaxLeverage),
-		)
-		leverage = candidate.MaxLeverage
-	}
-
-	if leverage <= 0 || r.deps.Client.SupportLeverageOnOrder() {
-		return leverage
-	}
-
-	// Calculate target notional value for the order.
-	price := candidate.LastPrice
-	if price == 0 {
-		price = candidate.BestBid
-	}
-	if price == 0 {
-		price = candidate.BestAsk
-	}
-	targetValue := candidate.Volume * candidate.ContractSize * price
-
-	switch provider := r.deps.Client.(type) {
-	case exchange.RiskLimitLeverageProvider:
-		maxLev, err := provider.GetMaxLeverageForValue(ctx, symbol, targetValue)
-		if err != nil {
-			r.log.ErrorContext(ctx, "Failed to get max leverage for value from client", slog.Any("error", err), slog.String("symbol", symbol), slog.Float64("value", targetValue))
-		} else if maxLev > 0 && leverage > maxLev {
-			r.log.InfoContext(ctx, "Configured leverage exceeds exchange risk limits for position size, adjusting to max",
-				slog.String("symbol", symbol),
-				slog.Int("configured", leverage),
-				slog.Int("max", maxLev),
-				slog.Float64("value", targetValue),
-			)
-			leverage = maxLev
-		}
-	case exchange.MaxLeverageProvider:
-		maxLev, err := provider.GetMaxLeverage(ctx, symbol)
-		if err != nil {
-			r.log.ErrorContext(ctx, "Failed to get max leverage from client", slog.Any("error", err), slog.String("symbol", symbol))
-		} else if maxLev > 0 && leverage > maxLev {
-			r.log.InfoContext(ctx, "Configured leverage exceeds exchange risk limits, adjusting to max",
-				slog.String("symbol", symbol),
-				slog.Int("configured", leverage),
-				slog.Int("max", maxLev),
-			)
-			leverage = maxLev
-		}
-	}
-
-	return leverage
 }

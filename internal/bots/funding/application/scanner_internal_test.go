@@ -27,18 +27,20 @@ func TestConfiguredScanner_Scan_MissingStore(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		map[string]strategy.FundingStoreSet{}, // Empty stores
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -53,12 +55,13 @@ func TestConfiguredScanner_Scan_NilTicker(t *testing.T) {
 	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		map[string]strategy.FundingStoreSet{
@@ -70,6 +73,7 @@ func TestConfiguredScanner_Scan_NilTicker(t *testing.T) {
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -87,12 +91,13 @@ func TestConfiguredScanner_Scan_GetTickerError(t *testing.T) {
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(nil, errors.New("ticker error")).AnyTimes()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		map[string]strategy.FundingStoreSet{
@@ -104,6 +109,7 @@ func TestConfiguredScanner_Scan_GetTickerError(t *testing.T) {
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -127,12 +133,13 @@ func TestConfiguredScanner_Scan_NilContract(t *testing.T) {
 	}, nil).AnyTimes()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		map[string]strategy.FundingStoreSet{
@@ -145,6 +152,7 @@ func TestConfiguredScanner_Scan_NilContract(t *testing.T) {
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -170,12 +178,13 @@ func TestConfiguredScanner_Scan_GetContractError(t *testing.T) {
 	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(nil, errors.New("contract error")).AnyTimes()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		map[string]strategy.FundingStoreSet{
@@ -188,6 +197,7 @@ func TestConfiguredScanner_Scan_GetContractError(t *testing.T) {
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -201,12 +211,13 @@ func TestScannerJob_ScanError(t *testing.T) {
 		err: errors.New("scan error"),
 	}
 
-	job := NewScannerJob(
+	job, err := NewScannerJob(
 		[]Scanner{mScanner},
 		&app.Engine{Providers: map[string]*app.ExchangeProvider{}},
-		nil,
+		&config.Config{Reversion: &config.ReversionConfig{}},
 		sniperTestLogger(),
 	)
+	require.NoError(t, err)
 
 	job.tick(context.Background())
 
@@ -261,12 +272,13 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 		opportunities: []ScanOpportunity{opp},
 	}
 
-	job := NewScannerJob(
+	job, err := NewScannerJob(
 		[]Scanner{mScanner},
 		engine,
-		nil,
+		&config.Config{Reversion: &config.ReversionConfig{}},
 		sniperTestLogger(),
 	)
+	require.NoError(t, err)
 
 	subCtx := t.Context()
 	ch, err := bus.Subscribe(subCtx, reversion.TopicReversionCandidate)
@@ -301,12 +313,13 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 	mScanner2 := &mockScanner{
 		opportunities: []ScanOpportunity{opp2},
 	}
-	job2 := NewScannerJob(
+	job2, err := NewScannerJob(
 		[]Scanner{mScanner2},
 		engine,
-		nil,
+		&config.Config{Reversion: &config.ReversionConfig{}},
 		sniperTestLogger(),
 	)
+	require.NoError(t, err)
 
 	job2.tick(context.Background())
 }
@@ -315,6 +328,7 @@ func TestConfiguredScanner_Scan_Blacklisted(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Symbols: []config.SymbolConfig{
 			{Symbol: "BTC_USDT", Exchange: "mexc"},
 		},
@@ -323,7 +337,7 @@ func TestConfiguredScanner_Scan_Blacklisted(t *testing.T) {
 		},
 	}
 
-	scanner := NewConfiguredScanner(
+	scanner, err := NewConfiguredScanner(
 		cfg,
 		nil,
 		map[string]strategy.FundingStoreSet{
@@ -332,6 +346,7 @@ func TestConfiguredScanner_Scan_Blacklisted(t *testing.T) {
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -343,6 +358,7 @@ func TestScheduleScanner_Scan(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 
 	settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
 
@@ -388,7 +404,9 @@ func TestScheduleScanner_Scan(t *testing.T) {
 		Reversion: &config.ReversionConfig{
 			RawFundingReversionConfig: config.RawFundingReversionConfig{
 				Default: config.ExchangeReversionConfig{
-					MinVol24USD: 1000000,
+					MinVol24USD:       1000000,
+					MarginUSD:         5.0,
+					MaxCandidateTrade: 1,
 				},
 			},
 		},
@@ -397,13 +415,14 @@ func TestScheduleScanner_Scan(t *testing.T) {
 		},
 	}
 
-	scanner := NewScheduleScanner(
+	scanner, err := NewScheduleScanner(
 		"mexc",
 		cfg,
 		client,
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -464,6 +483,7 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			client := mocks.NewMockClient(ctrl)
+			client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 
 			var potentialResults []exchange.PotentialFundingResult
 			tickerMap := make(map[string]exchange.Ticker)
@@ -493,7 +513,9 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 				Reversion: &config.ReversionConfig{
 					RawFundingReversionConfig: config.RawFundingReversionConfig{
 						Default: config.ExchangeReversionConfig{
-							MinVol24USD: 1000000,
+							MinVol24USD:       1000000,
+							MarginUSD:         15.0,
+							MaxCandidateTrade: 1,
 						},
 					},
 				},
@@ -503,13 +525,14 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 				},
 			}
 
-			scanner := NewScheduleScanner(
+			scanner, err := NewScheduleScanner(
 				"mexc",
 				cfg,
 				client,
 				sniperTestLogger(),
 				func(string) (string, bool) { return "", false },
 			)
+			require.NoError(t, err)
 
 			opportunities, err := scanner.Scan(context.Background())
 			require.NoError(t, err)
@@ -527,13 +550,15 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{},
 		Blacklist: &config.BlacklistConfig{
 			"mexc": []string{"XRP_USDT"},
 		},
 	}
 
 	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
-	job := NewScannerJob(nil, engine, cfg, sniperTestLogger())
+	job, err := NewScannerJob(nil, engine, cfg, sniperTestLogger())
+	require.NoError(t, err)
 
 	// Candidate meets all thresholds
 	candOk := domain.Candidate{
@@ -641,7 +666,7 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 			},
 		}
 
-		scanner := NewConfiguredScanner(
+		scanner, err := NewConfiguredScanner(
 			cfg,
 			nil,
 			map[string]strategy.FundingStoreSet{
@@ -654,6 +679,7 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 			sniperTestLogger(),
 			func(string) (string, bool) { return "", false },
 		)
+		require.NoError(t, err)
 
 		opportunities, err := scanner.Scan(context.Background())
 		require.NoError(t, err)
@@ -705,13 +731,14 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 			},
 		}
 
-		scanner := NewScheduleScanner(
+		scanner, err := NewScheduleScanner(
 			"mexc",
 			cfg,
 			client,
 			sniperTestLogger(),
 			func(string) (string, bool) { return "", false },
 		)
+		require.NoError(t, err)
 
 		opportunities, err := scanner.Scan(context.Background())
 		require.NoError(t, err)
@@ -724,6 +751,7 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 
 	settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
 
@@ -743,9 +771,9 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 
 	// Mock GetContractDetails
 	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
-		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1},
-		{Symbol: "ETH_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1},
-		{Symbol: "SOL_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1},
+		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.001, VolScale: 3},
+		{Symbol: "ETH_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 0.01, VolScale: 3},
+		{Symbol: "SOL_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 1.0, VolScale: 3},
 	}, nil)
 
 	// Configure total marginUSD = 11 and maxCandidateTrade = 2
@@ -753,21 +781,23 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 		Reversion: &config.ReversionConfig{
 			RawFundingReversionConfig: config.RawFundingReversionConfig{
 				Default: config.ExchangeReversionConfig{
-					MinVol24USD:       1000000,
-					MarginUSD:         11.0,
-					MaxCandidateTrade: 2,
+					MinVol24USD:             1000000,
+					MarginUSD:               11.0,
+					MaxCandidateTrade:       2,
+					MaxMarginUSDOfCandidate: 5.5,
 				},
 			},
 		},
 	}
 
-	scanner := NewScheduleScanner(
+	scanner, err := NewScheduleScanner(
 		"mexc",
 		cfg,
 		client,
 		sniperTestLogger(),
 		func(string) (string, bool) { return "", false },
 	)
+	require.NoError(t, err)
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
@@ -777,7 +807,239 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 	assert.Equal(t, "BTC_USDT", opportunities[0].Candidate.Symbol)
 	assert.Equal(t, "ETH_USDT", opportunities[1].Candidate.Symbol)
 
-	// Allocated margin: int(11.0 / 2) = 5.0
-	assert.Equal(t, 5.0, opportunities[0].Candidate.Config.MarginUSDT)
-	assert.Equal(t, 5.0, opportunities[1].Candidate.Config.MarginUSDT)
+	// Allocated margin: 11.0 / 2 = 5.5
+	assert.InDelta(t, 5.5, opportunities[0].Candidate.Config.MarginUSDT, 0.001)
+	assert.InDelta(t, 5.5, opportunities[1].Candidate.Config.MarginUSDT, 0.001)
+}
+
+func TestScheduleScanner_LeverageAndVolumePreDetermined(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
+
+	settleTime := time.Now().Add(10 * time.Minute).UnixMilli()
+
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]exchange.PotentialFundingResult{
+		{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: settleTime, Volume24h: 2000000},
+	}, nil)
+
+	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
+		{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50000, AmountUSDT24: 2000000},
+	}, nil)
+
+	// Contract specifies MaxLeverage = 5, ContractSize = 0.001
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, MaxLeverage: 5, ContractSize: 0.001, VolScale: 3},
+	}, nil)
+
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					Leverage:          20,
+					MinVol24USD:       100000,
+					MarginUSD:         100.0,
+					MaxCandidateTrade: 1,
+				},
+			},
+		},
+	}
+
+	scanner, err := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+	require.NoError(t, err)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+	require.Len(t, opportunities, 1)
+
+	cand := opportunities[0].Candidate
+	// Configured leverage default 20x capped down to 5x by MaxLeverage = 5
+	assert.Equal(t, 5, cand.Config.Leverage)
+	// Volume should be pre-calculated: 100 USDT margin * 5x leverage / (50000 price * 0.001 size) = 10 contracts
+	assert.Greater(t, cand.Volume, 0.0)
+	assert.Equal(t, 10.0, cand.Volume)
+}
+
+func TestScheduleScanner_MaxMarginUSDOfCandidateCapping(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
+
+	settleTime := time.Now().Add(10 * time.Minute).UnixMilli()
+
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]exchange.PotentialFundingResult{
+		{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: settleTime, Volume24h: 2000000},
+	}, nil)
+
+	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
+		{Symbol: "BTC_USDT", LastPrice: 50000, Bid1: 49990, Ask1: 50000, AmountUSDT24: 2000000},
+	}, nil)
+
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, MaxLeverage: 10, ContractSize: 0.001, VolScale: 3},
+	}, nil)
+
+	// marginUSD = 100, maxCandidateTrade = 1 (uncapped allocatedMargin would be 100), but maxMarginUSDOfCandidate = 15.0
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					Leverage:                10,
+					MinVol24USD:             100000,
+					MarginUSD:               100.0,
+					MaxCandidateTrade:       1,
+					MaxMarginUSDOfCandidate: 15.0,
+				},
+			},
+		},
+	}
+
+	scanner, err := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+	require.NoError(t, err)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+	require.Len(t, opportunities, 1)
+
+	cand := opportunities[0].Candidate
+	// MarginUSDT should be capped at maxMarginUSDOfCandidate = 15.0
+	assert.Equal(t, 15.0, cand.Config.MarginUSDT)
+	// Volume: 15 USDT * 10x leverage / (50000 price * 0.001 size) = 3.0 contracts
+	assert.Equal(t, 3.0, cand.Volume)
+}
+
+func TestScannerConstructors_Validation(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	log := sniperTestLogger()
+	validCfg := &config.Config{Reversion: &config.ReversionConfig{}}
+
+	// NewScheduleScanner validation
+	_, err := NewScheduleScanner("", validCfg, client, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewScheduleScanner("mexc", nil, client, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewScheduleScanner("mexc", &config.Config{}, client, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewScheduleScanner("mexc", validCfg, nil, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewScheduleScanner("mexc", validCfg, client, nil, nil)
+	assert.Error(t, err)
+
+	// NewConfiguredScanner validation
+	_, err = NewConfiguredScanner(nil, nil, nil, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewConfiguredScanner(&config.Config{}, nil, nil, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewConfiguredScanner(validCfg, nil, nil, nil, nil)
+	assert.Error(t, err)
+
+	// NewScannerJob validation
+	_, err = NewScannerJob(nil, nil, nil, log)
+	assert.Error(t, err)
+
+	_, err = NewScannerJob(nil, nil, validCfg, nil)
+	assert.Error(t, err)
+}
+
+func TestScheduleScanner_ImpactRatioSurplusRedistribution(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
+
+	settleTime := time.Now().Add(10 * time.Minute).UnixMilli()
+
+	// Candidate 1: low volume 1,440,000 USDT (avg min = 1000 USDT). At 5% impact -> maxSafeNotional = 50 USDT. At 10x lev -> marginCap = 5 USDT.
+	// Candidate 2: high volume 144,000,000 USDT (avg min = 100,000 USDT). At 5% impact -> maxSafeNotional = 5,000 USDT. At 20x lev -> marginCap = 250 USDT.
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]exchange.PotentialFundingResult{
+		{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: settleTime, Volume24h: 1440000},
+		{Symbol: "ETH_USDT", Rate: 0.004, SettleTime: settleTime, Volume24h: 144000000},
+	}, nil)
+
+	client.EXPECT().GetTickers(gomock.Any(), "").Return([]exchange.Ticker{
+		{Symbol: "BTC_USDT", LastPrice: 50000, AmountUSDT24: 1440000},
+		{Symbol: "ETH_USDT", LastPrice: 3000, AmountUSDT24: 144000000},
+	}, nil)
+
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, MaxLeverage: 10, ContractSize: 0.001, VolScale: 3},
+		{Symbol: "ETH_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, MaxLeverage: 20, ContractSize: 0.01, VolScale: 3},
+	}, nil)
+
+	// totalMarginUSD = 100 USDT, numToTrade = 2. Equal initial split = 50 USDT per candidate.
+	// maxImpactRatio = 5% (0.05).
+	// Candidate 1 (BTC_USDT): maxSafeNotional = 50 USDT. At 10x lev -> marginCap = 5 USDT. Surplus = 45 USDT.
+	// Candidate 2 (ETH_USDT): receives initial 50 USDT + 45 USDT surplus = 95 USDT margin. At 20x lev -> 1900 USDT notional <= 5000 USDT maxSafeNotional.
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			Safety: config.SafetyConfig{
+				MaxImpactRatio: 5.0,
+			},
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					Leverage:          20,
+					MinVol24USD:       100000,
+					MarginUSD:         100.0,
+					MaxCandidateTrade: 2,
+				},
+			},
+		},
+	}
+
+	scanner, err := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+	require.NoError(t, err)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+	require.Len(t, opportunities, 2)
+
+	// ETH_USDT scores higher (9.0 vs 5.72) due to high volume, so it ranks 1st in opportunities
+	cand1 := opportunities[0].Candidate
+	assert.Equal(t, "ETH_USDT", cand1.Symbol)
+	assert.Equal(t, 95.0, cand1.Config.MarginUSDT)
+	assert.Equal(t, 20, cand1.Config.Leverage)
+
+	// BTC_USDT candidate capped at 5 USDT margin ranks 2nd
+	cand2 := opportunities[1].Candidate
+	assert.Equal(t, "BTC_USDT", cand2.Symbol)
+	assert.Equal(t, 5.0, cand2.Config.MarginUSDT)
+	assert.Equal(t, 10, cand2.Config.Leverage)
 }

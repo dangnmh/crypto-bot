@@ -925,7 +925,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 			Symbol:      "BTC_USDT",
 			Exchange:    "bybit",
 			MinVol24USD: 10000,
-			Leverage:    10,
+			Leverage:    5,
 		},
 		TradeIntent: domain.TradeIntent{
 			Symbol:      "BTC_USDT",
@@ -971,7 +971,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	}, nil)
 
 	// 3. FireIOC expectations (we assert ChangeLeverage is called with leverage = 5 due to risk limit capping)
-	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 10, gomock.Any()).Return(nil)
+	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 5, gomock.Any()).Return(nil)
 
 	changeLeverageCalled := make(chan struct{})
 	mockClient.EXPECT().ChangeLeverage(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req exchange.ChangeLeverageRequest) error {

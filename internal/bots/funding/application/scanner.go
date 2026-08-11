@@ -62,14 +62,21 @@ func NewScannerJob(
 	engine *app.Engine,
 	cfg *config.Config,
 	log *slog.Logger,
-) *ScannerJob {
+) (*ScannerJob, error) {
+	if cfg == nil || cfg.Reversion == nil {
+		return nil, fmt.Errorf("scanner_job: config and reversion config cannot be nil")
+	}
+	if log == nil {
+		return nil, fmt.Errorf("scanner_job: logger cannot be nil")
+	}
+
 	return &ScannerJob{
 		scanners: scanners,
 		engine:   engine,
 		cfg:      cfg,
 		log:      log.With("component", "scanner_job"),
 		states:   make(map[string]*symbolState),
-	}
+	}, nil
 }
 
 // Run starts the background scanner tick loop using the application context.
@@ -119,10 +126,6 @@ func (j *ScannerJob) tick(ctx context.Context) {
 	}
 
 	wg.Wait()
-}
-
-func matchExchangeName(a, b string) bool {
-	return strings.EqualFold(a, b)
 }
 
 func (j *ScannerJob) getEngineProvider(exchangeName string) (*app.ExchangeProvider, error) {
@@ -263,14 +266,24 @@ func NewConfiguredScanner(
 	stores map[string]strategy.FundingStoreSet,
 	log *slog.Logger,
 	disabledReason func(string) (string, bool),
-) *ConfiguredScanner {
+) (*ConfiguredScanner, error) {
+	if cfg == nil || cfg.Reversion == nil {
+		return nil, fmt.Errorf("configured_scanner: config and reversion config cannot be nil")
+	}
+	if log == nil {
+		return nil, fmt.Errorf("configured_scanner: logger cannot be nil")
+	}
+	if disabledReason == nil {
+		disabledReason = func(string) (string, bool) { return "", false }
+	}
+
 	return &ConfiguredScanner{
 		cfg:            cfg,
 		engine:         engine,
 		stores:         stores,
 		log:            log.With("component", "configured_scanner"),
 		disabledReason: disabledReason,
-	}
+	}, nil
 }
 
 func (s *ConfiguredScanner) getStoreSet(exchangeName string) (strategy.FundingStoreSet, bool) {
@@ -283,79 +296,97 @@ func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error)
 	var opportunities []ScanOpportunity
 
 	for i := range s.cfg.Symbols {
-		symCfg := s.cfg.Symbols[i]
-
-		// Skip if disabled in-memory
-		if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
-			s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.String("reason", reason))
-			continue
-		}
-
-		// Skip if blacklisted
-		if s.cfg.Blacklist != nil && s.cfg.Blacklist.IsBlacklisted(symCfg.Exchange, symCfg.Symbol) {
-			s.log.DebugContext(ctx, "Skipping blacklisted symbol", slog.String("symbol", symCfg.Symbol), slog.String("exchange", symCfg.Exchange))
-			continue
-		}
-
-		storeSet, ok := s.getStoreSet(symCfg.Exchange)
-		if !ok {
-			s.log.WarnContext(ctx, "Store set not found for exchange", slog.String("exchange", symCfg.Exchange))
-			continue
-		}
-
-		// Retrieve next settle time
-		settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, storeSet.Funding())
-		if err != nil {
-			s.log.DebugContext(ctx, "Failed to get next settle time", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
-			continue
-		}
-
-		// Retrieve ticker data
-		if storeSet.Ticker() == nil {
-			s.log.WarnContext(ctx, "Ticker store not ready", slog.String("exchange", symCfg.Exchange))
-			continue
-		}
-
-		td, err := storeSet.Ticker().GetTicker(ctx, symCfg.Symbol)
-		if err != nil {
-			s.log.DebugContext(ctx, "No ticker data available yet", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
-			continue
-		}
-
-		fd, err := storeSet.Funding().GetFunding(ctx, symCfg.Symbol)
-		if err != nil {
-			s.log.DebugContext(ctx, "No funding data available yet", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
-			continue
-		}
-
-		// Build and enrich candidate opportunity
-		candidate := s.buildCandidate(symCfg, td, fd.FundingRate)
-
-		if s.cfg != nil && s.cfg.Reversion != nil {
-			if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
-				s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
-					slog.String("exchange", candidate.Config.Exchange),
-					slog.String("symbol", candidate.Symbol),
-					slog.String("side", candidate.Side.String()),
-					slog.String("configSide", s.cfg.Reversion.TradeSide),
-				)
-				continue
+		if storeSet, ok := s.resolveStoreSet(ctx, s.cfg.Symbols[i]); ok {
+			if opp, ok := s.fetchCandidate(ctx, s.cfg.Symbols[i], storeSet); ok {
+				opportunities = append(opportunities, opp)
 			}
 		}
-
-		candidate.SettleTime = settle
-		if !s.enrich(ctx, storeSet.Contract(), &candidate) {
-			s.log.DebugContext(ctx, "Contract enrichment failed for candidate", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol))
-			continue
-		}
-
-		opportunities = append(opportunities, ScanOpportunity{
-			Candidate:  candidate,
-			SettleTime: settle,
-		})
 	}
 
 	return opportunities, nil
+}
+
+func (s *ConfiguredScanner) resolveStoreSet(ctx context.Context, symCfg config.SymbolConfig) (strategy.FundingStoreSet, bool) {
+	if reason, disabled := s.disabledReason(symCfg.Symbol); disabled {
+		s.log.DebugContext(ctx, "Skipping disabled symbol", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.String("reason", reason))
+		return nil, false
+	}
+
+	if s.cfg.Blacklist != nil && s.cfg.Blacklist.IsBlacklisted(symCfg.Exchange, symCfg.Symbol) {
+		s.log.DebugContext(ctx, "Skipping blacklisted symbol", slog.String("symbol", symCfg.Symbol), slog.String("exchange", symCfg.Exchange))
+		return nil, false
+	}
+
+	storeSet, ok := s.getStoreSet(symCfg.Exchange)
+	if !ok {
+		s.log.WarnContext(ctx, "Store set not found for exchange", slog.String("exchange", symCfg.Exchange))
+		return nil, false
+	}
+
+	return storeSet, true
+}
+
+func (s *ConfiguredScanner) fetchCandidate(ctx context.Context, symCfg config.SymbolConfig, storeSet strategy.FundingStoreSet) (ScanOpportunity, bool) {
+	settle, err := GetNextSettleTime(ctx, symCfg.SimulateSettle, symCfg.Symbol, storeSet.Funding())
+	if err != nil {
+		s.log.DebugContext(ctx, "Failed to get next settle time", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
+		return ScanOpportunity{}, false
+	}
+
+	if storeSet.Ticker() == nil {
+		s.log.WarnContext(ctx, "Ticker store not ready", slog.String("exchange", symCfg.Exchange))
+		return ScanOpportunity{}, false
+	}
+
+	td, err := storeSet.Ticker().GetTicker(ctx, symCfg.Symbol)
+	if err != nil {
+		s.log.DebugContext(ctx, "No ticker data available yet", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
+		return ScanOpportunity{}, false
+	}
+
+	fd, err := storeSet.Funding().GetFunding(ctx, symCfg.Symbol)
+	if err != nil {
+		s.log.DebugContext(ctx, "No funding data available yet", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol), slog.Any("error", err))
+		return ScanOpportunity{}, false
+	}
+
+	candidate := s.buildCandidate(symCfg, td, fd.FundingRate)
+
+	if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
+		s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
+			slog.String("exchange", candidate.Config.Exchange),
+			slog.String("symbol", candidate.Symbol),
+			slog.String("side", candidate.Side.String()),
+			slog.String("configSide", s.cfg.Reversion.TradeSide),
+		)
+		return ScanOpportunity{}, false
+	}
+
+	candidate.SettleTime = settle
+	if !s.enrich(ctx, storeSet.Contract(), &candidate) {
+		s.log.DebugContext(ctx, "Contract enrichment failed for candidate", slog.String("exchange", symCfg.Exchange), slog.String("symbol", symCfg.Symbol))
+		return ScanOpportunity{}, false
+	}
+
+	client := s.resolveClient(symCfg.Exchange)
+	candidate.Config.Leverage = domain.DetermineCandidateLeverage(ctx, client, &candidate, s.log)
+	candidate.Volume = candidate.CalculateVolume()
+
+	return ScanOpportunity{
+		Candidate:  candidate,
+		SettleTime: settle,
+	}, true
+}
+
+func (s *ConfiguredScanner) resolveClient(exchangeName string) exchange.Client {
+	if s.engine == nil {
+		return nil
+	}
+	prov, err := s.engine.GetProvider(exchangeName)
+	if err != nil || prov == nil {
+		return nil
+	}
+	return prov.Client
 }
 
 func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.TickerData, fundingRate float64) domain.Candidate {
@@ -445,14 +476,30 @@ func NewScheduleScanner(
 	client exchange.Client,
 	log *slog.Logger,
 	disabledReason func(string) (string, bool),
-) *ScheduleScanner {
+) (*ScheduleScanner, error) {
+	if strings.TrimSpace(exchangeName) == "" {
+		return nil, fmt.Errorf("schedule_scanner: exchangeName cannot be empty")
+	}
+	if cfg == nil || cfg.Reversion == nil {
+		return nil, fmt.Errorf("schedule_scanner: config and reversion config cannot be nil")
+	}
+	if client == nil {
+		return nil, fmt.Errorf("schedule_scanner: exchange client cannot be nil")
+	}
+	if log == nil {
+		return nil, fmt.Errorf("schedule_scanner: logger cannot be nil")
+	}
+	if disabledReason == nil {
+		disabledReason = func(string) (string, bool) { return "", false }
+	}
+
 	return &ScheduleScanner{
 		exchange:       exchangeName,
 		cfg:            cfg,
 		client:         client,
 		log:            log.With("component", "schedule_scanner", "exchange", exchangeName),
 		disabledReason: disabledReason,
-	}
+	}, nil
 }
 
 func (s *ScheduleScanner) resolveExchangeReversionConfig(exchangeName string) (config.ExchangeReversionConfig, bool) {
@@ -479,9 +526,6 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		if specific.MinVol24USD > 0 {
 			minVol = specific.MinVol24USD
 		}
-	}
-	if minVol <= 0 {
-		minVol = 1000000
 	}
 
 	// 2. Fetch potential funding symbols using native exchange client
@@ -525,7 +569,7 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		}
 	}
 
-	opportunities = s.selectBestOpportunities(opportunities)
+	opportunities = s.selectBestOpportunities(ctx, opportunities)
 	s.log.Info("Opportunies selected",
 		slog.Int("results", len(results)),
 		slog.Int("opportunities", len(opportunities)))
@@ -533,44 +577,98 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	return opportunities, nil
 }
 
-func (s *ScheduleScanner) selectBestOpportunities(opportunities []ScanOpportunity) []ScanOpportunity {
+func (s *ScheduleScanner) resolveTotalMarginAndMaxCandidate() (float64, int, float64) {
+	exchConfig := s.cfg.Reversion.Default
+	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
+		config.MergeExchangeReversionConfig(&exchConfig, specific)
+	}
+
+	return exchConfig.MarginUSD, exchConfig.MaxCandidateTrade, exchConfig.MaxMarginUSDOfCandidate
+}
+
+func (s *ScheduleScanner) resolveMaxImpactRatio() float64 {
+	return s.cfg.Reversion.Safety.MaxImpactRatio
+}
+
+func (s *ScheduleScanner) allocateCandidateMargins(
+	ctx context.Context,
+	selected []ScanOpportunity,
+	totalMarginUSD float64,
+	maxCandidateMargin float64,
+) []ScanOpportunity {
+	numToTrade := len(selected)
+	if numToTrade == 0 {
+		return nil
+	}
+
+	candidates := make([]domain.Candidate, numToTrade)
+	for i := range selected {
+		candidates[i] = selected[i].Candidate
+	}
+
+	maxImpactRatio := s.resolveMaxImpactRatio()
+
+	allocator := domain.NewAscendingVolumeMarginAllocator()
+	allocated := allocator.AllocateMargins(
+		ctx,
+		candidates,
+		totalMarginUSD,
+		maxCandidateMargin,
+		maxImpactRatio,
+		s.client,
+		s.log,
+	)
+
+	candMap := make(map[string]domain.Candidate, len(allocated))
+	for i := range allocated {
+		candMap[allocated[i].Symbol] = allocated[i]
+	}
+
+	var validOpportunities []ScanOpportunity
+	for i := range selected {
+		if updated, ok := candMap[selected[i].Candidate.Symbol]; ok {
+			selected[i].Candidate = updated
+			validOpportunities = append(validOpportunities, selected[i])
+		}
+	}
+	return validOpportunities
+}
+
+func (s *ScheduleScanner) resolveScoringWeights() (float64, float64, float64) {
+	exchConfig := s.cfg.Reversion.Default
+	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
+		config.MergeExchangeReversionConfig(&exchConfig, specific)
+	}
+	return exchConfig.ScoringRateWeight, exchConfig.ScoringVolumeWeight, exchConfig.MaxVolumeScore
+}
+
+func (s *ScheduleScanner) selectBestOpportunities(ctx context.Context, opportunities []ScanOpportunity) []ScanOpportunity {
 	if len(opportunities) == 0 {
 		return nil
 	}
 
-	// 1. Resolve configuration values for s.exchange
-	totalMarginUSD := 0.0
-	maxCandidate := 1 // default fallback
+	totalMarginUSD, maxCandidate, maxCandidateMargin := s.resolveTotalMarginAndMaxCandidate()
+	rateWeight, volWeight, maxVolScore := s.resolveScoringWeights()
 
-	var exchConfig config.ExchangeReversionConfig
-	if s.cfg.Reversion != nil {
-		exchConfig = s.cfg.Reversion.Default
-		if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
-			config.MergeExchangeReversionConfig(&exchConfig, specific)
-		}
-	}
-	if exchConfig.MarginUSD > 0 {
-		totalMarginUSD = exchConfig.MarginUSD
-	}
-	if exchConfig.MaxCandidateTrade > 0 {
-		maxCandidate = exchConfig.MaxCandidateTrade
-	}
-
-	if totalMarginUSD <= 0 {
-		for i := range s.cfg.Symbols {
-			sym := &s.cfg.Symbols[i]
-			if matchExchangeName(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
-				totalMarginUSD = sym.MarginUSDT
-				break
-			}
-		}
-	}
-	if totalMarginUSD <= 0 {
-		totalMarginUSD = 3.0 // hard fallback
-	}
-
-	// 2. Sort opportunities by absolute funding rate descending, tie-breaking by 24h volume descending
+	// 2. Sort opportunities by opportunity score descending, tie-breaking by absolute funding rate descending
 	sort.Slice(opportunities, func(i, j int) bool {
+		scoreI := domain.CalculateOpportunityScore(
+			opportunities[i].Candidate.FundingRate,
+			opportunities[i].Candidate.Vol24USDT,
+			rateWeight,
+			volWeight,
+			maxVolScore,
+		)
+		scoreJ := domain.CalculateOpportunityScore(
+			opportunities[j].Candidate.FundingRate,
+			opportunities[j].Candidate.Vol24USDT,
+			rateWeight,
+			volWeight,
+			maxVolScore,
+		)
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
 		rateI := math.Abs(opportunities[i].Candidate.FundingRate)
 		rateJ := math.Abs(opportunities[j].Candidate.FundingRate)
 		if rateI != rateJ {
@@ -585,15 +683,8 @@ func (s *ScheduleScanner) selectBestOpportunities(opportunities []ScanOpportunit
 		return nil
 	}
 
-	// 4. Divide budget evenly and assign integer margin to candidate configurations
-	allocatedMargin := float64(int(totalMarginUSD / float64(numToTrade)))
 	selected := opportunities[:numToTrade]
-
-	for i := range selected {
-		selected[i].Candidate.Config.MarginUSDT = allocatedMargin
-	}
-
-	return selected
+	return s.allocateCandidateMargins(ctx, selected, totalMarginUSD, maxCandidateMargin)
 }
 
 func (s *ScheduleScanner) processResult(
@@ -621,18 +712,6 @@ func (s *ScheduleScanner) processResult(
 		return ScanOpportunity{}, false, nil
 	}
 
-	// Resolve MarginUSDT dynamically: try to find a static symbol configuration for the same exchange first
-	for i := range s.cfg.Symbols {
-		sym := &s.cfg.Symbols[i]
-		if matchExchangeName(sym.Exchange, s.exchange) && sym.MarginUSDT > 0 {
-			symCfg.MarginUSDT = sym.MarginUSDT
-			break
-		}
-	}
-	if symCfg.MarginUSDT <= 0 {
-		symCfg.MarginUSDT = 3.0 // hard fallback
-	}
-
 	td, ok := tickerMap[r.Symbol]
 	if !ok {
 		s.log.DebugContext(ctx, "No ticker data available for symbol", slog.String("exchange", s.exchange), slog.String("symbol", r.Symbol))
@@ -647,15 +726,13 @@ func (s *ScheduleScanner) processResult(
 
 	candidate := s.buildCandidate(symCfg, td, r.Rate)
 
-	if s.cfg != nil && s.cfg.Reversion != nil {
-		if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
-			s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
-				slog.String("symbol", candidate.Symbol),
-				slog.String("side", candidate.Side.String()),
-				slog.String("configSide", s.cfg.Reversion.TradeSide),
-			)
-			return ScanOpportunity{}, false, nil
-		}
+	if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
+		s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
+			slog.String("symbol", candidate.Symbol),
+			slog.String("side", candidate.Side.String()),
+			slog.String("configSide", s.cfg.Reversion.TradeSide),
+		)
+		return ScanOpportunity{}, false, nil
 	}
 
 	settleTime := time.UnixMilli(r.SettleTime)
@@ -672,6 +749,10 @@ func (s *ScheduleScanner) processResult(
 		MakerFeeRate: cd.MakerFeeRate,
 		MaxLeverage:  cd.MaxLeverage,
 	}
+
+	lev := domain.DetermineCandidateLeverage(ctx, s.client, &candidate, s.log)
+	candidate.Config.Leverage = lev
+	candidate.Volume = candidate.CalculateVolume()
 
 	return ScanOpportunity{
 		Candidate:  candidate,
@@ -744,17 +825,15 @@ func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 	}
 
 	// Max symbol USDT price safety limit check
-	if j.cfg != nil && j.cfg.Reversion != nil {
-		maxPrice := j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
-		if maxPrice > 0 && refPrice > maxPrice {
-			j.log.Debug("Skipping trigger: price exceeds maxSymbolUSDTPrice safety limit",
-				slog.String("exchange", c.Config.Exchange),
-				slog.String("symbol", c.Symbol),
-				slog.Float64("price", refPrice),
-				slog.Float64("maxPrice", maxPrice),
-			)
-			return false
-		}
+	maxPrice := j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
+	if maxPrice > 0 && refPrice > maxPrice {
+		j.log.Debug("Skipping trigger: price exceeds maxSymbolUSDTPrice safety limit",
+			slog.String("exchange", c.Config.Exchange),
+			slog.String("symbol", c.Symbol),
+			slog.Float64("price", refPrice),
+			slog.Float64("maxPrice", maxPrice),
+		)
+		return false
 	}
 
 	return true

@@ -114,3 +114,43 @@ func (c *Candidate) NotionalForVolume(volume, refPrice float64) float64 {
 func (c *Candidate) GetPeakPrice() float64 {
 	return tradecalc.GetPeakPrice(tradecalc.Side(c.Side), c.BestBid, c.BestAsk)
 }
+
+// Default Opportunity Scoring Constants.
+const (
+	DefaultScoringRateWeight   = 1.0 // 1.0 point per 0.1% (0.001) absolute funding rate
+	DefaultScoringVolumeWeight = 0.5 // 0.5 points per 1M USDT 24h volume
+	DefaultMaxVolumeScore      = 5.0 // Cap volume contribution at equivalent of 10M USDT
+)
+
+// CalculateOpportunityScore evaluates a candidate's trade opportunity score based on
+// absolute funding rate return and 24h market liquidity volume.
+//
+// Formula:
+// RateScore = (|fundingRate| / 0.001) * rateWeight
+// VolScore  = min(maxVolScore, (vol24hUSDT / 1,000,000) * volWeight)
+// TotalScore = RateScore + VolScore.
+func CalculateOpportunityScore(fundingRate, vol24hUSDT, rateWeight, volWeight, maxVolScore float64) float64 {
+	if rateWeight <= 0 {
+		rateWeight = DefaultScoringRateWeight
+	}
+	if volWeight <= 0 {
+		volWeight = DefaultScoringVolumeWeight
+	}
+	if maxVolScore <= 0 {
+		maxVolScore = DefaultMaxVolumeScore
+	}
+
+	absRate := fundingRate
+	if absRate < 0 {
+		absRate = -absRate
+	}
+
+	rateScore := (absRate / 0.001) * rateWeight
+
+	volScore := (vol24hUSDT / 1_000_000.0) * volWeight
+	if maxVolScore > 0 && volScore > maxVolScore {
+		volScore = maxVolScore
+	}
+
+	return rateScore + volScore
+}

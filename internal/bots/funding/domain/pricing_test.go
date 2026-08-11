@@ -410,3 +410,64 @@ func TestCalculateVolumeMaxVolCapping(t *testing.T) {
 		t.Errorf("CalculateVolumeForNotional got %.4f, want 5 (capped by MaxVol)", gotNotional)
 	}
 }
+
+func TestCalculateOpportunityScore(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		fundingRate float64
+		vol24hUSDT  float64
+		rateWeight  float64
+		volWeight   float64
+		maxVolScore float64
+		wantScore   float64
+	}{
+		{
+			name:        "0.1% rate and 1M volume with defaults",
+			fundingRate: 0.001,
+			vol24hUSDT:  1_000_000,
+			rateWeight:  1.0,
+			volWeight:   0.5,
+			maxVolScore: 5.0,
+			wantScore:   1.5, // 1.0 (rate) + 0.5 (vol)
+		},
+		{
+			name:        "negative funding rate uses absolute value",
+			fundingRate: -0.002,
+			vol24hUSDT:  2_000_000,
+			rateWeight:  1.0,
+			volWeight:   0.5,
+			maxVolScore: 5.0,
+			wantScore:   3.0, // 2.0 (rate) + 1.0 (vol)
+		},
+		{
+			name:        "high volume is capped at maxVolScore",
+			fundingRate: 0.001,
+			vol24hUSDT:  100_000_000,
+			rateWeight:  1.0,
+			volWeight:   0.5,
+			maxVolScore: 5.0,
+			wantScore:   6.0, // 1.0 (rate) + 5.0 (capped vol)
+		},
+		{
+			name:        "zero weights fallback to defaults",
+			fundingRate: 0.003,
+			vol24hUSDT:  4_000_000,
+			rateWeight:  0,
+			volWeight:   0,
+			maxVolScore: 0,
+			wantScore:   5.0, // 3.0 (rate) + 2.0 (vol)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := domain.CalculateOpportunityScore(tt.fundingRate, tt.vol24hUSDT, tt.rateWeight, tt.volWeight, tt.maxVolScore)
+			if !almostEqual(got, tt.wantScore, 0.001) {
+				t.Errorf("CalculateOpportunityScore got %.4f, want %.4f", got, tt.wantScore)
+			}
+		})
+	}
+}

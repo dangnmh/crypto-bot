@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -199,13 +200,16 @@ func (s *FundingBot) Run(ctx context.Context) error {
 	var scanners []Scanner
 
 	if s.cfg.Reversion != nil && s.cfg.Reversion.Scanners.Configured {
-		configuredScanner := NewConfiguredScanner(
+		configuredScanner, err := NewConfiguredScanner(
 			s.cfg,
 			s.engine,
 			s.stores,
 			s.log,
 			s.disabledReason,
 		)
+		if err != nil {
+			return fmt.Errorf("failed to create configured scanner: %w", err)
+		}
 		scanners = append(scanners, configuredScanner)
 		s.log.InfoContext(ctx, "Registered ConfiguredScanner")
 	}
@@ -217,13 +221,16 @@ func (s *FundingBot) Run(ctx context.Context) error {
 			}
 
 			if exchangeProvider, ok := s.engine.Providers[exch]; ok {
-				scheduleScanner := NewScheduleScanner(
+				scheduleScanner, err := NewScheduleScanner(
 					exch,
 					s.cfg,
 					exchangeProvider.Client,
 					s.log,
 					s.disabledReason,
 				)
+				if err != nil {
+					return fmt.Errorf("failed to create schedule scanner for %s: %w", exch, err)
+				}
 				scanners = append(scanners, scheduleScanner)
 				s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
 			} else {
@@ -236,12 +243,15 @@ func (s *FundingBot) Run(ctx context.Context) error {
 		s.log.WarnContext(ctx, "⚠️ No scanners are enabled. Background scanner job will run idle.")
 	}
 
-	scannerJob := NewScannerJob(
+	scannerJob, err := NewScannerJob(
 		scanners,
 		s.engine,
 		s.cfg,
 		s.log,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create scanner job: %w", err)
+	}
 
 	s.bgWg.Go(func() {
 		if err := scannerJob.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

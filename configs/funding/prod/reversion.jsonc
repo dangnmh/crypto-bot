@@ -13,7 +13,11 @@
     "marginUSD": 5,
     "minVol24USD": 5000000,
     "minFundingRate": 0.7,
-    "maxCandidateTrade": 1
+    "maxCandidateTrade": 1,
+    "maxMarginUSDOfCandidate": 1000,
+    "scoringRateWeight": 1.0, // Points per 0.1% (0.001) absolute funding rate
+    "scoringVolumeWeight": 0.5, // Points per 1M USDT 24h volume
+    "maxVolumeScore": 10.0 // Max volume score cap (10.0 pts = equivalent of 20M USDT volume cap)
   },
   "sync": {
     "time": "60s",

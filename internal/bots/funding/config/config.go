@@ -217,6 +217,18 @@ func MergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeRev
 	if src.MaxCandidateTrade > 0 {
 		dest.MaxCandidateTrade = src.MaxCandidateTrade
 	}
+	if src.MaxMarginUSDOfCandidate > 0 {
+		dest.MaxMarginUSDOfCandidate = src.MaxMarginUSDOfCandidate
+	}
+	if src.ScoringRateWeight > 0 {
+		dest.ScoringRateWeight = src.ScoringRateWeight
+	}
+	if src.ScoringVolumeWeight > 0 {
+		dest.ScoringVolumeWeight = src.ScoringVolumeWeight
+	}
+	if src.MaxVolumeScore > 0 {
+		dest.MaxVolumeScore = src.MaxVolumeScore
+	}
 }
 
 func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
