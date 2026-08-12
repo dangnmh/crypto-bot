@@ -82,7 +82,7 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 20,
-      "marginUSD": 550
+      "marginUSD": 400
     },
     "bitget_futures": {
       "takeProfitPct": 1,
