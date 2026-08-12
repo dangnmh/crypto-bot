@@ -71,8 +71,8 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 20,
-      "marginUSD": 1000,
-      "maxCandidateTrade": 3
+      "marginUSD": 1200,
+      "maxCandidateTrade": 4
     },
     "mexc_futures": {
       "takeProfitPct": 1.5,
