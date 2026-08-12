@@ -77,6 +77,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/woox"
 	"crypto-bot/internal/infrastructure/exchange/xt"
 	"crypto-bot/internal/infrastructure/exchange/zoomex"
+	"crypto-bot/pkg/formatutil"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/logger"
 )
@@ -411,33 +412,11 @@ type SymbolGroup struct {
 	Opportunities  []Opportunity
 }
 
-func standardizeSymbol(symbol string) string {
-	s := strings.ToUpper(symbol)
-	s = strings.TrimSuffix(s, "-SWAP")
-	s = strings.TrimSuffix(s, "SWAP")
-	s = strings.ReplaceAll(s, "_", "")
-	s = strings.ReplaceAll(s, "-", "")
-	if strings.HasSuffix(s, "USDTM") {
-		s = strings.TrimSuffix(s, "M")
-	}
-	if before, ok := strings.CutSuffix(s, "USD"); ok {
-		s = before + "USDT"
-	}
-	if before, ok := strings.CutSuffix(s, "USDC"); ok {
-		s = before + "USDT"
-	}
-	if !strings.HasSuffix(s, "USDT") {
-		s = s + "USDT"
-	}
-	base := strings.TrimSuffix(s, "USDT")
-	return base + "_USDT"
-}
-
 func printOpportunities(opportunities []Opportunity) {
 	// Group opportunities by standardized symbol
 	groupsMap := make(map[string][]Opportunity)
 	for _, opp := range opportunities {
-		stdSym := standardizeSymbol(opp.Symbol)
+		stdSym := formatutil.GetNormalizedSymbol(opp.Symbol)
 		groupsMap[stdSym] = append(groupsMap[stdSym], opp)
 	}
 
