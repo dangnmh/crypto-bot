@@ -325,6 +325,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,
+			Status:   orderInfo.State,
 		}, nil
 	}
 
@@ -395,6 +396,7 @@ func calculateClosedPnLInfo(
 	durationMs := parseDurationMs(orderInfo.CreateTime, lastDealTimeStr)
 
 	return &exchange.ClosedPnLInfo{
+		Status:             orderInfo.State,
 		EntryPrice:         entryPrice,
 		ExitPrice:          exitPrice,
 		ClosedSizeContract: new(closeQty),

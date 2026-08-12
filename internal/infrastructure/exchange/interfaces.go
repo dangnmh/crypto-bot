@@ -95,6 +95,7 @@ type RiskLimitLeverageProvider interface {
 type ClosedPnLInfo struct {
 	Exchange           string
 	Symbol             string
+	Status             domain.OrderState
 	EntryPrice         float64
 	ExitPrice          float64
 	ClosedSizeContract *float64
@@ -162,3 +163,55 @@ type PotentialFundingResult struct {
 type BackgroundTaskRunner interface {
 	StartBackgroundTasks(ctx context.Context)
 }
+
+// UnimplementedClient provides default no-op implementations for exchange.Client methods for easier mocking in tests.
+type UnimplementedClient struct{}
+
+func (UnimplementedClient) GetTickers(ctx context.Context, symbol string) ([]Ticker, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetTopGainer(ctx context.Context, req TopGainerRequest) ([]TopGainerResult, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetContractDetails(ctx context.Context) ([]ContractDetail, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetFundingRates(ctx context.Context, symbols []string) ([]FundingRateResult, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetServerTime(ctx context.Context) (int64, error) { return 0, nil }
+func (UnimplementedClient) GetPotentialFundingSymbols(ctx context.Context, minVol24h, maxVol24h float64, whitelist, blacklist []string) ([]PotentialFundingResult, error) {
+	return nil, nil
+}
+func (UnimplementedClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error) {
+	return CreateOrderResult{}, nil
+}
+func (UnimplementedClient) CancelOrder(ctx context.Context, symbol, orderID string) error { return nil }
+func (UnimplementedClient) CancelOrders(ctx context.Context, orderIDs []string) error     { return nil }
+func (UnimplementedClient) CancelAllOpenOrders(ctx context.Context, symbol string) error {
+	return nil
+}
+func (UnimplementedClient) GetOrder(ctx context.Context, symbol, orderID string) (*OrderInfo, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetOrderByExternalID(ctx context.Context, symbol, externalOrderID string) (*OrderInfo, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetOpenOrders(ctx context.Context, symbol string) ([]OrderInfo, error) {
+	return nil, nil
+}
+func (UnimplementedClient) GetOpenPositions(ctx context.Context, symbol string) ([]Position, error) {
+	return nil, nil
+}
+func (UnimplementedClient) ClosePosition(ctx context.Context, symbol string, closeSide domain.Side, volume float64, positionMode domain.PositionMode, leverage int) error {
+	return nil
+}
+func (UnimplementedClient) CloseAllPositions(ctx context.Context, symbol string) error { return nil }
+func (UnimplementedClient) ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error {
+	return nil
+}
+func (UnimplementedClient) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
+	return nil
+}
+func (UnimplementedClient) WarmUp(ctx context.Context, interval time.Duration) {}
+func (UnimplementedClient) SupportLeverageOnOrder() bool                       { return false }

@@ -210,6 +210,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,
+			Status:   orderInfo.State,
 		}, nil
 	}
 	openingOrderId, parseErr := strconv.ParseInt(orderInfo.OrderID, 10, 64)
@@ -259,6 +260,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	return &exchange.ClosedPnLInfo{
 		Exchange:       exchangeName,
 		Symbol:         symbol,
+		Status:         orderInfo.State,
 		EntryPrice:     entryPrice,
 		ExitPrice:      exitPrice,
 		ClosedSizeCoin: new(closedSize),

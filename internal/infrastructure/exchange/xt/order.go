@@ -487,6 +487,14 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return nil, fmt.Errorf("fetch order: %w", err)
 	}
 
+	if orderInfo.State == domain.OrderStateCanceled && orderInfo.DealVol == 0 {
+		return &exchange.ClosedPnLInfo{
+			Exchange: "xt",
+			Symbol:   symbol,
+			Status:   domain.OrderStateCanceled,
+		}, nil
+	}
+
 	sym := cleanXTSymbol(symbol)
 
 	var expectedPosSide string
@@ -532,6 +540,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	return &exchange.ClosedPnLInfo{
 		Exchange:           "xt",
 		Symbol:             toStandardSymbol(symbol),
+		Status:             orderInfo.State,
 		EntryPrice:         entryPrice,
 		ExitPrice:          exitPrice,
 		ClosedSizeContract: new(closedSize),

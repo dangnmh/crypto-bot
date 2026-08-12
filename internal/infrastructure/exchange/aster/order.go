@@ -425,6 +425,14 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return nil, fmt.Errorf("query order detail: %w", err)
 	}
 
+	if orderInfo.State == domain.OrderStateCanceled && orderInfo.DealVol == 0 {
+		return &exchange.ClosedPnLInfo{
+			Exchange: exchangeName,
+			Symbol:   symbol,
+			Status:   domain.OrderStateCanceled,
+		}, nil
+	}
+
 	trades, err := c.rawGetUserTrades(ctx, symbol, orderInfo.CreateTime)
 	if err != nil {
 		return nil, fmt.Errorf("query trades: %w", err)
@@ -464,8 +472,9 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	totalFee := totalFee1 + totalFee2
 
 	return &exchange.ClosedPnLInfo{
-		Exchange:       "aster",
+		Exchange:       exchangeName,
 		Symbol:         symbol,
+		Status:         orderInfo.State,
 		EntryPrice:     entryPrice,
 		ExitPrice:      exitPrice,
 		ClosedSizeCoin: new(entryQtySum),

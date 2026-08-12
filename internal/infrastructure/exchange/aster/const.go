@@ -1,6 +1,8 @@
 package aster
 
 const (
+	exchangeName = "aster"
+
 	sideBuy  = "BUY"
 	sideSell = "SELL"
 

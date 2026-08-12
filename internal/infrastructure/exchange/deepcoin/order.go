@@ -341,6 +341,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchange.ExchangeDeepcoin,
 			Symbol:   symbol,
+			Status:   orderInfo.State,
 		}, nil
 	}
 
@@ -389,6 +390,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	return &exchange.ClosedPnLInfo{
 		Exchange:           exchange.ExchangeDeepcoin,
 		Symbol:             pos.InstID,
+		Status:             orderInfo.State,
 		EntryPrice:         entryPrice,
 		ExitPrice:          exitPrice,
 		ClosedSizeContract: new(closedSize),

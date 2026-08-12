@@ -158,6 +158,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 		return &exchange.ClosedPnLInfo{
 			Exchange: exchangeName,
 			Symbol:   symbol,
+			Status:   mappedOrder.State,
 		}, nil
 	}
 	positionID := orderInfo.PositionID
@@ -194,6 +195,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	return &exchange.ClosedPnLInfo{
 		Exchange:           exchangeName,
 		Symbol:             row.Symbol,
+		Status:             mappedOrder.State,
 		EntryPrice:         row.OpenAvgPrice,
 		ExitPrice:          row.CloseAvgPrice,
 		ClosedSizeContract: new(row.CloseVol),
