@@ -81,8 +81,8 @@
       "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
-      "leverage": 20,
-      "marginUSD": 400
+      "leverage": 10,
+      "marginUSD": 300
     },
     "bitget_futures": {
       "takeProfitPct": 1,
