@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"log/slog"
+	"math"
 	"sort"
 )
 
@@ -23,20 +24,19 @@ type MarginAllocator interface {
 	) []Candidate
 }
 
-// AscendingVolumeMarginAllocator allocates available margin sequentially to candidates
-// sorted in ascending order of 24h volume (Vol24USDT).
-// Sorting ascending allows candidates requiring smaller position sizes to be funded first,
-// maximizing the number of orders executed across portfolio opportunities.
-type AscendingVolumeMarginAllocator struct{}
+// ScoreMarginAllocator allocates available margin sequentially to candidates
+// sorted in descending order of candidate opportunity score.
+// Sorting descending prioritizes high-opportunity candidates for margin pool funding.
+type ScoreMarginAllocator struct{}
 
-// NewAscendingVolumeMarginAllocator constructs a new AscendingVolumeMarginAllocator.
-func NewAscendingVolumeMarginAllocator() *AscendingVolumeMarginAllocator {
-	return &AscendingVolumeMarginAllocator{}
+// NewScoreMarginAllocator constructs a new ScoreMarginAllocator.
+func NewScoreMarginAllocator() *ScoreMarginAllocator {
+	return &ScoreMarginAllocator{}
 }
 
-// AllocateMargins allocates available total margin sequentially across candidates in ascending 24h volume order.
+// AllocateMargins allocates available total margin sequentially across candidates in candidate score order.
 // Filters out candidates that receive zero allocated margin or contract volume.
-func (a *AscendingVolumeMarginAllocator) AllocateMargins(
+func (a *ScoreMarginAllocator) AllocateMargins(
 	ctx context.Context,
 	candidates []Candidate,
 	totalMarginUSD float64,
@@ -52,13 +52,16 @@ func (a *AscendingVolumeMarginAllocator) AllocateMargins(
 	result := make([]Candidate, len(candidates))
 	copy(result, candidates)
 
-	// Step 1: Sort candidates in ascending order by 24h USDT volume (Vol24USDT asc).
-	// Lower volume candidates have smaller market impact caps and require less margin pool,
-	// allowing more total candidates/orders to be placed.
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Vol24USDT < result[j].Vol24USDT
+	// Sort candidates in descending order by opportunity score before processing.
+	// Highest opportunity candidates receive margin allocation priority.
+	sort.SliceStable(result, func(i, j int) bool {
+		scoreI := CalculateOpportunityScore(result[i].FundingRate, result[i].Vol24USDT, 1.0, 1.0, 100.0)
+		scoreJ := CalculateOpportunityScore(result[j].FundingRate, result[j].Vol24USDT, 1.0, 1.0, 100.0)
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+		return math.Abs(result[i].FundingRate) > math.Abs(result[j].FundingRate)
 	})
-
 	remainingMargin := totalMarginUSD
 
 	for i := range result {

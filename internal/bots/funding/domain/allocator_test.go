@@ -22,11 +22,11 @@ func (m *mockRiskLimitClient) GetMaxLeverageForValue(ctx context.Context, symbol
 	return m.riskLimitLev, m.riskLimitErr
 }
 
-func TestAscendingVolumeMarginAllocator_AllocateMargins(t *testing.T) {
+func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	allocator := domain.NewAscendingVolumeMarginAllocator()
+	allocator := domain.NewScoreMarginAllocator()
 
 	t.Run("empty candidates", func(t *testing.T) {
 		t.Parallel()
@@ -66,9 +66,8 @@ func TestAscendingVolumeMarginAllocator_AllocateMargins(t *testing.T) {
 		res := allocator.AllocateMargins(ctx, candidates, 1000.0, 500.0, 5.0, nil, nil)
 
 		assert.Len(t, res, 2)
-		// LOWVOL processed first due to ascending 24h volume sort
-		assert.Equal(t, "LOWVOL", res[0].Symbol)
-		assert.Equal(t, "HIGHVOL", res[1].Symbol)
+		assert.Equal(t, "HIGHVOL", res[0].Symbol)
+		assert.Equal(t, "LOWVOL", res[1].Symbol)
 
 		assert.Greater(t, res[0].Config.MarginUSDT, 0.0)
 		assert.Greater(t, res[1].Config.MarginUSDT, 0.0)
@@ -149,12 +148,12 @@ func TestAscendingVolumeMarginAllocator_AllocateMargins(t *testing.T) {
 		}
 
 		// Total pool = 100 USDT, max candidate margin = 100 USDT.
-		// LOWVOL consumes the full 100 USDT margin pool.
-		// HIGHVOL receives 0 USDT and 0 volume, so it gets filtered out of result slice.
+		// HIGHVOL consumes the full 100 USDT margin pool due to higher opportunity score.
+		// LOWVOL receives 0 USDT and 0 volume, so it gets filtered out of result slice.
 		res := allocator.AllocateMargins(ctx, []domain.Candidate{c1, c2}, 100.0, 100.0, 0.0, nil, nil)
 
 		assert.Len(t, res, 1)
-		assert.Equal(t, "LOWVOL", res[0].Symbol)
+		assert.Equal(t, "HIGHVOL", res[0].Symbol)
 		assert.InDelta(t, 100.0, res[0].Config.MarginUSDT, 0.001)
 	})
 
@@ -212,8 +211,10 @@ func TestAscendingVolumeMarginAllocator_AllocateMargins(t *testing.T) {
 		res := allocator.AllocateMargins(ctx, []domain.Candidate{c1, c2}, 200.0, 100.0, 0.0, nil, nil)
 
 		assert.Len(t, res, 2)
-		assert.Equal(t, 5, res[0].Config.Leverage)
-		assert.Equal(t, 20, res[1].Config.Leverage)
+		assert.Equal(t, 20, res[0].Config.Leverage)
+		assert.Equal(t, 5, res[1].Config.Leverage)
+		assert.InDelta(t, 100.0, res[0].Config.MarginUSDT, 0.001)
+		assert.InDelta(t, 100.0, res[1].Config.MarginUSDT, 0.001)
 		assert.InDelta(t, 100.0, res[0].Config.MarginUSDT, 0.001)
 		assert.InDelta(t, 100.0, res[1].Config.MarginUSDT, 0.001)
 	})

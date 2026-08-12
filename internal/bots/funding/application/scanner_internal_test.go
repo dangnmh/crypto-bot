@@ -1029,19 +1029,13 @@ func TestScheduleScanner_ImpactRatioSurplusRedistribution(t *testing.T) {
 
 	opportunities, err := scanner.Scan(context.Background())
 	require.NoError(t, err)
-	require.Len(t, opportunities, 2)
+	require.Len(t, opportunities, 1)
 
-	// ETH_USDT scores higher (9.0 vs 5.72) due to high volume, so it ranks 1st in opportunities
+	// ETH_USDT scores higher (9.0 vs 5.72) due to high volume, so it ranks 1st in opportunities and receives the 100 USDT margin pool
 	cand1 := opportunities[0].Candidate
 	assert.Equal(t, "ETH_USDT", cand1.Symbol)
-	assert.Equal(t, 95.0, cand1.Config.MarginUSDT)
+	assert.Equal(t, 100.0, cand1.Config.MarginUSDT)
 	assert.Equal(t, 20, cand1.Config.Leverage)
-
-	// BTC_USDT candidate capped at 5 USDT margin ranks 2nd
-	cand2 := opportunities[1].Candidate
-	assert.Equal(t, "BTC_USDT", cand2.Symbol)
-	assert.Equal(t, 5.0, cand2.Config.MarginUSDT)
-	assert.Equal(t, 10, cand2.Config.Leverage)
 }
 
 func TestScheduleScanner_Scan_PreFilterInvalidCandidates(t *testing.T) {

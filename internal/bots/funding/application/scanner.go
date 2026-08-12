@@ -625,7 +625,7 @@ func (s *ScheduleScanner) allocateCandidateMargins(
 
 	maxImpactRatio := s.resolveMaxImpactRatio()
 
-	allocator := domain.NewAscendingVolumeMarginAllocator()
+	allocator := domain.NewScoreMarginAllocator()
 	allocated := allocator.AllocateMargins(
 		ctx,
 		candidates,
