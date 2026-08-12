@@ -360,7 +360,7 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 
-	settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
+	settleTime := time.Now().Add(10 * time.Minute).UnixMilli()
 
 	// Mock GetPotentialFundingSymbols
 	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 1000000.0, 0.0, nil, gomock.Any()).Return([]exchange.PotentialFundingResult{
@@ -453,8 +453,8 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 				{Symbol: "ETH_USDT", LastPrice: 3000, Bid1: 2999, Ask1: 3001, Volume24: 1000, AmountUSDT24: 3000000},
 			},
 			rates: []exchange.FundingRateResult{
-				{Symbol: "BTC_USDT", Rate: 0.004, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
-				{Symbol: "ETH_USDT", Rate: -0.008, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()}, // chosen (0.008 > 0.004)
+				{Symbol: "BTC_USDT", Rate: 0.004, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()},
+				{Symbol: "ETH_USDT", Rate: -0.008, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()}, // chosen (0.008 > 0.004)
 			},
 			expectedSymbol: "ETH_USDT",
 			expectedRate:   -0.008,
@@ -468,9 +468,9 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 				{Symbol: "LTC_USDT", LastPrice: 150, Bid1: 149, Ask1: 151, Volume24: 100, AmountUSDT24: 15000},
 			},
 			rates: []exchange.FundingRateResult{
-				{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
-				{Symbol: "ETH_USDT", Rate: -0.005, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
-				{Symbol: "LTC_USDT", Rate: 0.001, SettleTime: time.Now().Add(4 * time.Hour).UnixMilli()},
+				{Symbol: "BTC_USDT", Rate: 0.005, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()},
+				{Symbol: "ETH_USDT", Rate: -0.005, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()},
+				{Symbol: "LTC_USDT", Rate: 0.001, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()},
 			},
 			expectedSymbol: "ETH_USDT",
 			expectedRate:   -0.005,
@@ -692,7 +692,7 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		client := mocks.NewMockClient(ctrl)
 
-		settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
+		settleTime := time.Now().Add(10 * time.Minute).UnixMilli()
 
 		// Mock GetPotentialFundingSymbols with negative rate (SHORT side candidate)
 		client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 1000000.0, 0.0, nil, gomock.Any()).Return([]exchange.PotentialFundingResult{
@@ -753,7 +753,7 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 	client := mocks.NewMockClient(ctrl)
 	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 
-	settleTime := time.Now().Add(4 * time.Hour).UnixMilli()
+	settleTime := time.Now().Add(10 * time.Minute).UnixMilli()
 
 	// Mock GetPotentialFundingSymbols to return 3 symbols
 	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]exchange.PotentialFundingResult{
@@ -1042,4 +1042,130 @@ func TestScheduleScanner_ImpactRatioSurplusRedistribution(t *testing.T) {
 	assert.Equal(t, "BTC_USDT", cand2.Symbol)
 	assert.Equal(t, 5.0, cand2.Config.MarginUSDT)
 	assert.Equal(t, 10, cand2.Config.Leverage)
+}
+
+func TestScheduleScanner_Scan_PreFilterInvalidCandidates(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
+
+	// High score candidate (HIGHSCORE_USDT) has high funding rate (0.01) but fails pre-filtering because price (200.0) exceeds MaxSymbolUSDTPrice (50.0).
+	// Low score candidate (VALID_USDT) has lower funding rate (0.005) but is tradeable.
+	tickers := []exchange.Ticker{
+		{Symbol: "HIGHSCORE_USDT", LastPrice: 200.0, Bid1: 199.9, Ask1: 200.1, Volume24: 100, AmountUSDT24: 2000000},
+		{Symbol: "VALID_USDT", LastPrice: 10.0, Bid1: 9.9, Ask1: 10.1, Volume24: 1000, AmountUSDT24: 2000000},
+	}
+	rates := []exchange.FundingRateResult{
+		{Symbol: "HIGHSCORE_USDT", Rate: 0.010, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()},
+		{Symbol: "VALID_USDT", Rate: 0.005, SettleTime: time.Now().Add(10 * time.Minute).UnixMilli()},
+	}
+
+	potentialResults := []exchange.PotentialFundingResult{
+		{Symbol: "HIGHSCORE_USDT", Rate: 0.010, SettleTime: rates[0].SettleTime, Volume24h: 2000000},
+		{Symbol: "VALID_USDT", Rate: 0.005, SettleTime: rates[1].SettleTime, Volume24h: 2000000},
+	}
+
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 100000.0, 0.0, nil, gomock.Any()).Return(potentialResults, nil)
+	client.EXPECT().GetTickers(gomock.Any(), "").Return(tickers, nil)
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "HIGHSCORE_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, PriceScale: 1, VolScale: 0, ContractSize: 1.0},
+		{Symbol: "VALID_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
+	}, nil)
+
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			Safety: config.SafetyConfig{
+				MaxImpactRatio:     1.0,
+				MaxSymbolUSDTPrice: 50.0, // MaxSymbolUSDTPrice = 50.0
+			},
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					Leverage:          10,
+					MinVol24USD:       100000,
+					MarginUSD:         5.0,
+					MaxCandidateTrade: 1, // Max candidate trade is 1
+				},
+			},
+		},
+	}
+
+	scanner, err := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+	require.NoError(t, err)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+
+	// HIGHSCORE_USDT should be pre-filtered out due to MaxSymbolUSDTPrice, allowing VALID_USDT to be selected.
+	require.Len(t, opportunities, 1)
+	assert.Equal(t, "VALID_USDT", opportunities[0].Candidate.Symbol)
+}
+
+func TestScheduleScanner_Scan_PreFilterInvalidSettleTime(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
+
+	// Candidate 1 (EXPIRED_USDT) has past settlement time (1 hour in the past).
+	// Candidate 2 (VALID_USDT) has future settlement time (4 hours in the future).
+	pastSettle := time.Now().Add(-1 * time.Hour).UnixMilli()
+	futureSettle := time.Now().Add(10 * time.Minute).UnixMilli()
+
+	tickers := []exchange.Ticker{
+		{Symbol: "EXPIRED_USDT", LastPrice: 10.0, Bid1: 9.9, Ask1: 10.1, Volume24: 1000, AmountUSDT24: 2000000},
+		{Symbol: "VALID_USDT", LastPrice: 10.0, Bid1: 9.9, Ask1: 10.1, Volume24: 1000, AmountUSDT24: 2000000},
+	}
+
+	potentialResults := []exchange.PotentialFundingResult{
+		{Symbol: "EXPIRED_USDT", Rate: 0.010, SettleTime: pastSettle, Volume24h: 2000000},
+		{Symbol: "VALID_USDT", Rate: 0.005, SettleTime: futureSettle, Volume24h: 2000000},
+	}
+
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 100000.0, 0.0, nil, gomock.Any()).Return(potentialResults, nil)
+	client.EXPECT().GetTickers(gomock.Any(), "").Return(tickers, nil)
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "EXPIRED_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
+		{Symbol: "VALID_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
+	}, nil)
+
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			Safety: config.SafetyConfig{
+				MaxImpactRatio: 1.0,
+			},
+			RawFundingReversionConfig: config.RawFundingReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					Leverage:          10,
+					MinVol24USD:       100000,
+					MarginUSD:         5.0,
+					MaxCandidateTrade: 1,
+				},
+			},
+		},
+	}
+
+	scanner, err := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+	require.NoError(t, err)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+
+	// EXPIRED_USDT should be pre-filtered out due to past settlement time, allowing VALID_USDT to be selected.
+	require.Len(t, opportunities, 1)
+	assert.Equal(t, "VALID_USDT", opportunities[0].Candidate.Symbol)
 }

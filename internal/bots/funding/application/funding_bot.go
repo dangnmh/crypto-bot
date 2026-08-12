@@ -197,50 +197,9 @@ func (s *FundingBot) Run(ctx context.Context) error {
 	)
 	defer s.log.InfoContext(context.WithoutCancel(ctx), "🛑 Funding bot manager stopped")
 
-	var scanners []Scanner
-
-	if s.cfg.Reversion != nil && s.cfg.Reversion.Scanners.Configured {
-		configuredScanner, err := NewConfiguredScanner(
-			s.cfg,
-			s.engine,
-			s.stores,
-			s.log,
-			s.disabledReason,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create configured scanner: %w", err)
-		}
-		scanners = append(scanners, configuredScanner)
-		s.log.InfoContext(ctx, "Registered ConfiguredScanner")
-	}
-
-	if s.cfg.Reversion != nil {
-		for exch, enabled := range s.cfg.Reversion.Scanners.Schedule {
-			if !enabled {
-				continue
-			}
-
-			if exchangeProvider, ok := s.engine.Providers[exch]; ok {
-				scheduleScanner, err := NewScheduleScanner(
-					exch,
-					s.cfg,
-					exchangeProvider.Client,
-					s.log,
-					s.disabledReason,
-				)
-				if err != nil {
-					return fmt.Errorf("failed to create schedule scanner for %s: %w", exch, err)
-				}
-				scanners = append(scanners, scheduleScanner)
-				s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
-			} else {
-				s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.", slog.String("exchange", exch))
-			}
-		}
-	}
-
-	if len(scanners) == 0 {
-		s.log.WarnContext(ctx, "⚠️ No scanners are enabled. Background scanner job will run idle.")
+	scanners, err := s.initScanners(ctx)
+	if err != nil {
+		return err
 	}
 
 	scannerJob, err := NewScannerJob(
@@ -261,6 +220,59 @@ func (s *FundingBot) Run(ctx context.Context) error {
 
 	<-ctx.Done()
 	return nil
+}
+
+func (s *FundingBot) initScanners(ctx context.Context) ([]Scanner, error) {
+	var scanners []Scanner
+
+	if s.cfg.Reversion != nil && s.cfg.Reversion.Scanners.Configured {
+		configuredScanner, err := NewConfiguredScanner(
+			s.cfg,
+			s.engine,
+			s.stores,
+			s.log,
+			s.disabledReason,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create configured scanner: %w", err)
+		}
+		scanners = append(scanners, configuredScanner)
+		s.log.InfoContext(ctx, "Registered ConfiguredScanner")
+	}
+
+	if s.cfg.Reversion != nil {
+		for exch, enabled := range s.cfg.Reversion.Scanners.Schedule {
+			if !enabled {
+				continue
+			}
+
+			if exchangeProvider, ok := s.engine.Providers[exch]; ok {
+				scheduleScanner, err := NewScheduleScanner(
+					exch,
+					s.cfg,
+					exchangeProvider.Client,
+					s.log,
+					s.disabledReason,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create schedule scanner for %s: %w", exch, err)
+				}
+				if exchangeProvider.TimeSync != nil {
+					scheduleScanner.SetTimeSync(exchangeProvider.TimeSync)
+				}
+				scanners = append(scanners, scheduleScanner)
+				s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
+			} else {
+				s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.", slog.String("exchange", exch))
+			}
+		}
+	}
+
+	if len(scanners) == 0 {
+		s.log.WarnContext(ctx, "⚠️ No scanners are enabled. Background scanner job will run idle.")
+	}
+
+	return scanners, nil
 }
 
 // Stop implements the app.Bot interface. It executes any explicit teardown.

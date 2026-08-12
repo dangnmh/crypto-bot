@@ -136,6 +136,10 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 	j.statesMu.Lock()
 	defer j.statesMu.Unlock()
 
+	if c.SettleTime.IsZero() {
+		c.SettleTime = settle
+	}
+
 	// Minimum funding rate check
 	if math.Abs(c.FundingRate) < c.Config.MinFundingRate {
 		j.log.Debug("Skipping trigger: funding rate below minimum",
@@ -460,6 +464,11 @@ func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 	}
 }
 
+// TimeProvider abstracts provider time synchronization.
+type TimeProvider interface {
+	Now() time.Time
+}
+
 // ScheduleScanner scans for high-funding opportunities dynamically.
 type ScheduleScanner struct {
 	exchange       string
@@ -467,6 +476,19 @@ type ScheduleScanner struct {
 	client         exchange.Client
 	log            *slog.Logger
 	disabledReason func(string) (string, bool)
+	timeSync       TimeProvider
+}
+
+// SetTimeSync sets the time sync provider for the schedule scanner.
+func (s *ScheduleScanner) SetTimeSync(ts TimeProvider) {
+	s.timeSync = ts
+}
+
+func (s *ScheduleScanner) now() time.Time {
+	if s.timeSync != nil {
+		return s.timeSync.Now()
+	}
+	return time.Now()
 }
 
 // NewScheduleScanner creates a new ScheduleScanner.
@@ -521,12 +543,7 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		blacklist = append(blacklist, s.cfg.Blacklist.GetExchangeBlacklist(s.exchange)...)
 	}
 
-	minVol := s.cfg.Reversion.Default.MinVol24USD
-	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
-		if specific.MinVol24USD > 0 {
-			minVol = specific.MinVol24USD
-		}
-	}
+	minVol := s.resolveMinVol24USD()
 
 	// 2. Fetch potential funding symbols using native exchange client
 	results, err := s.client.GetPotentialFundingSymbols(ctx, minVol, 0, nil, blacklist)
@@ -564,7 +581,7 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 		if err != nil {
 			return nil, err
 		}
-		if ok {
+		if ok && s.isValidCandidate(&opp.Candidate) {
 			opportunities = append(opportunities, opp)
 		}
 	}
@@ -785,14 +802,58 @@ func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Tic
 }
 
 func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
-	minVol := c.Config.MinVol24USD
-	if minVol > 0 && c.Vol24USDT < minVol {
-		j.log.Debug("Skipping trigger: 24h volume below minimum safety limit",
-			slog.String("exchange", c.Config.Exchange),
-			slog.String("symbol", c.Symbol),
-			slog.Float64("vol24h", c.Vol24USDT),
-			slog.Float64("minVol", minVol),
-		)
+	maxPrice := 0.0
+	if j.cfg != nil && j.cfg.Reversion != nil {
+		maxPrice = j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
+	}
+	now := time.Now()
+	if prov, err := j.getEngineProvider(c.Config.Exchange); err == nil && prov.TimeSync != nil {
+		now = prov.TimeSync.Now()
+	}
+	return checkCandidateSafetyLimits(c, maxPrice, now, j.log)
+}
+
+func (s *ScheduleScanner) resolveMinVol24USD() float64 {
+	if s.cfg == nil || s.cfg.Reversion == nil {
+		return 0
+	}
+	minVol := s.cfg.Reversion.Default.MinVol24USD
+	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
+		if specific.MinVol24USD > 0 {
+			minVol = specific.MinVol24USD
+		}
+	}
+	return minVol
+}
+
+func (s *ScheduleScanner) isValidCandidate(c *domain.Candidate) bool {
+	if c == nil {
+		return false
+	}
+	minVol := s.resolveMinVol24USD()
+	maxPrice := 0.0
+	if s.cfg != nil && s.cfg.Reversion != nil {
+		maxPrice = s.cfg.Reversion.Safety.MaxSymbolUSDTPrice
+	}
+	return checkCandidatePreAllocationSafetyLimits(*c, minVol, maxPrice, s.now(), s.log)
+}
+
+func checkCandidatePreAllocationSafetyLimits(c domain.Candidate, minVol, maxSymbolUSDTPrice float64, now time.Time, logger *slog.Logger) bool {
+	if !validateCandidateSettleTime(c, now, logger) {
+		return false
+	}
+	if !validateCandidate24hVolume(c, minVol, logger) {
+		return false
+	}
+	return validateCandidateMaxSymbolPrice(c, maxSymbolUSDTPrice, logger)
+}
+
+func checkCandidateSafetyLimits(c domain.Candidate, maxSymbolUSDTPrice float64, now time.Time, logger *slog.Logger) bool {
+	return checkCandidateSafetyLimitsWithMinVol(c, c.Config.MinVol24USD, maxSymbolUSDTPrice, now, logger)
+}
+
+func checkCandidateSafetyLimitsWithMinVol(c domain.Candidate, minVol, maxSymbolUSDTPrice float64, now time.Time, logger *slog.Logger) bool {
+	if !checkCandidatePreAllocationSafetyLimits(c, minVol, maxSymbolUSDTPrice, now, logger) {
 		return false
 	}
 
@@ -802,40 +863,94 @@ func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 	maxSpend := marginUSDT * leverage
 
 	// Price over marginUSDT * leverage check
-	if refPrice > maxSpend {
-		j.log.Debug("Skipping trigger: price exceeds marginUSDT * leverage limit",
-			slog.String("exchange", c.Config.Exchange),
-			slog.String("symbol", c.Symbol),
-			slog.Float64("price", refPrice),
-			slog.Float64("maxSpend", maxSpend),
-		)
+	if refPrice > 0 && maxSpend > 0 && refPrice > maxSpend {
+		if logger != nil {
+			logger.Debug("Skipping candidate: price exceeds marginUSDT * leverage limit",
+				slog.String("exchange", c.Config.Exchange),
+				slog.String("symbol", c.Symbol),
+				slog.Float64("price", refPrice),
+				slog.Float64("maxSpend", maxSpend),
+			)
+		}
 		return false
 	}
 
 	// Minimum trade value check
-	minTradeUSDT := float64(c.MinVol) * refPrice * c.ContractSize
-	if maxSpend < minTradeUSDT {
-		j.log.Debug("Skipping trigger: max spend below minimum symbol trade value",
-			slog.String("exchange", c.Config.Exchange),
-			slog.String("symbol", c.Symbol),
-			slog.Float64("maxSpend", maxSpend),
-			slog.Float64("minTradeUSDT", minTradeUSDT),
-		)
-		return false
+	if refPrice > 0 && maxSpend > 0 {
+		minTradeUSDT := float64(c.MinVol) * refPrice * c.ContractSize
+		if maxSpend < minTradeUSDT {
+			if logger != nil {
+				logger.Debug("Skipping candidate: max spend below minimum symbol trade value",
+					slog.String("exchange", c.Config.Exchange),
+					slog.String("symbol", c.Symbol),
+					slog.Float64("maxSpend", maxSpend),
+					slog.Float64("minTradeUSDT", minTradeUSDT),
+				)
+			}
+			return false
+		}
 	}
 
-	// Max symbol USDT price safety limit check
-	maxPrice := j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
-	if maxPrice > 0 && refPrice > maxPrice {
-		j.log.Debug("Skipping trigger: price exceeds maxSymbolUSDTPrice safety limit",
-			slog.String("exchange", c.Config.Exchange),
-			slog.String("symbol", c.Symbol),
-			slog.Float64("price", refPrice),
-			slog.Float64("maxPrice", maxPrice),
-		)
+	return true
+}
+
+func validateCandidateSettleTime(c domain.Candidate, now time.Time, logger *slog.Logger) bool {
+	if c.SettleTime.IsZero() {
+		return true
+	}
+	if !now.Before(c.SettleTime) {
+		if logger != nil {
+			logger.Debug("Skipping candidate: settlement time already passed",
+				slog.String("exchange", c.Config.Exchange),
+				slog.String("symbol", c.Symbol),
+				slog.Time("now", now),
+				slog.Time("settle", c.SettleTime),
+			)
+		}
 		return false
 	}
+	if now.Add(15 * time.Minute).Before(c.SettleTime) {
+		if logger != nil {
+			logger.Debug("Skipping candidate: too early for settlement (outside 15-minute window)",
+				slog.String("exchange", c.Config.Exchange),
+				slog.String("symbol", c.Symbol),
+				slog.Time("now", now),
+				slog.Time("settle", c.SettleTime),
+			)
+		}
+		return false
+	}
+	return true
+}
 
+func validateCandidate24hVolume(c domain.Candidate, minVol float64, logger *slog.Logger) bool {
+	if minVol > 0 && c.Vol24USDT < minVol {
+		if logger != nil {
+			logger.Debug("Skipping candidate: 24h volume below minimum safety limit",
+				slog.String("exchange", c.Config.Exchange),
+				slog.String("symbol", c.Symbol),
+				slog.Float64("vol24h", c.Vol24USDT),
+				slog.Float64("minVol", minVol),
+			)
+		}
+		return false
+	}
+	return true
+}
+
+func validateCandidateMaxSymbolPrice(c domain.Candidate, maxSymbolUSDTPrice float64, logger *slog.Logger) bool {
+	refPrice := c.ExecutionRefPrice()
+	if refPrice > 0 && maxSymbolUSDTPrice > 0 && refPrice > maxSymbolUSDTPrice {
+		if logger != nil {
+			logger.Debug("Skipping candidate: price exceeds maxSymbolUSDTPrice safety limit",
+				slog.String("exchange", c.Config.Exchange),
+				slog.String("symbol", c.Symbol),
+				slog.Float64("price", refPrice),
+				slog.Float64("maxPrice", maxSymbolUSDTPrice),
+			)
+		}
+		return false
+	}
 	return true
 }
 
