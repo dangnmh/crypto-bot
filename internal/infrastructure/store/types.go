@@ -41,7 +41,41 @@ type ContractData struct {
 	TakerFeeRate float64
 	MakerFeeRate float64
 	MaxLeverage  int
+	RiskLimits   []exchange.RiskLimitTier
 	UpdatedAt    time.Time
+}
+
+// GetMaxVolForLeverage calculates maximum contract volume for a specific leverage and reference price,
+// considering single-order maxQty (MaxVol) and leverage risk-limit tier caps.
+func (c *ContractData) GetMaxVolForLeverage(leverage int, refPrice float64) int {
+	maxVol := c.MaxVol
+	if len(c.RiskLimits) == 0 || leverage <= 0 || refPrice <= 0 || c.ContractSize <= 0 {
+		return maxVol
+	}
+
+	var bestTier *exchange.RiskLimitTier
+	for i := range c.RiskLimits {
+		tier := &c.RiskLimits[i]
+		if tier.MaxLeverage >= leverage {
+			if bestTier == nil || tier.MaxLeverage < bestTier.MaxLeverage {
+				bestTier = tier
+			}
+		}
+	}
+
+	if bestTier != nil {
+		if bestTier.MaxQuantity > 0 && int(bestTier.MaxQuantity) < maxVol {
+			maxVol = int(bestTier.MaxQuantity)
+		}
+		if bestTier.MaxNotional > 0 {
+			notionalMaxVol := int(bestTier.MaxNotional / (c.ContractSize * refPrice))
+			if notionalMaxVol > 0 && notionalMaxVol < maxVol {
+				maxVol = notionalMaxVol
+			}
+		}
+	}
+
+	return maxVol
 }
 
 // FundingData holds per-symbol funding rate detail (from REST sync).
@@ -86,6 +120,7 @@ func ContractDataFromExchange(d *exchange.ContractDetail) *ContractData {
 		TakerFeeRate: d.TakerFeeRate,
 		MakerFeeRate: d.MakerFeeRate,
 		MaxLeverage:  d.MaxLeverage,
+		RiskLimits:   d.RiskLimits,
 		UpdatedAt:    time.Now(),
 	}
 }

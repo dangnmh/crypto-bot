@@ -44,7 +44,12 @@ type toobitExchangeInfo struct {
 }
 
 type toobitRiskLimit struct {
-	MaxLeverage xjson.Number `json:"maxLeverage"`
+	Level          int          `json:"level,omitempty"`
+	Quantity       xjson.Number `json:"quantity,omitempty"`
+	Value          xjson.Number `json:"value,omitempty"`
+	MaintainMargin xjson.Number `json:"maintainMargin,omitempty"`
+	InitialMargin  xjson.Number `json:"initialMargin,omitempty"`
+	MaxLeverage    xjson.Number `json:"maxLeverage"`
 }
 
 type toobitContract struct {
@@ -139,19 +144,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 		displayName = strings.ReplaceAll(displayName, "-", "")
 		displayName = strings.ReplaceAll(displayName, "_", "")
 
-		maxLeverage := 100
-		if len(raw.RiskLimits) > 0 {
-			highestLev := 0.0
-			for _, rl := range raw.RiskLimits {
-				lev, _ := rl.MaxLeverage.Float64()
-				if lev > highestLev {
-					highestLev = lev
-				}
-			}
-			if highestLev > 0 {
-				maxLeverage = int(highestLev)
-			}
-		}
+		maxLeverage, parsedRiskLimits := parseToobitRiskLimits(raw.RiskLimits)
 
 		maxVolVal := int(maxVol)
 		if maxVolVal <= 0 {
@@ -175,6 +168,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			PriceScale:    priceScale,
 			VolScale:      volScale,
 			State:         1,
+			RiskLimits:    parsedRiskLimits,
 		})
 	}
 
@@ -378,4 +372,33 @@ func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest
 	}
 
 	return results, nil
+}
+
+func parseToobitRiskLimits(rawLimits []toobitRiskLimit) (int, []exchange.RiskLimitTier) {
+	maxLeverage := 100
+	if len(rawLimits) == 0 {
+		return maxLeverage, nil
+	}
+	var parsedRiskLimits []exchange.RiskLimitTier
+	highestLev := 0.0
+	for _, rl := range rawLimits {
+		lev, _ := rl.MaxLeverage.Float64()
+		val, _ := rl.Value.Float64()
+		qty, _ := rl.Quantity.Float64()
+		if lev > highestLev {
+			highestLev = lev
+		}
+		if lev > 0 {
+			parsedRiskLimits = append(parsedRiskLimits, exchange.RiskLimitTier{
+				Level:       rl.Level,
+				MaxLeverage: int(lev),
+				MaxNotional: val,
+				MaxQuantity: qty,
+			})
+		}
+	}
+	if highestLev > 0 {
+		maxLeverage = int(highestLev)
+	}
+	return maxLeverage, parsedRiskLimits
 }

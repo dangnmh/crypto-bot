@@ -374,6 +374,9 @@ func (s *ConfiguredScanner) fetchCandidate(ctx context.Context, symCfg config.Sy
 
 	client := s.resolveClient(symCfg.Exchange)
 	candidate.Config.Leverage = domain.DetermineCandidateLeverage(ctx, client, &candidate, s.log)
+	if cd, err := storeSet.Contract().GetContract(ctx, candidate.Symbol); err == nil && cd != nil {
+		updateMaxVolForLeverage(cd.MaxVol, cd.GetMaxVolForLeverage, &candidate)
+	}
 	candidate.Volume = candidate.CalculateVolume()
 
 	return ScanOpportunity{
@@ -443,8 +446,23 @@ func (s *ConfiguredScanner) enrich(ctx context.Context, contractStore store.Cont
 		ContractSize: cd.ContractSize,
 		TakerFeeRate: cd.TakerFeeRate,
 		MakerFeeRate: cd.MakerFeeRate,
+		MaxLeverage:  cd.MaxLeverage,
 	}
+	updateMaxVolForLeverage(cd.MaxVol, cd.GetMaxVolForLeverage, c)
 	return true
+}
+
+func updateMaxVolForLeverage(defaultMaxVol int, getVolFn func(leverage int, refPrice float64) int, c *domain.Candidate) {
+	if c == nil {
+		return
+	}
+	maxVol := defaultMaxVol
+	if refPrice := c.ExecutionRefPrice(); refPrice > 0 && getVolFn != nil {
+		if calculatedMax := getVolFn(c.Config.Leverage, refPrice); calculatedMax > 0 {
+			maxVol = calculatedMax
+		}
+	}
+	c.MaxVol = maxVol
 }
 
 // ToTradeConfig converts config.SymbolConfig to domain.TradeConfig.
@@ -769,6 +787,7 @@ func (s *ScheduleScanner) processResult(
 
 	lev := domain.DetermineCandidateLeverage(ctx, s.client, &candidate, s.log)
 	candidate.Config.Leverage = lev
+	updateMaxVolForLeverage(cd.MaxVol, cd.GetMaxVolForLeverage, &candidate)
 	candidate.Volume = candidate.CalculateVolume()
 
 	return ScanOpportunity{

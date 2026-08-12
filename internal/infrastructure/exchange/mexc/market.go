@@ -221,6 +221,21 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	details := make([]exchange.ContractDetail, 0, len(rawList))
 	for i := range rawList {
 		raw := &rawList[i]
+		var parsedRiskLimits []exchange.RiskLimitTier
+		isByValue := strings.EqualFold(raw.RiskLimitType, "BY_VALUE")
+		for _, tier := range raw.RiskLimitCustom {
+			rTier := exchange.RiskLimitTier{
+				Level:       tier.Level,
+				MaxLeverage: tier.MaxLeverage,
+			}
+			if isByValue {
+				rTier.MaxNotional = tier.MaxVol
+			} else {
+				rTier.MaxQuantity = tier.MaxVol
+			}
+			parsedRiskLimits = append(parsedRiskLimits, rTier)
+		}
+
 		details = append(details, exchange.ContractDetail{
 			Symbol:                    raw.Symbol,
 			DisplayName:               raw.DisplayName,
@@ -256,6 +271,7 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 			IsNew:                     raw.IsNew,
 			IsHot:                     raw.IsHot,
 			IsHidden:                  raw.IsHidden,
+			RiskLimits:                parsedRiskLimits,
 		})
 	}
 	return details, nil

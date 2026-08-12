@@ -72,3 +72,38 @@ func TestContractDataFromExchange(t *testing.T) {
 	assert.Equal(t, 0.0006, cd.TakerFeeRate)
 	assert.Equal(t, 50, cd.MaxLeverage)
 }
+
+func TestGetMaxVolForLeverage(t *testing.T) {
+	t.Parallel()
+
+	cd := &store.ContractData{
+		Symbol:       "KAITO-SWAP-USDT",
+		ContractSize: 0.1,
+		MaxVol:       100000,
+		RiskLimits: []exchange.RiskLimitTier{
+			{Level: 1, MaxLeverage: 75, MaxNotional: 34276},
+			{Level: 2, MaxLeverage: 20, MaxNotional: 408050},
+		},
+	}
+
+	// At 20x leverage, price 0.6119: MaxNotional = 408050 -> notionalMaxVol = 408050 / 0.06119 = 6,668,573
+	// Capped by single order MaxVol = 100,000
+	maxVol20 := cd.GetMaxVolForLeverage(20, 0.6119)
+	assert.Equal(t, 100000, maxVol20)
+
+	// At 75x leverage, price 0.6119: MaxNotional = 34276 -> notionalMaxVol = 34276 / 0.06119 = 560,156
+	// Capped by single order MaxVol = 100,000
+	maxVol75 := cd.GetMaxVolForLeverage(75, 0.6119)
+	assert.Equal(t, 100000, maxVol75)
+
+	// With smaller MaxVol single order limit = 50,000
+	cdSmall := &store.ContractData{
+		Symbol:       "KAITO-SWAP-USDT",
+		ContractSize: 0.1,
+		MaxVol:       50000,
+		RiskLimits: []exchange.RiskLimitTier{
+			{Level: 1, MaxLeverage: 75, MaxNotional: 3427}, // 3427 / 0.06119 = 55,997
+		},
+	}
+	assert.Equal(t, 50000, cdSmall.GetMaxVolForLeverage(75, 0.6119))
+}

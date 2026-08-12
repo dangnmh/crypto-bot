@@ -153,40 +153,82 @@ const IntervalMin1 = domain.IntervalMin1
 
 // ContractDetail holds contract specification for a symbol.
 type ContractDetail struct {
-	Symbol                    string   `json:"symbol"`
-	DisplayName               string   `json:"displayName"`
-	DisplayNameEn             string   `json:"displayNameEn"`
-	PositionOpenType          int      `json:"positionOpenType"`
-	BaseCoin                  string   `json:"baseCoin"`
-	QuoteCoin                 string   `json:"quoteCoin"`
-	SettleCoin                string   `json:"settleCoin"`
-	ContractSize              float64  `json:"contractSize"`
-	MinLeverage               int      `json:"minLeverage"`
-	MaxLeverage               int      `json:"maxLeverage"`
-	PriceScale                int      `json:"priceScale"`
-	VolScale                  int      `json:"volScale"`
-	AmountScale               int      `json:"amountScale"`
-	PriceUnit                 float64  `json:"priceUnit"`
-	VolUnit                   int      `json:"volUnit"`
-	MinVol                    int      `json:"minVol"`
-	MaxVol                    int      `json:"maxVol"`
-	BidLimitPriceRate         float64  `json:"bidLimitPriceRate"`
-	AskLimitPriceRate         float64  `json:"askLimitPriceRate"`
-	TakerFeeRate              float64  `json:"takerFeeRate"`
-	MakerFeeRate              float64  `json:"makerFeeRate"`
-	MaintenanceMarginRate     float64  `json:"maintenanceMarginRate"`
-	InitialMarginRate         float64  `json:"initialMarginRate"`
-	RiskBaseVol               int      `json:"riskBaseVol"`
-	RiskIncrVol               int      `json:"riskIncrVol"`
-	RiskIncrMmr               float64  `json:"riskIncrMmr"`
-	RiskIncrImr               float64  `json:"riskIncrImr"`
-	RiskLevelLimit            int      `json:"riskLevelLimit"`
-	PriceCoefficientVariation float64  `json:"priceCoefficientVariation"`
-	IndexOrigin               []string `json:"indexOrigin"`
-	State                     int      `json:"state"`
-	IsNew                     bool     `json:"isNew"`
-	IsHot                     bool     `json:"isHot"`
-	IsHidden                  bool     `json:"isHidden"`
+	Symbol                    string          `json:"symbol"`
+	DisplayName               string          `json:"displayName"`
+	DisplayNameEn             string          `json:"displayNameEn"`
+	PositionOpenType          int             `json:"positionOpenType"`
+	BaseCoin                  string          `json:"baseCoin"`
+	QuoteCoin                 string          `json:"quoteCoin"`
+	SettleCoin                string          `json:"settleCoin"`
+	ContractSize              float64         `json:"contractSize"`
+	MinLeverage               int             `json:"minLeverage"`
+	MaxLeverage               int             `json:"maxLeverage"`
+	PriceScale                int             `json:"priceScale"`
+	VolScale                  int             `json:"volScale"`
+	AmountScale               int             `json:"amountScale"`
+	PriceUnit                 float64         `json:"priceUnit"`
+	VolUnit                   int             `json:"volUnit"`
+	MinVol                    int             `json:"minVol"`
+	MaxVol                    int             `json:"maxVol"`
+	BidLimitPriceRate         float64         `json:"bidLimitPriceRate"`
+	AskLimitPriceRate         float64         `json:"askLimitPriceRate"`
+	TakerFeeRate              float64         `json:"takerFeeRate"`
+	MakerFeeRate              float64         `json:"makerFeeRate"`
+	MaintenanceMarginRate     float64         `json:"maintenanceMarginRate"`
+	InitialMarginRate         float64         `json:"initialMarginRate"`
+	RiskBaseVol               int             `json:"riskBaseVol"`
+	RiskIncrVol               int             `json:"riskIncrVol"`
+	RiskIncrMmr               float64         `json:"riskIncrMmr"`
+	RiskIncrImr               float64         `json:"riskIncrImr"`
+	RiskLevelLimit            int             `json:"riskLevelLimit"`
+	PriceCoefficientVariation float64         `json:"priceCoefficientVariation"`
+	IndexOrigin               []string        `json:"indexOrigin"`
+	State                     int             `json:"state"`
+	IsNew                     bool            `json:"isNew"`
+	IsHot                     bool            `json:"isHot"`
+	IsHidden                  bool            `json:"isHidden"`
+	RiskLimits                []RiskLimitTier `json:"riskLimits,omitempty"`
+}
+
+// RiskLimitTier represents position limits and margin requirements for a leverage tier.
+type RiskLimitTier struct {
+	Level       int     `json:"level,omitempty"`
+	MaxLeverage int     `json:"maxLeverage"`
+	MaxNotional float64 `json:"maxNotional"` // Maximum position value in USDT
+	MaxQuantity float64 `json:"maxQuantity"` // Maximum position size in contracts
+}
+
+// GetMaxVolForLeverage calculates maximum contract volume for a specific leverage and reference price,
+// considering single-order maxQty (MaxVol) and leverage risk-limit tier caps.
+func (c ContractDetail) GetMaxVolForLeverage(leverage int, refPrice float64) int {
+	maxVol := c.MaxVol
+	if len(c.RiskLimits) == 0 || leverage <= 0 || refPrice <= 0 || c.ContractSize <= 0 {
+		return maxVol
+	}
+
+	var bestTier *RiskLimitTier
+	for i := range c.RiskLimits {
+		tier := &c.RiskLimits[i]
+		if tier.MaxLeverage >= leverage {
+			if bestTier == nil || tier.MaxLeverage < bestTier.MaxLeverage {
+				bestTier = tier
+			}
+		}
+	}
+
+	if bestTier != nil {
+		if bestTier.MaxQuantity > 0 && int(bestTier.MaxQuantity) < maxVol {
+			maxVol = int(bestTier.MaxQuantity)
+		}
+		if bestTier.MaxNotional > 0 {
+			notionalMaxVol := int(bestTier.MaxNotional / (c.ContractSize * refPrice))
+			if notionalMaxVol > 0 && notionalMaxVol < maxVol {
+				maxVol = notionalMaxVol
+			}
+		}
+	}
+
+	return maxVol
 }
 
 // Ticker holds real-time ticker data for a symbol.
