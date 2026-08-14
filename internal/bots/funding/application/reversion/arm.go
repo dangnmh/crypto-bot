@@ -139,7 +139,10 @@ func executionRefPrice(c fundingdomain.Candidate) float64 {
 func (r *StatelessRunner) waitForFreshPrice(ctx context.Context, symbol string, maxWait time.Duration) error {
 	priceStore := r.deps.PriceStore
 	if priceStore == nil {
-		return fmt.Errorf("price store unavailable")
+		if r.deps.Client != nil {
+			return r.fallbackRESTPrice(ctx, symbol)
+		}
+		return nil
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, maxWait)

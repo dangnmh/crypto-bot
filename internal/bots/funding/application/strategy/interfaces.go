@@ -17,7 +17,6 @@ import (
 // Deps holds all external dependencies for a funding cycle.
 type Deps struct {
 	Client        exchange.Client
-	WsSub         infraws.Subscriber
 	OrderNotifier infrawatcher.OrderNotifier
 	TickerStore   store.TickerReader
 	ContractStore store.ContractReader
@@ -28,13 +27,14 @@ type Deps struct {
 	Log           *slog.Logger
 	Notifier      notifier.Notifier
 	EventBus      *eventbus.Bus
+	WsSub         infraws.ExchangeManagerAdapterSubscriber
 }
 
 // FundingStoreSet defines the exchange-specific store requirements.
 type FundingStoreSet interface {
 	Start(ctx context.Context)
 	WaitReady(ctx context.Context) error
-	WireWS(pool *pkgws.Pool, adapter infraws.ExchangeAdapter)
+	WireWS(pool *pkgws.Pool, adapter infraws.ExchangeAdapterParser)
 	Ticker() store.TickerReader
 	Contract() store.ContractReader
 	Price() store.PriceReader

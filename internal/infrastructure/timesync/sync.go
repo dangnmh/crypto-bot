@@ -24,6 +24,7 @@ type TimeSync struct {
 	logger    *slog.Logger
 	ready     chan struct{}
 	readyOnce sync.Once
+	sleeper   func(ctx context.Context, d time.Duration) error
 }
 
 // New creates a new TimeSync service.
@@ -118,6 +119,9 @@ func (ts *TimeSync) SyncNow(ctx context.Context) {
 
 // GetServerTime returns the estimated current server time in milliseconds.
 func (ts *TimeSync) GetServerTime() int64 {
+	if ts == nil {
+		return time.Now().UnixMilli()
+	}
 	ts.mu.RLock()
 	offset := ts.offset
 	ts.mu.RUnlock()
@@ -126,6 +130,9 @@ func (ts *TimeSync) GetServerTime() int64 {
 
 // Offset returns the current clock offset in milliseconds.
 func (ts *TimeSync) Offset() int64 {
+	if ts == nil {
+		return 0
+	}
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	return ts.offset
@@ -133,6 +140,9 @@ func (ts *TimeSync) Offset() int64 {
 
 // LatencyMs returns the last measured round-trip time in milliseconds.
 func (ts *TimeSync) LatencyMs() int64 {
+	if ts == nil {
+		return 0
+	}
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	return ts.latency
@@ -140,6 +150,9 @@ func (ts *TimeSync) LatencyMs() int64 {
 
 // IsHealthy returns true if the time sync is in a good state.
 func (ts *TimeSync) IsHealthy() bool {
+	if ts == nil {
+		return false
+	}
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 	maxAge := max(ts.interval*3, 30*time.Second)
@@ -160,12 +173,30 @@ func (ts *TimeSync) Now() time.Time {
 // Until returns the duration from server-now until the target time.
 // Equivalent to time.Until(target) but uses the synced server clock.
 func (ts *TimeSync) Until(target time.Time) time.Duration {
+	if ts == nil {
+		return time.Until(target)
+	}
 	return time.Duration(target.UnixMilli()-ts.GetServerTime()) * time.Millisecond
+}
+
+// SetSleeper overrides the sleep implementation (useful for tests to avoid real time delays).
+func (ts *TimeSync) SetSleeper(fn func(ctx context.Context, d time.Duration) error) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.sleeper = fn
 }
 
 // Sleep blocks until the duration elapses or the context is cancelled.
 // This wraps time.After to allow tests to mock out time delays.
 func (ts *TimeSync) Sleep(ctx context.Context, d time.Duration) error {
+	if ts != nil {
+		ts.mu.RLock()
+		sleeper := ts.sleeper
+		ts.mu.RUnlock()
+		if sleeper != nil {
+			return sleeper(ctx, d)
+		}
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

@@ -74,6 +74,20 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 	a.pool = pool
 }
 
+func (a *WsAdapter) SubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.SubscribePublic(ctx, topic, msg)
+}
+
+func (a *WsAdapter) UnsubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
+}
+
 func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
 	// Periodic ping to keep connection alive
 	return "ping", 30 * time.Second
@@ -187,6 +201,10 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 }
 
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
+	return nil
+}
+
+func (a *WsAdapter) UnsubscribePersonal(ctx context.Context) error {
 	return nil
 }
 

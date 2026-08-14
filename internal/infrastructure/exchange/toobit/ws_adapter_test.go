@@ -174,6 +174,21 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 0.0, pos.CloseProfitLoss)
 	assert.Equal(t, 5, pos.Leverage)
 	assert.Equal(t, int64(1782316800655), pos.UpdateTime)
+
+	// Test batch array format with transition to closed position (last element is 0)
+	payloadBatchClose := []byte(`[
+		{"e":"outboundContractPositionInfo","E":"1786701060901","A":"2243056424560222721","s":"HOME-SWAP-USDT","S":"SHORT","p":"0.011136","P":"2262","a":"0","f":"0.013208","m":"4.9864","r":"-0.0125","up":"-0.0135","pr":"-0.0026","pv":"25.1896","v":"5.0","mt":"ISOLATED","mm":"0","mp":"0.011142000000000000"},
+		{"e":"outboundContractPositionInfo","E":"1786701060901","A":"2243056424560222721","s":"HOME-SWAP-USDT","S":"SHORT","p":"0","P":"0","a":"0","f":"0","m":"0","r":"0","up":"0","pr":"0","pv":"0","v":"5.0","mt":"ISOLATED","mm":"0","mp":"0.011142000000000000"}
+	]`)
+	posClose, err := adapter.ParsePosition(payloadBatchClose)
+	require.NoError(t, err)
+	assert.Equal(t, "HOME-SWAP-USDT", posClose.Symbol)
+	assert.Equal(t, 0.0, posClose.HoldVolContract)
+	assert.Equal(t, exchange.PositionTypeShort, posClose.PositionType)
+	assert.Equal(t, 0.0, posClose.HoldAvgPrice)
+	assert.Equal(t, 0.0, posClose.CloseProfitLoss)
+	assert.Equal(t, 5, posClose.Leverage)
+	assert.Equal(t, int64(1786701060901), posClose.UpdateTime)
 }
 
 func TestWsAdapter_GetPrivateURLFunc(t *testing.T) {

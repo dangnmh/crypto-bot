@@ -1,6 +1,7 @@
 package bootstrap_test
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
-	"go.uber.org/fx/fxtest"
 )
 
 func TestModuleDependencyGraph(t *testing.T) {
@@ -72,8 +72,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 		n          notifier.Notifier
 	)
 
-	app := fxtest.New(
-		t,
+	app := fx.New(
 		bootstrap.Module(bootstrap.ConfigPaths{
 			System:    systemPath,
 			Exchange:  exchangePath,
@@ -82,14 +81,16 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 			Reversion: reversionPath,
 		}),
 		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
+		fx.NopLogger,
 	)
-	require.NotNil(t, app)
+	require.NoError(t, app.Err())
 
 	require.NotNil(t, log)
 	require.NotNil(t, systemCfg)
 	require.NotNil(t, fundingCfg)
 	require.NotNil(t, httpClient)
 	require.NotNil(t, engine)
+	t.Cleanup(func() { _ = engine.Shutdown(context.Background()) })
 	require.NotNil(t, bot)
 	require.NotNil(t, n)
 	require.True(t, systemCfg.DryRun)

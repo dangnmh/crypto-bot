@@ -205,6 +205,11 @@ const (
 	OrderStateUntriggered     OrderState = 6
 )
 
+// IsNotFilledOrderState returns true if the order state is a not filled state.
+func IsNotFilledOrderState(state OrderState) bool {
+	return state == OrderStateNew || state == OrderStateCanceled || state == OrderStateUntriggered
+}
+
 // IsTerminalOrderState returns true if the order state is a terminal state.
 func IsTerminalOrderState(state OrderState) bool {
 	return state == OrderStateFilled || state == OrderStateCanceled || state == OrderStatePartial

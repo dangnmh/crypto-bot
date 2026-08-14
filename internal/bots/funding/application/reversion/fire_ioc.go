@@ -12,8 +12,23 @@ import (
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	ordermanager "crypto-bot/internal/trading/ordermanager"
 	"crypto-bot/pkg/decmath"
 )
+
+func (r *StatelessRunner) now() time.Time {
+	if r != nil && r.deps.Clock != nil {
+		return r.deps.Clock.Now()
+	}
+	return time.Now()
+}
+
+func (r *StatelessRunner) latencyMs() int64 {
+	if r != nil && r.deps.Clock != nil {
+		return r.deps.Clock.LatencyMs()
+	}
+	return 0
+}
 
 func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt ConfirmedEvent) error {
 	r.log.Info("handleFireIOC SettleTime", slog.Time("settle", confirmedEvt.SettleTime))
@@ -24,7 +39,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		return err
 	}
 
-	latencyMs := r.deps.Clock.LatencyMs()
+	latencyMs := r.latencyMs()
 	maxLatency := time.Duration(confirmedEvt.Candidate.Config.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
 		err := errors.New("latency too high")
@@ -32,12 +47,86 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 		return err
 	}
 
+	if confirmedEvt.Candidate.Config.FundingReversion.UseOrderManager {
+		return r.dispatchOrderManagerIntent(ctx, confirmedEvt)
+	}
+
 	evt := MarginModeReadyEvent{
-		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.deps.Clock.Now()),
+		BaseReversionEvent: nextReversionBase(confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, r.now()),
 		Candidate:          confirmedEvt.Candidate,
 	}
 
 	return r.publishEvent(ctx, TopicReversionMarginModeReady, evt)
+}
+
+func (r *StatelessRunner) dispatchOrderManagerIntent(ctx context.Context, confirmedEvt ConfirmedEvent) error {
+	r.log.Info("Dispatching Funding Reversion order via OrderManager", slog.String("symbol", confirmedEvt.Symbol))
+
+	latencyMs := r.latencyMs()
+	now := r.now()
+
+	// Calculate fire time deducting RTT/2
+	oneWayMs := max(latencyMs/2, 0)
+	bufferTime := time.Duration(confirmedEvt.Candidate.Config.FundingReversion.BufferTime)
+	fireTime := confirmedEvt.SettleTime.Add(-bufferTime).Add(-time.Duration(oneWayMs) * time.Millisecond)
+
+	// Pre-dispatch cleanup: Unsubscribe public ticker streams
+	if r.deps.WsSub != nil {
+		if err := r.deps.WsSub.UnsubscribeTicker(ctx, FlowIDFundingReversion, confirmedEvt.Symbol); err != nil {
+			r.log.WarnContext(ctx, "Failed to unsubscribe public ticker stream", slog.Any("error", err))
+		}
+	}
+
+	cand := confirmedEvt.Candidate
+	marginMode := shared.MarginModeIsolated
+	if cand.Config.ParsedOpenType == 2 {
+		marginMode = shared.MarginModeCross
+	}
+	posMode := shared.PositionMode(cand.Config.ParsedPositionMode)
+	leverage := cand.Config.Leverage
+
+	iocPrice, tpPrice, slPrice := calculateOrderIntentPrices(ctx, &cand, r.log)
+
+	var settleTimePtr *time.Time
+	if !confirmedEvt.SettleTime.IsZero() {
+		settleTimePtr = &confirmedEvt.SettleTime
+	}
+
+	orderIntent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         confirmedEvt.ReqID,
+			ClientOrderID: confirmedEvt.ExternalID,
+			Symbol:        confirmedEvt.Symbol,
+			Exchange:      confirmedEvt.Exchange,
+			MarketType:    ordermanager.MarketTypeFuture,
+			StrategyType:  ordermanager.StrategyFundingReversion,
+			PreTopic:      TopicReversionConfirmed,
+			NextTopic:     ordermanager.TopicOrderIntent,
+			Timestamp:     now,
+		},
+		Side:            cand.Side,
+		OrderType:       ordermanager.OrderTypeIOC,
+		Price:           iocPrice,
+		Volume:          cand.Volume,
+		ContractSize:    cand.ContractSize,
+		MarginMode:      marginMode,
+		PositionMode:    posMode,
+		Leverage:        leverage,
+		MarginUSDT:      cand.Config.MarginUSDT,
+		FundingRate:     cand.FundingRate,
+		Vol24hUSDT:      cand.Vol24USDT,
+		TakeProfitPrice: tpPrice,
+		StopLossPrice:   slPrice,
+		TimeoutDuration: time.Duration(cand.Config.FundingReversion.PostSettleTimeout),
+		FireTime:        fireTime,
+		MaxLatency:      time.Duration(cand.Config.FundingReversion.MaxLatency),
+		SettleTime:      settleTimePtr,
+		Extra: map[string]any{
+			"settle_time": confirmedEvt.SettleTime,
+		},
+	}
+
+	return r.publishEvent(ctx, ordermanager.TopicOrderIntent, orderIntent)
 }
 
 func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginModeReadyEvent) error {
@@ -87,7 +176,7 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 		}
 	}
 
-	latencyMs := r.deps.Clock.LatencyMs()
+	latencyMs := r.latencyMs()
 	oneWayMs := latencyMs / 2
 	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
 	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
@@ -97,7 +186,7 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 	snapshotOffset := max(fireOffset+300*time.Millisecond, 300*time.Millisecond)
 
 	nextEvt := FireTimingReadyEvent{
-		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
+		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.now()),
 		Candidate:          evt.Candidate,
 		LatencyRTTMs:       latencyMs,
 		FireOffsetMs:       fireOffset.Milliseconds(),
@@ -290,4 +379,20 @@ func (r *StatelessRunner) publishTPSLBackground(ctx context.Context, evt TPSLReq
 	if err := r.publishEvent(detached, TopicReversionTPSLRequired, evt); err != nil {
 		r.log.Error("Failed to publish TopicReversionTPSLRequired", slog.Any("error", err))
 	}
+}
+
+func calculateOrderIntentPrices(ctx context.Context, cand *fundingdomain.Candidate, log *slog.Logger) (float64, float64, float64) {
+	iocPrice, err := cand.CalculateIOCPrice()
+	if err != nil || iocPrice <= 0 {
+		iocPrice = cand.LastPrice
+		if iocPrice == 0 {
+			iocPrice = cand.BestBid
+		}
+		if iocPrice == 0 {
+			iocPrice = cand.BestAsk
+		}
+	}
+
+	tpPrice, slPrice := cand.CalculateOrderTPSL(ctx, iocPrice, log)
+	return iocPrice, tpPrice, slPrice
 }

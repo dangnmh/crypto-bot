@@ -28,6 +28,7 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 		OrderType: ordermanager.OrderTypeIOC,
 		Price:     50000.0,
 		Volume:    1.0,
+		FireTime:  time.Unix(1700000000, 0),
 	}
 
 	evt2 := ordermanager.OrderPreFlightCompletedEvent{
@@ -36,10 +37,10 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 	}
 
 	evt3 := ordermanager.OrderSubmittedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:     "req-999",
-			Symbol:    "BTCUSDT",
-			Timestamp: time.Now(),
+		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
+			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
+				OrderPreFlightCompletedEvent: evt2,
+			},
 		},
 		Price:  50000.0,
 		Volume: 1.0,
@@ -62,11 +63,11 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 			Symbol:    "BTCUSDT",
 			Timestamp: time.Now(),
 		},
-		Outcome:    "filled",
-		EntryPrice: 50000.0,
-		ExitPrice:  51000.0,
-		Volume:     1.0,
-		NetProfit:  1000.0,
+		Outcome:          "filled",
+		EntryPrice:       50000.0,
+		ExitPrice:        51000.0,
+		CloseVolContract: 1.0,
+		NetProfit:        1000.0,
 	}
 
 	events := []ordermanager.OrderEvent{evt1, evt2, evt3, evt4, evt5}
@@ -87,6 +88,10 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 		t.Errorf("expected DeduplicateKey %s, got %s", expectedKey, tradeRecord.DeduplicateKey())
 	}
 
+	if tradeRecord.FireAt == nil || !tradeRecord.FireAt.Equal(time.Unix(1700000000, 0)) {
+		t.Errorf("expected FireAt to be 1700000000, got %v", tradeRecord.FireAt)
+	}
+
 	if len(agg.UncommittedEvents()) != 5 {
 		t.Errorf("expected 5 uncommitted events, got %d", len(agg.UncommittedEvents()))
 	}
@@ -102,5 +107,107 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 	}
 	if replayed.Version() != 5 {
 		t.Errorf("expected replayed version 5, got %d", replayed.Version())
+	}
+}
+
+func TestOrderExecutionAggregate_SettleTime(t *testing.T) {
+	t.Parallel()
+
+	settleTime := time.Date(2026, 8, 13, 22, 0, 0, 0, time.UTC)
+
+	agg := ordermanager.NewOrderExecutionAggregate("req-settle-1")
+	evt1 := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "req-settle-1",
+			Symbol:       "BTCUSDT",
+			Exchange:     "MEXC",
+			StrategyType: ordermanager.StrategyFundingReversion,
+			Timestamp:    time.Now(),
+		},
+		Side:       shared.SideOpenLong,
+		SettleTime: &settleTime,
+	}
+
+	_ = agg.Record(evt1)
+	record := agg.BuildTradeRecord()
+
+	if record.SettleTime == nil {
+		t.Fatalf("expected SettleTime to be non-nil")
+	}
+	if !record.SettleTime.Equal(settleTime) {
+		t.Errorf("expected SettleTime %v, got %v", settleTime, record.SettleTime)
+	}
+
+	// Test nil SettleTime
+	aggNil := ordermanager.NewOrderExecutionAggregate("req-settle-nil")
+	evtNil := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "req-settle-nil",
+			Symbol:       "BTCUSDT",
+			Exchange:     "MEXC",
+			StrategyType: ordermanager.StrategyFundingReversion,
+			Timestamp:    time.Now(),
+		},
+		Side: shared.SideOpenLong,
+	}
+	_ = aggNil.Record(evtNil)
+	recordNil := aggNil.BuildTradeRecord()
+
+	if recordNil.SettleTime != nil {
+		t.Errorf("expected nil SettleTime, got %v", recordNil.SettleTime)
+	}
+}
+
+func TestOrderExecutionAggregate_Concurrency(t *testing.T) {
+	t.Parallel()
+
+	agg := ordermanager.NewOrderExecutionAggregate("req-concurrent-test")
+	const numGoroutines = 50
+
+	done := make(chan struct{})
+	for i := range numGoroutines {
+		go func(idx int) {
+			defer func() { done <- struct{}{} }()
+
+			evt := ordermanager.OrderIntentEvent{
+				BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+					ReqID:        "req-concurrent-test",
+					Symbol:       "BTCUSDT",
+					Exchange:     "bybit",
+					StrategyType: ordermanager.StrategyFundingReversion,
+					Timestamp:    time.Now(),
+				},
+				Side:      shared.SideOpenLong,
+				OrderType: ordermanager.OrderTypeIOC,
+				Price:     50000.0,
+				Volume:    float64(idx + 1),
+			}
+
+			_ = agg.Record(evt)
+			_ = agg.ReqID()
+			_ = agg.ClientOrderID()
+			_ = agg.Symbol()
+			_ = agg.Exchange()
+			_ = agg.MarketType()
+			_ = agg.StrategyType()
+			_ = agg.Side()
+			_ = agg.ContractSize()
+			_ = agg.FillVolContract()
+			_ = agg.FillVolCoin()
+			_ = agg.State()
+			_ = agg.Version()
+			_ = agg.UncommittedEvents()
+			_ = agg.HasSubmitted()
+			_ = agg.HasFilled()
+			_ = agg.BuildTradeRecord()
+		}(i)
+	}
+
+	for range numGoroutines {
+		<-done
+	}
+
+	if len(agg.UncommittedEvents()) != numGoroutines {
+		t.Errorf("expected %d uncommitted events, got %d", numGoroutines, len(agg.UncommittedEvents()))
 	}
 }

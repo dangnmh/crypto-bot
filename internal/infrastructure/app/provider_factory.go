@@ -277,8 +277,8 @@ func buildProvider(
 	return &ExchangeProvider{
 		Name:     providerName,
 		Client:   client,
-		Adapter:  adapter,
-		WS:       wsPool,
+		Adapter:  ws.NewExchangeManagerAdapter(adapter),
+		WSPool:   wsPool,
 		TimeSync: ts,
 		Watcher:  watcher.NewOrderWatcher(cfg.Bus, watcherExchangeName, log),
 	}
@@ -313,7 +313,7 @@ func buildWSCommonOpts(adapter ws.ExchangeAdapter) []pkgws.ClientOption {
 
 func buildWSPrivateOpts(
 	ctx context.Context,
-	adapter ws.ExchangeAdapter,
+	adapter ws.ExchangeAdapterParser,
 	wsLogger *slog.Logger,
 	apiKey string,
 	apiSecret string,
@@ -322,15 +322,6 @@ func buildWSPrivateOpts(
 	if hook := adapter.GetAuthHook(apiKey, apiSecret); hook != nil {
 		opts = append(opts, pkgws.WithOnConnected(hook))
 	}
-	opts = append(opts, pkgws.WithOnReady(func(c *pkgws.Client) {
-		go func() {
-			if err := adapter.SubscribePersonal(ctx); err != nil {
-				wsLogger.Error("🔴 Failed to automatically subscribe/re-subscribe to personal channels", slog.Any("error", err))
-			} else {
-				wsLogger.Info("🟢 Automatically subscribed/re-subscribed to personal channels")
-			}
-		}()
-	}))
 	type PrivateURLProvider interface {
 		GetPrivateURLFunc(ctx context.Context) func() (string, error)
 	}

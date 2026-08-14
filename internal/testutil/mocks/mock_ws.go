@@ -153,3 +153,27 @@ func (c *MockSubscriberUnsubscribeTickerCall) DoAndReturn(f func(context.Context
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// SubscribePublic mocks base method.
+func (m *MockSubscriber) SubscribePublic(ctx context.Context, topic string, subMsg any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubscribePublic", ctx, topic, subMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnsubscribePublic mocks base method.
+func (m *MockSubscriber) UnsubscribePublic(ctx context.Context, topic string, unsubMsg any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnsubscribePublic", ctx, topic, unsubMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnsubscribePersonal mocks base method.
+func (m *MockSubscriber) UnsubscribePersonal(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnsubscribePersonal", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}

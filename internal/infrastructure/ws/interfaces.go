@@ -16,12 +16,18 @@ type Subscriber interface {
 	UnsubscribeTicker(ctx context.Context, symbol string) error
 
 	SubscribePersonal(ctx context.Context) error
+	UnsubscribePersonal(ctx context.Context) error
+	SubscribePublic(ctx context.Context, topic string, subMsg any) error
+	UnsubscribePublic(ctx context.Context, topic string, unsubMsg any) error
 }
 
 // ExchangeAdapter encapsulates all exchange-specific WS logic.
 type ExchangeAdapter interface {
 	Subscriber // Inherit Subscribe, Unsubscribe methods
+	ExchangeAdapterParser
+}
 
+type ExchangeAdapterParser interface {
 	// SetPool allows the Engine to inject the WS pool after initialization.
 	SetPool(pool *pkgws.Pool)
 

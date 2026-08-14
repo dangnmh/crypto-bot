@@ -267,6 +267,12 @@ Soft limit of 99 characters per line. Wrap before hitting the limit, but it is n
 
 Every struct field that is serialized to JSON, YAML, or similar must have the appropriate struct tag. This makes the serialization contract explicit and protects against renames.
 
+### 9.5 Prefer Early Returns (Guard Clauses) Over Nested Conditionals
+
+- Avoid deeply nested `if` blocks.
+- Handle non-matches, inverted preconditions, and error conditions using early returns (`if !condition { return ... }`).
+- Keep the happy-path logic un-nested at the main method level for maximum readability.
+
 ---
 
 ## 10. Dependency Injection & Context Non-Nil Guarantees

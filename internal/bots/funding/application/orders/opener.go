@@ -43,36 +43,7 @@ func FireIOC(ctx context.Context, client exchange.Client, candidate *domain.Cand
 		return OrderResult{Candidate: *candidate, Error: err}
 	}
 
-	var tpPrice float64
-	maxTPPct := decmath.Mul(candidate.Config.FundingReversion.TakeProfitPct, 100.0)
-	if maxTPPct > 0 {
-		tpPrice = candidate.CalculateStaticTakeProfitPrice(candidate.GetPeakPrice())
-	}
-
-	slPrice := candidate.CalculateStopLossPrice(candidate.GetPeakPrice())
-	if candidate.Side == shared.SideOpenLong {
-		if tpPrice > 0 && tpPrice <= iocPrice {
-			log.WarnContext(ctx, "🟡 TP below IOC price (LONG), dropping TP",
-				slog.Float64("tp", tpPrice), slog.Float64("ioc", iocPrice))
-			tpPrice = 0
-		}
-		if slPrice > 0 && slPrice >= iocPrice {
-			log.WarnContext(ctx, "🟡 SL above IOC price (LONG), dropping SL",
-				slog.Float64("sl", slPrice), slog.Float64("ioc", iocPrice))
-			slPrice = 0
-		}
-	} else {
-		if tpPrice > 0 && tpPrice >= iocPrice {
-			log.WarnContext(ctx, "🟡 TP above IOC price (SHORT), dropping TP",
-				slog.Float64("tp", tpPrice), slog.Float64("ioc", iocPrice))
-			tpPrice = 0
-		}
-		if slPrice > 0 && slPrice <= iocPrice {
-			log.WarnContext(ctx, "🟡 SL below IOC price (SHORT), dropping SL",
-				slog.Float64("sl", slPrice), slog.Float64("ioc", iocPrice))
-			slPrice = 0
-		}
-	}
+	tpPrice, slPrice := candidate.CalculateOrderTPSL(ctx, iocPrice, log)
 
 	req := exchange.SubmitOrderRequest{
 		Symbol:          candidate.Symbol,

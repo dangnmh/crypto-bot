@@ -17,6 +17,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/store"
+	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/internal/testutil/mocks"
 	"crypto-bot/pkg/eventbus"
 
@@ -70,7 +71,7 @@ func TestStatelessRunnerAbortAndCleanupPublishLifecycle(t *testing.T) {
 
 	runner := &StatelessRunner{
 		deps: strategy.Deps{
-			WsSub:    ws,
+			WsSub:    infraws.NewExchangeManagerAdapter(nil),
 			Clock:    clock,
 			Notifier: n,
 		},
@@ -383,6 +384,9 @@ func (n captureNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	}
 }
 
+func (n captureNotifier) SendRawMsg(ctx context.Context, msg string) error {
+	return n.Send(ctx, notifier.Event{Level: notifier.LevelTrading, Message: msg, IsRaw: true})
+}
 func (captureNotifier) Start(context.Context) error { return nil }
 func (captureNotifier) Stop(context.Context) error  { return nil }
 
@@ -746,20 +750,28 @@ func TestStatelessRunnerHandleArmErrorPaths(t *testing.T) {
 	clock := mocks.NewMockClock(ctrl)
 	clock.EXPECT().Now().Return(time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)).AnyTimes()
 
-	ws := mocks.NewMockSubscriber(ctrl)
-	ws.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(errors.New("sub failed"))
+	priceStore := mocks.NewMockPriceReader(ctrl)
+	priceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
+	priceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
+		BestBid: 59990,
+		BestAsk: 60000,
+	}, nil).AnyTimes()
 
 	runner := &StatelessRunner{
-		deps: strategy.Deps{WsSub: ws, Clock: clock},
-		bus:  eventbus.New(reversionTestLogger()),
-		log:  reversionTestLogger(),
+		deps: strategy.Deps{
+			WsSub:      infraws.NewExchangeManagerAdapter(nil),
+			Clock:      clock,
+			PriceStore: priceStore,
+		},
+		bus: eventbus.New(reversionTestLogger()),
+		log: reversionTestLogger(),
 	}
 	t.Cleanup(func() { _ = runner.bus.Close() })
 
 	err := runner.handleArm(context.Background(), CandidateFoundEvent{
 		Candidate: fundingdomain.Candidate{TradeIntent: fundingdomain.TradeIntent{Symbol: "BTC_USDT"}},
 	})
-	require.ErrorContains(t, err, "WS subscribe failed")
+	require.NoError(t, err)
 }
 
 func TestStatelessRunnerHandleRecheckErrorPaths(t *testing.T) {
@@ -1122,7 +1134,7 @@ func TestStatelessRunnerSyncNowInvocation(t *testing.T) {
 		deps: strategy.Deps{
 			Clock:      clock,
 			Client:     client,
-			WsSub:      ws,
+			WsSub:      infraws.NewExchangeManagerAdapter(nil),
 			PriceStore: priceStore,
 		},
 		globalCfg: &config.Config{

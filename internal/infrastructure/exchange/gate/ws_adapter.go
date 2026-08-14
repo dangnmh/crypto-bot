@@ -34,6 +34,20 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 	a.pool = pool
 }
 
+func (a *WsAdapter) SubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.SubscribePublic(ctx, topic, msg)
+}
+
+func (a *WsAdapter) UnsubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
+}
+
 // sign generates HMAC-SHA512 signature for subscribing to private channels.
 func (a *WsAdapter) sign(channel, event string, timestamp int64) string {
 	message := fmt.Sprintf("channel=%s&event=%s&time=%d", channel, event, timestamp)
@@ -90,6 +104,10 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 		return fmt.Errorf("gate.io ws subscribe positions: %w", err)
 	}
 
+	return nil
+}
+
+func (a *WsAdapter) UnsubscribePersonal(ctx context.Context) error {
 	return nil
 }
 

@@ -11,28 +11,28 @@ import (
 	"time"
 
 	shared "crypto-bot/internal/domain"
+	app "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
+	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/trading/ordermanager"
 	"crypto-bot/pkg/eventbus"
 )
 
 // Blackbox mock exchange client implementing exchange API interfaces.
 type blackboxExchangeClient struct {
+	exchange.UnimplementedClient
 	mu                 sync.Mutex
 	createOrderErr     error
 	getOrderErr        error
 	closeAllErr        error
 	closePositionErr   error
-	closedPnLErr       error
 	orderState         shared.OrderState
 	dealVol            float64
-	closedPnLInfo      *exchange.ClosedPnLInfo
 	openPositions      []exchange.Position
 	createOrderCalls   atomic.Int32
 	closePositionCalls atomic.Int32
 	closeAllCalls      atomic.Int32
-	getClosedPnLCalls  atomic.Int32
 }
 
 func (m *blackboxExchangeClient) SwitchMarginMode(ctx context.Context, symbol string, mode shared.MarginMode, leverage int, side shared.Side) error {
@@ -121,31 +121,6 @@ func (m *blackboxExchangeClient) GetOpenPositions(ctx context.Context, symbol st
 	}, nil
 }
 
-func (m *blackboxExchangeClient) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exchange.ClosedPnLInfo, error) {
-	m.getClosedPnLCalls.Add(1)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closedPnLErr != nil {
-		return nil, m.closedPnLErr
-	}
-	if m.closedPnLInfo != nil {
-		return m.closedPnLInfo, nil
-	}
-	return &exchange.ClosedPnLInfo{
-		Exchange:           "BYBIT",
-		Symbol:             symbol,
-		ClosedSizeContract: new(1.0),
-		ClosedSizeCoin:     new(1.0),
-		EntryPrice:         50000.0,
-		ExitPrice:          51000.0,
-		GrossPnL:           1000.0,
-		NetPnl:             980.0,
-		PnLRate:            0.02,
-		Fee:                20.0,
-		FundingFee:         0.0,
-	}, nil
-}
-
 // Blackbox mock trade repository recording saved events.
 type blackboxTradeRepo struct {
 	mu          sync.Mutex
@@ -188,6 +163,14 @@ func (n *blackboxNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	return nil
 }
 
+func (n *blackboxNotifier) SendRawMsg(ctx context.Context, msg string) error {
+	return n.Send(ctx, notifier.Event{
+		Level:   notifier.LevelTrading,
+		Message: msg,
+		IsRaw:   true,
+	})
+}
+
 func (n *blackboxNotifier) SentEvents() []notifier.Event {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -196,13 +179,12 @@ func (n *blackboxNotifier) SentEvents() []notifier.Event {
 	return copied
 }
 
-// Blackbox mock WebSocket OrderWatcher.
-type blackboxOrderWatcher struct {
-	updateChan chan ordermanager.OrderStreamUpdate
-}
-
-func (w *blackboxOrderWatcher) SubscribeOrderUpdates(ctx context.Context, symbol string) (<-chan ordermanager.OrderStreamUpdate, error) {
-	return w.updateChan, nil
+func newTestTimeSync(client exchange.Client) *timesync.TimeSync {
+	ts := timesync.New(client, slog.Default(), time.Second)
+	ts.SetSleeper(func(ctx context.Context, d time.Duration) error {
+		return nil
+	})
+	return ts
 }
 
 // Test 1: Full End-to-End Blackbox Order Lifecycle Pipeline.
@@ -220,24 +202,37 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 	clock := mockClock{}
 	repo := &blackboxTradeRepo{}
 	noti := &blackboxNotifier{}
-
-	mgr, err := ordermanager.NewOrderManager(client, nil, bus, clock, slog.Default())
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
-	mgr.SetRepository(repo)
-	mgr.SetNotifier(noti)
 
-	ordermanager.InitGlobalSubscriptions(ctx, mgr)
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
 
 	intent := ordermanager.OrderIntentEvent{
 		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
 			ReqID:         "req-bb-001",
 			ClientOrderID: "client-bb-001",
 			Symbol:        "BTCUSDT",
-			Exchange:      "BYBIT",
+			Exchange:      "bybit",
 			StrategyType:  ordermanager.StrategyFundingReversion,
-			SendNotify:    true,
 			Timestamp:     clock.Now(),
 		},
 		Side:         shared.SideOpenLong,
@@ -254,15 +249,35 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 		t.Fatalf("failed to dispatch intent: %v", err)
 	}
 
+	// Wait briefly for order submission & outcome resolution to open position
+	time.Sleep(50 * time.Millisecond)
+
+	// Emit real-time WS position update closing position
+	mgr.HandlePositionUpdate(ctx, "req-bb-001", exchange.PersonalPositionUpdate{
+		Symbol:           "BTCUSDT",
+		HoldVolContract:  0.0,
+		CloseVolContract: 1.0,
+		OpenAvgPrice:     50000.0,
+		CloseAvgPrice:    51000.0,
+		CloseProfitLoss:  1000.0,
+		Fee:              20.0,
+	})
+
 	// Wait for eventbus async subscriber pipeline to complete
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(repo.SavedEvents()) > 0 {
+		agg := mgr.GetAggregate("req-bb-001")
+		if len(repo.SavedEvents()) > 0 && agg != nil && agg.State() == ordermanager.StateCompleted {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
+	assertCompleteOrderLifecycle(t, mgr, repo, noti)
+}
+
+func assertCompleteOrderLifecycle(t *testing.T, mgr *ordermanager.OrderManager, repo *blackboxTradeRepo, noti *blackboxNotifier) {
+	t.Helper()
 	// Verify DB Trade Persistence
 	saved := repo.SavedEvents()
 	if len(saved) == 0 {
@@ -279,7 +294,7 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 	if trade.MarketType != string(ordermanager.MarketTypeFuture) {
 		t.Errorf("expected MarketType FUTURE, got %s", trade.MarketType)
 	}
-	exOrderID, found := mgr.GetExchangeOrderIDByClientOrderID(trade.ClientOrderID)
+	exOrderID, found := mgr.GetExchangeOrderIDByReqID(trade.ReqID)
 
 	if !found || exOrderID != "ex-order-client-bb-001" {
 		t.Errorf("expected cached ExchangeOrderID ex-order-client-bb-001, got %s", exOrderID)
@@ -305,8 +320,7 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 	}
 }
 
-// Test 2: WebSocket Stream Fast-Path Fill Watcher.
-func TestBlackBox_WebSocketFastPathFill(t *testing.T) {
+func TestBlackBox_OutcomeWatcherFill(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -318,38 +332,50 @@ func TestBlackBox_WebSocketFastPathFill(t *testing.T) {
 	}
 	bus := eventbus.New(slog.Default())
 	clock := mockClock{}
-
-	wsChan := make(chan ordermanager.OrderStreamUpdate, 1)
-	watcher := &blackboxOrderWatcher{updateChan: wsChan}
-
-	mgr, err := ordermanager.NewOrderManager(client, watcher, bus, clock, slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
-		t.Fatalf("failed to create order manager with watcher: %v", err)
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+	if err := mgr.Init(context.Background()); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
 	}
 
 	submittedEvt := ordermanager.OrderSubmittedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-ws-001",
-			ClientOrderID: "client-ws-001",
-			Symbol:        "ETHUSDT",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			Timestamp:     clock.Now(),
+		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
+			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
+				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
+					OrderIntentEvent: ordermanager.OrderIntentEvent{
+						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+							ReqID:         "req-ws-001",
+							ClientOrderID: "client-ws-001",
+							Symbol:        "ETHUSDT",
+							Exchange:      "mexc",
+							StrategyType:  ordermanager.StrategyFundingReversion,
+							Timestamp:     clock.Now(),
+						},
+					},
+				},
+			},
 		},
 		Price:       3000.0,
 		Volume:      2.0,
 		SubmittedAt: clock.Now(),
 	}
+	_ = mgr.GetAggregate(submittedEvt.GetReqID()).Record(submittedEvt)
 
-	mgr.SetExchangeOrderIDByClientOrderID("client-ws-001", "ex-order-client-ws-001")
-
-	// Emit real-time WS fill update
-	wsChan <- ordermanager.OrderStreamUpdate{
-		Symbol:    "ETHUSDT",
-		OrderID:   "ex-order-client-ws-001",
-		Status:    "FILLED",
-		FilledVol: 2.0,
-		AvgPrice:  3000.0,
-	}
+	mgr.SetExchangeOrderIDByReqID(submittedEvt.GetReqID(), "ex-order-client-ws-001")
 
 	resolved, err := mgr.HandleOutcomeWatcher(ctx, submittedEvt)
 	if err != nil {
@@ -357,7 +383,7 @@ func TestBlackBox_WebSocketFastPathFill(t *testing.T) {
 	}
 
 	if resolved.Outcome != ordermanager.OutcomeFilled {
-		t.Errorf("expected OutcomeFilled via WS fast-path, got %s", resolved.Outcome)
+		t.Errorf("expected OutcomeFilled, got %s", resolved.Outcome)
 	}
 	if resolved.FilledVol != 2.0 {
 		t.Errorf("expected FilledVol 2.0, got %.2f", resolved.FilledVol)
@@ -375,12 +401,30 @@ func TestBlackBox_EmergencyBailoutRetryLoop(t *testing.T) {
 		closeAllErr: errors.New("close all positions failed"),
 	}
 
-	mgr, err := ordermanager.NewOrderManager(client, nil, eventbus.New(slog.Default()), mockClock{}, nil)
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
 
-	bailoutEvt, err := mgr.HandleExecuteBailout(ctx, "BTCUSDT", shared.SideOpenLong, 1.5, "timeout_expired")
+	bailoutEvt, err := mgr.HandleExecuteBailout(ctx, "req-bailout-bb-001", "bybit", "BTCUSDT", shared.SideOpenLong, 1.5, "timeout_expired")
 	if err != nil {
 		t.Fatalf("HandleExecuteBailout failed: %v", err)
 	}
@@ -421,14 +465,14 @@ func TestBlackBox_ContractSizeNotionalUSD(t *testing.T) {
 			Symbol:       "BTCUSDT",
 			StrategyType: ordermanager.StrategyFundingArbitrage,
 		},
-		Outcome:      string(ordermanager.OutcomeFilled),
-		EntryPrice:   50000.0,
-		ExitPrice:    52000.0,
-		Volume:       5.0,
-		ContractSize: 10.0,
-		GrossProfit:  100000.0,
-		NetProfit:    99000.0,
-		CompletedAt:  time.Now(),
+		Outcome:          ordermanager.OutcomeFilled,
+		EntryPrice:       50000.0,
+		ExitPrice:        52000.0,
+		CloseVolContract: 5.0,
+		ContractSize:     10.0,
+		GrossProfit:      100000.0,
+		NetProfit:        99000.0,
+		CompletedAt:      time.Now(),
 	}
 	_ = agg.Record(completed)
 
@@ -449,15 +493,44 @@ func TestBlackBox_TimeoutGuardCancellation(t *testing.T) {
 	t.Parallel()
 
 	client := &blackboxExchangeClient{}
-	mgr, err := ordermanager.NewOrderManager(client, nil, eventbus.New(slog.Default()), mockClock{}, nil)
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
 
+	agg := mgr.GetAggregate("req-tg-001")
+	_ = agg.Record(ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:    "req-tg-001",
+			Exchange: "bybit",
+		},
+	})
+
 	timerFired := false
-	_ = mgr.HandleScheduleTimeout("req-tg-001", "BTCUSDT", 5*time.Second, func() {
+	_, err = mgr.ScheduleTimeoutTimer("req-tg-001", "BTCUSDT", 5*time.Second, func() {
 		timerFired = true
 	})
+	if err != nil {
+		t.Fatalf("ScheduleTimeoutTimer failed: %v", err)
+	}
 
 	// Cancel timeout guard before expiration
 	canceled := mgr.CancelTimeoutGuard("req-tg-001")
@@ -474,7 +547,7 @@ func TestBlackBox_TimeoutGuardCancellation(t *testing.T) {
 func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	client := &blackboxExchangeClient{
@@ -484,14 +557,30 @@ func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 	bus := eventbus.New(slog.Default())
 	clock := mockClock{}
 	repo := &blackboxTradeRepo{}
-
-	mgr, err := ordermanager.NewOrderManager(client, nil, bus, clock, slog.Default())
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
-	mgr.SetRepository(repo)
 
-	ordermanager.InitGlobalSubscriptions(ctx, mgr)
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
 
 	const numOrders = 10
 	var wg sync.WaitGroup
@@ -508,35 +597,210 @@ func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 					ReqID:         reqID,
 					ClientOrderID: clientOID,
 					Symbol:        "BTCUSDT",
-					StrategyType:  ordermanager.StrategyGrid,
+					Exchange:      "bybit",
+					StrategyType:  ordermanager.StrategyFundingArbitrage,
 					Timestamp:     clock.Now(),
 				},
 				Side:         shared.SideOpenLong,
-				OrderType:    ordermanager.OrderTypeLimit,
+				OrderType:    ordermanager.OrderTypeIOC,
 				Price:        50000.0,
 				Volume:       1.0,
 				ContractSize: 1.0,
 			}
 
 			if err := mgr.Dispatch(ctx, intent); err != nil {
-				t.Errorf("failed to dispatch concurrent intent %d: %v", id, err)
+				t.Errorf("failed to dispatch intent %s: %v", reqID, err)
+				return
 			}
+
+			time.Sleep(20 * time.Millisecond)
+
+			mgr.HandlePositionUpdate(ctx, reqID, exchange.PersonalPositionUpdate{
+				Symbol:           "BTCUSDT",
+				HoldVolContract:  0.0,
+				CloseVolContract: 1.0,
+				OpenAvgPrice:     50000.0,
+				CloseAvgPrice:    51000.0,
+				CloseProfitLoss:  1000.0,
+				Fee:              20.0,
+			})
 		}(i)
 	}
 
 	wg.Wait()
 
-	// Wait for eventbus async subscriber pipeline to complete
-	deadline := time.Now().Add(2 * time.Second)
+	// Wait for all 10 orders to complete
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(repo.SavedEvents()) == numOrders {
+		if len(repo.SavedEvents()) >= numOrders {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if len(repo.SavedEvents()) != numOrders {
+		t.Errorf("expected %d saved trade records, got %d", numOrders, len(repo.SavedEvents()))
+	}
+}
+
+// Test 7: Order Canceled with No Fill completes immediately without awaiting position close.
+func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		orderState: exchange.OrderStateCanceled,
+		dealVol:    0.0,
+	}
+	bus := eventbus.New(slog.Default())
+	clock := mockClock{}
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         "req-canceled-001",
+			ClientOrderID: "client-canceled-001",
+			Symbol:        "BTCUSDT",
+			Exchange:      "bybit",
+			StrategyType:  ordermanager.StrategyFundingReversion,
+			Timestamp:     clock.Now(),
+		},
+		Side:         shared.SideOpenLong,
+		OrderType:    ordermanager.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		ContractSize: 1.0,
+	}
+
+	if err := mgr.Dispatch(ctx, intent); err != nil {
+		t.Fatalf("failed to dispatch intent: %v", err)
+	}
+
+	// Wait for eventbus async pipeline to complete without position close update
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		agg := mgr.GetAggregate("req-canceled-001")
+		if len(repo.SavedEvents()) > 0 && agg != nil && agg.State() == ordermanager.StateCompleted {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	saved := repo.SavedEvents()
-	if len(saved) != numOrders {
-		t.Errorf("expected %d saved trade records, got %d", numOrders, len(saved))
+	if len(saved) == 0 {
+		t.Fatalf("expected trade record for canceled order to be saved immediately")
+	}
+	if saved[0].Outcome != string(ordermanager.OutcomeCanceledNoFill) {
+		t.Errorf("expected outcome canceled_no_fill, got %s", saved[0].Outcome)
+	}
+}
+
+// Test 8: Order Filled remains open until position close update arrives.
+func TestBlackBox_OrderFilled_WaitsForPositionClose(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		orderState: exchange.OrderStateFilled,
+		dealVol:    1.0,
+	}
+	bus := eventbus.New(slog.Default())
+	clock := mockClock{}
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         "req-filled-wait-001",
+			ClientOrderID: "client-filled-wait-001",
+			Symbol:        "BTCUSDT",
+			Exchange:      "bybit",
+			StrategyType:  ordermanager.StrategyFundingReversion,
+			Timestamp:     clock.Now(),
+		},
+		Side:         shared.SideOpenLong,
+		OrderType:    ordermanager.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		ContractSize: 1.0,
+	}
+
+	if err := mgr.Dispatch(ctx, intent); err != nil {
+		t.Fatalf("failed to dispatch intent: %v", err)
+	}
+
+	// Give time for order to fill and outcome_resolved to execute
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify that trade is NOT completed yet
+	if len(repo.SavedEvents()) > 0 {
+		t.Fatalf("expected no saved trade record before position close update")
+	}
+
+	// Now emit position update closing position
+	mgr.HandlePositionUpdate(ctx, "req-filled-wait-001", exchange.PersonalPositionUpdate{
+		Symbol:           "BTCUSDT",
+		HoldVolContract:  0.0,
+		CloseVolContract: 1.0,
+		OpenAvgPrice:     50000.0,
+		CloseAvgPrice:    52000.0,
+		CloseProfitLoss:  2000.0,
+		Fee:              10.0,
+	})
+
+	// Wait for trade record to save
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(repo.SavedEvents()) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	saved := repo.SavedEvents()
+	if len(saved) == 0 {
+		t.Fatalf("expected trade record after position close update")
+	}
+	if saved[0].ExitPrice != 52000.0 {
+		t.Errorf("expected exit price 52000.0, got %.2f", saved[0].ExitPrice)
 	}
 }

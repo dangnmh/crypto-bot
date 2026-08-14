@@ -112,6 +112,10 @@ var _cacheMu sync.Mutex
 
 // recordEventState updates the in-memory cache when new events are emitted.
 func (r *StatelessRunner) recordEventState(topic string, rawEvt any) {
+	if r == nil || r.cache == nil {
+		return
+	}
+
 	revEvt, ok := rawEvt.(ReversionEvent)
 	if !ok {
 		return

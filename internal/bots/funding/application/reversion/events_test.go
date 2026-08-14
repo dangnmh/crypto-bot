@@ -267,7 +267,7 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 			event:       reversion.ReversionCompletedEvent{BaseReversionEvent: base, Reason: "done"},
 			messagePart: "Reversion completed",
 			keys:        []string{"reason"},
-			notify:      true,
+			notify:      false,
 		},
 	}
 

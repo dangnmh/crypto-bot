@@ -19,6 +19,8 @@ import (
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/internal/infrastructure/server"
+	"crypto-bot/internal/trading/ordermanager"
+	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 	applogger "crypto-bot/pkg/logger"
 
 	"github.com/patrickmn/go-cache"
@@ -50,6 +52,8 @@ func Module(paths ConfigPaths) fx.Option {
 			provideEngine,
 			persistence.InitDatabase,
 			provideTradeReportRepository,
+			provideTradeRepository,
+			provideOrderManager,
 			provideSymbolFundingReportRepository,
 			providePriceTickRepository,
 			providePriceTrackJob,
@@ -195,6 +199,31 @@ func provideTradeReportRepository(db *gorm.DB) domain.TradeReportRepository {
 	return persistence.NewGormTradeReportRepository(db)
 }
 
+func provideTradeRepository(db *gorm.DB) ordermanager.TradeRepository {
+	return ordermanagerpersistence.NewGormTradeRepository(db)
+}
+
+func provideOrderManager(
+	lc fx.Lifecycle,
+	engine *infraapp.Engine,
+	repo ordermanager.TradeRepository,
+	n notifier.Notifier,
+	log *slog.Logger,
+) (*ordermanager.OrderManager, error) {
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, engine.Bus, repo, n, log)
+	if err != nil {
+		return nil, err
+	}
+	if lc != nil {
+		lc.Append(fx.Hook{
+			OnStop: func(ctx context.Context) error {
+				return mgr.Shutdown(ctx)
+			},
+		})
+	}
+	return mgr, nil
+}
+
 func provideSymbolFundingReportRepository(db *gorm.DB) domain.SymbolFundingReportRepository {
 	return persistence.NewGormSymbolFundingReportRepository(db)
 }
@@ -232,6 +261,7 @@ func provideBot(
 	engine *infraapp.Engine,
 	n notifier.Notifier,
 	reversionStrategy *reversion.Strategy,
+	orderMgr *ordermanager.OrderManager,
 	statsReporter *application.StatsReportJob,
 	priceTracker *application.PriceTrackJob,
 	log *slog.Logger,

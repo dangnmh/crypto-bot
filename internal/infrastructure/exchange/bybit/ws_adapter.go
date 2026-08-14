@@ -49,6 +49,20 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 	a.pool = pool
 }
 
+func (a *WsAdapter) SubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.SubscribePublic(ctx, topic, msg)
+}
+
+func (a *WsAdapter) UnsubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
+}
+
 // SubscribeTicker subscribes to ticker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 	msg := map[string]any{
@@ -89,6 +103,10 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("bybit ws subscribe private: %w", err)
 	}
+	return nil
+}
+
+func (a *WsAdapter) UnsubscribePersonal(ctx context.Context) error {
 	return nil
 }
 

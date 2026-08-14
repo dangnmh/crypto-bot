@@ -49,6 +49,14 @@ func (m *MockNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	return ret0
 }
 
+// SendRawMsg mocks base method.
+func (m *MockNotifier) SendRawMsg(ctx context.Context, msg string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendRawMsg", ctx, msg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
 // Send indicates an expected call of Send.
 func (mr *MockNotifierMockRecorder) Send(ctx, evt any) *MockNotifierSendCall {
 	mr.mock.ctrl.T.Helper()

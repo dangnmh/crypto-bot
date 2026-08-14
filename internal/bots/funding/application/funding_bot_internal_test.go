@@ -41,13 +41,13 @@ func (f fakeFundingStoreSet) Start(context.Context) {}
 func (f fakeFundingStoreSet) WaitReady(context.Context) error {
 	return nil
 }
-func (f fakeFundingStoreSet) WireWS(*pkgws.Pool, infraws.ExchangeAdapter) {}
-func (f fakeFundingStoreSet) Ticker() store.TickerReader                  { return f.ticker }
-func (f fakeFundingStoreSet) Contract() store.ContractReader              { return f.contract }
-func (f fakeFundingStoreSet) Price() store.PriceReader                    { return f.price }
-func (f fakeFundingStoreSet) Funding() store.FundingReader                { return f.funding }
-func (f fakeFundingStoreSet) Depth() store.DepthReader                    { return f.depth }
-func (f fakeFundingStoreSet) Kline() store.KlineReadWriter                { return f.kline }
+func (f fakeFundingStoreSet) WireWS(*pkgws.Pool, infraws.ExchangeAdapterParser) {}
+func (f fakeFundingStoreSet) Ticker() store.TickerReader                        { return f.ticker }
+func (f fakeFundingStoreSet) Contract() store.ContractReader                    { return f.contract }
+func (f fakeFundingStoreSet) Price() store.PriceReader                          { return f.price }
+func (f fakeFundingStoreSet) Funding() store.FundingReader                      { return f.funding }
+func (f fakeFundingStoreSet) Depth() store.DepthReader                          { return f.depth }
+func (f fakeFundingStoreSet) Kline() store.KlineReadWriter                      { return f.kline }
 
 func sniperTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))

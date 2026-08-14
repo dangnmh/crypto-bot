@@ -12,15 +12,6 @@ import (
 // Notifier is an alias for notifier.Notifier interface.
 type Notifier = notifier.Notifier
 
-// OrderStreamUpdate represents private order stream updates.
-type OrderStreamUpdate struct {
-	Symbol    string
-	OrderID   string
-	Status    string
-	FilledVol float64
-	AvgPrice  float64
-}
-
 // ExchangeClient is the interface for executing exchange setups and order operations.
 type ExchangeClient interface {
 	SwitchMarginMode(ctx context.Context, symbol string, mode shared.MarginMode, leverage int, side shared.Side) error
@@ -39,11 +30,6 @@ type PositionModeSwitcher interface {
 	SwitchPositionMode(ctx context.Context, symbol string, mode shared.PositionMode) error
 }
 
-// RiskLimitLeverageProvider checks maximum leverage allowed for a given position value.
-type RiskLimitLeverageProvider interface {
-	GetMaxLeverageForValue(ctx context.Context, symbol string, notionalValue float64) (int, error)
-}
-
 // TPSLProvider allows placing post-fill TP/SL trigger orders.
 type TPSLProvider interface {
 	PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error
@@ -54,9 +40,9 @@ type ClosedPnLProvider interface {
 	GetOrderPNL(ctx context.Context, symbol string, orderID string) (*exchange.ClosedPnLInfo, error)
 }
 
-// OrderWatcher is the interface for subscribing to private order stream fill notifications.
-type OrderWatcher interface {
-	SubscribeOrderUpdates(ctx context.Context, symbol string) (<-chan OrderStreamUpdate, error)
+// PositionWatcher is the interface for subscribing to real-time personal position updates.
+type PositionWatcher interface {
+	OnPositionUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func(pos exchange.PersonalPositionUpdate))
 }
 
 // Clock provides time and latency queries.

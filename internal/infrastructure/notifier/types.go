@@ -31,12 +31,16 @@ type Event struct {
 	Color     string
 	Data      map[string]any
 	Timestamp time.Time
+	IsRaw     bool
 }
 
 // Notifier defines the interface for sending notifications.
 type Notifier interface {
 	// Send sends a notification event.
 	Send(ctx context.Context, evt Event) error
+
+	// SendRawMsg sends a raw string message directly without automatic formatting headers.
+	SendRawMsg(ctx context.Context, msg string) error
 
 	// Start begins the notification worker (if async).
 	Start(ctx context.Context) error

@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	FlowReversion = "reversion"
+	FlowReversion          = "reversion"
+	FlowIDFundingReversion = "FUNDING_REVERSION"
 
 	StatusCompleted = "completed"
 	StatusAborted   = "aborted"
@@ -363,6 +364,7 @@ type IOCOutcomeCheckedEvent struct {
 	Reason          ReversionReason   `json:"reason"`
 	CheckedAt       time.Time         `json:"checked_at"`
 	Timeout         time.Duration     `json:"timeout"`
+	FundingRate     float64           `json:"funding_rate"`
 	VolUSDT24h      float64           `json:"vol_usdt_24h"`
 }
 
@@ -741,6 +743,7 @@ func (e ReversionCompletedEvent) GetMessage() string { return "Reversion complet
 func (e ReversionCompletedEvent) GetDataMap() map[string]any {
 	return map[string]any{keyReason: e.Reason}
 }
+func (e ReversionCompletedEvent) ShouldNotify() bool { return false }
 
 type TPSLRequiredEvent struct {
 	BaseReversionEvent

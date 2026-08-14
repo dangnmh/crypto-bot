@@ -45,7 +45,7 @@ func unwrapOTelTransport(rt http.RoundTripper) http.RoundTripper {
 		if field.IsValid() {
 			//nolint:gosec // Using reflect.NewAt to bypass unexported field restrictions for testing
 			field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
-			if next, ok := field.Interface().(http.RoundTripper); ok {
+			if next, ok := reflect.TypeAssert[http.RoundTripper](field); ok {
 				return next
 			}
 		}

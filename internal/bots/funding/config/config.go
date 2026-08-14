@@ -190,6 +190,9 @@ func newValidator() *validator.Validate {
 }
 
 func MergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
+	if src.UseOrderManager != nil {
+		dest.UseOrderManager = src.UseOrderManager
+	}
 	if src.TakeProfitPct > 0 {
 		dest.TakeProfitPct = src.TakeProfitPct
 	}
@@ -270,14 +273,22 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 }
 
 func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionConfig, exchConfig *ExchangeReversionConfig) {
+	useOrderManager := false
+	if exchConfig.UseOrderManager != nil {
+		useOrderManager = *exchConfig.UseOrderManager
+	}
 	if !sc.FundingReversion.Enabled && d.Enabled {
 		sc.FundingReversion.Enabled = true
+		sc.FundingReversion.UseOrderManager = useOrderManager
 		sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
 		sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
 		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
 		sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
 	} else if sc.FundingReversion.Enabled {
+		if !sc.FundingReversion.UseOrderManager && useOrderManager {
+			sc.FundingReversion.UseOrderManager = true
+		}
 		if sc.FundingReversion.MaxLatency == 0 {
 			sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
 		}

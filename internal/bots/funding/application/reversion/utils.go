@@ -42,7 +42,7 @@ type Strategy struct {
 	// Test fallbacks
 	clock         shared.Clock
 	orderNotifier infrawatcher.OrderNotifier
-	wsSub         infraws.Subscriber
+	wsSub         infraws.ExchangeManagerAdapterSubscriber
 }
 
 func NewStrategy(
@@ -96,7 +96,7 @@ func (s *Strategy) Start(ctx context.Context, stores map[string]strategy.Funding
 	return nil
 }
 
-func (s *Strategy) SetTestFallbacks(clock shared.Clock, orderNotifier infrawatcher.OrderNotifier, wsSub infraws.Subscriber) {
+func (s *Strategy) SetTestFallbacks(clock shared.Clock, orderNotifier infrawatcher.OrderNotifier, wsSub infraws.ExchangeManagerAdapterSubscriber) {
 	s.clock = clock
 	s.orderNotifier = orderNotifier
 	s.wsSub = wsSub
@@ -126,7 +126,7 @@ type StatelessRunner struct {
 	// Test fallbacks
 	clock         shared.Clock
 	orderNotifier infrawatcher.OrderNotifier
-	wsSub         infraws.Subscriber
+	wsSub         infraws.ExchangeManagerAdapterSubscriber
 }
 
 func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
@@ -152,12 +152,12 @@ func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
 		clock = r.clock
 	}
 
-	var orderNotifier infrawatcher.OrderNotifier = prov.Watcher
+	var orderNotifier = prov.Watcher
 	if r.orderNotifier != nil {
 		orderNotifier = r.orderNotifier
 	}
 
-	var wsSub infraws.Subscriber = prov.Adapter
+	var wsSub infraws.ExchangeManagerAdapterSubscriber = prov.Adapter
 	if r.wsSub != nil {
 		wsSub = r.wsSub
 	}
@@ -315,18 +315,18 @@ func (r *StatelessRunner) waitUntilFuture(ctx context.Context, symbol string, ta
 }
 
 func (r *StatelessRunner) subscribeWS(ctx context.Context, symbol string) error {
-	return r.deps.WsSub.SubscribeTicker(ctx, symbol)
+	return r.deps.WsSub.SubscribeTicker(ctx, FlowIDFundingReversion, symbol)
 }
 
 func (r *StatelessRunner) unsubscribeWS(ctx context.Context, symbol string) {
-	if err := r.deps.WsSub.UnsubscribeTicker(ctx, symbol); err != nil {
+	if err := r.deps.WsSub.UnsubscribeTicker(ctx, FlowIDFundingReversion, symbol); err != nil {
 		r.log.WarnContext(ctx, "⚠️ Failed to unsubscribe ticker", slog.String("symbol", symbol), slog.Any("error", err))
 	}
 }
 
 func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate) error {
 	pd, err := r.deps.PriceStore.GetPrice(ctx, c.Symbol, 5*time.Second)
-	if err == nil && pd.BestBid > 0 && pd.BestAsk > 0 {
+	if err == nil && pd != nil && pd.BestBid > 0 && pd.BestAsk > 0 {
 		c.BestBid, c.BestAsk, c.LastPrice = pd.BestBid, pd.BestAsk, pd.LastPrice
 		return nil
 	}

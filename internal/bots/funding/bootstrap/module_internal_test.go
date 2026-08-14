@@ -11,13 +11,11 @@ import (
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/config"
 	exchange "crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/testutil/mocks"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx/fxtest"
-	"go.uber.org/mock/gomock"
 )
 
 func bootstrapTestLogger() *slog.Logger {
@@ -27,7 +25,6 @@ func bootstrapTestLogger() *slog.Logger {
 func TestProviderFactoriesReturnStrategies(t *testing.T) {
 	t.Parallel()
 
-	ctrl := gomock.NewController(t)
 	bus := eventbus.New(bootstrapTestLogger())
 	t.Cleanup(func() { _ = bus.Close() })
 	engine := &infraapp.Engine{
@@ -35,9 +32,8 @@ func TestProviderFactoriesReturnStrategies(t *testing.T) {
 	}
 
 	global := &fundingconfig.Config{}
-	mockNotifier := mocks.NewMockNotifier(ctrl)
 
-	assert.Equal(t, "reversion", provideReversionStrategy(engine, global, mockNotifier, nil, nil, bootstrapTestLogger()).Flow())
+	assert.Equal(t, "reversion", provideReversionStrategy(engine, global, nil, nil, nil, bootstrapTestLogger()).Flow())
 }
 
 func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
@@ -65,7 +61,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = engine.Bus.Close() })
 
-	revStrat := provideReversionStrategy(engine, &fundingconfig.Config{}, n, nil, nil, bootstrapTestLogger())
+	revStrat := provideReversionStrategy(engine, &fundingconfig.Config{}, nil, nil, nil, bootstrapTestLogger())
 
 	bot := provideBot(
 		&fundingconfig.Config{},
@@ -73,6 +69,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 		engine,
 		n,
 		revStrat,
+		nil,
 		nil,
 		nil,
 		bootstrapTestLogger(),

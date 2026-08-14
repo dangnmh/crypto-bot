@@ -20,104 +20,58 @@ graph TD
     classDef abort fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c;
 
     %% Nodes
-    subgraph Periodic Scan
-        A[ScannerJob.tick]:::scanner -->|Opportunity Found| B(TopicReversionCandidate):::scanner
-    end
-
-    subgraph Stage 1: Arming & Setup
-        B -->|handleArm| C(TopicReversionArmMarketReady):::arm
-        C -->|handleArmMarketReady| D(TopicReversionArmPlanCalculated):::arm
-        D -->|handleArmPlanCalculated| E(TopicReversionSafetyChecked):::arm
+    subgraph Stage 1: Opportunity Discovery & Arming
+        A["[Step 1] ScannerJob.tick"]:::scanner -->|Opportunity Found| B(TopicReversionCandidate):::scanner
+        B -->|"[Step 2] handleArm"| C(TopicReversionArmMarketReady):::arm
+        C -->|"[Step 3] handleArmMarketReady"| D(TopicReversionArmPlanCalculated):::arm
+        D -->|"[Step 4] handleArmPlanCalculated"| E(TopicReversionSafetyChecked):::arm
         E -->|Passed| F(TopicReversionArmed):::arm
         E -->|Failed| ABORT[TopicReversionAbort]:::abort
     end
 
-    subgraph Stage 2: Waiting & Rechecking
-        F -->|handleWait| G(TopicReversionWaitComplete):::wait
-        G -->|handleRecheck| H(TopicReversionConfirmed):::wait
-        H -->|Passed| I(TopicReversionMarginModeReady):::wait
+    subgraph Stage 2: Precision Wait & Recheck
+        F -->|"[Step 5] handleWait"| G(TopicReversionWaitComplete):::wait
+        G -->|"[Step 6] handleRecheck"| H(TopicReversionConfirmed):::wait
         H -->|Failed / Sign Flip| ABORT
     end
 
-    subgraph Stage 3: Margin & Sizing Execution
-        I -->|handleMarginModeReady| J(TopicReversionFireTimingReady):::fire
-        J -->|handleFireTimingReady| K(TopicReversionFirePlanChecked):::fire
-        K -->|Passed| L(TopicReversionFireWindowReached):::fire
-        K -->|Failed| M(TopicReversionIOCSubmitted):::fire
-        L -->|handleFireWindowReached| N(TopicReversionPositionWatchReady):::fire
-        N -->|handlePositionWatchReady| O{orders.FireIOC}:::fire
-    end
-
-    subgraph Stage 4: Order Submission & Outcome
-        O -->|Order Placed| M:::fire
-        O -->|TP/SL Required| TPSL(TopicReversionTPSLRequired):::fire
-        M -->|handleIOCSubmitted| P(TopicReversionIOCOutcomeChecked):::monitoring
-    end
-
-    subgraph Stage 5: Timeout Guard & Position Monitoring
-        P -->|Filled / Partial| Q(TopicReversionTimeoutGuardScheduled):::monitoring
-        P -->|Canceled / No Fill| ABORT
-        
-        Q -->|waitTimeoutDeadline| R(TopicReversionTimeoutPositionChecked):::monitoring
-        R -->|Hold Volume > 0| S(TopicReversionForceCloseInitiated):::monitoring
-        R -->|Hold Volume == 0| T(TopicReversionTimeout):::monitoring
-        
-        S -->|forceClosePosition| U(TopicReversionForceCloseCompleted):::monitoring
-        U -->|Success| T
-        U -->|Failed| ERR(TopicReversionError):::abort
-        
-        T -->|handleTimeout| CL[TopicReversionPositionClosed]:::monitoring
-    end
-
-    subgraph Stage 6: Cleanup & Finalization
-        CL -->|handleCleanup| Z(TopicReversionFinalPnL):::finish
-        ABORT -->|handleCleanup| Y(TopicReversionCompleted):::finish
-        ERR -->|handleCleanup| Y
-        Z --> Y
+    subgraph Stage 3: OrderManager Delegation & Lifecycle Finalization
+        H -->|"[Step 7] handleConfirmed / dispatchOrderManagerIntent"| INTENT(ordermanager.TopicOrderIntent):::fire
+        INTENT -->|"[Step 8] OrderManager Pipeline"| OM[OrderManager Reactive Micro Pipeline]:::monitoring
+        OM -->|ordermanager.TopicOrderCompleted| CMPL(TopicOrderCompleted):::finish
+        OM -->|Order Error / Aborted| ABORT
+        CMPL -->|"[Step 9] Strategy Lifecycle Completed"| Y(TopicReversionCompleted):::finish
+        ABORT -->|handleCleanup| Y
     end
 
     %% Routing styles
     class A,B scanner;
     class C,D,E,F arm;
-    class G,H,I wait;
-    class J,K,L,M,N,O,TPSL fire;
-    class P,Q,R,S,T,U,CL monitoring;
-    class Z,Y finish;
-    class ABORT,ERR abort;
+    class G,H wait;
+    class INTENT fire;
+    class OM monitoring;
+    class CMPL,Y finish;
+    class ABORT abort;
 ```
 
 ---
 
 ## 2. Topic Registry & Event Routing
 
-All event topic constants are defined in [events.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/events.go#L18-L45) and routed in [execute.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/execute.go#L35-L178):
+All event topic constants are defined in [events.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/events.go) and routed in [execute.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/execute.go):
 
 | Phase | Topic Constants (`TopicReversion...`) | Payload Event Struct | Handler Location | Purpose / Action |
 |---|---|---|---|---|
-| **Scan** | `Candidate` | `CandidateFoundEvent` | [arm.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/arm.go#L16) | Initiates flow; syncs clock; opens WS connections for the target pair. |
+| **Scan** | `Candidate` | `CandidateFoundEvent` | [arm.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/arm.go#L16) | Initiates flow; syncs clock; opens WS connections for target pair. |
 | **Arm** | `ArmMarketReady` | `ArmMarketReadyEvent` | [arm.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/arm.go#L55) | Calculates the IOC price & trade sizing/volume. |
 | **Arm** | `ArmPlanCalculated` | `ArmPlanCalculatedEvent` | [arm.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/arm.go#L80) | Evaluates safety filters (impact ratios & volume limits). |
 | **Arm** | `SafetyChecked` | `SafetyCheckedEvent` | [arm.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/arm.go#L107) | Confirms safety pass/fail and transitions to Armed state. |
-| **Wait** | `Armed` | `ArmedEvent` | [wait.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/wait.go#L9) | Sleeps until `SettleTime - 5 seconds`. |
+| **Wait** | `Armed` | `ArmedEvent` | [wait.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/wait.go#L9) | Precision sleep until `SettleTime - 5 seconds`. |
 | **Wait** | `WaitComplete` | `WaitCompleteEvent` | [recheck.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/recheck.go#L10) | Re-queries funding rate to detect sign flips or threshold drops. |
-| **Fire** | `Confirmed` | `ConfirmedEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L18) | Verifies network latency constraint (`maxLatency`). |
-| **Fire** | `MarginModeReady` | `MarginModeReadyEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L43) | Configures isolated/cross margin mode, computes offsets, and applies leverage. |
-| **Fire** | `FireTimingReady` | `FireTimingReadyEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L87) | Sleeps until snapshot offset, refreshes price, re-runs safety checks. |
-| **Fire** | `FirePlanChecked` | `FirePlanCheckedEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L138) | Sleeps until target execution time offset. |
-| **Fire** | `FireWindowReached` | `FireWindowReachedEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L220) | Configures position change listeners. |
-| **Fire** | `PositionWatchReady` | `PositionWatchReadyEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L241) | Places IOC sniping order. If TP/SL wasn't submitted directly, routes to background TP/SL publisher. |
-| **Monitor** | `IOCSubmitted` | `IOCSubmittedEvent` | [ioc_outcome.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/ioc_outcome.go#L24) | Exponential backoff polling on order status/cancellations. |
-| **Monitor** | `IOCOutcomeChecked` | `IOCOutcomeCheckedEvent` | [ioc_outcome.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/ioc_outcome.go#L123) | Schedules a timeout watchdog for open positions. |
-| **Monitor** | `TimeoutGuardScheduled`| `TimeoutGuardScheduledEvent` | [timeout.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/timeout.go#L40) | Launches timeout monitoring routine. |
-| **Monitor** | `TimeoutPositionChecked`| `TimeoutPositionCheckedEvent`| [timeout.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/timeout.go#L89) | Verifies if position closed naturally or requires intervention. |
-| **Exit** | `ForceCloseInitiated` | `ForceCloseInitiatedEvent` | [timeout.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/timeout.go#L145) | Requests immediate REST API position liquidation. |
-| **Exit** | `ForceCloseCompleted` | `ForceCloseCompletedEvent` | [timeout.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/timeout.go#L150) | Decides critical error alert or success transition. |
-| **Exit** | `Timeout` | `TimeoutEvent` | [timeout.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/timeout.go#L170) | Initiates fallback closed event publisher. |
-| **Teardown**| `PositionClosed` | `PositionClosedEvent` | [cleanup.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/cleanup.go#L15) | Triggers WebSocket teardown, evaluates final PnL. |
-| **Teardown**| `FinalPnL` | `FinalPnLEvent` | [cleanup.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/cleanup.go#L15) | Emits parsed trade and profit/loss metrics. |
-| **Teardown**| `Completed` | `ReversionCompletedEvent` | *(internal)* | Terminates flow lifecycle. |
-| **Teardown**| `Abort` | `AbortEvent` | [cleanup.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/cleanup.go#L15) | Handles premature termination gracefully. |
-| **Teardown**| `Error` | `ErrorEvent` | [cleanup.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/cleanup.go#L15) | Evaluates failed execution paths. |
+| **Fire** | `Confirmed` | `ConfirmedEvent` | [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L62) | Computes $\text{FireTime} = T_{\text{settle}} - \text{BufferTime} - \frac{\text{RTT}}{2}$, unsubscribes public streams, dispatches `ordermanager.TopicOrderIntent`. |
+| **Execution**| `TopicOrderCompleted` | `OrderCompletedEvent` | [execute.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/execute.go#L124) | Listens exclusively to `OrderManager` completion event; logs metrics and dispatches `TopicReversionCompleted`. |
+| **Teardown**| `Completed` | `ReversionCompletedEvent` | [execute.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/execute.go#L129) | Terminates strategy flow lifecycle. |
+| **Teardown**| `Abort` | `AbortEvent` | [cleanup.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/cleanup.go#L15) | Handles premature termination, sign flip rejection, or execution abort gracefully. |
 
 ---
 
@@ -126,11 +80,14 @@ All event topic constants are defined in [events.go](file:///home/four/projects/
 ### 3.1. Stateless FSM
 The [StatelessRunner](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/utils.go#L99) struct does not persist execution state in-memory. Every handler is a standalone stateless function. State transitions are achieved exclusively by publishing the next typed event message to the bus. This prevents state desynchronization and allows seamless recovery if the bot process restarts.
 
-### 3.2. Order Notifier Position Updates
-To react instantly to filled orders, the bot hooks directly to WebSocket stream updates in [fire_ioc.go](file:///home/four/projects/crypto-bot/internal/bots/funding/application/reversion/fire_ioc.go#L203):
-```go
-r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, timeout*2, func(pos exchange.PersonalPositionUpdate) {
-    r.handlePositionUpdate(ctx, pos, watchBase)
-})
-```
-This callback translates private WebSocket position events directly into standard `OrderFilled` or `PositionClosed` event topics, which then trigger the downstream cleanups.
+### 3.2. Autonomous WebSocket Position Stream Wiring
+Position stream watching and order fill tracking are handled independently:
+- `ExchangeProvider.WirePersonalWS(ctx, logger)` in `internal/infrastructure/app/engine.go` automatically connects the WebSocket pool's `"personal.position"` channel to `prov.Watcher.PublishPosition()`. It uses a `sync.Once` guard to ensure idempotent, exactly-once registration per provider.
+- `FundingBot.Start` wires this for legacy execution flows, while `OrderManager.Init` wires it autonomously. This allows `OrderManager` to run standalone without depending on `FundingBot` or strategy-level setup.
+
+### 3.3. OrderManager Delegation & Lifecycle
+Order execution for the Funding Strategy is delegated to the standalone `OrderManager` by publishing an `OrderIntentEvent` to `ordermanager.TopicOrderIntent`. For full micro-event pipeline documentation and Mermaid diagrams of `OrderManager`, see [order_manager_event_flow.md](file:///home/four/projects/crypto-bot/docs/tech/flows/order_manager_event_flow.md).
+
+1. **Pre-Dispatch Setup & Unsubscribe**: The Funding Strategy calculates target `FireTime` (deducting network latency $\frac{\text{RTT}}{2}$) and attaches strategy metadata (`settle_time`, `funding_rate`, `vol_24h_usdt`) to `OrderIntentEvent`. Prior to publishing `ordermanager.TopicOrderIntent`, the Funding Strategy unsubscribes from public ticker streams via `ExchangeManagerAdapter.UnsubscribeTicker(ctx, FlowIDFundingReversion, symbol)`.
+2. **OrderManager Execution Pipeline**: `OrderManager` processes pre-flight setup, precision sleeps until `FireTime`, submits the REST order, monitors WS fill updates, executes post-settle timeout guards, enriches PnL, and persists DB trade records to the `trades` SQL table.
+3. **Reference-Counted WebSocket Manager**: The thread-safe `ExchangeManagerAdapter` in `internal/infrastructure/ws` tracks active subscriber `flowID`s per topic. A physical WebSocket subscription frame is sent on $0 \rightarrow 1$ subscribers, and a physical unsubscribe frame is sent to the exchange only when remaining subscribers reach $0$. This guarantees that concurrent strategies and order managers sharing the same WebSocket pool do not unexpectedly close streams used by each other.

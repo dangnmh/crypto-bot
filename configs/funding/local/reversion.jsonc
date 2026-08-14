@@ -5,6 +5,7 @@
   "positionMode": "HEDGE",
   "tradeSide": "both",
   "default": {
+    "useOrderManager": true,
     "takeProfitPct": 1,
     "stopLossPct": 2,
     "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
@@ -59,8 +60,8 @@
     "toobit_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
-      "postSettleTimeout": "3s"
+      "bufferTime": "390ms",
+      "postSettleTimeout": "30s"
     },
     "bybit_futures": {
       "takeProfitPct": 1,

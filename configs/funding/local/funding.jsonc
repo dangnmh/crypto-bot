@@ -3,16 +3,16 @@
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
   {
-    "symbol": "KAITO_USDT",
-    "marginUSDT": 3,
+    "symbol": "HOME_USDT",
+    "marginUSDT": 5,
     "exchange": "mexc_futures",
-    "simulateSettle": "2026-08-09T23:05:00.000+07:00"
+    "simulateSettle": "2026-08-14T18:30:00.000+07:00"
   },
   {
-    "symbol": "KAITO-SWAP-USDT",
-    "marginUSDT": 30,
+    "symbol": "HOME-SWAP-USDT",
+    "marginUSDT": 5,
     "exchange": "toobit_futures",
-    "simulateSettle": "2026-08-11T22:30:00.000+07:00"
+    "simulateSettle": "2026-08-14T18:30:00.000+07:00"
   },
   // {
   //   "symbol": "PRLUSDT",

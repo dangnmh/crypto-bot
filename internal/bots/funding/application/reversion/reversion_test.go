@@ -19,6 +19,7 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/internal/testutil/mocks"
+	ordermanager "crypto-bot/internal/trading/ordermanager"
 	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/types"
 	pkgws "crypto-bot/pkg/ws"
@@ -44,13 +45,13 @@ func (f fakeFundingStoreSet) Start(context.Context) {}
 func (f fakeFundingStoreSet) WaitReady(context.Context) error {
 	return nil
 }
-func (f fakeFundingStoreSet) WireWS(*pkgws.Pool, infraws.ExchangeAdapter) {}
-func (f fakeFundingStoreSet) Ticker() store.TickerReader                  { return f.ticker }
-func (f fakeFundingStoreSet) Contract() store.ContractReader              { return f.contract }
-func (f fakeFundingStoreSet) Price() store.PriceReader                    { return f.price }
-func (f fakeFundingStoreSet) Funding() store.FundingReader                { return f.funding }
-func (f fakeFundingStoreSet) Depth() store.DepthReader                    { return f.depth }
-func (f fakeFundingStoreSet) Kline() store.KlineReadWriter                { return f.kline }
+func (f fakeFundingStoreSet) WireWS(*pkgws.Pool, infraws.ExchangeAdapterParser) {}
+func (f fakeFundingStoreSet) Ticker() store.TickerReader                        { return f.ticker }
+func (f fakeFundingStoreSet) Contract() store.ContractReader                    { return f.contract }
+func (f fakeFundingStoreSet) Price() store.PriceReader                          { return f.price }
+func (f fakeFundingStoreSet) Funding() store.FundingReader                      { return f.funding }
+func (f fakeFundingStoreSet) Depth() store.DepthReader                          { return f.depth }
+func (f fakeFundingStoreSet) Kline() store.KlineReadWriter                      { return f.kline }
 
 type fakeExchangeAdapter struct {
 	*mocks.MockSubscriber
@@ -65,6 +66,15 @@ func (f *fakeExchangeAdapter) ParseTicker(data []byte) (symbol string, pd *store
 }
 func (f *fakeExchangeAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	return nil, nil
+}
+func (f *fakeExchangeAdapter) Subscribe(ctx context.Context, topic, flowID string, subMsg any) error {
+	return nil
+}
+func (f *fakeExchangeAdapter) Unsubscribe(ctx context.Context, topic, flowID string, unsubMsg any) error {
+	return nil
+}
+func (f *fakeExchangeAdapter) UnsubscribePersonal(ctx context.Context) error {
+	return nil
 }
 
 func executeReversionHelper(t *testing.T, bus *eventbus.Bus, reqID string, candidate domain.Candidate, settleTime time.Time) error {
@@ -150,7 +160,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			"mexc": {
 				Name:    "mexc",
 				Client:  mockClient,
-				Adapter: &fakeExchangeAdapter{MockSubscriber: mockWs},
+				Adapter: infraws.NewExchangeManagerAdapter(&fakeExchangeAdapter{MockSubscriber: mockWs}),
 			},
 		},
 	}
@@ -213,7 +223,6 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	}
 
 	// 1. Arm expectations
-	mockWs.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid:   59990.0,
@@ -275,9 +284,6 @@ func TestStrategy_Execute_Success(t *testing.T) {
 		},
 	)
 
-	// Unsubscribe ws expectation on cleanup (which might be called once or twice on error recovery)
-	mockWs.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
-
 	// Notifier expectations for events with SendNotify = true
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
@@ -289,7 +295,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	repo := &fakeTradeReportRepository{}
 	c := cache.New(5*time.Minute, 10*time.Minute)
 	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
+	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"mexc": fakeFundingStoreSet{
@@ -371,7 +377,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 			"mexc": {
 				Name:    "mexc",
 				Client:  mockClient,
-				Adapter: &fakeExchangeAdapter{MockSubscriber: mockWs},
+				Adapter: infraws.NewExchangeManagerAdapter(&fakeExchangeAdapter{MockSubscriber: mockWs}),
 			},
 		},
 	}
@@ -433,7 +439,6 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		},
 	}
 
-	mockWs.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid:   59990.0,
@@ -495,7 +500,6 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		},
 	)
 
-	mockWs.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// Capture and verify ExternalID on event bus for the first event (CandidateFoundEvent)
@@ -516,7 +520,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	c := cache.New(5*time.Minute, 10*time.Minute)
 	repo := &fakeTradeReportRepository{}
 	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
+	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"mexc": fakeFundingStoreSet{
@@ -604,7 +608,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			"bybit": {
 				Name:    "bybit",
 				Client:  mockClient,
-				Adapter: &fakeExchangeAdapter{MockSubscriber: mockWs},
+				Adapter: infraws.NewExchangeManagerAdapter(&fakeExchangeAdapter{MockSubscriber: mockWs}),
 			},
 		},
 	}
@@ -669,7 +673,6 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	}
 
 	// 1. Arm expectations
-	mockWs.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid:   59990.0,
@@ -729,7 +732,6 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		},
 	)
 
-	mockWs.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
@@ -738,7 +740,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	c := cache.New(5*time.Minute, 10*time.Minute)
 	repo := &fakeTradeReportRepository{}
 	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
+	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"bybit": fakeFundingStoreSet{
@@ -888,7 +890,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 			"bybit": {
 				Name:    "bybit",
 				Client:  wrappedClient,
-				Adapter: &fakeExchangeAdapter{MockSubscriber: mockWs},
+				Adapter: infraws.NewExchangeManagerAdapter(&fakeExchangeAdapter{MockSubscriber: mockWs}),
 			},
 		},
 	}
@@ -953,7 +955,6 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	}
 
 	// 1. Arm expectations
-	mockWs.EXPECT().SubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid:   59990.0,
@@ -1021,7 +1022,6 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		},
 	)
 
-	mockWs.EXPECT().UnsubscribeTicker(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
@@ -1030,7 +1030,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	c := cache.New(5*time.Minute, 10*time.Minute)
 	repo := &fakeTradeReportRepository{}
 	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, mockWs)
+	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"bybit": fakeFundingStoreSet{
@@ -1071,4 +1071,136 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Timeout waiting for ChangeLeverage to be called")
 	}
+}
+
+func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
+	t.Parallel()
+	testCand := domain.Candidate{
+		Config: domain.TradeConfig{
+			Symbol:              "BTC_USDT",
+			MaxPriceDiffPercent: 0.01,
+			MarginUSDT:          100,
+			Leverage:            5,
+			FundingReversion: domain.FundingReversionConfig{
+				Enabled:           true,
+				PostSettleTimeout: types.Duration(10 * time.Second),
+				BufferTime:        types.Duration(150 * time.Millisecond),
+				MaxLatency:        types.Duration(50 * time.Millisecond),
+			},
+		},
+		TradeIntent: domain.TradeIntent{
+			Symbol:    "BTC_USDT",
+			Side:      shared.SideOpenLong,
+			CloseSide: shared.SideCloseLong,
+		},
+		MarketData: domain.MarketData{
+			LastPrice: 60000,
+			BestBid:   59990,
+			BestAsk:   60000,
+		},
+		TradePlan: domain.TradePlan{
+			Volume: 1,
+		},
+	}
+
+	t.Run("UseOrderManager = true dispatches ordermanager.TopicOrderIntent", func(t *testing.T) {
+		t.Parallel()
+		bus := eventbus.New(slog.Default())
+		t.Cleanup(func() { _ = bus.Close() })
+
+		cand := testCand
+		cand.Config.FundingReversion.UseOrderManager = true
+
+		engine := &app.Engine{Bus: bus}
+		cfg := &config.Config{}
+		strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, nil, slog.Default())
+
+		intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+		require.NoError(t, err)
+
+		confirmedEvt := reversion.ConfirmedEvent{
+			BaseReversionEvent: reversion.BaseReversionEvent{
+				ReqID:      "req-om-true",
+				Symbol:     "BTC_USDT",
+				Exchange:   "mexc",
+				SettleTime: time.Now().Add(10 * time.Second),
+			},
+			Candidate: cand,
+		}
+
+		stores := map[string]strategy.FundingStoreSet{
+			"mexc": fakeFundingStoreSet{},
+		}
+		require.NoError(t, strategyInst.Start(context.Background(), stores))
+
+		require.NoError(t, bus.Publish(reversion.TopicReversionConfirmed, confirmedEvt))
+
+		select {
+		case msg := <-intentSub:
+			var receivedIntent ordermanager.OrderIntentEvent
+			require.NoError(t, json.Unmarshal(msg.Payload, &receivedIntent))
+			assert.Equal(t, "req-om-true", receivedIntent.ReqID)
+			assert.Equal(t, "BTC_USDT", receivedIntent.Symbol)
+			assert.Equal(t, ordermanager.StrategyFundingReversion, receivedIntent.StrategyType)
+		case <-time.After(3 * time.Second):
+			t.Fatal("Timeout waiting for OrderIntentEvent on ordermanager.TopicOrderIntent")
+		}
+	})
+
+	t.Run("UseOrderManager = false dispatches TopicReversionMarginModeReady", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		bus := eventbus.New(slog.Default())
+		t.Cleanup(func() { _ = bus.Close() })
+
+		cand := testCand
+		cand.Config.FundingReversion.UseOrderManager = false
+
+		client := mocks.NewMockClient(ctrl)
+		client.EXPECT().SwitchMarginMode(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		client.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
+
+		engine := &app.Engine{
+			Bus: bus,
+			Providers: map[string]*app.ExchangeProvider{
+				"mexc": {
+					Name:    "mexc",
+					Client:  client,
+					Adapter: infraws.NewExchangeManagerAdapter(nil),
+				},
+			},
+		}
+		cfg := &config.Config{}
+		strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, nil, slog.Default())
+
+		marginSub, err := bus.Subscribe(context.Background(), reversion.TopicReversionMarginModeReady)
+		require.NoError(t, err)
+
+		confirmedEvt := reversion.ConfirmedEvent{
+			BaseReversionEvent: reversion.BaseReversionEvent{
+				ReqID:      "req-om-false",
+				Symbol:     "BTC_USDT",
+				Exchange:   "mexc",
+				SettleTime: time.Now().Add(10 * time.Second),
+			},
+			Candidate: cand,
+		}
+
+		stores := map[string]strategy.FundingStoreSet{
+			"mexc": fakeFundingStoreSet{},
+		}
+		require.NoError(t, strategyInst.Start(context.Background(), stores))
+
+		require.NoError(t, bus.Publish(reversion.TopicReversionConfirmed, confirmedEvt))
+
+		select {
+		case msg := <-marginSub:
+			var receivedMarginReady reversion.MarginModeReadyEvent
+			require.NoError(t, json.Unmarshal(msg.Payload, &receivedMarginReady))
+			assert.Equal(t, "req-om-false", receivedMarginReady.ReqID)
+			assert.Equal(t, "BTC_USDT", receivedMarginReady.Symbol)
+		case <-time.After(3 * time.Second):
+			t.Fatal("Timeout waiting for MarginModeReadyEvent on TopicReversionMarginModeReady")
+		}
+	})
 }

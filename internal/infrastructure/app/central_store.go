@@ -217,7 +217,7 @@ func (cs *CentralStore) WaitReady(ctx context.Context) error {
 // WireWS auto-connects WebSocket message handlers to the appropriate
 // store writers. This replaces per-bot manual pool.On(...) boilerplate.
 // Only stores that are enabled will have handlers registered.
-func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapter) {
+func (cs *CentralStore) WireWS(pool *pkgws.Pool, adapter ws.ExchangeAdapterParser) {
 	if pool == nil || adapter == nil {
 		return
 	}

@@ -626,7 +626,7 @@ func runPrivateWS(exchangeName, channelName string) {
 
 	// Connect the WS client/pool
 	fmt.Printf("Connecting WebSocket for %s...\n", exchangeName)
-	provider.WS.Connect(ctx)
+	provider.WSPool.Connect(ctx)
 
 	resolvedChannel := channelName
 	switch strings.ToLower(channelName) {
@@ -638,7 +638,7 @@ func runPrivateWS(exchangeName, channelName string) {
 
 	fmt.Printf("Listening for authenticated events on channel: %s\n", resolvedChannel)
 	msgChan := make(chan []byte, 10)
-	provider.WS.On(resolvedChannel, func(data []byte) {
+	provider.WSPool.On(resolvedChannel, func(data []byte) {
 		msgChan <- data
 	})
 

@@ -48,6 +48,20 @@ func (a *WsAdapter) SetPool(pool *pkgws.Pool) {
 	a.pool = pool
 }
 
+func (a *WsAdapter) SubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.SubscribePublic(ctx, topic, msg)
+}
+
+func (a *WsAdapter) UnsubscribePublic(ctx context.Context, topic string, msg any) error {
+	if a.pool == nil {
+		return nil
+	}
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
+}
+
 // SetClient injects the REST client reference.
 func (a *WsAdapter) SetClient(client *Client) {
 	a.client = client
@@ -140,6 +154,10 @@ func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 		paramArgs: []string{topicPosition, topicOrder},
 	}
 	return a.pool.SendPrivate(ctx, msg)
+}
+
+func (a *WsAdapter) UnsubscribePersonal(ctx context.Context) error {
+	return nil
 }
 
 type bitunixPingMessage struct {

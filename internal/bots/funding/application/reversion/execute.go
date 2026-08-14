@@ -9,6 +9,7 @@ import (
 
 	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/observability"
+	ordermanager "crypto-bot/internal/trading/ordermanager"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -113,6 +114,28 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 	})
 	subscribeTopicWithReport(ctx, runner, TopicReversionError, func(ctx context.Context, r *StatelessRunner, evt ErrorEvent, msg *message.Message) error {
 		return r.handleCleanup(ctx, msg)
+	})
+
+	// OrderManager completion subscriber for UseOrderManager == true
+	subscribeTopic(ctx, bus, runner.log, ordermanager.TopicOrderCompleted, func(ctx context.Context, msg *message.Message) error {
+		var evt ordermanager.OrderCompletedEvent
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return err
+		}
+		if evt.StrategyType != ordermanager.StrategyFundingReversion {
+			return nil
+		}
+		runner.log.InfoContext(ctx, "Received OrderManager completion in Funding Reversion strategy", slog.String("req_id", evt.ReqID), slog.String("outcome", string(evt.Outcome)))
+		finalEvt := ReversionCompletedEvent{
+			BaseReversionEvent: BaseReversionEvent{
+				ReqID:     evt.ReqID,
+				Exchange:  evt.Exchange,
+				Symbol:    evt.Symbol,
+				Timestamp: runner.now(),
+			},
+			Reason: "ordermanager_completed",
+		}
+		return runner.publishEvent(ctx, TopicReversionCompleted, finalEvt)
 	})
 
 	// Database persistence subscriber

@@ -73,6 +73,13 @@ func (p *TelegramProvider) Send(ctx context.Context, evt Event) error {
 	}
 }
 
+func (p *TelegramProvider) SendRawMsg(ctx context.Context, msg string) error {
+	return p.Send(ctx, Event{
+		Message: msg,
+		IsRaw:   true,
+	})
+}
+
 func (p *TelegramProvider) Start(ctx context.Context) error {
 	p.startOnce.Do(func() {
 		_ = p.Send(ctx, Event{
@@ -128,6 +135,10 @@ func getEmoji(color string) string {
 }
 
 func (p *TelegramProvider) formatMessage(evt Event) string {
+	if evt.IsRaw {
+		return evt.Message
+	}
+
 	color := evt.Color
 	if color == "" {
 		color = ColorYellow

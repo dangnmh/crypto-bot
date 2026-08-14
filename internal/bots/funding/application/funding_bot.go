@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/bots/funding/application/reversion"
 	"crypto-bot/internal/bots/funding/application/strategy"
 	"crypto-bot/internal/bots/funding/config"
 	"crypto-bot/internal/infrastructure/app"
@@ -15,8 +16,6 @@ import (
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/pkg/version"
-
-	"github.com/samber/lo"
 )
 
 // FundingBot spawns one independent worker goroutine per configured symbol.
@@ -24,7 +23,7 @@ type FundingBot struct {
 	cfg            *config.Config
 	sysCfg         *config.SystemConfig
 	engine         *app.Engine
-	orderNotifiers map[string]*watcher.OrderWatcher
+	orderNotifiers map[string]watcher.OrderNotifier
 	stores         map[string]strategy.FundingStoreSet
 	notifier       notifier.Notifier
 	disabled       map[string]string
@@ -43,7 +42,7 @@ func NewFundingBot(
 	strategies []strategy.BackgroundStrategy,
 	log *slog.Logger,
 ) *FundingBot {
-	orderWatchers := make(map[string]*watcher.OrderWatcher)
+	orderWatchers := make(map[string]watcher.OrderNotifier)
 	for name, prov := range engine.Providers {
 		orderWatchers[name] = prov.Watcher
 	}
@@ -135,18 +134,18 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 		}
 
 		// 3. Connect WS + subscribe personal channels.
-		prov.WS.Connect(ctx)
+		prov.WSPool.Connect(ctx)
 
-		if err := prov.WS.WaitReady(ctx); err != nil {
+		if err := prov.WSPool.WaitReady(ctx); err != nil {
 			return err
 		}
 
 		// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
-		stores.WireWS(prov.WS, prov.Adapter)
-		s.wirePersonalWSForProvider(ctx, prov)
+		stores.WireWS(prov.WSPool, prov.Adapter)
+		prov.WirePersonalWS(ctx, s.log)
 
 		if prov.Adapter != nil {
-			if err := prov.Adapter.SubscribePersonal(ctx); err != nil {
+			if err := prov.Adapter.SubscribePersonal(ctx, reversion.FlowIDFundingReversion); err != nil {
 				provLogger.WarnContext(ctx, "⚠️ Failed to subscribe personal channels", slog.Any("error", err))
 			}
 		}
@@ -167,25 +166,6 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 
 	s.log.InfoContext(ctx, "🟢 Funding Bot Background Services Ready")
 	return nil
-}
-
-func (s *FundingBot) wirePersonalWSForProvider(ctx context.Context, prov *app.ExchangeProvider) {
-	log := s.log.With("exchange", prov.Name)
-	if prov.WS == nil || prov.Adapter == nil || prov.Watcher == nil {
-		return
-	}
-
-	prov.WS.On("personal.position", func(data []byte) {
-		log.DebugContext(ctx, "wirePersonalWSForProvider position", slog.String("data", string(data)))
-		update, err := prov.Adapter.ParsePosition(data)
-		if err != nil {
-			log.ErrorContext(ctx, "🟡 Failed to parse personal position WS", slog.Any("error", err))
-			return
-		}
-		if update != nil {
-			prov.Watcher.PublishPosition(lo.FromPtr(update))
-		}
-	})
 }
 
 // Run starts the funding scanner loops for all symbols and keeps them alive.

@@ -41,9 +41,12 @@ func (m *mockAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) 
 func (m *mockAdapter) SetPool(p *pkgws.Pool) { m.pool = p }
 
 // Subscriber methods.
-func (m *mockAdapter) SubscribeTicker(context.Context, string) error   { return nil }
-func (m *mockAdapter) UnsubscribeTicker(context.Context, string) error { return nil }
-func (m *mockAdapter) SubscribePersonal(context.Context) error         { return nil }
+func (m *mockAdapter) SubscribeTicker(context.Context, string) error        { return nil }
+func (m *mockAdapter) UnsubscribeTicker(context.Context, string) error      { return nil }
+func (m *mockAdapter) SubscribePersonal(context.Context) error              { return nil }
+func (m *mockAdapter) UnsubscribePersonal(context.Context) error            { return nil }
+func (m *mockAdapter) SubscribePublic(context.Context, string, any) error   { return nil }
+func (m *mockAdapter) UnsubscribePublic(context.Context, string, any) error { return nil }
 
 // Parser methods.
 func (m *mockAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) { return "", nil, nil }
@@ -132,7 +135,7 @@ func TestNewEngine_Success(t *testing.T) {
 	assert.Equal(t, "mexc_futures", mexcProv.Name)
 	assert.NotNil(t, mexcProv.Client)
 	assert.NotNil(t, mexcProv.Adapter)
-	assert.NotNil(t, mexcProv.WS)
+	assert.NotNil(t, mexcProv.WSPool)
 	assert.NotNil(t, mexcProv.TimeSync)
 	assert.NotNil(t, mexcProv.Watcher)
 
@@ -140,7 +143,7 @@ func TestNewEngine_Success(t *testing.T) {
 	assert.Equal(t, "gate_futures", gateProv.Name)
 	assert.NotNil(t, gateProv.Client)
 	assert.NotNil(t, gateProv.Adapter)
-	assert.NotNil(t, gateProv.WS)
+	assert.NotNil(t, gateProv.WSPool)
 	assert.NotNil(t, gateProv.TimeSync)
 	assert.NotNil(t, gateProv.Watcher)
 

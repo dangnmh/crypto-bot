@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
@@ -27,12 +28,42 @@ type Bot interface {
 
 // ExchangeProvider isolates all networking and timing resources for an exchange.
 type ExchangeProvider struct {
-	Name     string
-	Client   exchange.Client
-	Adapter  ws.ExchangeAdapter
-	WS       *pkgws.Pool
-	TimeSync *timesync.TimeSync
-	Watcher  *watcher.OrderWatcher
+	Name           string
+	Client         exchange.Client
+	Adapter        ws.ExchangeManagerAdapter
+	WSPool         *pkgws.Pool
+	TimeSync       *timesync.TimeSync
+	Watcher        watcher.OrderNotifier
+	personalWSOnce sync.Once
+}
+
+// WirePersonalWS auto-connects personal WebSocket position handlers to the Watcher publisher.
+// It is safe for concurrent use and is executed at most once per provider instance.
+func (p *ExchangeProvider) WirePersonalWS(ctx context.Context, logger *slog.Logger) {
+	if p == nil || p.WSPool == nil || p.Adapter == nil || p.Watcher == nil {
+		return
+	}
+	p.personalWSOnce.Do(func() {
+		if logger == nil {
+			logger = slog.Default()
+		}
+		log := logger.With("exchange", p.Name)
+		p.WSPool.On("personal.position", func(data []byte) {
+			log.DebugContext(ctx, "Received personal position WS update", slog.String("data", string(data)))
+			update, err := p.Adapter.ParsePosition(data)
+			if err != nil {
+				log.ErrorContext(ctx, "🟡 Failed to parse personal position WS", slog.Any("error", err))
+				return
+			}
+			if update != nil {
+				if publisher, ok := p.Watcher.(interface {
+					PublishPosition(exchange.PersonalPositionUpdate)
+				}); ok {
+					publisher.PublishPosition(*update)
+				}
+			}
+		})
+	})
 }
 
 // Engine manages the lifecycle of all dynamic ExchangeProvider instances.
@@ -140,8 +171,8 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	go func() {
 		var errs []error
 		for _, prov := range e.Providers {
-			if prov.WS != nil {
-				prov.WS.Close()
+			if prov.WSPool != nil {
+				prov.WSPool.Close()
 			}
 		}
 		if e.Bus != nil {

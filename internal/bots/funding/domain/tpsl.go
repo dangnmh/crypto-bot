@@ -1,7 +1,11 @@
 package domain
 
 import (
+	"context"
+	"log/slog"
+
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/tradecalc"
 )
 
@@ -56,4 +60,50 @@ func (c *Candidate) CalculateStopLossPrice(entryPrice float64) float64 {
 		c.PriceUnit,
 		c.PriceScale,
 	)
+}
+
+// CalculateOrderTPSL computes static TakeProfitPrice and StopLossPrice relative to Candidate.GetPeakPrice(),
+// and validates them against iocPrice. If TP or SL violates price direction relative to iocPrice, it is dropped.
+func (c *Candidate) CalculateOrderTPSL(ctx context.Context, iocPrice float64, log *slog.Logger) (float64, float64) {
+	var tpPrice float64
+	maxTPPct := decmath.Mul(c.Config.FundingReversion.TakeProfitPct, 100.0)
+	if maxTPPct > 0 {
+		tpPrice = c.CalculateStaticTakeProfitPrice(c.GetPeakPrice())
+	}
+
+	slPrice := c.CalculateStopLossPrice(c.GetPeakPrice())
+
+	if c.Side == shared.SideOpenLong {
+		if tpPrice > 0 && tpPrice <= iocPrice {
+			if log != nil {
+				log.WarnContext(ctx, "🟡 TP below IOC price (LONG), dropping TP",
+					slog.Float64("tp", tpPrice), slog.Float64("ioc", iocPrice))
+			}
+			tpPrice = 0
+		}
+		if slPrice > 0 && slPrice >= iocPrice {
+			if log != nil {
+				log.WarnContext(ctx, "🟡 SL above IOC price (LONG), dropping SL",
+					slog.Float64("sl", slPrice), slog.Float64("ioc", iocPrice))
+			}
+			slPrice = 0
+		}
+	} else {
+		if tpPrice > 0 && tpPrice >= iocPrice {
+			if log != nil {
+				log.WarnContext(ctx, "🟡 TP above IOC price (SHORT), dropping TP",
+					slog.Float64("tp", tpPrice), slog.Float64("ioc", iocPrice))
+			}
+			tpPrice = 0
+		}
+		if slPrice > 0 && slPrice <= iocPrice {
+			if log != nil {
+				log.WarnContext(ctx, "🟡 SL below IOC price (SHORT), dropping SL",
+					slog.Float64("sl", slPrice), slog.Float64("ioc", iocPrice))
+			}
+			slPrice = 0
+		}
+	}
+
+	return tpPrice, slPrice
 }
