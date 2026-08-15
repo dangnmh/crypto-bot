@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"testing"
 
+	"crypto-bot/internal/bots/funding/application"
+	"crypto-bot/internal/bots/funding/application/reversion"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/config"
 	exchange "crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/stretchr/testify/assert"
@@ -33,7 +36,7 @@ func TestProviderFactoriesReturnStrategies(t *testing.T) {
 
 	global := &fundingconfig.Config{}
 
-	assert.Equal(t, "reversion", provideReversionStrategy(engine, global, nil, nil, nil, bootstrapTestLogger()).Flow())
+	assert.Equal(t, "reversion", reversion.ProvideReversionStrategy(engine, global, nil, nil, nil, bootstrapTestLogger()).Flow())
 }
 
 func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
@@ -43,9 +46,10 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	log := provideLogger(lc, &fundingconfig.SystemConfig{})
 	require.NotNil(t, log)
 
-	n, err := provideNotifier(lc, &fundingconfig.SystemConfig{
+	notiCfg := provideNotifierConfig(&fundingconfig.SystemConfig{
 		SystemConfig: config.SystemConfig{NotiConfig: config.NotiConfig{Enabled: false}},
-	}, &fundingconfig.Config{}, bootstrapTestLogger())
+	}, &fundingconfig.Config{})
+	n, err := notifier.ProvideNotifier(lc, notiCfg, bootstrapTestLogger())
 	require.NoError(t, err)
 	require.NotNil(t, n)
 	require.NoError(t, lc.Start(context.Background()))
@@ -61,14 +65,15 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = engine.Bus.Close() })
 
-	revStrat := provideReversionStrategy(engine, &fundingconfig.Config{}, nil, nil, nil, bootstrapTestLogger())
+	revStrat := reversion.ProvideReversionStrategy(engine, &fundingconfig.Config{}, nil, nil, nil, bootstrapTestLogger())
 
-	bot := provideBot(
+	bot := application.ProvideFundingBot(
 		&fundingconfig.Config{},
 		&fundingconfig.SystemConfig{},
 		engine,
 		n,
 		revStrat,
+		nil,
 		nil,
 		nil,
 		nil,

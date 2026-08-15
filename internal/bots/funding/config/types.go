@@ -62,6 +62,27 @@ type PriceTrackerConfig struct {
 	Enabled bool `json:"enable"`
 }
 
+type ObfuscatorConfig struct {
+	Enabled        bool                              `json:"enabled"`
+	PollInterval   types.Duration                    `json:"pollInterval" validate:"required"`
+	LookbackWindow types.Duration                    `json:"lookbackWindow" validate:"required"`
+	Exchanges      map[string]ExchangeObfuscationCfg `json:"exchanges" validate:"dive"`
+}
+
+type ExchangeObfuscationCfg struct {
+	Enabled             bool    `json:"enabled"`
+	NetPnLThresholdUSDT float64 `json:"netPnLThresholdUSDT" validate:"gte=0"`
+	VolumeScalePct      float64 `json:"volumeScalePct" validate:"gt=0,lte=1000"`
+	MinUSDT             float64 `json:"minUSDT" validate:"gt=0"`
+	MaxUSDT             float64 `json:"maxUSDT" validate:"gt=0,gtefield=MinUSDT"`
+	MarginUSDT          float64 `json:"marginUSDT" validate:"gt=0"`
+	TakeProfitPct       float64 `json:"takeProfitPct" validate:"gt=0"`
+	StopLossPct         float64 `json:"stopLossPct" validate:"gt=0"`
+	MinHoldSec          int     `json:"minHoldSec" validate:"gt=0"`
+	MaxHoldSec          int     `json:"maxHoldSec" validate:"gt=0,gtefield=MinHoldSec"`
+	MaxActiveOrders     int     `json:"maxActiveOrders" validate:"gt=0"`
+}
+
 type ReversionConfig struct {
 	RawFundingReversionConfig
 	Sync          SyncConfig              `json:"sync"`
@@ -75,12 +96,13 @@ type ReversionConfig struct {
 // FundingConfig represents the array of symbol configurations loaded from funding.jsonc.
 type FundingConfig []SymbolConfig
 
-// Config is the root configuration containing both System and Funding configs.
+// Config is the root configuration containing System, Symbols, Blacklist, Reversion, and Obfuscator configs.
 type Config struct {
-	System    *SystemConfig    `json:"-" validate:"required"`
-	Symbols   []SymbolConfig   `json:"-" validate:"dive"`
-	Blacklist *BlacklistConfig `json:"-"`
-	Reversion *ReversionConfig `json:"-" validate:"required"`
+	System     *SystemConfig     `json:"-" validate:"required"`
+	Symbols    []SymbolConfig    `json:"-" validate:"dive"`
+	Blacklist  *BlacklistConfig  `json:"-"`
+	Reversion  *ReversionConfig  `json:"-" validate:"required"`
+	Obfuscator *ObfuscatorConfig `json:"-" validate:"omitempty"`
 }
 
 type RawFundingReversionConfig struct {

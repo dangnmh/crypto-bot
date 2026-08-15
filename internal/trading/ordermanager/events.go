@@ -8,6 +8,8 @@ import (
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/pkg/formatutil"
+
+	"gorm.io/datatypes"
 )
 
 // Event Topics for Generic Order Manager Micro-Event Execution Pipeline.
@@ -70,6 +72,7 @@ const (
 	StrategyFundingArbitrage StrategyType = "FUNDING_ARBITRAGE"
 	StrategyPennyJumper      StrategyType = "PENNY_JUMPER"
 	StrategyGrid             StrategyType = "GRID"
+	StrategyObfuscator       StrategyType = "OBFUSCATOR"
 	StrategyUnknown          StrategyType = "UNKNOWN"
 )
 
@@ -103,6 +106,7 @@ const (
 // BaseExecutionEvent holds common identification and notification control fields for all events.
 type BaseExecutionEvent struct {
 	ReqID         string       `json:"req_id,omitempty"`
+	RefID         string       `json:"ref_id,omitempty"`
 	ClientOrderID string       `json:"client_order_id,omitempty"`
 	Symbol        string       `json:"symbol"`
 	Exchange      string       `json:"exchange,omitempty"`
@@ -236,19 +240,20 @@ func (e OrderSubmittedEvent) GetNotifyMessage() string {
 		frSign = "+"
 	}
 	frStr := fmt.Sprintf("%s%.1f%%", frSign, fundingRate*100)
-	vol24Str := fmt.Sprintf("$%s", strings.ToUpper(formatutil.FormatCompactUSD(vol24h)))
+	vol24Str := fmt.Sprintf("$%s", strings.ToLower(formatutil.FormatCompactUSD(vol24h)))
+	sideStr := formatSideString(e.Side)
 
-	return fmt.Sprintf("🟡 [%s] [%s] [SUBMITTED]\n• Symbol: %s\n• MarginUSD : $%s | Leverage: %dx | TotalUSD : $%s\n• Price: %s | Size: %s USDT\n• Vol24hUSD : %s | FundingRate : %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+	return fmt.Sprintf("🟡 [%s] [%s] [SUBMITTED]\n• Symbol: %s | Side: %s\n• Margin: %s USDT | Leverage: %dx\n• Price: %s | Size: %s USDT\n• FR: %s | Vol24h: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
 		stratName,
 		e.Exchange,
 		e.Symbol,
+		sideStr,
 		formatutil.FormatUSDWithCommas(marginUSD),
 		leverage,
-		formatutil.FormatUSDWithCommas(sizeUSD),
 		formatutil.FormatPriceWithCommas(e.Price),
 		formatutil.FormatUSDWithCommas(sizeUSD),
-		vol24Str,
 		frStr,
+		vol24Str,
 		orderID,
 		e.ClientOrderID,
 		e.ReqID,
@@ -558,7 +563,7 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 		clientID = defaultNotAvailable
 	}
 
-	return fmt.Sprintf("%s [%s] [%s] [COMPLETED]\n• Symbol: %s\n•PnL: %s [%s] | Side: %s\n• FR: %s | Vol24h: %s\n• Price: %s | Size: %s\n• Fees: Exec: %s | Funding: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+	return fmt.Sprintf("%s [%s] [%s] [COMPLETED]\n• Symbol: %s\n• PnL: %s [%s] | Side: %s\n• FR: %s | Vol24h: %s\n• Price: %s | Size: %s\n• Fees: Exec: %s | Funding: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
 		emoji,
 		stratName,
 		e.Exchange,
@@ -616,15 +621,16 @@ type OrderTradeRecordEvent struct {
 	HoldDurationMs int64   `json:"hold_duration_ms"`
 
 	// Emergency Risk & Termination Status
-	CloseRetryCount     int        `json:"close_retry_count,omitempty"`
-	ForceCloseAttempted bool       `json:"force_close_attempted"`
-	ForceCloseSucceeded bool       `json:"force_close_succeeded"`
-	Outcome             string     `json:"outcome"`
-	Status              string     `json:"status"`
-	Reason              string     `json:"reason,omitempty"`
-	RecordedAt          time.Time  `json:"recorded_at"`
-	FireAt              *time.Time `json:"fire_at,omitempty"`
-	SettleTime          *time.Time `json:"settle_time,omitempty"`
+	CloseRetryCount     int               `json:"close_retry_count,omitempty"`
+	ForceCloseAttempted bool              `json:"force_close_attempted"`
+	ForceCloseSucceeded bool              `json:"force_close_succeeded"`
+	Outcome             string            `json:"outcome"`
+	Status              string            `json:"status"`
+	Reason              string            `json:"reason,omitempty"`
+	RecordedAt          time.Time         `json:"recorded_at"`
+	FireAt              *time.Time        `json:"fire_at,omitempty"`
+	SettleTime          *time.Time        `json:"settle_time,omitempty"`
+	Extra               datatypes.JSONMap `json:"extra,omitempty"`
 }
 
 func (e OrderTradeRecordEvent) GetTopic() string { return TopicOrderTradeRecord }

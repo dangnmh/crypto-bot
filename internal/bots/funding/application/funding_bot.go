@@ -98,11 +98,6 @@ func NewFundingBot(
 // RunAsBackground launches all required sync and connection routines for all active exchanges.
 func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 	for name, prov := range s.engine.Providers {
-		stores, hasStore := s.stores[name]
-		if !hasStore {
-			continue
-		}
-
 		provLogger := s.log.With("exchange", name)
 		provLogger.InfoContext(ctx, "🔗 Starting background services...")
 
@@ -125,6 +120,11 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 
 		if err := prov.TimeSync.WaitReady(ctx); err != nil {
 			return err
+		}
+
+		stores, hasStore := s.stores[name]
+		if !hasStore {
+			continue
 		}
 
 		// 2. Start stores + wait for initial data.

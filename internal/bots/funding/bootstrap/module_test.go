@@ -21,11 +21,12 @@ func TestModuleDependencyGraph(t *testing.T) {
 	t.Parallel()
 
 	err := fx.ValidateApp(bootstrap.Module(bootstrap.ConfigPaths{
-		System:    "system.jsonc",
-		Exchange:  "exchange.jsonc",
-		Bot:       "funding.jsonc",
-		Blacklist: "blacklist.jsonc",
-		Reversion: "reversion.jsonc",
+		System:     "system.jsonc",
+		Exchange:   "exchange.jsonc",
+		Bot:        "funding.jsonc",
+		Blacklist:  "blacklist.jsonc",
+		Reversion:  "reversion.jsonc",
+		Obfuscator: "obfuscator.jsonc",
 	}))
 	require.NoError(t, err)
 }
@@ -59,8 +60,10 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	]`), 0o600))
 	blacklistPath := filepath.Join(dir, "blacklist.jsonc")
 	reversionPath := filepath.Join(dir, "reversion.jsonc")
+	obfuscatorPath := filepath.Join(dir, "obfuscator.jsonc")
 	require.NoError(t, os.WriteFile(blacklistPath, []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
+	require.NoError(t, os.WriteFile(obfuscatorPath, []byte(`{"enabled": false, "pollInterval": "1m", "lookbackWindow": "24h"}`), 0o600))
 
 	var (
 		log        *slog.Logger
@@ -74,11 +77,12 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 
 	app := fx.New(
 		bootstrap.Module(bootstrap.ConfigPaths{
-			System:    systemPath,
-			Exchange:  exchangePath,
-			Bot:       fundingPath,
-			Blacklist: blacklistPath,
-			Reversion: reversionPath,
+			System:     systemPath,
+			Exchange:   exchangePath,
+			Bot:        fundingPath,
+			Blacklist:  blacklistPath,
+			Reversion:  reversionPath,
+			Obfuscator: obfuscatorPath,
 		}),
 		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
 		fx.NopLogger,

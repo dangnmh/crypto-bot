@@ -1,0 +1,49 @@
+{
+  // Order Obfuscator Configuration (Local Environment)
+  // Master toggle to enable or disable background obfuscation
+  "enabled": false,
+
+  // Interval between database scans for profitable trades (e.g. 1m, 5m, 1h)
+  "pollInterval": "1m",
+
+  // Lookback window for querying historical trades (created_at >= now - lookbackWindow)
+  "lookbackWindow": "2400h",
+
+  // Exchange-specific obfuscation settings
+  "exchanges": {
+    "toobit_futures": {
+      // Enable obfuscation for this specific exchange
+      "enabled": true,
+
+      // Minimum Net PnL (USDT) of a prior trade required to trigger an obfuscation order
+      "netPnLThresholdUSDT": 3.0,
+
+      // % of the prior trade's Net Profit to use as the obfuscation notional volume
+      "volumeScalePct": 200.0,
+
+      // Minimum notional order size in USDT (floor)
+      "minUSDT": 10.0,
+
+      // Maximum notional order size in USDT (ceiling)
+      "maxUSDT": 500.0,
+
+      // Real USDT collateral/margin allocated per position (leverage = ceil(notional / margin))
+      "marginUSDT": 10.0,
+
+      // Target Take Profit %
+      "takeProfitPct": 0.5,
+
+      // Safety Stop Loss %
+      "stopLossPct": 0.5,
+
+      // Minimum holding duration in seconds before closing position
+      "minHoldSec": 10,
+
+      // Maximum holding duration in seconds (hold time is randomly chosen between min and max)
+      "maxHoldSec": 60,
+
+      // Maximum number of active obfuscation orders to trigger per scan cycle
+      "maxActiveOrders": 1
+    }
+  }
+}

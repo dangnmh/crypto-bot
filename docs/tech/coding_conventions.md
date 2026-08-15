@@ -275,12 +275,86 @@ Every struct field that is serialized to JSON, YAML, or similar must have the ap
 
 ---
 
-## 10. Dependency Injection & Context Non-Nil Guarantees
+## 10. Dependency Injection & Mandatory Constructor Validation
 
-### 10.1 No Defensive Nil or Empty Checks for Injected Dependencies and Event IDs
+### 10.1 Everything Must Be Provided at Initialization (`New*` Constructor Pattern)
 
-- All core components and dependencies (e.g. `cache`, `Clock`, `Client`, `Notifier`) are strictly provided via Dependency Injection (`fx`).
-- Required event context fields (such as `ReqID` on `BaseReversionEvent`) are guaranteed to exist via upstream message validation.
-- **Do NOT write defensive `nil` or empty string checks** (e.g., `if r.cache != nil`, `if reqID != ""`) for required components or fields in application logic.
-- **Unit and Integration Tests:** Test setups must provide valid dependency instances or test mocks rather than passing `nil` or omitting required fields.
+- All core components and dependencies (e.g. `Clock`, `Client`, `OrderManager`, `TradeReportRepository`, `Notifier`) must be provided via Dependency Injection (`fx` or constructor calls).
+- **Constructors (`New*`) MUST validate required dependencies**: If a mandatory dependency parameter is missing or `nil`, the `New*` constructor must return an explicit error (e.g., `return nil, fmt.Errorf("missing required dependency...")`).
+- **No Defensive Runtime Nil Checks**: Because constructor validation guarantees non-nil dependencies, method bodies and execution paths must **NOT** contain defensive `nil` checks (e.g. `if m.repo == nil`, `if j.pnlReader == nil`). Assume all dependencies are valid during execution.
+- **Unit and Integration Tests:** Test setups must provide valid dependency instances or test mocks rather than passing `nil`.
+
+### 10.2 Configuration Struct Validation Tags
+
+- **Use Struct Validation Tags (`validate:"..."`)**: All configuration structs must define validation tags (`validate:"required"`, `validate:"gt=0"`, etc. via `go-playground/validator`) to validate configuration parameters at load time.
+- **No Imperative Fallback Checks in Application Logic**: Application logic and strategy generators must **NOT** write defensive default patching or imperative fallback checks (e.g. `if scalePct <= 0 { scalePct = 50.0 }`, `if tp <= 0 { tp = 0.5 }`). Depend strictly on the validated configuration struct.
+
+### 10.3 Modular Fx Wiring per Folder (`module.go` Pattern)
+
+To keep the application dependency graph maintainable, testable, and strictly decoupled, each component folder/package that exposes injectable services, repositories, or background jobs must define its own `module.go` file.
+
+- **Exported `Module` Option:** Each package defines and exports `var Module = fx.Options(...)` bundling its providers and lifecycle invocations.
+- **Provider Functions:** Define explicit `ProvideXxx(...)` functions or supply constructors (e.g. `NewXxx`) in `module.go`.
+- **Submodule Composition:** Parent domain or application packages compose child modules (e.g. `application.Module` aggregates `reversion.Module` and `obfuscator.Module`).
+- **Clean Root Bootstrap:** High-level bootstrap entrypoints (e.g. `bootstrap.Module`) compose these exported package modules rather than maintaining a monolithic provider list.
+- **No Import Cycles:** Ensure strict unidirectional module imports. Packages that define interfaces (e.g. `ordermanager`) must not import child implementation packages (e.g. `ordermanager/persistence`) if the child already imports the parent.
+
+#### Example (`internal/bots/funding/application/obfuscator/module.go`):
+
+```go
+package obfuscator
+
+import (
+	"go.uber.org/fx"
+)
+
+// Module wires obfuscator dependencies and lifecycle hooks.
+var Module = fx.Options(
+	fx.Provide(
+		ProvideOrderGenerator,
+		ProvideObfuscatorDispatcher,
+		ProvideObfuscatorRunner,
+		ProvideObfuscatorJob,
+	),
+	fx.Invoke(
+		RegisterObfuscatorCompletionCallback,
+	),
+)
+
+func ProvideOrderGenerator(engine *infraapp.Engine) (*OrderGenerator, error) {
+	return NewOrderGenerator(engine)
+}
+// ...
+```
+
+#### Example Composition (`internal/bots/funding/bootstrap/module.go`):
+
+```go
+func Module(paths ConfigPaths) fx.Option {
+	return fx.Options(
+		fx.Supply(paths),
+		exchange.Module,
+		observability.Module,
+		server.Module,
+		infraapp.Module,
+		ordermanager.Module,
+		ordermanagerpersistence.Module,
+		persistence.Module,
+		application.Module,
+		fx.Provide(
+			provideSystemConfig,
+			provideBaseSystemConfig,
+			provideLogger,
+			provideFundingConfig,
+			provideNotifier,
+			provideEngine,
+			provideClock,
+			provideDatabase,
+			provideGoCache,
+		),
+	)
+}
+```
+
+
 

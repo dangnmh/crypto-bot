@@ -60,6 +60,19 @@ func (a *OrderExecutionAggregate) ReqID() string {
 	return ""
 }
 
+func (a *OrderExecutionAggregate) RefID() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, e := range a.uncommittedEvents {
+		if e != nil {
+			if intent, ok := e.(OrderIntentEvent); ok && intent.RefID != "" {
+				return intent.RefID
+			}
+		}
+	}
+	return ""
+}
+
 func (a *OrderExecutionAggregate) ClientOrderID() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -519,6 +532,9 @@ func (r *OrderTradeRecordEvent) applyIntentPayload(e OrderIntentEvent) {
 	}
 	if e.SettleTime != nil {
 		r.SettleTime = e.SettleTime
+	}
+	if len(e.Extra) > 0 {
+		r.Extra = e.Extra
 	}
 }
 

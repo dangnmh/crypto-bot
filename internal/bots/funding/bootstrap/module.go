@@ -2,17 +2,16 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application"
-	"crypto-bot/internal/bots/funding/application/reversion"
-	"crypto-bot/internal/bots/funding/application/strategy"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
-	"crypto-bot/internal/bots/funding/domain"
 	persistence "crypto-bot/internal/bots/funding/infrastructure/persistence"
+	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -31,11 +30,12 @@ import (
 
 // ConfigPaths contains the startup configuration file paths supplied by the CLI.
 type ConfigPaths struct {
-	System    string
-	Exchange  string
-	Bot       string
-	Blacklist string
-	Reversion string
+	System     string
+	Exchange   string
+	Bot        string
+	Blacklist  string
+	Reversion  string
+	Obfuscator string
 }
 
 // Module wires the funding bot dependency graph and lifecycle.
@@ -43,31 +43,24 @@ func Module(paths ConfigPaths) fx.Option {
 	return fx.Options(
 		fx.Supply(paths),
 		exchange.Module,
+		notifier.Module,
+		observability.Module,
+		server.Module,
+		infraapp.Module,
+		ordermanager.Module,
+		ordermanagerpersistence.Module,
+		persistence.Module,
+		application.Module,
 		fx.Provide(
 			provideSystemConfig,
 			provideBaseSystemConfig,
 			provideLogger,
 			provideFundingConfig,
-			provideNotifier,
+			provideNotifierConfig,
 			provideEngine,
-			persistence.InitDatabase,
-			provideTradeReportRepository,
-			provideTradeRepository,
-			provideOrderManager,
-			provideSymbolFundingReportRepository,
-			providePriceTickRepository,
-			providePriceTrackJob,
-			provideStatsReportJob,
+			provideClock,
+			provideDatabase,
 			provideGoCache,
-			provideReversionStrategy,
-			provideBot,
-			infraapp.NewBotRunner,
-			server.NewAPIServer,
-			observability.InitMetrics,
-		),
-		fx.Invoke(
-			infraapp.RegisterBotRunner,
-			server.Register,
 		),
 		fx.WithLogger(func(log *slog.Logger) fxevent.Logger {
 			return &fxevent.SlogLogger{Logger: log.With("component", "fx")}
@@ -76,11 +69,15 @@ func Module(paths ConfigPaths) fx.Option {
 }
 
 func provideSystemConfig(paths ConfigPaths) (*fundingconfig.SystemConfig, error) {
-	return fundingconfig.LoadSystemConfig(paths.System, paths.Exchange)
+	sysCfg, err := fundingconfig.LoadSystemConfig(paths.System, paths.Exchange)
+	if err != nil {
+		return nil, fmt.Errorf("load system config: %w", err)
+	}
+	return sysCfg, nil
 }
 
-func provideBaseSystemConfig(cfg *fundingconfig.SystemConfig) *sysconfig.SystemConfig {
-	return &cfg.SystemConfig
+func provideBaseSystemConfig(sysCfg *fundingconfig.SystemConfig) *sysconfig.SystemConfig {
+	return &sysCfg.SystemConfig
 }
 
 func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logger {
@@ -95,34 +92,20 @@ func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logge
 }
 
 func provideFundingConfig(paths ConfigPaths, cfg *fundingconfig.SystemConfig) (*fundingconfig.Config, error) {
-	return fundingconfig.Load(cfg, paths.Bot, paths.Blacklist, paths.Reversion)
+	return fundingconfig.Load(cfg, paths.Bot, paths.Blacklist, paths.Reversion, paths.Obfuscator)
 }
 
-func provideNotifier(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config, log *slog.Logger) (notifier.Notifier, error) {
+func provideNotifierConfig(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config) notifier.Config {
 	enabled := false
 	if fundingCfg != nil && fundingCfg.Reversion != nil {
 		enabled = fundingCfg.Reversion.Notifier.Enabled
 	}
 
-	n, err := notifier.NewFromConfig(notifier.Config{
+	return notifier.Config{
 		Enabled:          enabled,
 		TelegramBotToken: cfg.NotiConfig.TelegramBotToken,
 		TelegramChatID:   cfg.NotiConfig.TelegramChatID,
-	}, log)
-	if err != nil {
-		return nil, err
 	}
-
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			return n.Start(ctx)
-		},
-		OnStop: func(ctx context.Context) error {
-			return n.Stop(ctx)
-		},
-	})
-
-	return n, nil
 }
 
 func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
@@ -184,91 +167,16 @@ func provideGoCache() *cache.Cache {
 	return cache.New(time.Hour*24, time.Hour)
 }
 
-func provideReversionStrategy(
-	engine *infraapp.Engine,
-	cfg *fundingconfig.Config,
-	n notifier.Notifier,
-	repo domain.TradeReportRepository,
-	c *cache.Cache,
-	log *slog.Logger,
-) *reversion.Strategy {
-	return reversion.NewStrategy(engine, cfg, n, repo, c, log)
-}
-
-func provideTradeReportRepository(db *gorm.DB) domain.TradeReportRepository {
-	return persistence.NewGormTradeReportRepository(db)
-}
-
-func provideTradeRepository(db *gorm.DB) ordermanager.TradeRepository {
-	return ordermanagerpersistence.NewGormTradeRepository(db)
-}
-
-func provideOrderManager(
-	lc fx.Lifecycle,
-	engine *infraapp.Engine,
-	repo ordermanager.TradeRepository,
-	n notifier.Notifier,
-	log *slog.Logger,
-) (*ordermanager.OrderManager, error) {
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, engine.Bus, repo, n, log)
-	if err != nil {
-		return nil, err
-	}
-	if lc != nil {
-		lc.Append(fx.Hook{
-			OnStop: func(ctx context.Context) error {
-				return mgr.Shutdown(ctx)
-			},
-		})
-	}
-	return mgr, nil
-}
-
-func provideSymbolFundingReportRepository(db *gorm.DB) domain.SymbolFundingReportRepository {
-	return persistence.NewGormSymbolFundingReportRepository(db)
-}
-
-func providePriceTickRepository(db *gorm.DB) domain.FundingPriceTickRepository {
-	return persistence.NewGormFundingPriceTickRepository(db)
-}
-
-func providePriceTrackJob(
-	reportRepo domain.SymbolFundingReportRepository,
-	cfg *fundingconfig.Config,
-	sysCfg *fundingconfig.SystemConfig,
-	engine *infraapp.Engine,
-	tickRepo domain.FundingPriceTickRepository,
-	httpClient *http.Client,
-	log *slog.Logger,
-) *application.PriceTrackJob {
-	return application.NewPriceTrackJob(reportRepo, cfg, sysCfg, engine, tickRepo, httpClient, log)
-}
-
-func provideStatsReportJob(
-	cfg *fundingconfig.Config,
-	sysCfg *fundingconfig.SystemConfig,
-	httpClient *http.Client,
-	repo domain.SymbolFundingReportRepository,
-	n notifier.Notifier,
-	log *slog.Logger,
-) *application.StatsReportJob {
-	return application.NewStatsReportJob(cfg, sysCfg, httpClient, repo, n, log)
-}
-
-func provideBot(
-	cfg *fundingconfig.Config,
-	sysCfg *fundingconfig.SystemConfig,
-	engine *infraapp.Engine,
-	n notifier.Notifier,
-	reversionStrategy *reversion.Strategy,
-	orderMgr *ordermanager.OrderManager,
-	statsReporter *application.StatsReportJob,
-	priceTracker *application.PriceTrackJob,
-	log *slog.Logger,
-) infraapp.Bot {
-	return application.NewFundingBot(
-		cfg, sysCfg, engine, n,
-		[]strategy.BackgroundStrategy{reversionStrategy, statsReporter, priceTracker},
-		log.With("bot", "funding"),
+func provideDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
+	return infraapp.InitDatabase(
+		lc,
+		&persistence.ReversionTradeReport{},
+		&persistence.GormSymbolFundingReport{},
+		&persistence.GormFundingPriceTick{},
+		&ordermanagerpersistence.TradeRecord{},
 	)
+}
+
+func provideClock() shared.Clock {
+	return SystemClock{}
 }

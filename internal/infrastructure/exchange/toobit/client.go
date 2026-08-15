@@ -59,6 +59,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 					"GET|/quote/v1/contract/ticker/24hr",
 					"GET|/api/v1/futures/fundingRate",
 					"GET|/api/v1/exchangeInfo",
+					"GET|/api/v1/futures/riskLimits",
 					"POST|/api/v1/listenKey",
 					"PUT|/api/v1/listenKey",
 				},

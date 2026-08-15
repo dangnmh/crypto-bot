@@ -25,16 +25,53 @@ const (
 	defaultCleanupInterval = 10 * time.Minute
 )
 
+// OrderCompletedCallback is invoked when an OrderCompletedEvent occurs.
+type OrderCompletedCallback func(ctx context.Context, evt OrderCompletedEvent)
+
 // OrderManager is a business-agnostic reactive order execution engine using Micro-Events.
 type OrderManager struct {
-	engine          *infraapp.Engine
-	repo            TradeRepository
-	notifier        notifier.Notifier
-	bus             *eventbus.Bus
-	log             *slog.Logger
-	timers          sync.Map
-	aggregates      *cache.Cache
-	orderIDMapCache *cache.Cache
+	engine               *infraapp.Engine
+	repo                 TradeRepository
+	notifier             notifier.Notifier
+	bus                  *eventbus.Bus
+	log                  *slog.Logger
+	timers               sync.Map
+	aggregates           *cache.Cache
+	orderIDMapCache      *cache.Cache
+	onCompletedCallbacks []OrderCompletedCallback
+	mu                   sync.RWMutex
+}
+
+// RegisterOnCompletedCallback registers an observer callback executed when an order completes.
+func (m *OrderManager) RegisterOnCompletedCallback(fn OrderCompletedCallback) {
+	if fn == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onCompletedCallbacks = append(m.onCompletedCallbacks, fn)
+}
+
+func (m *OrderManager) invokeOnCompletedCallbacks(ctx context.Context, evt OrderCompletedEvent) {
+	m.mu.RLock()
+	if len(m.onCompletedCallbacks) == 0 {
+		m.mu.RUnlock()
+		return
+	}
+	callbacks := make([]OrderCompletedCallback, len(m.onCompletedCallbacks))
+	copy(callbacks, m.onCompletedCallbacks)
+	m.mu.RUnlock()
+
+	for _, fn := range callbacks {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.ErrorContext(ctx, "OrderCompletedCallback panicked", slog.Any("panic", r), slog.String("req_id", evt.GetReqID()))
+				}
+			}()
+			fn(ctx, evt)
+		}()
+	}
 }
 
 const FlowIDOrderManager = "ORDER_MANAGER"
@@ -1088,6 +1125,7 @@ func (m *OrderManager) fetchClosedPnL(ctx context.Context, exchangeName, symbol,
 }
 
 type completedDetails struct {
+	refID            string
 	side             shared.Side
 	fundingRate      float64
 	vol24h           float64
@@ -1188,6 +1226,9 @@ func (d *completedDetails) applySubmittedEvent(ev OrderSubmittedEvent) {
 }
 
 func (d *completedDetails) applyIntentEvent(ev OrderIntentEvent) {
+	if d.refID == "" && ev.RefID != "" {
+		d.refID = ev.RefID
+	}
 	if d.fundingRate == 0 {
 		d.fundingRate = ev.FundingRate
 	}
@@ -1228,6 +1269,9 @@ func (m *OrderManager) extractAggregateCompletedDetails(agg *OrderExecutionAggre
 		case OrderIntentEvent:
 			details.applyIntentEvent(ev)
 		}
+	}
+	if details.refID == "" {
+		details.refID = agg.RefID()
 	}
 	return details
 }
@@ -1300,6 +1344,7 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 	return OrderCompletedEvent{
 		BaseExecutionEvent: BaseExecutionEvent{
 			ReqID:         reqID,
+			RefID:         details.refID,
 			ClientOrderID: clientOrderID,
 			Symbol:        symbol,
 			Exchange:      exchangeName,

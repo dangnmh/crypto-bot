@@ -818,6 +818,10 @@ func (f *fakeTradeReportRepository) Save(ctx context.Context, report *domain.Tra
 	return nil
 }
 
+func (f *fakeTradeReportRepository) MarkObfuscated(ctx context.Context, reqID string, obfuscatedAt time.Time) error {
+	return nil
+}
+
 type mockClientWithMaxLeverage struct {
 	exchange.Client
 	maxLeverage    int

@@ -18,7 +18,7 @@ import (
 
 // ──────────────────────────────────────────────────────────────────────
 // Helper: creates a temp funding.json and loads it with the given system config.
-// ──────────────────────────────────────────────────────────────────────.
+const defaultObfuscatorJSON = `{"enabled": false, "pollInterval": "1m", "lookbackWindow": "24h"}`
 
 type testDefaults struct {
 	config.RawFundingReversionConfig
@@ -79,8 +79,9 @@ func loadWith(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) *co
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), revData, 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
 
-	cfg, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
+	cfg, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
 	require.NoError(t, err)
 	return cfg
 }
@@ -92,7 +93,8 @@ func loadWithError(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string
 	require.NoError(t, os.WriteFile(path, []byte(fundingJSON), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
-	_, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	_, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
 	return err
 }
 
@@ -141,7 +143,8 @@ func TestLoad_FileNotFound(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
-	_, err := config.Load(&config.SystemConfig{}, filepath.Join(dir, "nonexistent.json"), filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	_, err := config.Load(&config.SystemConfig{}, filepath.Join(dir, "nonexistent.json"), filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "read config")
 }
@@ -153,7 +156,8 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
-	_, err := config.Load(sysWithMexc(), path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	_, err := config.Load(sysWithMexc(), path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
 	assert.Error(t, err)
 }
 
@@ -192,8 +196,9 @@ func TestLoad_EmptySymbols(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), revData, 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
 
-	cfg, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"))
+	cfg, err := config.Load(sysCfg, path, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Symbols)
 
@@ -430,11 +435,57 @@ func TestLoad_WithBlacklist(t *testing.T) {
 
 	// Create reversion.jsonc
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
 
-	cfg, err := config.Load(sysWithMexc(), fundingPath, blacklistPath, filepath.Join(dir, "reversion.jsonc"))
+	cfg, err := config.Load(sysWithMexc(), fundingPath, blacklistPath, filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
 	require.NoError(t, err)
 
 	assert.NotNil(t, cfg.Blacklist)
 	assert.True(t, cfg.Blacklist.IsBlacklisted("mexc", "ETH_USDT"))
 	assert.False(t, cfg.Blacklist.IsBlacklisted("mexc", "BTC_USDT"))
+}
+
+func TestLoad_WithObfuscator(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fundingPath := filepath.Join(dir, "funding.jsonc")
+	require.NoError(t, os.WriteFile(fundingPath, []byte(`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 20}]`), 0o600))
+
+	blacklistPath := filepath.Join(dir, "blacklist.jsonc")
+	require.NoError(t, os.WriteFile(blacklistPath, []byte(`{}`), 0o600))
+
+	reversionPath := filepath.Join(dir, "reversion.jsonc")
+	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true}`), 0o600))
+
+	obfuscatorPath := filepath.Join(dir, "obfuscator.jsonc")
+	obfuscatorContent := `{
+		"enabled": true,
+		"pollInterval": "1m",
+		"lookbackWindow": "24h",
+		"exchanges": {
+			"toobit_futures": {
+				"enabled": true,
+				"netPnLThresholdUSDT": 5.0,
+				"volumeScalePct": 100.0,
+				"minUSDT": 10.0,
+				"maxUSDT": 500.0,
+				"marginUSDT": 10.0,
+				"takeProfitPct": 0.5,
+				"stopLossPct": 0.5,
+				"minHoldSec": 10,
+				"maxHoldSec": 60,
+				"maxActiveOrders": 1
+			}
+		}
+	}`
+	require.NoError(t, os.WriteFile(obfuscatorPath, []byte(obfuscatorContent), 0o600))
+
+	cfg, err := config.Load(sysWithMexc(), fundingPath, blacklistPath, reversionPath, obfuscatorPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg.Obfuscator)
+	assert.True(t, cfg.Obfuscator.Enabled)
+	assert.Equal(t, types.Duration(1*time.Minute), cfg.Obfuscator.PollInterval)
+	assert.Equal(t, types.Duration(24*time.Hour), cfg.Obfuscator.LookbackWindow)
+	assert.Contains(t, cfg.Obfuscator.Exchanges, "toobit_futures")
 }

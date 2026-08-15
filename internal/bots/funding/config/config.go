@@ -47,7 +47,7 @@ func LoadAndValidate[T any](path string) (*T, error) {
 }
 
 // Load reads configuration files using specific paths and returns the Config.
-func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath string) (*Config, error) {
+func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath, obfuscatorPath string) (*Config, error) {
 	cfg := &Config{
 		System:    sysCfg,
 		Symbols:   nil,
@@ -66,36 +66,13 @@ func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath string
 	}
 	cfg.Reversion = reversionCfg
 
-	if cfg.Reversion.Default.MaxCandidateTrade <= 0 {
-		cfg.Reversion.Default.MaxCandidateTrade = 1
+	obf, err := LoadAndValidate[ObfuscatorConfig](obfuscatorPath)
+	if err != nil {
+		return nil, fmt.Errorf("parse obfuscator config: %w", err)
 	}
-	for name, exch := range cfg.Reversion.Exchanges {
-		if exch.MaxCandidateTrade <= 0 {
-			exch.MaxCandidateTrade = cfg.Reversion.Default.MaxCandidateTrade
-			cfg.Reversion.Exchanges[name] = exch
-		}
-	}
+	cfg.Obfuscator = obf
 
-	if cfg.Reversion.Sync.FundingSync <= 0 {
-		cfg.Reversion.Sync.FundingSync = types.Duration(30 * time.Second)
-	}
-	if cfg.Reversion.Sync.Time <= 0 {
-		cfg.Reversion.Sync.Time = types.Duration(30 * time.Second)
-	}
-	if cfg.Reversion.Sync.Ticker <= 0 {
-		cfg.Reversion.Sync.Ticker = types.Duration(30 * time.Second)
-	}
-	if cfg.Reversion.Sync.Contract <= 0 {
-		cfg.Reversion.Sync.Contract = types.Duration(300 * time.Second)
-	}
-
-	cfg.Reversion.TradeSide = strings.ToLower(strings.TrimSpace(cfg.Reversion.TradeSide))
-	if cfg.Reversion.TradeSide == "" {
-		cfg.Reversion.TradeSide = "both"
-	}
-
-	// Normalize Safety limit percentage
-	cfg.Reversion.Safety.MaxImpactRatio /= 100
+	applyReversionDefaults(cfg.Reversion)
 
 	if cfg.Reversion.Scanners.Configured {
 		symCfgs, err := LoadAndValidate[FundingConfig](fundingPath)
@@ -110,6 +87,42 @@ func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath string
 	}
 
 	return cfg, nil
+}
+
+func applyReversionDefaults(r *ReversionConfig) {
+	if r == nil {
+		return
+	}
+	if r.Default.MaxCandidateTrade <= 0 {
+		r.Default.MaxCandidateTrade = 1
+	}
+	for name, exch := range r.Exchanges {
+		if exch.MaxCandidateTrade <= 0 {
+			exch.MaxCandidateTrade = r.Default.MaxCandidateTrade
+			r.Exchanges[name] = exch
+		}
+	}
+
+	if r.Sync.FundingSync <= 0 {
+		r.Sync.FundingSync = types.Duration(30 * time.Second)
+	}
+	if r.Sync.Time <= 0 {
+		r.Sync.Time = types.Duration(30 * time.Second)
+	}
+	if r.Sync.Ticker <= 0 {
+		r.Sync.Ticker = types.Duration(30 * time.Second)
+	}
+	if r.Sync.Contract <= 0 {
+		r.Sync.Contract = types.Duration(300 * time.Second)
+	}
+
+	r.TradeSide = strings.ToLower(strings.TrimSpace(r.TradeSide))
+	if r.TradeSide == "" {
+		r.TradeSide = "both"
+	}
+
+	// Normalize Safety limit percentage
+	r.Safety.MaxImpactRatio /= 100
 }
 
 func (c *Config) parseTradingDefaults() (RawFundingReversionConfig, error) {

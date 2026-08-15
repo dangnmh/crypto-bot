@@ -25,6 +25,7 @@ const (
 // Event represents a notification event.
 type Event struct {
 	Level     Level
+	Strategy  string
 	Exchange  string
 	Symbol    string
 	Message   string

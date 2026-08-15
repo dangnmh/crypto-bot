@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 
 	"crypto-bot/pkg/formatutil"
@@ -134,6 +135,7 @@ func getEmoji(color string) string {
 	}
 }
 
+//nolint:cyclop // Formats telegram message based on event attributes
 func (p *TelegramProvider) formatMessage(evt Event) string {
 	if evt.IsRaw {
 		return evt.Message
@@ -147,8 +149,11 @@ func (p *TelegramProvider) formatMessage(evt Event) string {
 	prefix := fmt.Sprintf("%s [%s]", getEmoji(color), evt.Level)
 
 	contextLabel := ""
+	if evt.Strategy != "" {
+		contextLabel = fmt.Sprintf(" [%s]", strings.ToUpper(evt.Strategy))
+	}
 	if evt.Exchange != "" {
-		contextLabel = fmt.Sprintf(" [%s]", evt.Exchange)
+		contextLabel = fmt.Sprintf("%s [%s]", contextLabel, strings.ToLower(evt.Exchange))
 	}
 	if evt.Symbol != "" {
 		contextLabel = fmt.Sprintf("%s [%s]", contextLabel, evt.Symbol)
@@ -180,5 +185,10 @@ func (p *TelegramProvider) formatMessage(evt Event) string {
 		data = fmt.Sprintf("%s\n%s: %s", data, k, valStr)
 	}
 
-	return fmt.Sprintf("%s%s\n%s\n%s", prefix, contextLabel, evt.Message, data)
+	msgStr := strings.TrimSpace(evt.Message)
+	dataStr := strings.TrimSpace(data)
+	if dataStr != "" {
+		return fmt.Sprintf("%s%s\n%s\n%s", prefix, contextLabel, msgStr, dataStr)
+	}
+	return fmt.Sprintf("%s%s\n%s", prefix, contextLabel, msgStr)
 }

@@ -30,8 +30,22 @@ func TestGormTradeRepository_NilDBHandling(t *testing.T) {
 		t.Errorf("expected no error on nil DB, got %v", err)
 	}
 
-	tRecord := &persistence.TradeRecord{}
+	records, err := repo.GetProfitableTradeRecords(ctx, "MEXC", 10.0, record.Timestamp)
+	if err != nil || len(records) != 0 {
+		t.Errorf("expected empty records on nil DB, got %v, err=%v", records, err)
+	}
+
+	if err := repo.MarkObfuscated(ctx, "req-100", record.Timestamp); err != nil {
+		t.Errorf("expected no error on MarkObfuscated with nil DB, got %v", err)
+	}
+
+	tRecord := &persistence.TradeRecord{
+		Extra: map[string]any{"source": "test", "val": 123},
+	}
 	if tRecord.TableName() != "trades" {
 		t.Errorf("expected TableName to be trades, got %s", tRecord.TableName())
+	}
+	if tRecord.Extra["source"] != "test" {
+		t.Errorf("expected Extra[source] to be test, got %v", tRecord.Extra["source"])
 	}
 }

@@ -94,3 +94,9 @@ variable "config_path_reversion" {
   description = "Path to the reversion.jsonc configuration file"
   default     = "../../configs/funding/prod/reversion.jsonc"
 }
+
+variable "config_path_obfuscator" {
+  type        = string
+  description = "Path to the obfuscator.jsonc configuration file"
+  default     = "../../configs/funding/prod/obfuscator.jsonc"
+}

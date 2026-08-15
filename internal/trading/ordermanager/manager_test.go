@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -306,6 +307,7 @@ func TestOrderSubmittedEvent_GetNotifyMessage(t *testing.T) {
 							Exchange:      "toobit_futures",
 							StrategyType:  ordermanager.StrategyFundingReversion,
 						},
+						Side:         shared.SideOpenLong,
 						Leverage:     20,
 						MarginUSDT:   30.0,
 						FundingRate:  -0.021,
@@ -326,11 +328,11 @@ func TestOrderSubmittedEvent_GetNotifyMessage(t *testing.T) {
 	}
 
 	msg := evt.GetNotifyMessage()
-	assert.Contains(t, msg, "🟡 [FUNDING_REVERSION] [toobit_futures]")
-	assert.Contains(t, msg, "• Symbol: PROM-SWAP-USDT")
-	assert.Contains(t, msg, "• MarginUSD : $30.00 | Leverage: 20x | TotalUSD : $12,136.00")
+	assert.Contains(t, msg, "🟡 [FUNDING_REVERSION] [toobit_futures] [SUBMITTED]")
+	assert.Contains(t, msg, "• Symbol: PROM-SWAP-USDT | Side: Long")
+	assert.Contains(t, msg, "• Margin: 30.00 USDT | Leverage: 20x")
 	assert.Contains(t, msg, "• Price: 3.032000 | Size: 12,136.00 USDT")
-	assert.Contains(t, msg, "• Vol24hUSD : $1.2M | FundingRate : -2.1%")
+	assert.Contains(t, msg, "• FR: -2.1% | Vol24h: $1.2m")
 	assert.Contains(t, msg, "• Order ID: 2279963257363092992")
 	assert.Contains(t, msg, "• Client ID: 12082026170000PROMTOOBITFUTURES")
 	assert.Contains(t, msg, "• Req ID: 12082026170000PROMTOOBITFUTURES")
@@ -496,6 +498,39 @@ func TestOrderCompletedEvent_Notification_Canceled(t *testing.T) {
 	assert.Contains(t, msg, "🔵 [FUNDING_REVERSION] [BINANCE] [CANCELED_NO_FILL]")
 	assert.Contains(t, msg, "• Symbol: BTCUSDT")
 	assert.Contains(t, msg, "• Outcome: canceled_no_fill")
+}
+
+func TestOrderCompletedEvent_Notification_Filled(t *testing.T) {
+	t.Parallel()
+
+	completedFilled := ordermanager.OrderCompletedEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         "req-filled-123",
+			ClientOrderID: "client-filled-123",
+			Symbol:        "LAB-SWAP-USDT",
+			Exchange:      "toobit_futures",
+			StrategyType:  ordermanager.StrategyObfuscator,
+		},
+		OrderID:        "2282128112719258880",
+		Outcome:        ordermanager.OutcomeFilled,
+		Side:           shared.SideOpenLong,
+		EntryPrice:     0.013190,
+		ExitPrice:      0.013180,
+		VolumeUSDT:     10.82,
+		NetProfit:      -0.0190,
+		PnLPct:         -0.08,
+		Fee:            0.0108,
+		HoldDurationMs: 35000,
+	}
+	assert.True(t, completedFilled.ShouldNotify())
+	msg := completedFilled.GetNotifyMessage()
+	assert.Contains(t, msg, "🔴 [OBFUSCATOR] [toobit_futures] [COMPLETED]")
+	assert.Contains(t, msg, "• Symbol: LAB-SWAP-USDT")
+	assert.Contains(t, msg, "PnL: -$0.0190 (-0.08%) [35s] | Side: Long")
+	assert.Contains(t, msg, "• Price: 0.013190 ➔ 0.013180 (-0.08%) | Size: 10.82 USDT")
+	assert.Contains(t, msg, "• Order ID: 2282128112719258880")
+	assert.Contains(t, msg, "• Client ID: client-filled-123")
+	assert.Contains(t, msg, "• Req ID: req-filled-123")
 }
 
 type mockErrExchangeClient struct {
@@ -685,4 +720,101 @@ func TestOrderManager_HandleEnrichAndComplete_Sleep(t *testing.T) {
 	assert.Equal(t, "req-sleep-002", completedErr.GetReqID())
 	assert.Len(t, errSleepCalls, 1)
 	assert.Equal(t, 30*time.Second, errSleepCalls[0])
+}
+
+func TestOrderManager_RegisterOnCompletedCallback_MultipleCallbacks(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	var cb1Called, cb2Called atomic.Bool
+	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt ordermanager.OrderCompletedEvent) {
+		if evt.GetReqID() == "req-multicb-001" {
+			cb1Called.Store(true)
+		}
+	})
+	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt ordermanager.OrderCompletedEvent) {
+		if evt.GetReqID() == "req-multicb-001" {
+			cb2Called.Store(true)
+		}
+	})
+	// Nil callback should be ignored safely
+	mgr.RegisterOnCompletedCallback(nil)
+
+	ctx := context.Background()
+	_, err = mgr.HandleEnrichAndComplete(ctx, "mexc", "req-multicb-001", "client-multicb-001", "BTCUSDT", ordermanager.StrategyFundingReversion, ordermanager.OutcomeFilled, "normal")
+	assert.NoError(t, err)
+
+	// Trigger completed event through eventbus
+	err = bus.Publish(ordermanager.TopicOrderCompleted, ordermanager.OrderCompletedEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID: "req-multicb-001",
+		},
+	})
+	assert.NoError(t, err)
+
+	assert.Eventually(t, func() bool {
+		return cb1Called.Load() && cb2Called.Load()
+	}, 1*time.Second, 10*time.Millisecond)
+}
+
+func TestOrderCompletedEvent_PropagatesRefID(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID: "req-ref-001",
+			RefID: "orig-trade-999",
+		},
+	}
+	assert.NoError(t, mgr.GetAggregate(intent.GetReqID()).Record(intent))
+
+	completed, err := mgr.HandleEnrichAndComplete(
+		context.Background(),
+		"mexc",
+		"req-ref-001",
+		"client-ref-001",
+		"BTCUSDT",
+		ordermanager.StrategyObfuscator,
+		ordermanager.OutcomeFilled,
+		"normal",
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, "orig-trade-999", completed.RefID)
+	assert.Equal(t, "req-ref-001", completed.ReqID)
+	assert.Equal(t, ordermanager.StrategyObfuscator, completed.StrategyType)
 }

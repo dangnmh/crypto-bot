@@ -16,8 +16,9 @@ resource "kubernetes_config_map_v1" "crypto_bot_configs" {
     "system.jsonc"    = file(startswith(var.config_path_system, "/") ? var.config_path_system : "${path.module}/${var.config_path_system}")
     "exchange.jsonc"  = file(startswith(var.config_path_exchange, "/") ? var.config_path_exchange : "${path.module}/${var.config_path_exchange}")
     "funding.jsonc"   = file(startswith(var.config_path_funding, "/") ? var.config_path_funding : "${path.module}/${var.config_path_funding}")
-    "blacklist.jsonc" = file(startswith(var.config_path_blacklist, "/") ? var.config_path_blacklist : "${path.module}/${var.config_path_blacklist}")
-    "reversion.jsonc" = file(startswith(var.config_path_reversion, "/") ? var.config_path_reversion : "${path.module}/${var.config_path_reversion}")
+    "blacklist.jsonc"  = file(startswith(var.config_path_blacklist, "/") ? var.config_path_blacklist : "${path.module}/${var.config_path_blacklist}")
+    "reversion.jsonc"  = file(startswith(var.config_path_reversion, "/") ? var.config_path_reversion : "${path.module}/${var.config_path_reversion}")
+    "obfuscator.jsonc" = file(startswith(var.config_path_obfuscator, "/") ? var.config_path_obfuscator : "${path.module}/${var.config_path_obfuscator}")
   }
 }
 
@@ -83,7 +84,8 @@ resource "kubernetes_deployment_v1" "crypto_bot" {
             "-exch", "/app/configs/funding/prod/exchange.jsonc",
             "-bot", "/app/configs/funding/prod/funding.jsonc",
             "-blacklist", "/app/configs/funding/prod/blacklist.jsonc",
-            "-reversion", "/app/configs/funding/prod/reversion.jsonc"
+            "-reversion", "/app/configs/funding/prod/reversion.jsonc",
+            "-obfuscator", "/app/configs/funding/prod/obfuscator.jsonc"
           ]
 
           env_from {

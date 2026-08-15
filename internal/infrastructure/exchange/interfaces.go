@@ -67,6 +67,12 @@ const (
 	Interval1M  Interval = "1M"
 )
 
+// DepthProvider is an optional interface that exchange REST clients can implement
+// to support retrieving orderbook depth snapshots on-demand via REST API.
+type DepthProvider interface {
+	GetDepth(ctx context.Context, symbol string) (*domain.OrderBook, error)
+}
+
 // KlineProvider is an optional interface that exchange REST clients can implement
 // to support retrieving historical candlestick (K-line) data.
 type KlineProvider interface {

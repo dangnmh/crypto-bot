@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -154,6 +155,40 @@ func ParseSide(value string) (Side, error) {
 		return 0, fmt.Errorf("invalid side: %q", value)
 	}
 	return side, nil
+}
+
+// Value implements driver.Valuer for database SQL/GORM serialization.
+func (s Side) Value() (driver.Value, error) {
+	return s.String(), nil
+}
+
+// Scan implements sql.Scanner for database SQL/GORM deserialization.
+func (s *Side) Scan(value any) error {
+	if value == nil {
+		*s = SideUnknown
+		return nil
+	}
+	switch v := value.(type) {
+	case string:
+		parsed, err := ParseSide(v)
+		if err != nil {
+			return fmt.Errorf("cannot scan string %q into Side: %w", v, err)
+		}
+		*s = parsed
+		return nil
+	case []byte:
+		parsed, err := ParseSide(string(v))
+		if err != nil {
+			return fmt.Errorf("cannot scan bytes %q into Side: %w", string(v), err)
+		}
+		*s = parsed
+		return nil
+	case int64:
+		*s = Side(v)
+		return nil
+	default:
+		return fmt.Errorf("cannot scan %T into Side", value)
+	}
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -236,6 +236,7 @@ func registerPositionClosedSubscription(ctx context.Context, mgr *OrderManager) 
 func registerOrderCompletedSubscription(ctx context.Context, mgr *OrderManager) {
 	// 9. OrderCompletedEvent -> Build Trade Record from event array & Publish to TopicOrderTradeRecord
 	registerEventSubscription(ctx, mgr, TopicOrderCompleted, func(ctx context.Context, om *OrderManager, evt OrderCompletedEvent) error {
+		om.invokeOnCompletedCallbacks(ctx, evt)
 		om.CancelTimeoutGuard(evt.GetReqID())
 		om.UnsubscribePositionWatch(ctx, evt.GetExchange(), string(evt.GetStrategyType()), evt.GetReqID())
 		agg := om.GetAggregate(evt.GetReqID())
@@ -255,10 +256,6 @@ func registerOrderCompletedSubscription(ctx context.Context, mgr *OrderManager) 
 func registerTradeRecordSubscription(ctx context.Context, mgr *OrderManager) {
 	// 10. OrderTradeRecordEvent -> Persistence into DB Repository
 	registerEventSubscription(ctx, mgr, TopicOrderTradeRecord, func(ctx context.Context, om *OrderManager, evt OrderTradeRecordEvent) error {
-		if om.repo == nil {
-			return nil
-		}
-
 		if err := om.repo.Save(ctx, evt); err != nil {
 			om.log.ErrorContext(ctx, "Failed to persist trade record to DB trades table", slog.Any("error", err))
 			return err
@@ -314,6 +311,7 @@ func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger,
 						}
 						m.Ack()
 					}()
+
 					if err := handler(ctx, m); err != nil {
 						logger.ErrorContext(ctx, "OrderManager handler execution failed", slog.String("topic", topic), slog.Any("error", err))
 					}
