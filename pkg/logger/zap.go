@@ -195,6 +195,9 @@ func sourceReplaceAttr(groups []string, a slog.Attr) slog.Attr {
 			return slog.String(a.Key, fmt.Sprintf("%s:%d", v.File, v.Line))
 		}
 	}
+	if a.Value.Kind() == slog.KindDuration {
+		return slog.String(a.Key, a.Value.Duration().String())
+	}
 	return a
 }
 

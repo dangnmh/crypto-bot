@@ -86,4 +86,9 @@ func TestSourceReplaceAttr_Internal(t *testing.T) {
 	aNotSrc := slog.Any(slog.SourceKey, "not-a-source")
 	resNotSrc := sourceReplaceAttr(nil, aNotSrc)
 	assert.Equal(t, aNotSrc, resNotSrc)
+
+	// 5. Test duration key formatting
+	aDur := slog.Duration("latency", 600224543*time.Nanosecond)
+	resDur := sourceReplaceAttr(nil, aDur)
+	assert.Equal(t, slog.String("latency", "600.224543ms"), resDur)
 }
