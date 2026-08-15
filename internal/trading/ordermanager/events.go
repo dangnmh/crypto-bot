@@ -558,10 +558,11 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 		clientID = defaultNotAvailable
 	}
 
-	return fmt.Sprintf("%s [%s] [%s] [COMPLETED]\nPnL: %s [%s] | Side: %s\n• FR: %s | Vol24h: %s\n• Price: %s | Size: %s\n• Fees: Exec: %s | Funding: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+	return fmt.Sprintf("%s [%s] [%s] [COMPLETED]\n• Symbol: %s\n•PnL: %s [%s] | Side: %s\n• FR: %s | Vol24h: %s\n• Price: %s | Size: %s\n• Fees: Exec: %s | Funding: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
 		emoji,
 		stratName,
 		e.Exchange,
+		e.Symbol,
 		netPnLStr,
 		durationStr,
 		sideStr,
