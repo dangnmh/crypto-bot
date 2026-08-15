@@ -5,7 +5,7 @@
   "positionMode": "HEDGE",
   "tradeSide": "short",
   "default": {
-    "useOrderManager": false,
+    "useOrderManager": true,
     "takeProfitPct": 1,
     "stopLossPct": 2,
     "bufferTime": "-150ms",
