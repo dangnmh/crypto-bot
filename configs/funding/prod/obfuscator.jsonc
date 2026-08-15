@@ -4,7 +4,7 @@
   "enabled": true,
 
   // Interval between database scans for profitable trades
-  "pollInterval": "17m",
+  "pollInterval": "15m",
 
   // Lookback window for querying historical trades (created_at >= now - lookbackWindow)
   "lookbackWindow": "24h",
