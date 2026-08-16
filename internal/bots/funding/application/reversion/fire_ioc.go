@@ -122,10 +122,16 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(ctx context.Context, confir
 		MaxLatency:      time.Duration(cand.Config.FundingReversion.MaxLatency),
 		SettleTime:      settleTimePtr,
 		Extra: map[string]any{
-			"buffer_time_ms": bufferTime.Milliseconds(),
-			"fire_offset_ms": (time.Duration(oneWayMs)*time.Millisecond + bufferTime).Milliseconds(),
-			"latency_rtt_ms": latencyMs,
-			"one_way_ms":     oneWayMs,
+			"buffer_time_ms":    bufferTime.Milliseconds(),
+			"fire_offset_ms":    (time.Duration(oneWayMs)*time.Millisecond + bufferTime).Milliseconds(),
+			"one_way_ms":        oneWayMs,
+			"funding_rate":      cand.FundingRate,
+			"vol_24h_usdt":      cand.Vol24USDT,
+			"tp_pct":            cand.Config.FundingReversion.TakeProfitPct,
+			"sl_pct":            cand.Config.FundingReversion.StopLossPct,
+			"ioc_price":         iocPrice,
+			"take_profit_price": tpPrice,
+			"stop_loss_price":   slPrice,
 		},
 	}
 
