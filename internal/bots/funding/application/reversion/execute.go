@@ -117,7 +117,7 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 	})
 
 	// OrderManager completion subscriber for UseOrderManager == true
-	subscribeTopic(ctx, bus, runner.log, ordermanager.TopicOrderCompleted, func(ctx context.Context, msg *message.Message) error {
+	subscribeTopic(ctx, bus, runner.log, ordermanager.TopicOrderCompleted, func(msgCtx context.Context, msg *message.Message) error {
 		var evt ordermanager.OrderCompletedEvent
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return err
@@ -125,7 +125,8 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 		if evt.StrategyType != ordermanager.StrategyFundingReversion {
 			return nil
 		}
-		runner.log.InfoContext(ctx, "Received OrderManager completion in Funding Reversion strategy", slog.String("req_id", evt.ReqID), slog.String("outcome", string(evt.Outcome)))
+		traceCtx := observability.WithRequestIDValue(msgCtx, evt.ReqID)
+		runner.log.InfoContext(traceCtx, "Received OrderManager completion in Funding Reversion strategy", slog.String("req_id", evt.ReqID), slog.String("outcome", string(evt.Outcome)))
 		finalEvt := ReversionCompletedEvent{
 			BaseReversionEvent: BaseReversionEvent{
 				ReqID:     evt.ReqID,
@@ -135,7 +136,7 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 			},
 			Reason: "ordermanager_completed",
 		}
-		return runner.publishEvent(ctx, TopicReversionCompleted, finalEvt)
+		return runner.publishEvent(traceCtx, TopicReversionCompleted, finalEvt)
 	})
 
 	// Database persistence subscriber
@@ -147,6 +148,7 @@ func (r *StatelessRunner) handleReportPersistence(ctx context.Context, msg *mess
 	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 		return err
 	}
+	traceCtx := observability.WithRequestIDValue(ctx, evt.ReqID)
 
 	// Map to domain entity TradeReport
 	report := &domain.TradeReport{
@@ -189,11 +191,11 @@ func (r *StatelessRunner) handleReportPersistence(ctx context.Context, msg *mess
 		ErrorMsg:            evt.ErrorMsg,
 	}
 
-	if err := r.reportRepo.Save(ctx, report); err != nil {
-		r.log.ErrorContext(ctx, "Failed to persist trade report to database", slog.Any("error", err))
+	if err := r.reportRepo.Save(traceCtx, report); err != nil {
+		r.log.ErrorContext(traceCtx, "Failed to persist trade report to database", slog.Any("error", err))
 		return err
 	}
-	r.log.InfoContext(ctx, "Successfully persisted trade report to database", slog.String("req_id", evt.ReqID))
+	r.log.InfoContext(traceCtx, "Successfully persisted trade report to database", slog.String("req_id", evt.ReqID))
 	return nil
 }
 
@@ -214,7 +216,7 @@ func subscribeTopicWithReport[T ReversionEvent](
 	topic string,
 	handler func(context.Context, *StatelessRunner, T, *message.Message) error,
 ) {
-	subscribeTopic(ctx, runner.bus, runner.log, topic, func(ctx context.Context, msg *message.Message) error {
+	subscribeTopic(ctx, runner.bus, runner.log, topic, func(msgCtx context.Context, msg *message.Message) error {
 		var evt T
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return err
@@ -222,40 +224,45 @@ func subscribeTopicWithReport[T ReversionEvent](
 		exch := evt.GetExchange()
 		reqID := evt.GetReqID()
 		symbol := evt.GetSymbol()
-		traceCtx := observability.WithRequestIDValue(ctx, reqID)
+		traceCtx := observability.WithRequestIDValue(msgCtx, reqID)
 		clonedRunner := runner.clone(exch, reqID, symbol)
 		clonedRunner.recordEventState(topic, evt)
 		return handler(traceCtx, clonedRunner, evt, msg)
 	})
 }
 
-func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger, topic string, handler func(context.Context, *message.Message) error) {
-	ch, err := bus.Subscribe(ctx, topic)
+func subscribeTopic(subCtx context.Context, bus *eventbus.Bus, logger *slog.Logger, topic string, handler func(context.Context, *message.Message) error) {
+	ch, err := bus.Subscribe(subCtx, topic)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
+		logger.ErrorContext(subCtx, "Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
 		return
 	}
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
+	go processTopicMessages(subCtx, ch, topic, logger, handler)
+}
+
+func processTopicMessages(subCtx context.Context, ch <-chan *message.Message, topic string, logger *slog.Logger, handler func(context.Context, *message.Message) error) {
+	for {
+		select {
+		case <-subCtx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
 				return
-			case msg, ok := <-ch:
-				if !ok {
-					return
-				}
-				go func(m *message.Message) {
-					if err := handler(ctx, m); err != nil {
-						if errors.Is(err, ErrFRBelowThreshold) || errors.Is(err, ErrFRSignFlip) {
-							logger.InfoContext(ctx, "Handler execution skipped (expected abort)", slog.String("topic", topic), slog.Any("error", err))
-						} else {
-							logger.ErrorContext(ctx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
-						}
-					}
-					m.Ack()
-				}(msg)
 			}
+			msgCtx := context.WithoutCancel(subCtx)
+			go dispatchMessage(msgCtx, msg, topic, logger, handler)
 		}
-	}()
+	}
+}
+
+func dispatchMessage(msgCtx context.Context, m *message.Message, topic string, logger *slog.Logger, handler func(context.Context, *message.Message) error) {
+	if err := handler(msgCtx, m); err != nil {
+		if errors.Is(err, ErrFRBelowThreshold) || errors.Is(err, ErrFRSignFlip) {
+			logger.InfoContext(msgCtx, "Handler execution skipped (expected abort)", slog.String("topic", topic), slog.Any("error", err))
+		} else {
+			logger.ErrorContext(msgCtx, "Handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+		}
+	}
+	m.Ack()
 }

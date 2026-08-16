@@ -313,6 +313,17 @@ func TestStrategy_Execute_Success(t *testing.T) {
 
 	waitCompleted(t, ch, createOrderCalled, watcherDone, 15*time.Second)
 
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		repo.mu.Lock()
+		count := len(repo.savedReports)
+		repo.mu.Unlock()
+		if count > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
 	require.Len(t, repo.savedReports, 1)

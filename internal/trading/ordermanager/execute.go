@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"crypto-bot/pkg/eventbus"
+	"crypto-bot/pkg/tracectx"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -271,52 +272,58 @@ func registerEventSubscription[T OrderEvent](
 	topic string,
 	action func(context.Context, *OrderManager, T) error,
 ) {
-	subscribeTopic(ctx, mgr.bus, mgr.log, topic, func(ctx context.Context, msg *message.Message) error {
+	subscribeTopic(ctx, mgr.bus, mgr.log, topic, func(msgCtx context.Context, msg *message.Message) error {
 		var evt T
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
 			return fmt.Errorf("unmarshal topic %s payload: %w", topic, err)
 		}
-		mgr.log.InfoContext(ctx, "OrderManager: Handled micro-event topic", slog.String("topic", topic), slog.String("req_id", evt.GetReqID()))
 		reqID := evt.GetReqID()
+		orderCtx := tracectx.WithRequestIDValue(msgCtx, reqID)
+		mgr.log.InfoContext(orderCtx, "OrderManager: Handled micro-event topic", slog.String("topic", topic), slog.String("req_id", reqID))
 		agg := mgr.GetAggregate(reqID)
 		_ = agg.Record(evt)
 
-		return action(ctx, mgr, evt)
+		return action(orderCtx, mgr, evt)
 	})
 }
 
-func subscribeTopic(ctx context.Context, bus *eventbus.Bus, logger *slog.Logger, topic string, handler func(context.Context, *message.Message) error) {
+func subscribeTopic(subCtx context.Context, bus *eventbus.Bus, logger *slog.Logger, topic string, handler func(context.Context, *message.Message) error) {
 	if bus == nil {
 		return
 	}
-	ch, err := bus.Subscribe(ctx, topic)
+	ch, err := bus.Subscribe(subCtx, topic)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
+		logger.ErrorContext(subCtx, "Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
 		return
 	}
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-ch:
-				if !ok {
-					return
-				}
-				go func(m *message.Message) {
-					defer func() {
-						if r := recover(); r != nil {
-							logger.ErrorContext(ctx, "Panic recovered in OrderManager topic handler", slog.String("topic", topic), slog.Any("panic", r))
-						}
-						m.Ack()
-					}()
+	go processTopicMessages(subCtx, ch, topic, logger, handler)
+}
 
-					if err := handler(ctx, m); err != nil {
-						logger.ErrorContext(ctx, "OrderManager handler execution failed", slog.String("topic", topic), slog.Any("error", err))
-					}
-				}(msg)
+func processTopicMessages(subCtx context.Context, ch <-chan *message.Message, topic string, logger *slog.Logger, handler func(context.Context, *message.Message) error) {
+	for {
+		select {
+		case <-subCtx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
 			}
+			msgCtx := context.WithoutCancel(subCtx)
+			go dispatchMessage(msgCtx, msg, topic, logger, handler)
 		}
+	}
+}
+
+func dispatchMessage(msgCtx context.Context, m *message.Message, topic string, logger *slog.Logger, handler func(context.Context, *message.Message) error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.ErrorContext(msgCtx, "Panic recovered in OrderManager topic handler", slog.String("topic", topic), slog.Any("panic", r))
+		}
+		m.Ack()
 	}()
+
+	if err := handler(msgCtx, m); err != nil {
+		logger.ErrorContext(msgCtx, "OrderManager handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+	}
 }

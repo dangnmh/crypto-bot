@@ -15,6 +15,7 @@ import (
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/eventbus"
+	"crypto-bot/pkg/tracectx"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/patrickmn/go-cache"
@@ -454,6 +455,7 @@ func (m *OrderManager) HandlePositionUpdate(ctx context.Context, reqID string, p
 	contractSize := agg.ContractSize()
 	holdVolContract, holdVolCoin := normalizeVolume(pos.HoldVolContract, pos.HoldVolCoin, contractSize)
 
+	ctx = tracectx.WithRequestIDValue(ctx, reqID)
 	if holdVolContract > 0 || holdVolCoin > 0 {
 		m.handlePositionFilled(ctx, reqID, agg, clock, pos, contractSize, holdVolContract, holdVolCoin)
 	} else {
