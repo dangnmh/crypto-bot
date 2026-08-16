@@ -113,7 +113,7 @@ func main() {
 	var minFundingRate float64
 	flag.Float64Var(&minFundingRate, "minFundingRate", 0.6, "Minimum absolute funding rate (in percent) to filter. E.g. 0.1 for 0.1%")
 	var minVol float64
-	flag.Float64Var(&minVol, "minVol", 6_000_000.0, "Minimum 24h volume (in USDT) to filter pairs. E.g. 1000000 for 1M USDT")
+	flag.Float64Var(&minVol, "minVol", 7_000_000.0, "Minimum 24h volume (in USDT) to filter pairs. E.g. 1000000 for 1M USDT")
 	flag.Parse()
 
 	// Parse targeted exchanges if provided

@@ -1,0 +1,1686 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "id": 1,
+      "title": "Total Net Profit (USD)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(net_pnl), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "id": 28,
+      "title": "Total Gross Profit (USD)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(gross_pnl), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "id": 2,
+      "title": "Win Rate (%)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE((COUNT(CASE WHEN net_pnl > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(*), 0)) * 100, 0) FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 40
+              },
+              {
+                "color": "green",
+                "value": 70
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "id": 3,
+      "title": "Completed Trades",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "mappings": [],
+          "unit": "none"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 15,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "id": 4,
+      "title": "Total Volume (USDT)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(notional_usd), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "id": 5,
+      "title": "Funding Fee",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(funding_fee), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 21,
+        "y": 0,
+        "w": 3,
+        "h": 4
+      },
+      "id": 6,
+      "title": "Total Fees Paid",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(fee), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "id": 7,
+      "title": "Hourly/Daily P&L Trend",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), COALESCE(SUM(net_pnl), 0) AS net_pnl FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "always"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "id": 8,
+      "title": "Equity Growth Curve",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT created_at AS time, SUM(net_pnl) OVER (ORDER BY created_at ASC) AS cumulative_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) ORDER BY created_at ASC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "id": 9,
+      "title": "Execution Latency (RTT)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "ms"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "id": 10,
+      "title": "Average Actual Slippage (%)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(actual_slippage) AS avg_slippage FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 16,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "id": 11,
+      "title": "Target Buffer vs. Actual Fire Offset",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), exchange, AVG((extra->>'buffer_time_ms')::numeric) AS target_buffer_ms, AVG((extra->>'fire_offset_ms')::numeric) AS actual_fire_offset_ms FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "id": 12,
+      "title": "Funding Fee Avoidance vs. Fire Offset",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), exchange, AVG((extra->>'fire_offset_ms')::numeric) AS avg_fire_offset_ms, SUM(funding_fee) AS total_funding_fee_usd FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      },
+      "id": 14,
+      "title": "IOC Order Fill Ratio",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT outcome, COUNT(*) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND outcome IS NOT NULL AND outcome <> '' AND $__timeFilter(created_at) GROUP BY outcome",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "filled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "partial_filled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "canceled_no_fill"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "unknown"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true,
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      },
+      "id": 15,
+      "title": "IOC Cancel Rate (%)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT (COUNT(CASE WHEN outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN exchange_order_id IS NOT NULL AND exchange_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 8
+      },
+      "id": 27,
+      "title": "IOC Cancel Rate by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, (COUNT(CASE WHEN outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN exchange_order_id IS NOT NULL AND exchange_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "id": 16,
+      "title": "Trade Hold Duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "unit": "ms"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 8,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      },
+      "id": 17,
+      "title": "Position Exit Reason Breakdown",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT reason, COUNT(*) FROM trades WHERE status = 'completed' AND reason IS NOT NULL AND reason <> '' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY reason",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "target"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "stop_loss"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timeout"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "force_close"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true,
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 16,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      },
+      "id": 18,
+      "title": "Abort Reasons Breakdown",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT reason, COUNT(*) FROM trades WHERE status = 'aborted' AND reason IS NOT NULL AND reason <> '' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY reason",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ioc_canceled_no_position"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ioc_outcome_unknown_no_position"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true,
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      },
+      "id": 23,
+      "title": "Net Profit Breakdown by Exchange",
+      "type": "bargauge",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(net_pnl) AS total_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange ORDER BY total_profit DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [],
+          "values": true
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 8,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      },
+      "id": 29,
+      "title": "Gross Profit Breakdown by Exchange",
+      "type": "bargauge",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(gross_pnl) AS total_gross_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange ORDER BY total_gross_profit DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [],
+          "values": true
+        },
+        "showUnfilled": true
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 16,
+        "y": 36,
+        "w": 8,
+        "h": 8
+      },
+      "id": 30,
+      "title": "Win Rate by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, COUNT(CASE WHEN net_pnl > 0 THEN 1 END) AS wins FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "id": 24,
+      "title": "Total Fees Paid by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(ABS(fee)) AS total_fee FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 6,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "id": 25,
+      "title": "Funding Fee by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, SUM(ABS(funding_fee)) AS funding_fee FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "id": 31,
+      "title": "Complete Trade by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, COUNT(*) AS count FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 18,
+        "y": 44,
+        "w": 6,
+        "h": 8
+      },
+      "id": 32,
+      "title": "Trade by Exchange",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT exchange, COUNT(*) AS count FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 8,
+        "h": 8
+      },
+      "id": 26,
+      "title": "Win/Loss Ratio (Completed Trades)",
+      "type": "piechart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT CASE WHEN net_pnl > 0 THEN 'Win' ELSE 'Loss' END AS outcome, COUNT(*) AS count FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Win"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Loss"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showPercent": true,
+          "showValues": true
+        },
+        "reduceOptions": {
+          "values": true,
+          "calcs": []
+        },
+        "pieType": "pie",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 10
+      },
+      "id": 19,
+      "title": "Live Trade History Ledger Table",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT created_at AS timestamp, exchange, normalized_symbol, strategy_type, side, margin_usdt, leverage, entry_price, exit_price, net_pnl, hold_duration_ms, status, outcome, reason FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) ORDER BY created_at DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        }
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": []
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "crypto-bot",
+    "pnl",
+    "trades",
+    "postgres"
+  ],
+  "title": "Crypto-Bot Trades P&L Analytics",
+  "uid": "cryptobot-trades-analytics",
+  "version": 2,
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "postgres",
+          "uid": "postgres"
+        },
+        "definition": "SELECT DISTINCT exchange FROM trades",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Exchange",
+        "multi": true,
+        "name": "exchange",
+        "options": [],
+        "query": "SELECT DISTINCT exchange FROM trades",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "query"
+      }
+    ]
+  }
+}

@@ -69,6 +69,21 @@ resource "kubernetes_config_map_v1" "grafana_dashboard_funding_stats" {
   }
 }
 
+# Deploy Kubernetes ConfigMap for Grafana Trades P&L Dashboard
+resource "kubernetes_config_map_v1" "grafana_dashboard_trades" {
+  metadata {
+    name      = "grafana-dashboard-trades"
+    namespace = "default"
+    labels = {
+      grafana_dashboard = "1"
+    }
+  }
+
+  data = {
+    "trades-analytics.json" = file("${path.module}/../grafana/dashboards/trades-analytics.json")
+  }
+}
+
 # 4. Deploy Kubernetes ConfigMap for Grafana PostgreSQL Datasource
 resource "kubernetes_config_map_v1" "grafana_datasource_postgres" {
   metadata {

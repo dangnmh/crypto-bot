@@ -242,6 +242,7 @@ tf-apply-infra: ## Apply only infrastructure configurations (DB, Vault, Loki Sta
 		-target=kubernetes_config_map_v1.grafana_datasource_loki \
 		-target=kubernetes_config_map_v1.grafana_dashboard_pnl \
 		-target=kubernetes_config_map_v1.grafana_dashboard_funding_stats \
+		-target=kubernetes_config_map_v1.grafana_dashboard_trades \
 		-target=kubernetes_config_map_v1.grafana_datasource_postgres \
 		-target=kubernetes_config_map_v1.grafana_datasource_prometheus \
 		-target=kubernetes_secret_v1.registry_pull_secret
@@ -258,6 +259,7 @@ tf-destroy-infra: ## Destroy only infrastructure configurations (DB, Vault, Loki
 		-target=kubernetes_config_map_v1.grafana_datasource_loki \
 		-target=kubernetes_config_map_v1.grafana_dashboard_pnl \
 		-target=kubernetes_config_map_v1.grafana_dashboard_funding_stats \
+		-target=kubernetes_config_map_v1.grafana_dashboard_trades \
 		-target=kubernetes_config_map_v1.grafana_datasource_postgres \
 		-target=kubernetes_config_map_v1.grafana_datasource_prometheus \
 		-target=kubernetes_secret_v1.registry_pull_secret

@@ -122,7 +122,10 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(ctx context.Context, confir
 		MaxLatency:      time.Duration(cand.Config.FundingReversion.MaxLatency),
 		SettleTime:      settleTimePtr,
 		Extra: map[string]any{
-			"settle_time": confirmedEvt.SettleTime,
+			"buffer_time_ms": bufferTime.Milliseconds(),
+			"fire_offset_ms": (time.Duration(oneWayMs)*time.Millisecond + bufferTime).Milliseconds(),
+			"latency_rtt_ms": latencyMs,
+			"one_way_ms":     oneWayMs,
 		},
 	}
 
