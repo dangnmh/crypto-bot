@@ -345,23 +345,27 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 		syncer.SyncNow(ctx)
 	}
 
-	// Switch Margin Mode
-	if err := client.SwitchMarginMode(ctx, evt.Symbol, evt.MarginMode, evt.Leverage, evt.Side); err != nil {
-		m.log.ErrorContext(ctx, "Switch margin mode failed", slog.Any("error", err))
-		return OrderPreFlightCompletedEvent{}, fmt.Errorf("switch margin mode failed: %w", err)
-	}
-
-	// Switch Position Mode if provider exists
-	if switcher, ok := client.(PositionModeSwitcher); ok && evt.PositionMode > 0 {
-		if err := switcher.SwitchPositionMode(ctx, evt.Symbol, evt.PositionMode); err != nil {
-			m.log.ErrorContext(ctx, "Switch position mode failed", slog.Any("error", err))
-			return OrderPreFlightCompletedEvent{}, fmt.Errorf("switch position mode failed: %w", err)
+	adjustedLeverage := evt.Leverage
+	if !evt.Side.IsClose() {
+		// Switch Margin Mode
+		if err := client.SwitchMarginMode(ctx, evt.Symbol, evt.MarginMode, evt.Leverage, evt.Side); err != nil {
+			m.log.ErrorContext(ctx, "Switch margin mode failed", slog.Any("error", err))
+			return OrderPreFlightCompletedEvent{}, fmt.Errorf("switch margin mode failed: %w", err)
 		}
-	}
 
-	adjustedLeverage, err := m.configureExchangeLeverage(ctx, client, evt)
-	if err != nil {
-		return OrderPreFlightCompletedEvent{}, err
+		// Switch Position Mode if provider exists
+		if switcher, ok := client.(PositionModeSwitcher); ok && evt.PositionMode > 0 {
+			if err := switcher.SwitchPositionMode(ctx, evt.Symbol, evt.PositionMode); err != nil {
+				m.log.ErrorContext(ctx, "Switch position mode failed", slog.Any("error", err))
+				return OrderPreFlightCompletedEvent{}, fmt.Errorf("switch position mode failed: %w", err)
+			}
+		}
+
+		var err error
+		adjustedLeverage, err = m.configureExchangeLeverage(ctx, client, evt)
+		if err != nil {
+			return OrderPreFlightCompletedEvent{}, err
+		}
 	}
 
 	evt.PreTopic = TopicOrderIntent
@@ -700,25 +704,52 @@ func (m *OrderManager) HandleScheduleTimeout(ctx context.Context, evt OrderSubmi
 		return nil
 	}
 
-	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleTimeout", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+	// For Maker / PostOnly / Limit orders, do not start hold timer while resting on book.
+	// The hold timer will be started when OrderFilledEvent is received.
+	if evt.OrderType == OrderTypePostOnly || evt.OrderType == OrderTypeLimit {
+		m.log.InfoContext(ctx, "Skipping pre-fill timeout schedule for resting maker order", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+		return nil
+	}
 
-	clock, err := m.resolveClock(evt.Exchange)
+	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleTimeout", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+	return m.scheduleTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderSubmitted)
+}
+
+// HandleScheduleFillTimeout schedules hold timeout watchdog timer upon position fill.
+func (m *OrderManager) HandleScheduleFillTimeout(ctx context.Context, evt OrderFilledEvent) error {
+	agg := m.GetAggregate(evt.GetReqID())
+	dur := agg.TimeoutDuration()
+	if dur <= 0 {
+		return nil
+	}
+
+	// If timer already active for this reqID, don't restart
+	if _, loaded := m.timers.Load(evt.GetReqID()); loaded {
+		return nil
+	}
+
+	m.log.InfoContext(ctx, "Starting post-fill hold timeout watchdog", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+	return m.scheduleTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderFilled)
+}
+
+func (m *OrderManager) scheduleTimeoutInternal(ctx context.Context, reqID, clientOrderID, symbol, exchangeName string, st StrategyType, mt MarketType, dur time.Duration, preTopic string) error {
+	clock, err := m.resolveClock(exchangeName)
 	if err != nil {
 		return fmt.Errorf("schedule timeout failed to resolve clock: %w", err)
 	}
-	agg := m.GetAggregate(evt.GetReqID())
+	agg := m.GetAggregate(reqID)
 
 	timer := time.AfterFunc(dur, func() {
-		m.timers.Delete(evt.GetReqID())
+		m.timers.Delete(reqID)
 		timeoutEvt := OrderTimeoutScheduledEvent{
 			BaseExecutionEvent: BaseExecutionEvent{
-				ReqID:         evt.GetReqID(),
-				ClientOrderID: evt.GetClientOrderID(),
-				Symbol:        evt.Symbol,
-				Exchange:      evt.Exchange,
-				MarketType:    evt.GetMarketType(),
-				StrategyType:  evt.StrategyType,
-				PreTopic:      TopicOrderSubmitted,
+				ReqID:         reqID,
+				ClientOrderID: clientOrderID,
+				Symbol:        symbol,
+				Exchange:      exchangeName,
+				MarketType:    mt,
+				StrategyType:  st,
+				PreTopic:      preTopic,
 				NextTopic:     TopicOrderTimeoutScheduled,
 				Timestamp:     clock.Now(),
 			},
@@ -728,7 +759,7 @@ func (m *OrderManager) HandleScheduleTimeout(ctx context.Context, evt OrderSubmi
 		_ = agg.Record(timeoutEvt)
 		_ = m.publishEvent(context.WithoutCancel(ctx), TopicOrderTimeoutScheduled, timeoutEvt)
 	})
-	m.timers.Store(evt.GetReqID(), timer)
+	m.timers.Store(reqID, timer)
 	return nil
 }
 
@@ -851,6 +882,13 @@ func (m *OrderManager) HandleOutcomeWatcher(ctx context.Context, evt OrderSubmit
 		reason = err.Error()
 	}
 
+	if (evt.OrderType == OrderTypePostOnly || evt.OrderType == OrderTypeLimit) && (outcome == OutcomeUnknown || outcome == OutcomeResting) {
+		if order != nil && order.State == exchange.OrderStateNew {
+			outcome = OutcomeResting
+			reason = "order_resting_on_book"
+		}
+	}
+
 	return OrderOutcomeResolvedEvent{
 		BaseExecutionEvent: BaseExecutionEvent{
 			ReqID:         evt.GetReqID(),
@@ -913,10 +951,12 @@ func classifyOrderOutcome(order *exchange.OrderInfo) (OrderOutcome, float64, flo
 	switch order.State {
 	case exchange.OrderStateFilled:
 		return OutcomeFilled, order.DealVol, order.DealAvgPrice
-	case exchange.OrderStatePartial:
+	case exchange.OrderStatePartial, exchange.OrderStatePartiallyFilled:
 		return OutcomePartialFilled, order.DealVol, order.DealAvgPrice
 	case exchange.OrderStateCanceled:
 		return OutcomeCanceledNoFill, order.DealVol, order.DealAvgPrice
+	case exchange.OrderStateNew:
+		return OutcomeResting, order.DealVol, order.DealAvgPrice
 	default:
 		return OutcomeUnknown, order.DealVol, order.DealAvgPrice
 	}
@@ -984,6 +1024,10 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 		return OrderBailoutExecutedEvent{}, fmt.Errorf("bailout failed to resolve clock: %w", err)
 	}
 
+	agg := m.GetAggregate(reqID)
+	posMode := agg.PositionMode()
+	leverage := agg.Leverage()
+
 	retries := 0
 
 	closeSide := shared.CloseSideFor(side)
@@ -997,7 +1041,7 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 		var errClose error
 		for i := 1; i <= maxRetries; i++ {
 			retries = i
-			errClose = client.ClosePosition(ctx, symbol, closeSide, volume, shared.PositionModeOneWay, 1)
+			errClose = client.ClosePosition(ctx, symbol, closeSide, volume, posMode, leverage)
 			if errClose == nil {
 				break
 			}
@@ -1007,8 +1051,6 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 			return OrderBailoutExecutedEvent{}, fmt.Errorf("bailout failed after %d retries: %w", retries, errClose)
 		}
 	}
-
-	agg := m.GetAggregate(reqID)
 
 	return OrderBailoutExecutedEvent{
 		BaseExecutionEvent: BaseExecutionEvent{

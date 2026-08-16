@@ -158,6 +158,11 @@ func registerOrderExecutionSubscriptions(ctx context.Context, mgr *OrderManager)
 	registerEventSubscription(ctx, mgr, TopicOrderSubmitted, func(ctx context.Context, om *OrderManager, evt OrderSubmittedEvent) error {
 		return om.HandleScheduleTimeout(ctx, evt)
 	})
+
+	// 5D. OrderFilledEvent -> HandleScheduleFillTimeout -> Start fill-triggered hold watchdog
+	registerEventSubscription(ctx, mgr, TopicOrderFilled, func(ctx context.Context, om *OrderManager, evt OrderFilledEvent) error {
+		return om.HandleScheduleFillTimeout(ctx, evt)
+	})
 }
 
 func registerTimeoutSubscriptions(ctx context.Context, mgr *OrderManager) {
@@ -199,8 +204,13 @@ func registerCompletionSubscriptions(ctx context.Context, mgr *OrderManager) {
 }
 
 func registerOutcomeResolvedSubscription(ctx context.Context, mgr *OrderManager) {
-	// 8. OrderOutcomeResolvedEvent -> Only complete if canceled with no fill; filled orders remain open awaiting position close or timeout.
+	// 8. OrderOutcomeResolvedEvent -> Only complete if canceled with no fill; resting orders await fill; filled orders remain open awaiting position close or timeout.
 	registerEventSubscription(ctx, mgr, TopicOrderOutcomeResolved, func(ctx context.Context, om *OrderManager, evt OrderOutcomeResolvedEvent) error {
+		if evt.Outcome == OutcomeResting {
+			om.log.InfoContext(ctx, "Order resting on order book awaiting stream fill or cancel", slog.String("req_id", evt.GetReqID()))
+			return nil
+		}
+
 		if evt.Outcome == OutcomeCanceledNoFill || (evt.Outcome == OutcomeUnknown && evt.FilledVol == 0) {
 			om.CancelTimeoutGuard(evt.GetReqID())
 			agg := om.GetAggregate(evt.GetReqID())

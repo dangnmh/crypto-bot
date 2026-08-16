@@ -804,3 +804,112 @@ func TestBlackBox_OrderFilled_WaitsForPositionClose(t *testing.T) {
 		t.Errorf("expected exit price 52000.0, got %.2f", saved[0].ExitPrice)
 	}
 }
+
+// Test 10: Maker PostOnly order rests on book, then fills via position stream, completing on close.
+func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	bus := eventbus.New(slog.Default())
+	clock := mockClock{}
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+
+	client := &blackboxExchangeClient{
+		orderState: shared.OrderStateNew,
+		dealVol:    0.0,
+	}
+
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         "req-maker-resting-001",
+			ClientOrderID: "client-maker-resting-001",
+			Symbol:        "BTCUSDT",
+			Exchange:      "mexc",
+			StrategyType:  ordermanager.StrategyDilution,
+			Timestamp:     clock.Now(),
+		},
+		Side:            shared.SideOpenLong,
+		OrderType:       ordermanager.OrderTypePostOnly,
+		Price:           50000.0,
+		Volume:          1.0,
+		ContractSize:    1.0,
+		PositionMode:    shared.PositionModeHedge,
+		Leverage:        20,
+		TimeoutDuration: 500 * time.Millisecond,
+	}
+
+	if err := mgr.Dispatch(ctx, intent); err != nil {
+		t.Fatalf("failed to dispatch intent: %v", err)
+	}
+
+	// Give time for OutcomeWatcher to execute and classify as OutcomeResting
+	time.Sleep(100 * time.Millisecond)
+
+	// Ensure aggregate is in resting or submitted state, not prematurely completed
+	if len(repo.SavedEvents()) > 0 {
+		t.Fatalf("expected resting order not to be completed immediately")
+	}
+
+	// Now simulate stream fill from exchange
+	mgr.HandlePositionUpdate(ctx, "req-maker-resting-001", exchange.PersonalPositionUpdate{
+		Symbol:          "BTCUSDT",
+		HoldVolContract: 1.0,
+		OpenAvgPrice:    50000.0,
+		HoldAvgPrice:    50000.0,
+	})
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Simulate position exit fill
+	mgr.HandlePositionUpdate(ctx, "req-maker-resting-001", exchange.PersonalPositionUpdate{
+		Symbol:           "BTCUSDT",
+		HoldVolContract:  0.0,
+		CloseVolContract: 1.0,
+		OpenAvgPrice:     50000.0,
+		CloseAvgPrice:    50100.0,
+		CloseProfitLoss:  100.0,
+		Fee:              0.0,
+	})
+
+	// Wait for trade record to save
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(repo.SavedEvents()) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	saved := repo.SavedEvents()
+	if len(saved) == 0 {
+		t.Fatalf("expected trade record after position close update")
+	}
+	if saved[0].StrategyType != ordermanager.StrategyDilution {
+		t.Errorf("expected strategy Dilution, got %s", saved[0].StrategyType)
+	}
+	if saved[0].ExitPrice != 50100.0 {
+		t.Errorf("expected exit price 50100.0, got %.2f", saved[0].ExitPrice)
+	}
+}

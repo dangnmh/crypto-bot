@@ -18,6 +18,7 @@ const (
 	TopicOrderPreFlightDone          = "ordermanager.micro.preflight_done"
 	TopicOrderFireWindowReached      = "ordermanager.micro.fire_window_reached"
 	TopicOrderSubmitted              = "ordermanager.micro.submitted"
+	TopicOrderResting                = "ordermanager.micro.resting"
 	TopicOrderTPSLDispatched         = "ordermanager.micro.tpsl_dispatched"
 	TopicOrderPositionWatchReady     = "ordermanager.micro.position_watch_ready"
 	TopicOrderFilled                 = "ordermanager.micro.order_filled"
@@ -73,6 +74,7 @@ const (
 	StrategyPennyJumper      StrategyType = "PENNY_JUMPER"
 	StrategyGrid             StrategyType = "GRID"
 	StrategyObfuscator       StrategyType = "OBFUSCATOR"
+	StrategyDilution         StrategyType = "DILUTION"
 	StrategyUnknown          StrategyType = "UNKNOWN"
 )
 
@@ -95,6 +97,7 @@ const (
 	OutcomeCanceledNoFill OrderOutcome = "canceled_no_fill"
 	OutcomeCanceled       OrderOutcome = "canceled"
 	OutcomeAborted        OrderOutcome = "aborted"
+	OutcomeResting        OrderOutcome = "resting"
 	OutcomeUnknown        OrderOutcome = "unknown"
 )
 
@@ -269,6 +272,17 @@ type OrderTPSLDispatchedEvent struct {
 }
 
 func (e OrderTPSLDispatchedEvent) GetTopic() string { return TopicOrderTPSLDispatched }
+
+// OrderRestingEvent indicates maker limit/postonly order is resting on the order book.
+type OrderRestingEvent struct {
+	BaseExecutionEvent
+	OrderID   string    `json:"order_id"`
+	Price     float64   `json:"price"`
+	Volume    float64   `json:"volume"`
+	RestingAt time.Time `json:"resting_at"`
+}
+
+func (e OrderRestingEvent) GetTopic() string { return TopicOrderResting }
 
 // OrderFilledEvent indicates position fill event received.
 type OrderFilledEvent struct {

@@ -818,3 +818,50 @@ func TestOrderCompletedEvent_PropagatesRefID(t *testing.T) {
 	assert.Equal(t, "req-ref-001", completed.ReqID)
 	assert.Equal(t, ordermanager.StrategyObfuscator, completed.StrategyType)
 }
+
+func TestHandlePreFlight_CloseOrder_SkipsModeSwitches(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "req-close-001",
+			Symbol:       "BTCUSDT",
+			Exchange:     "MEXC",
+			StrategyType: ordermanager.StrategyDilution,
+			Timestamp:    time.Now(),
+		},
+		Side:         shared.SideCloseLong,
+		OrderType:    ordermanager.OrderTypePostOnly,
+		Price:        50000.0,
+		Volume:       1.0,
+		MarginMode:   shared.MarginModeIsolated,
+		PositionMode: shared.PositionModeHedge,
+		Leverage:     10,
+	}
+
+	preflight, err := mgr.HandlePreFlight(context.Background(), intent)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, preflight.AdjustedLeverage)
+	// Must NOT call switch margin mode, switch position mode, or change leverage for closing orders
+	assert.False(t, client.marginModeSwitched, "SwitchMarginMode should be skipped for close orders")
+	assert.False(t, client.positionModeSwitched, "SwitchPositionMode should be skipped for close orders")
+	assert.False(t, client.leverageChanged, "ChangeLeverage should be skipped for close orders")
+}

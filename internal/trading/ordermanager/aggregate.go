@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/pkg/formatutil"
@@ -16,8 +17,9 @@ const (
 	StateInit               OrderLifecycleState = "INIT"
 	StatePreFlightDone      OrderLifecycleState = "PREFLIGHT_DONE"
 	StateFireWindow         OrderLifecycleState = "FIRE_WINDOW"
-	StateSubmitted          OrderLifecycleState = "SUBMITTED"
 	StatePositionWatchReady OrderLifecycleState = "POSITION_WATCH_READY"
+	StateSubmitted          OrderLifecycleState = "SUBMITTED"
+	StateResting            OrderLifecycleState = "RESTING"
 	StateTPSLDispatched     OrderLifecycleState = "TPSL_DISPATCHED"
 	StateTimeoutScheduled   OrderLifecycleState = "TIMEOUT_SCHEDULED"
 	StateFilled             OrderLifecycleState = "FILLED"
@@ -278,16 +280,18 @@ func stateRank(s OrderLifecycleState) int {
 		return 4
 	case StateSubmitted:
 		return 5
-	case StateTPSLDispatched, StateTimeoutScheduled:
+	case StateResting:
 		return 6
-	case StateFilled, StateOutcomeResolved:
+	case StateTPSLDispatched, StateTimeoutScheduled:
 		return 7
-	case StateTimeoutChecked:
+	case StateFilled, StateOutcomeResolved:
 		return 8
-	case StateBailout, StatePositionClosed:
+	case StateTimeoutChecked:
 		return 9
-	case StateCompleted, StateAborted:
+	case StateBailout, StatePositionClosed:
 		return 10
+	case StateCompleted, StateAborted:
+		return 11
 	default:
 		return 0
 	}
@@ -295,7 +299,7 @@ func stateRank(s OrderLifecycleState) int {
 
 //nolint:cyclop // FSM event state resolution switch handles all micro-event types
 func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
-	switch evt.(type) {
+	switch e := evt.(type) {
 	case OrderIntentEvent:
 		return StateInit
 	case OrderPreFlightCompletedEvent:
@@ -306,6 +310,8 @@ func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
 		return StatePositionWatchReady
 	case OrderSubmittedEvent:
 		return StateSubmitted
+	case OrderRestingEvent:
+		return StateResting
 	case OrderTPSLDispatchedEvent:
 		return StateTPSLDispatched
 	case OrderTimeoutScheduledEvent:
@@ -315,6 +321,9 @@ func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
 	case OrderPositionClosedEvent:
 		return StatePositionClosed
 	case OrderOutcomeResolvedEvent:
+		if e.Outcome == OutcomeResting {
+			return StateResting
+		}
 		return StateOutcomeResolved
 	case OrderTimeoutPositionCheckedEvent:
 		return StateTimeoutChecked
@@ -327,6 +336,86 @@ func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
 	default:
 		return ""
 	}
+}
+
+func (a *OrderExecutionAggregate) PositionMode() shared.PositionMode {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderIntentEvent:
+			if e.PositionMode != 0 {
+				return e.PositionMode
+			}
+		case OrderSubmittedEvent:
+			if e.PositionMode != 0 {
+				return e.PositionMode
+			}
+		}
+	}
+	return shared.PositionModeHedge
+}
+
+func (a *OrderExecutionAggregate) Leverage() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderIntentEvent:
+			if e.Leverage > 0 {
+				return e.Leverage
+			}
+		case OrderPreFlightCompletedEvent:
+			if e.AdjustedLeverage > 0 {
+				return e.AdjustedLeverage
+			}
+		case OrderSubmittedEvent:
+			if e.Leverage > 0 {
+				return e.Leverage
+			}
+		}
+	}
+	return 1
+}
+
+func (a *OrderExecutionAggregate) OrderType() OrderType {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderIntentEvent:
+			if e.OrderType != "" {
+				return e.OrderType
+			}
+		case OrderSubmittedEvent:
+			if e.OrderType != "" {
+				return e.OrderType
+			}
+		}
+	}
+	return ""
+}
+
+func (a *OrderExecutionAggregate) TimeoutDuration() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderIntentEvent:
+			if e.TimeoutDuration > 0 {
+				return e.TimeoutDuration
+			}
+		case OrderSubmittedEvent:
+			if e.TimeoutDuration > 0 {
+				return e.TimeoutDuration
+			}
+		case OrderTimeoutScheduledEvent:
+			if e.Duration > 0 {
+				return e.Duration
+			}
+		}
+	}
+	return 0
 }
 
 // Apply performs pure state transitions based on incoming micro-events.
