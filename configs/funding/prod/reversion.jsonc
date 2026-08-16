@@ -72,7 +72,7 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 20,
-      "marginUSD": 1500,
+      "marginUSD": 1700,
       "maxCandidateTrade": 3
     },
     "mexc_futures": {
@@ -83,7 +83,7 @@
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
       "leverage": 10,
-      "marginUSD": 300
+      "marginUSD": 400
     },
     "bitget_futures": {
       "takeProfitPct": 1,
