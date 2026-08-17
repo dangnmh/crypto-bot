@@ -16,9 +16,9 @@ type EngineProviderGetter interface {
 	GetProvider(name string) (*infraapp.ExchangeProvider, error)
 }
 
-// PnLReportReader queries individual trade records for threshold calculation.
+// PnLReportReader queries aggregated symbol PnL metrics for loss budget obfuscation logic.
 type PnLReportReader interface {
-	GetProfitableTradeRecords(ctx context.Context, exchange string, threshold float64, since time.Time) ([]ordermanagerpersistence.ProfitableTradeRecord, error)
+	GetSymbolPnLSummaries(ctx context.Context, exchange string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error)
 }
 
 // OrderManagerDispatcher defines the order execution contract with OrderManager.

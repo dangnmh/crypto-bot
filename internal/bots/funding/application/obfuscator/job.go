@@ -11,7 +11,6 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 
-	"github.com/patrickmn/go-cache"
 	"github.com/robfig/cron/v3"
 )
 
@@ -25,7 +24,6 @@ type ObfuscatorJob struct {
 	runner    *ObfuscatorRunner
 	clock     shared.Clock
 	logger    *slog.Logger
-	processed *cache.Cache
 	cron      *cron.Cron
 	cancel    context.CancelFunc
 	mu        sync.Mutex
@@ -53,7 +51,6 @@ func NewObfuscatorJob(
 		runner:    runner,
 		clock:     clock,
 		logger:    logger.With("component", "ObfuscatorJob"),
-		processed: cache.New(24*time.Hour, 1*time.Hour),
 	}, nil
 }
 
@@ -128,58 +125,103 @@ func (j *ObfuscatorJob) Tick(ctx context.Context) error {
 	for exchange, exchCfg := range j.cfg.Exchanges {
 		j.logger.InfoContext(ctx, "ObfuscatorJob Tick",
 			slog.String("exchange", exchange),
-			slog.Bool("enabled", exchCfg.Enabled))
+			slog.Bool("enabled", exchCfg.Enabled),
+			slog.Float64("sacrifice_loss_pct", exchCfg.SacrificeLossPct),
+		)
 		if !exchCfg.Enabled {
 			continue
 		}
 
-		threshold := exchCfg.NetPnLThresholdUSDT
-		records, err := j.pnlReader.GetProfitableTradeRecords(ctx, exchange, threshold, since)
-		j.logger.InfoContext(ctx, "ObfuscatorJob GetProfitableTradeRecords", slog.Any("candidates", len(records)))
-		if err != nil {
-			j.logger.ErrorContext(ctx, "Failed to query profitable trade records", slog.String("exchange", exchange), slog.Any("error", err))
-			continue
-		}
-
-		activeCount := 0
-		for i := range records {
-			record := &records[i]
-			if exchCfg.MaxActiveOrders > 0 && activeCount >= exchCfg.MaxActiveOrders {
-				j.logger.InfoContext(ctx, "Max active obfuscation orders reached for exchange; skipping remaining trades",
-					slog.String("exchange", exchange),
-					slog.Int("max_active_orders", exchCfg.MaxActiveOrders),
-				)
-				break
-			}
-
-			if err := j.processed.Add(record.ReqID, true, cache.DefaultExpiration); err != nil {
-				continue // already obfuscated within 24h
-			}
-
-			j.logger.InfoContext(ctx, "🛡️ Profitable trade record detected; triggering obfuscation",
-				slog.String("req_id", record.ReqID),
-				slog.String("exchange", exchange),
-				slog.String("symbol", record.Symbol),
-				slog.Float64("net_profit", record.NetProfit),
-				slog.Float64("threshold", threshold),
-			)
-
-			spec, err := j.generator.GenerateSpec(ctx, exchCfg, record)
-			if err != nil {
-				j.logger.ErrorContext(ctx, "Failed to generate obfuscation spec", slog.String("req_id", record.ReqID), slog.Any("error", err))
-				j.processed.Delete(record.ReqID)
-				continue
-			}
-
-			if err := j.runner.Execute(ctx, spec); err != nil {
-				j.logger.ErrorContext(ctx, "Failed to execute obfuscation runner", slog.String("req_id", record.ReqID), slog.Any("error", err))
-				j.processed.Delete(record.ReqID)
-				continue
-			}
-
-			activeCount++
-		}
+		j.processLossBudget(ctx, exchange, exchCfg, since, now)
 	}
 
 	return nil
+}
+
+func (j *ObfuscatorJob) processLossBudget(
+	ctx context.Context,
+	exchange string,
+	exchCfg fundingconfig.ExchangeObfuscationCfg,
+	since, now time.Time,
+) {
+	summaries, err := j.pnlReader.GetSymbolPnLSummaries(ctx, exchange, since)
+	if err != nil {
+		j.logger.ErrorContext(ctx, "Failed to query symbol pnl summaries", slog.String("exchange", exchange), slog.Any("error", err))
+		return
+	}
+
+	j.logger.InfoContext(ctx, "ObfuscatorJob GetSymbolPnLSummaries", slog.Int("symbol_count", len(summaries)))
+
+	activeCount := 0
+	for i := range summaries {
+		summary := &summaries[i]
+		if summary.FundingNetProfit <= 0 {
+			continue
+		}
+
+		threshold := exchCfg.NetPnLThresholdUSDT
+		if threshold > 0 && summary.FundingNetProfit < threshold {
+			continue
+		}
+
+		targetLoss := summary.FundingNetProfit * (exchCfg.SacrificeLossPct / 100.0)
+		if exchCfg.MaxDailyLossUSD > 0 && targetLoss > exchCfg.MaxDailyLossUSD {
+			targetLoss = exchCfg.MaxDailyLossUSD
+		}
+
+		currentLoss := 0.0
+		if summary.ObfuscatorNetPnL < 0 {
+			currentLoss = -summary.ObfuscatorNetPnL
+		}
+
+		if currentLoss >= targetLoss {
+			j.logger.InfoContext(ctx, "🎯 Symbol obfuscator loss budget satisfied; skipping further orders",
+				slog.String("exchange", exchange),
+				slog.String("symbol", summary.Symbol),
+				slog.Float64("funding_profit", summary.FundingNetProfit),
+				slog.Float64("target_loss", targetLoss),
+				slog.Float64("current_loss", currentLoss),
+			)
+			continue
+		}
+
+		if exchCfg.MaxActiveOrders > 0 && activeCount >= exchCfg.MaxActiveOrders {
+			j.logger.InfoContext(ctx, "Max active obfuscation orders reached for exchange; skipping remaining symbols",
+				slog.String("exchange", exchange),
+				slog.Int("max_active_orders", exchCfg.MaxActiveOrders),
+			)
+			break
+		}
+
+		remainingLoss := targetLoss - currentLoss
+		originReqID := fmt.Sprintf("loss-budget-%s-%d", summary.Symbol, now.Unix())
+
+		j.logger.InfoContext(ctx, "🛡️ Loss budget active for symbol; triggering obfuscation order",
+			slog.String("exchange", exchange),
+			slog.String("symbol", summary.Symbol),
+			slog.Float64("funding_profit", summary.FundingNetProfit),
+			slog.Float64("target_loss", targetLoss),
+			slog.Float64("current_loss", currentLoss),
+			slog.Float64("remaining_loss", remainingLoss),
+		)
+
+		spec, err := j.generator.GenerateSpecForSymbol(ctx, exchCfg, exchange, summary.Symbol, remainingLoss, originReqID)
+		if err != nil {
+			j.logger.ErrorContext(ctx, "Failed to generate obfuscation spec for symbol",
+				slog.String("symbol", summary.Symbol),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		if err := j.runner.Execute(ctx, spec); err != nil {
+			j.logger.ErrorContext(ctx, "Failed to execute obfuscation runner",
+				slog.String("symbol", summary.Symbol),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		activeCount++
+	}
 }

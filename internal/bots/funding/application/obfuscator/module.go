@@ -52,7 +52,7 @@ func ProvideObfuscatorRunner(
 
 type noopPnLReader struct{}
 
-func (noopPnLReader) GetProfitableTradeRecords(ctx context.Context, exch string, threshold float64, since time.Time) ([]ordermanagerpersistence.ProfitableTradeRecord, error) {
+func (noopPnLReader) GetSymbolPnLSummaries(ctx context.Context, exch string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error) {
 	return nil, nil
 }
 

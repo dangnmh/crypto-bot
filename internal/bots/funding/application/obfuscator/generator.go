@@ -3,7 +3,6 @@ package obfuscator
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/trading/ordermanager"
-	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 	"crypto-bot/pkg/tradecalc"
 
 	cache "github.com/patrickmn/go-cache"
@@ -35,16 +33,18 @@ func NewOrderGenerator(engine EngineProviderGetter) (*OrderGenerator, error) {
 	}, nil
 }
 
-// GenerateSpec constructs an ObfuscationSpec from exchange obfuscation config and a trade record.
+// GenerateSpec constructs an ObfuscationSpec for a symbol based on remaining loss budget or target sizing.
 func (g *OrderGenerator) GenerateSpec(
 	ctx context.Context,
 	cfg fundingconfig.ExchangeObfuscationCfg,
-	record *ordermanagerpersistence.ProfitableTradeRecord,
+	exchangeName, symbol string,
+	targetLossUSD float64,
+	originReqID string,
 ) (*ObfuscationSpec, error) {
-	scaledNotional := min(max(record.NetProfit*(cfg.VolumeScalePct/100.0), cfg.MinUSDT), cfg.MaxUSDT)
-	leverage := max(int(math.Ceil(scaledNotional/cfg.MarginUSDT)), 1)
+	scaledNotional := min(max(targetLossUSD, cfg.MinNotionalUSD), cfg.MaxNotionalUSD)
+	leverage := cfg.Leverage
 
-	marketInfo := g.resolveMarketInfo(ctx, record.Exchange, record.Symbol, record.Side)
+	marketInfo := g.resolveMarketInfo(ctx, exchangeName, symbol, shared.SideOpenLong)
 	side := marketInfo.Side
 	refPrice := marketInfo.RefPrice
 	contractSize := marketInfo.ContractSize
@@ -54,9 +54,9 @@ func (g *OrderGenerator) GenerateSpec(
 	holdDuration := computeHoldDuration(cfg)
 
 	return &ObfuscationSpec{
-		OriginReqID:     record.ReqID,
-		Exchange:        record.Exchange,
-		Symbol:          record.Symbol,
+		OriginReqID:     originReqID,
+		Exchange:        exchangeName,
+		Symbol:          symbol,
 		Side:            side,
 		NotionalUSDT:    scaledNotional,
 		MarginUSDT:      cfg.MarginUSDT,
@@ -73,6 +73,17 @@ func (g *OrderGenerator) GenerateSpec(
 		Vol24hUSDT:      marketInfo.Vol24hUSDT,
 		FundingRate:     marketInfo.FundingRate,
 	}, nil
+}
+
+// GenerateSpecForSymbol is an alias to GenerateSpec.
+func (g *OrderGenerator) GenerateSpecForSymbol(
+	ctx context.Context,
+	cfg fundingconfig.ExchangeObfuscationCfg,
+	exchangeName, symbol string,
+	targetLossUSD float64,
+	originReqID string,
+) (*ObfuscationSpec, error) {
+	return g.GenerateSpec(ctx, cfg, exchangeName, symbol, targetLossUSD, originReqID)
 }
 
 func (g *OrderGenerator) resolveMarketInfo(ctx context.Context, exchangeName, symbol string, prevSide shared.Side) MarketInfo {

@@ -74,15 +74,15 @@ func (m *mockClock) Sleep(ctx context.Context, d time.Duration) error {
 }
 
 type mockPnLReader struct {
-	records []ordermanagerpersistence.ProfitableTradeRecord
-	err     error
+	summaries []ordermanagerpersistence.SymbolPnLSummary
+	err       error
 }
 
-func (m *mockPnLReader) GetProfitableTradeRecords(ctx context.Context, exchangeName string, threshold float64, since time.Time) ([]ordermanagerpersistence.ProfitableTradeRecord, error) {
+func (m *mockPnLReader) GetSymbolPnLSummaries(ctx context.Context, exchangeName string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return m.records, nil
+	return m.summaries, nil
 }
 
 type mockExchangeClient struct {
@@ -187,38 +187,37 @@ func TestOrderGenerator(t *testing.T) {
 	cfg := fundingconfig.ExchangeObfuscationCfg{
 		Enabled:             true,
 		NetPnLThresholdUSDT: 5.0,
-		VolumeScalePct:      50.0,
-		MinUSDT:             10.0,
-		MaxUSDT:             100.0,
+		MinNotionalUSD:      10.0,
+		MaxNotionalUSD:      100.0,
 		MarginUSDT:          5.0,
+		Leverage:            5,
 		TakeProfitPct:       1.5,
 		StopLossPct:         1.0,
 		MinHoldSec:          10,
 		MaxHoldSec:          20,
 	}
-
-	record := &ordermanagerpersistence.ProfitableTradeRecord{
-		ReqID:      "req-123",
-		Exchange:   "binance",
-		Symbol:     "ETHUSDT",
-		Side:       shared.SideOpenLong,
-		NetProfit:  30.0, // 50% = 15.0 USDT
-		MarginUSDT: 10.0,
-		Leverage:   5,
-	}
-
-	spec, err := gen.GenerateSpec(context.Background(), cfg, record)
+	spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 30.0, "req-123")
 	require.NoError(t, err)
 	assert.Equal(t, "req-123", spec.OriginReqID)
 	assert.Equal(t, "binance", spec.Exchange)
 	assert.Equal(t, "ETHUSDT", spec.Symbol)
-	assert.Equal(t, 15.0, spec.NotionalUSDT)
+	assert.Equal(t, 30.0, spec.NotionalUSDT)
 	assert.Equal(t, 5.0, spec.MarginUSDT)
+	assert.Equal(t, 5, spec.Leverage)
 	assert.Equal(t, shared.SideOpenLong, spec.Side)
 	assert.Greater(t, spec.Volume, 0.0)
 	assert.Greater(t, spec.Price, 0.0)
 	assert.Greater(t, spec.TakeProfitPrice, 0.0)
 	assert.Greater(t, spec.StopLossPrice, 0.0)
+
+	t.Run("uses configured leverage when specified", func(t *testing.T) {
+		t.Parallel()
+		levCfg := cfg
+		levCfg.Leverage = 10
+		levSpec, err := gen.GenerateSpec(context.Background(), levCfg, "binance", "ETHUSDT", 30.0, "req-lev")
+		require.NoError(t, err)
+		assert.Equal(t, 10, levSpec.Leverage)
+	})
 
 	t.Run("returns error when engine is nil", func(t *testing.T) {
 		t.Parallel()
@@ -238,7 +237,6 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 		netProfit  float64
 		minUSDT    float64
 		maxUSDT    float64
-		scalePct   float64
 		wantSide   shared.Side
 		wantNotion float64
 	}{
@@ -247,35 +245,20 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 5}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 15}},
 			prevSide:   shared.SideOpenLong,
-			netProfit:  40.0,
+			netProfit:  20.0,
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
-			scalePct:   50.0,
 			wantSide:   shared.SideOpenShort,
 			wantNotion: 20.0,
 		},
 		{
-			name:       "equal volume triggers fallback inverse side of Long to Short",
+			name:       "equal volume triggers fallback side of Short",
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 10}},
-			prevSide:   shared.SideOpenLong,
-			netProfit:  40.0,
+			netProfit:  20.0,
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
-			scalePct:   50.0,
 			wantSide:   shared.SideOpenShort,
-			wantNotion: 20.0,
-		},
-		{
-			name:       "equal volume triggers fallback inverse side of Short to Long",
-			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
-			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 10}},
-			prevSide:   shared.SideOpenShort,
-			netProfit:  40.0,
-			minUSDT:    10.0,
-			maxUSDT:    100.0,
-			scalePct:   50.0,
-			wantSide:   shared.SideOpenLong,
 			wantNotion: 20.0,
 		},
 		{
@@ -283,10 +266,9 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 5}},
 			prevSide:   shared.SideOpenLong,
-			netProfit:  2.0, // 50% = 1.0 < MinUSDT 10.0
+			netProfit:  2.0, // 2.0 < MinUSDT 10.0
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
-			scalePct:   50.0,
 			wantSide:   shared.SideOpenLong,
 			wantNotion: 10.0,
 		},
@@ -295,10 +277,9 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 5}},
 			prevSide:   shared.SideOpenLong,
-			netProfit:  1000.0, // 50% = 500.0 > MaxUSDT 100.0
+			netProfit:  1000.0, // 1000.0 > MaxUSDT 100.0
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
-			scalePct:   50.0,
 			wantSide:   shared.SideOpenLong,
 			wantNotion: 100.0,
 		},
@@ -325,24 +306,19 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 			cfg := fundingconfig.ExchangeObfuscationCfg{
 				Enabled:             true,
 				NetPnLThresholdUSDT: 5.0,
-				VolumeScalePct:      tt.scalePct,
-				MinUSDT:             tt.minUSDT,
-				MaxUSDT:             tt.maxUSDT,
+				MinNotionalUSD:      tt.minUSDT,
+				MaxNotionalUSD:      tt.maxUSDT,
 				MarginUSDT:          5.0,
+				Leverage:            1,
 				TakeProfitPct:       1.0,
 				StopLossPct:         1.0,
 				MinHoldSec:          10,
 				MaxHoldSec:          20,
-			}
-			record := &ordermanagerpersistence.ProfitableTradeRecord{
-				ReqID:     "req-scenario",
-				Exchange:  "mexc",
-				Symbol:    "BTCUSDT",
-				Side:      tt.prevSide,
-				NetProfit: tt.netProfit,
+				SacrificeLossPct:    50.0,
+				MaxDailyLossUSD:     200.0,
 			}
 
-			spec, err := gen.GenerateSpec(context.Background(), cfg, record)
+			spec, err := gen.GenerateSpec(context.Background(), cfg, "mexc", "BTCUSDT", tt.netProfit, "req-scenario")
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantSide, spec.Side)
 			assert.Equal(t, tt.wantNotion, spec.NotionalUSDT)
@@ -360,20 +336,17 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := fundingconfig.ExchangeObfuscationCfg{
-			Enabled:    true,
-			MinUSDT:    10.0,
-			MaxUSDT:    50.0,
-			MarginUSDT: 5.0,
-			MinHoldSec: 5,
-			MaxHoldSec: 5,
+			Enabled:          true,
+			MinNotionalUSD:   10.0,
+			MaxNotionalUSD:   50.0,
+			MarginUSDT:       5.0,
+			Leverage:         1,
+			MinHoldSec:       5,
+			MaxHoldSec:       5,
+			SacrificeLossPct: 50.0,
+			MaxDailyLossUSD:  200.0,
 		}
-		record := &ordermanagerpersistence.ProfitableTradeRecord{
-			ReqID:    "req-noprov",
-			Exchange: "unknown",
-			Symbol:   "BTCUSDT",
-			Side:     shared.SideOpenLong,
-		}
-		spec, err := gen.GenerateSpec(context.Background(), cfg, record)
+		spec, err := gen.GenerateSpec(context.Background(), cfg, "unknown", "BTCUSDT", 10.0, "req-noprov")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenShort, spec.Side)
 		assert.Equal(t, 10.0, spec.NotionalUSDT)
@@ -394,20 +367,17 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := fundingconfig.ExchangeObfuscationCfg{
-			Enabled:    true,
-			MinUSDT:    10.0,
-			MaxUSDT:    50.0,
-			MarginUSDT: 5.0,
-			MinHoldSec: 5,
-			MaxHoldSec: 5,
+			Enabled:          true,
+			MinNotionalUSD:   10.0,
+			MaxNotionalUSD:   50.0,
+			MarginUSDT:       5.0,
+			Leverage:         1,
+			MinHoldSec:       5,
+			MaxHoldSec:       5,
+			SacrificeLossPct: 50.0,
+			MaxDailyLossUSD:  200.0,
 		}
-		record := &ordermanagerpersistence.ProfitableTradeRecord{
-			ReqID:    "req-oberr",
-			Exchange: "binance",
-			Symbol:   "BTCUSDT",
-			Side:     shared.SideOpenLong,
-		}
-		spec, err := gen.GenerateSpec(context.Background(), cfg, record)
+		spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "BTCUSDT", 10.0, "req-oberr")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenShort, spec.Side)
 	})
@@ -426,24 +396,22 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := fundingconfig.ExchangeObfuscationCfg{
-			Enabled:    true,
-			MinUSDT:    10.0,
-			MaxUSDT:    50.0,
-			MarginUSDT: 5.0,
-			MinHoldSec: 5,
-			MaxHoldSec: 5,
+			Enabled:          true,
+			MinNotionalUSD:   10.0,
+			MaxNotionalUSD:   50.0,
+			MarginUSDT:       5.0,
+			Leverage:         1,
+			MinHoldSec:       5,
+			MaxHoldSec:       5,
+			SacrificeLossPct: 50.0,
+			MaxDailyLossUSD:  200.0,
 		}
-		record := &ordermanagerpersistence.ProfitableTradeRecord{
-			ReqID:    "req-cache",
-			Exchange: "bybit",
-			Symbol:   "BTCUSDT",
-		}
-		spec1, err := gen.GenerateSpec(context.Background(), cfg, record)
+		spec1, err := gen.GenerateSpec(context.Background(), cfg, "bybit", "BTCUSDT", 10.0, "req-cache")
 		require.NoError(t, err)
 		assert.Equal(t, 2.5, spec1.ContractSize)
 
 		// Second call uses cached contract detail
-		spec2, err := gen.GenerateSpec(context.Background(), cfg, record)
+		spec2, err := gen.GenerateSpec(context.Background(), cfg, "bybit", "BTCUSDT", 10.0, "req-cache")
 		require.NoError(t, err)
 		assert.Equal(t, 2.5, spec2.ContractSize)
 	})
@@ -480,25 +448,20 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := fundingconfig.ExchangeObfuscationCfg{
-			Enabled:        true,
-			MinUSDT:        10.0,
-			MaxUSDT:        100.0,
-			MarginUSDT:     10.0,
-			VolumeScalePct: 100.0,
-			MinHoldSec:     5,
-			MaxHoldSec:     5,
+			Enabled:          true,
+			MinNotionalUSD:   10.0,
+			MaxNotionalUSD:   100.0,
+			MarginUSDT:       10.0,
+			Leverage:         1,
+			MinHoldSec:       5,
+			MaxHoldSec:       5,
+			SacrificeLossPct: 50.0,
+			MaxDailyLossUSD:  200.0,
 		}
-		record := &ordermanagerpersistence.ProfitableTradeRecord{
-			ReqID:     "req-blur",
-			Exchange:  "toobit_futures",
-			Symbol:    "BLUR-SWAP-USDT",
-			Side:      shared.SideOpenShort,
-			NetProfit: 10.0, // notional = 10 USDT
-		}
-		spec, err := gen.GenerateSpec(context.Background(), cfg, record)
+		spec, err := gen.GenerateSpec(context.Background(), cfg, "toobit_futures", "BLUR-SWAP-USDT", 10.0, "req-blur")
 		require.NoError(t, err)
-		assert.Equal(t, 0.201, spec.Price) // ask price for Long
-		assert.Equal(t, 49.0, spec.Volume) // 10 / 0.201 = 49.75 -> 49 contracts (volScale=0)
+		assert.Equal(t, 0.199, spec.Price) // bid price for Short
+		assert.Equal(t, 50.0, spec.Volume) // 10 / 0.199 = 50.25 -> 50 contracts (volScale=0)
 		assert.Equal(t, 10.0, spec.NotionalUSDT)
 		assert.Equal(t, 500000.0, spec.Vol24hUSDT)
 		assert.Equal(t, -0.0015, spec.FundingRate)
@@ -639,13 +602,12 @@ func TestObfuscatorJob(t *testing.T) {
 	require.NoError(t, err)
 
 	pnlReader := &mockPnLReader{
-		records: []ordermanagerpersistence.ProfitableTradeRecord{
+		summaries: []ordermanagerpersistence.SymbolPnLSummary{
 			{
-				ReqID:     "trade-1",
-				Exchange:  "binance",
-				Symbol:    "BTCUSDT",
-				Side:      shared.SideOpenLong,
-				NetProfit: 50.0,
+				Exchange:         "binance",
+				Symbol:           "BTCUSDT",
+				FundingNetProfit: 50.0,
+				ObfuscatorNetPnL: 0.0,
 			},
 		},
 	}
@@ -657,13 +619,15 @@ func TestObfuscatorJob(t *testing.T) {
 		Exchanges: map[string]fundingconfig.ExchangeObfuscationCfg{
 			"binance": {
 				Enabled:             true,
+				SacrificeLossPct:    50.0,
 				NetPnLThresholdUSDT: 10.0,
-				VolumeScalePct:      100.0,
-				MinUSDT:             10.0,
-				MaxUSDT:             50.0,
+				MinNotionalUSD:      10.0,
+				MaxNotionalUSD:      50.0,
 				MarginUSDT:          10.0,
+				Leverage:            1,
 				MinHoldSec:          5,
 				MaxHoldSec:          10,
+				MaxDailyLossUSD:     200.0,
 			},
 		},
 	}
@@ -675,7 +639,8 @@ func TestObfuscatorJob(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, disp.events, 1)
 
-	// Second tick should skip already processed trade
+	// Second tick: when obfuscator loss reaches target, skip further orders
+	pnlReader.summaries[0].ObfuscatorNetPnL = -30.0 // target is 50.0 * 50% = 25.0
 	err = job.Tick(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, disp.events, 1)
@@ -721,19 +686,19 @@ func TestObfuscatorJob(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("Tick handles Runner execution error and clears cache", func(t *testing.T) {
+	t.Run("Tick handles Runner execution error", func(t *testing.T) {
 		t.Parallel()
 		errDisp := &mockDispatcher{err: errors.New("dispatch error")}
 		errRunner, err := obfuscator.NewObfuscatorRunner(errDisp, clock, logger)
 		require.NoError(t, err)
 
 		oneReader := &mockPnLReader{
-			records: []ordermanagerpersistence.ProfitableTradeRecord{
+			summaries: []ordermanagerpersistence.SymbolPnLSummary{
 				{
-					ReqID:     "trade-err-runner",
-					Exchange:  "binance",
-					Symbol:    "BTCUSDT",
-					NetProfit: 20.0,
+					Exchange:         "binance",
+					Symbol:           "BTCUSDT",
+					FundingNetProfit: 20.0,
+					ObfuscatorNetPnL: 0.0,
 				},
 			},
 		}
@@ -747,7 +712,7 @@ func TestObfuscatorJob(t *testing.T) {
 		t.Parallel()
 		disExchCfg := cfg
 		disExchCfg.Exchanges = map[string]fundingconfig.ExchangeObfuscationCfg{
-			"binance": {Enabled: false},
+			"binance": {Enabled: false, Leverage: 1, SacrificeLossPct: 50.0, MaxDailyLossUSD: 200.0},
 		}
 		disExchJob, err := obfuscator.NewObfuscatorJob(disExchCfg, pnlReader, gen, runner, clock, logger)
 		require.NoError(t, err)
@@ -760,17 +725,20 @@ func TestObfuscatorJob(t *testing.T) {
 		maxCfg := cfg
 		maxCfg.Exchanges = map[string]fundingconfig.ExchangeObfuscationCfg{
 			"binance": {
-				Enabled:         true,
-				MinUSDT:         10.0,
-				MaxUSDT:         50.0,
-				MarginUSDT:      5.0,
-				MaxActiveOrders: 1,
+				Enabled:          true,
+				SacrificeLossPct: 50.0,
+				MinNotionalUSD:   10.0,
+				MaxNotionalUSD:   50.0,
+				MarginUSDT:       5.0,
+				Leverage:         1,
+				MaxActiveOrders:  1,
+				MaxDailyLossUSD:  200.0,
 			},
 		}
 		multiReader := &mockPnLReader{
-			records: []ordermanagerpersistence.ProfitableTradeRecord{
-				{ReqID: "trade-max-1", Exchange: "binance", Symbol: "BTCUSDT", NetProfit: 20.0},
-				{ReqID: "trade-max-2", Exchange: "binance", Symbol: "BTCUSDT", NetProfit: 30.0},
+			summaries: []ordermanagerpersistence.SymbolPnLSummary{
+				{Exchange: "binance", Symbol: "BTCUSDT", FundingNetProfit: 20.0},
+				{Exchange: "binance", Symbol: "ETHUSDT", FundingNetProfit: 30.0},
 			},
 		}
 		countDisp := &mockDispatcher{}
@@ -808,8 +776,8 @@ func TestObfuscatorJob(t *testing.T) {
 				require.NoError(t, err)
 
 				tReader := &mockPnLReader{
-					records: []ordermanagerpersistence.ProfitableTradeRecord{
-						{ReqID: "trade-blackout-" + tt.name, Exchange: "binance", Symbol: "BTCUSDT", NetProfit: 25.0},
+					summaries: []ordermanagerpersistence.SymbolPnLSummary{
+						{Exchange: "binance", Symbol: "BTCUSDT", FundingNetProfit: 25.0},
 					},
 				}
 				tJob, err := obfuscator.NewObfuscatorJob(cfg, tReader, gen, tRunner, tClock, logger)
@@ -839,4 +807,170 @@ func TestIsSettlementBlackout(t *testing.T) {
 	assert.True(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 5, 0, 0, time.UTC)))
 	assert.False(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 6, 0, 0, time.UTC)))
 	assert.False(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 30, 0, 0, time.UTC)))
+}
+
+func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	clock := &mockClock{now: time.Date(2026, 8, 15, 12, 15, 0, 0, time.UTC)}
+
+	client := &mockExchangeClient{
+		ob: &shared.OrderBook{
+			Bids: []shared.OrderBookEntry{{Price: 100.0, Volume: 10.0}},
+			Asks: []shared.OrderBookEntry{{Price: 101.0, Volume: 10.0}},
+		},
+		detail: &exchange.ContractDetail{
+			Symbol:       "COW-SWAP-USDT",
+			ContractSize: 1.0,
+			PriceUnit:    0.01,
+			MinVol:       1,
+			VolScale:     2,
+			PriceScale:   2,
+		},
+		tickers: []exchange.Ticker{
+			{Symbol: "COW-SWAP-USDT", Bid1: 100.0, Ask1: 101.0, LastPrice: 100.5},
+		},
+	}
+	engine := &mockEngineProviderGetter{client: client}
+	gen, err := obfuscator.NewOrderGenerator(engine)
+	require.NoError(t, err)
+
+	baseCfg := fundingconfig.ObfuscatorConfig{
+		Enabled:        true,
+		PollInterval:   types.Duration(time.Minute),
+		LookbackWindow: types.Duration(24 * time.Hour),
+		Exchanges: map[string]fundingconfig.ExchangeObfuscationCfg{
+			"toobit_futures": {
+				Enabled:             true,
+				NetPnLThresholdUSDT: 10.0,
+				MinNotionalUSD:      10.0,
+				MaxNotionalUSD:      500.0,
+				MarginUSDT:          50.0,
+				Leverage:            1,
+				TakeProfitPct:       0.5,
+				StopLossPct:         0.5,
+				MinHoldSec:          10,
+				MaxHoldSec:          60,
+				MaxActiveOrders:     2,
+				SacrificeLossPct:    50.0, // 50% target loss
+				MaxDailyLossUSD:     200.0,
+			},
+		},
+	}
+
+	t.Run("triggers order when remaining loss budget exists", func(t *testing.T) {
+		t.Parallel()
+		disp := &mockDispatcher{}
+		runner, err := obfuscator.NewObfuscatorRunner(disp, clock, logger)
+		require.NoError(t, err)
+
+		// Funding profit = $200, Sacrifice = 50% -> Target loss = $100.
+		// Current Obfuscator PnL = -$30 (Current loss = $30 < Target $100).
+		reader := &mockPnLReader{
+			summaries: []ordermanagerpersistence.SymbolPnLSummary{
+				{
+					Exchange:         "toobit_futures",
+					Symbol:           "COW-SWAP-USDT",
+					FundingNetProfit: 200.0,
+					ObfuscatorNetPnL: -30.0,
+				},
+			},
+		}
+
+		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		require.NoError(t, err)
+
+		err = job.Tick(context.Background())
+		require.NoError(t, err)
+
+		assert.Len(t, disp.events, 1)
+		evt, ok := disp.events[0].(ordermanager.OrderIntentEvent)
+		require.True(t, ok)
+		assert.Equal(t, "COW-SWAP-USDT", evt.Symbol)
+		assert.Equal(t, "toobit_futures", evt.Exchange)
+		assert.Equal(t, ordermanager.StrategyObfuscator, evt.StrategyType)
+	})
+
+	t.Run("skips symbol when loss budget is already satisfied", func(t *testing.T) {
+		t.Parallel()
+		disp := &mockDispatcher{}
+		runner, err := obfuscator.NewObfuscatorRunner(disp, clock, logger)
+		require.NoError(t, err)
+
+		// Funding profit = $200, Sacrifice = 50% -> Target loss = $100.
+		// Current Obfuscator PnL = -$105 (Current loss = $105 >= Target $100).
+		reader := &mockPnLReader{
+			summaries: []ordermanagerpersistence.SymbolPnLSummary{
+				{
+					Exchange:         "toobit_futures",
+					Symbol:           "COW-SWAP-USDT",
+					FundingNetProfit: 200.0,
+					ObfuscatorNetPnL: -105.0,
+				},
+			},
+		}
+
+		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		require.NoError(t, err)
+
+		err = job.Tick(context.Background())
+		require.NoError(t, err)
+
+		assert.Empty(t, disp.events, "expected no obfuscation order when budget is satisfied")
+	})
+
+	t.Run("respects MaxDailyLossUSD safety cap", func(t *testing.T) {
+		t.Parallel()
+		disp := &mockDispatcher{}
+		runner, err := obfuscator.NewObfuscatorRunner(disp, clock, logger)
+		require.NoError(t, err)
+
+		// Funding profit = $1000, 50% = $500, but MaxDailyLossUSD = $200 -> Target loss capped at $200.
+		// Current Obfuscator PnL = -$205 (Current loss = $205 >= $200 capped target).
+		reader := &mockPnLReader{
+			summaries: []ordermanagerpersistence.SymbolPnLSummary{
+				{
+					Exchange:         "toobit_futures",
+					Symbol:           "COW-SWAP-USDT",
+					FundingNetProfit: 1000.0,
+					ObfuscatorNetPnL: -205.0,
+				},
+			},
+		}
+
+		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		require.NoError(t, err)
+
+		err = job.Tick(context.Background())
+		require.NoError(t, err)
+
+		assert.Empty(t, disp.events, "expected no orders since loss $205 already exceeded $200 daily cap")
+	})
+
+	t.Run("respects NetPnLThresholdUSDT for small profits", func(t *testing.T) {
+		t.Parallel()
+		disp := &mockDispatcher{}
+		runner, err := obfuscator.NewObfuscatorRunner(disp, clock, logger)
+		require.NoError(t, err)
+
+		// Funding profit = $5 < NetPnLThresholdUSDT ($10) -> Should skip
+		reader := &mockPnLReader{
+			summaries: []ordermanagerpersistence.SymbolPnLSummary{
+				{
+					Exchange:         "toobit_futures",
+					Symbol:           "COW-SWAP-USDT",
+					FundingNetProfit: 5.0,
+					ObfuscatorNetPnL: 0.0,
+				},
+			},
+		}
+
+		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		require.NoError(t, err)
+
+		err = job.Tick(context.Background())
+		require.NoError(t, err)
+
+		assert.Empty(t, disp.events, "expected no orders for profit below threshold")
+	})
 }

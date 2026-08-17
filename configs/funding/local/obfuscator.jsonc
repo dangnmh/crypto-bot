@@ -1,10 +1,10 @@
 {
   // Order Obfuscator Configuration (Local Environment)
   // Master toggle to enable or disable background obfuscation
-  "enabled": false,
+  "enabled": true,
 
   // Interval between database scans for profitable trades (e.g. 1m, 5m, 1h)
-  "pollInterval": "1m",
+  "pollInterval": "2m",
 
   // Lookback window for querying historical trades (created_at >= now - lookbackWindow)
   "lookbackWindow": "2400h",
@@ -15,20 +15,20 @@
       // Enable obfuscation for this specific exchange
       "enabled": true,
 
-      // Minimum Net PnL (USDT) of a prior trade required to trigger an obfuscation order
+      // Minimum Net Funding Profit (USDT) of a symbol required to activate loss budget obfuscation
       "netPnLThresholdUSDT": 3.0,
 
-      // % of the prior trade's Net Profit to use as the obfuscation notional volume
-      "volumeScalePct": 200.0,
+      // Minimum notional order size in USD (floor)
+      "minNotionalUSD": 100.0,
 
-      // Minimum notional order size in USDT (floor)
-      "minUSDT": 10.0,
+      // Maximum notional order size in USD (ceiling)
+      "maxNotionalUSD": 5000.0,
 
-      // Maximum notional order size in USDT (ceiling)
-      "maxUSDT": 500.0,
+      // Real USDT collateral/margin allocated per position
+      "marginUSDT": 100.0,
 
-      // Real USDT collateral/margin allocated per position (leverage = ceil(notional / margin))
-      "marginUSDT": 10.0,
+      // Leverage (e.g. 2, 5, 10). If 0 or omitted, leverage is dynamically computed as ceil(notional / margin)
+      "leverage": 5,
 
       // Target Take Profit %
       "takeProfitPct": 0.5,
@@ -43,7 +43,13 @@
       "maxHoldSec": 60,
 
       // Maximum number of active obfuscation orders to trigger per scan cycle
-      "maxActiveOrders": 1
+      "maxActiveOrders": 1,
+
+      // % of funding profit to sacrifice as intentional loss per symbol (e.g. 50.0 = 50%)
+      "sacrificeLossPct": 50.0,
+
+      // Safety cap on maximum total loss in USD per symbol per day
+      "maxDailyLossUSD": 200.0
     }
   }
 }

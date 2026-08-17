@@ -3,9 +3,15 @@ package persistence_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/trading/ordermanager"
 	"crypto-bot/internal/trading/ordermanager/persistence"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestGormTradeRepository_NilDBHandling(t *testing.T) {
@@ -30,9 +36,9 @@ func TestGormTradeRepository_NilDBHandling(t *testing.T) {
 		t.Errorf("expected no error on nil DB, got %v", err)
 	}
 
-	records, err := repo.GetProfitableTradeRecords(ctx, "MEXC", 10.0, record.Timestamp)
-	if err != nil || len(records) != 0 {
-		t.Errorf("expected empty records on nil DB, got %v, err=%v", records, err)
+	summaries, err := repo.GetSymbolPnLSummaries(ctx, "MEXC", record.Timestamp)
+	if err != nil || len(summaries) != 0 {
+		t.Errorf("expected empty summaries on nil DB, got %v, err=%v", summaries, err)
 	}
 
 	if err := repo.MarkObfuscated(ctx, "req-100", record.Timestamp); err != nil {
@@ -48,4 +54,89 @@ func TestGormTradeRepository_NilDBHandling(t *testing.T) {
 	if tRecord.Extra["source"] != "test" {
 		t.Errorf("expected Extra[source] to be test, got %v", tRecord.Extra["source"])
 	}
+}
+
+func TestGormTradeRepository_GetSymbolPnLSummaries_SQLite(t *testing.T) {
+	t.Parallel()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+
+	if err := db.AutoMigrate(&persistence.TradeRecord{}); err != nil {
+		t.Fatalf("failed to auto-migrate: %v", err)
+	}
+
+	repo := persistence.NewGormTradeRepository(db)
+	ctx := context.Background()
+	now := time.Now()
+
+	// 1. Insert funding profit trades for COW (+200 USD) and LPT (+50 USD)
+	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "f-cow-1",
+			Symbol:       "COW-SWAP-USDT",
+			Exchange:     "toobit_futures",
+			StrategyType: ordermanager.StrategyFundingReversion,
+		},
+		Side:       "LONG",
+		NetPnL:     150.0,
+		RecordedAt: now.Add(-1 * time.Hour),
+	}))
+	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "f-cow-2",
+			Symbol:       "COW-SWAP-USDT",
+			Exchange:     "toobit_futures",
+			StrategyType: ordermanager.StrategyFundingArbitrage,
+		},
+		Side:       "SHORT",
+		NetPnL:     50.0,
+		RecordedAt: now.Add(-30 * time.Minute),
+	}))
+	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "f-lpt-1",
+			Symbol:       "LPT-SWAP-USDT",
+			Exchange:     "toobit_futures",
+			StrategyType: ordermanager.StrategyFundingReversion,
+		},
+		Side:       "LONG",
+		NetPnL:     50.0,
+		RecordedAt: now.Add(-20 * time.Minute),
+	}))
+
+	// 2. Insert Obfuscator trade for COW (-30 USD)
+	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "obf-cow-1",
+			Symbol:       "COW-SWAP-USDT",
+			Exchange:     "toobit_futures",
+			StrategyType: ordermanager.StrategyObfuscator,
+		},
+		Side:       "LONG",
+		NetPnL:     -30.0,
+		RecordedAt: now.Add(-10 * time.Minute),
+	}))
+
+	// 3. Query summaries
+	since := now.Add(-24 * time.Hour)
+	summaries, err := repo.GetSymbolPnLSummaries(ctx, "toobit_futures", since)
+	require.NoError(t, err)
+	require.Len(t, summaries, 2)
+
+	summaryMap := make(map[string]persistence.SymbolPnLSummary)
+	for _, s := range summaries {
+		summaryMap[s.Symbol] = s
+	}
+
+	cowSummary, ok := summaryMap["COW-SWAP-USDT"]
+	require.True(t, ok)
+	assert.Equal(t, 200.0, cowSummary.FundingNetProfit)
+	assert.Equal(t, -30.0, cowSummary.ObfuscatorNetPnL)
+
+	lptSummary, ok := summaryMap["LPT-SWAP-USDT"]
+	require.True(t, ok)
+	assert.Equal(t, 50.0, lptSummary.FundingNetProfit)
+	assert.Equal(t, 0.0, lptSummary.ObfuscatorNetPnL)
 }

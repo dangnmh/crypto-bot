@@ -479,15 +479,17 @@ func TestLoad_WithObfuscator(t *testing.T) {
 			"toobit_futures": {
 				"enabled": true,
 				"netPnLThresholdUSDT": 5.0,
-				"volumeScalePct": 100.0,
-				"minUSDT": 10.0,
-				"maxUSDT": 500.0,
+				"minNotionalUSD": 10.0,
+				"maxNotionalUSD": 500.0,
 				"marginUSDT": 10.0,
+				"leverage": 5,
 				"takeProfitPct": 0.5,
 				"stopLossPct": 0.5,
 				"minHoldSec": 10,
 				"maxHoldSec": 60,
-				"maxActiveOrders": 1
+				"maxActiveOrders": 1,
+				"sacrificeLossPct": 50.0,
+				"maxDailyLossUSD": 200.0
 			}
 		}
 	}`
@@ -499,7 +501,10 @@ func TestLoad_WithObfuscator(t *testing.T) {
 	assert.True(t, cfg.Obfuscator.Enabled)
 	assert.Equal(t, types.Duration(1*time.Minute), cfg.Obfuscator.PollInterval)
 	assert.Equal(t, types.Duration(24*time.Hour), cfg.Obfuscator.LookbackWindow)
-	assert.Contains(t, cfg.Obfuscator.Exchanges, "toobit_futures")
+	require.Contains(t, cfg.Obfuscator.Exchanges, "toobit_futures")
+	assert.Equal(t, 5, cfg.Obfuscator.Exchanges["toobit_futures"].Leverage)
+	assert.Equal(t, 50.0, cfg.Obfuscator.Exchanges["toobit_futures"].SacrificeLossPct)
+	assert.Equal(t, 200.0, cfg.Obfuscator.Exchanges["toobit_futures"].MaxDailyLossUSD)
 }
 
 func TestLoad_WithDilution(t *testing.T) {

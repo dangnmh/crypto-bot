@@ -72,15 +72,17 @@ type ObfuscatorConfig struct {
 type ExchangeObfuscationCfg struct {
 	Enabled             bool    `json:"enabled"`
 	NetPnLThresholdUSDT float64 `json:"netPnLThresholdUSDT" validate:"gte=0"`
-	VolumeScalePct      float64 `json:"volumeScalePct" validate:"gt=0,lte=1000"`
-	MinUSDT             float64 `json:"minUSDT" validate:"gt=0"`
-	MaxUSDT             float64 `json:"maxUSDT" validate:"gt=0,gtefield=MinUSDT"`
+	MinNotionalUSD      float64 `json:"minNotionalUSD" validate:"gt=0"`
+	MaxNotionalUSD      float64 `json:"maxNotionalUSD" validate:"gt=0,gtefield=MinNotionalUSD"`
 	MarginUSDT          float64 `json:"marginUSDT" validate:"gt=0"`
+	Leverage            int     `json:"leverage" validate:"gte=1"`
 	TakeProfitPct       float64 `json:"takeProfitPct" validate:"gt=0"`
 	StopLossPct         float64 `json:"stopLossPct" validate:"gt=0"`
 	MinHoldSec          int     `json:"minHoldSec" validate:"gt=0"`
 	MaxHoldSec          int     `json:"maxHoldSec" validate:"gt=0,gtefield=MinHoldSec"`
 	MaxActiveOrders     int     `json:"maxActiveOrders" validate:"gt=0"`
+	SacrificeLossPct    float64 `json:"sacrificeLossPct" validate:"gt=0,lte=100"`
+	MaxDailyLossUSD     float64 `json:"maxDailyLossUSD" validate:"gt=0"`
 }
 
 type DilutionConfig struct {

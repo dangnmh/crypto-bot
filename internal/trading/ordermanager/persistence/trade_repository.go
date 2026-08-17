@@ -74,18 +74,13 @@ func (TradeRecord) TableName() string {
 	return "trades"
 }
 
-// ProfitableTradeRecord holds selected trade metrics required for order obfuscation logic.
-type ProfitableTradeRecord struct {
-	ReqID            string      `gorm:"column:req_id"`
-	Exchange         string      `gorm:"column:exchange"`
-	Symbol           string      `gorm:"column:symbol"`
-	NormalizedSymbol string      `gorm:"column:normalized_symbol"`
-	Side             shared.Side `gorm:"column:side"`
-	NetProfit        float64     `gorm:"column:net_pnl"`
-	MarginUSDT       float64     `gorm:"column:margin_usdt"`
-	Leverage         int         `gorm:"column:leverage"`
-	NotionalUSD      float64     `gorm:"column:notional_usd"`
-	CreatedAt        time.Time   `gorm:"column:created_at"`
+// SymbolPnLSummary holds aggregated funding profit and obfuscator PnL metrics for a given symbol on an exchange.
+type SymbolPnLSummary struct {
+	Exchange         string  `gorm:"column:exchange"`
+	Symbol           string  `gorm:"column:symbol"`
+	NormalizedSymbol string  `gorm:"column:normalized_symbol"`
+	FundingNetProfit float64 `gorm:"column:funding_net_profit"`
+	ObfuscatorNetPnL float64 `gorm:"column:obfuscator_net_pnl"`
 }
 
 // TradeRepository interface for trade persistence.
@@ -103,22 +98,24 @@ func NewGormTradeRepository(db *gorm.DB) *GormTradeRepository {
 	return &GormTradeRepository{db: db}
 }
 
-// GetProfitableTradeRecords fetches trade records with net_pnl >= threshold within the since time window that haven't been obfuscated yet.
-func (r *GormTradeRepository) GetProfitableTradeRecords(ctx context.Context, exchange string, threshold float64, since time.Time) ([]ProfitableTradeRecord, error) {
+// GetSymbolPnLSummaries aggregates funding net profit and obfuscator net PnL grouped by symbol for the exchange within the since window.
+func (r *GormTradeRepository) GetSymbolPnLSummaries(ctx context.Context, exchange string, since time.Time) ([]SymbolPnLSummary, error) {
 	if r.db == nil {
 		return nil, nil
 	}
-	var records []ProfitableTradeRecord
+	var summaries []SymbolPnLSummary
 	err := r.db.WithContext(ctx).
 		Table("trades").
-		Select("req_id, exchange, symbol, normalized_symbol, side, net_pnl, margin_usdt, leverage, notional_usd, created_at").
-		Where("exchange = ? AND net_pnl >= ? AND created_at >= ? AND (obfuscated_at IS NULL)", exchange, threshold, since).
-		Order("created_at DESC").
-		Find(&records).Error
+		Select("exchange, symbol, MAX(normalized_symbol) AS normalized_symbol, "+
+			"SUM(CASE WHEN strategy_type IN ('FUNDING_REVERSION', 'FUNDING_ARBITRAGE') AND net_pnl > 0 THEN net_pnl ELSE 0 END) AS funding_net_profit, "+
+			"SUM(CASE WHEN strategy_type = 'OBFUSCATOR' THEN net_pnl ELSE 0 END) AS obfuscator_net_pnl").
+		Where("exchange = ? AND created_at >= ?", exchange, since).
+		Group("exchange, symbol").
+		Find(&summaries).Error
 	if err != nil {
-		return nil, fmt.Errorf("fetch profitable trade records: %w", err)
+		return nil, fmt.Errorf("fetch symbol pnl summaries: %w", err)
 	}
-	return records, nil
+	return summaries, nil
 }
 
 // MarkObfuscated marks a trade record as obfuscated by setting its obfuscated_at timestamp.
