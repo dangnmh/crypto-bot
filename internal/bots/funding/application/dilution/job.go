@@ -114,7 +114,7 @@ func (j *DilutionJob) Stop(ctx context.Context) error {
 // IsSettlementBlackout returns true if the current time falls within the funding settlement blackout window (-5m to +5m).
 func IsSettlementBlackout(t time.Time) bool {
 	minute := t.Minute()
-	return minute >= 59 || minute <= 1
+	return minute >= 50 || minute <= 10
 }
 
 // Tick executes a single dilution quoting cycle across enabled exchanges.
