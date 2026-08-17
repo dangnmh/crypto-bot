@@ -56,6 +56,7 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
 
 	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
@@ -64,7 +65,7 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 	fundingPath := filepath.Join(dir, "funding.json")
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[]`), 0o600))
 
-	fullCfg, err := config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
+	fullCfg, err := config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"), filepath.Join(dir, "dilution.jsonc"))
 	require.NoError(t, err)
 	require.NotNil(t, fullCfg)
 
@@ -126,6 +127,7 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
 
 	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
@@ -134,7 +136,7 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 	fundingPath := filepath.Join(dir, "funding.json")
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[]`), 0o600))
 
-	fullCfg, err := config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
+	fullCfg, err := config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"), filepath.Join(dir, "dilution.jsonc"))
 	require.NoError(t, err)
 
 	assert.Greater(t, int64(fullCfg.Reversion.Sync.Ticker), int64(0), "Ticker should be defaulted")
@@ -226,6 +228,7 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
 
 	cfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
@@ -234,7 +237,7 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 	fundingPath := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(fundingPath, []byte(fundingContent), 0o600))
 
-	fullCfg, err := config.Load(cfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
+	fullCfg, err := config.Load(cfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"), filepath.Join(dir, "dilution.jsonc"))
 	require.NoError(t, err)
 	require.Len(t, fullCfg.Symbols, 1)
 
@@ -272,6 +275,7 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`[]`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
 
 	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
@@ -279,7 +283,7 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 	fundingPath := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[]`), 0o600))
 
-	_, err = config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
+	_, err = config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"), filepath.Join(dir, "dilution.jsonc"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse reversion config")
 }
@@ -348,6 +352,7 @@ func TestLoadSystemConfig_InvalidTradeSide(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(reversionContent), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
 
 	sysCfg, err := config.LoadSystemConfig(path, exchPath)
 	require.NoError(t, err)
@@ -355,7 +360,7 @@ func TestLoadSystemConfig_InvalidTradeSide(t *testing.T) {
 	fundingPath := filepath.Join(dir, "funding.json")
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[]`), 0o600))
 
-	_, err = config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"))
+	_, err = config.Load(sysCfg, fundingPath, filepath.Join(dir, "blacklist.jsonc"), filepath.Join(dir, "reversion.jsonc"), filepath.Join(dir, "obfuscator.jsonc"), filepath.Join(dir, "dilution.jsonc"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tradeSide")
 }

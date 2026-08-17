@@ -21,6 +21,7 @@ FUNDING_BOT     := ./configs/funding/local/funding.jsonc
 FUNDING_BLK     := ./configs/funding/local/blacklist.jsonc
 FUNDING_REV     := ./configs/funding/local/reversion.jsonc
 FUNDING_OBF     := ./configs/funding/local/obfuscator.jsonc
+FUNDING_DIL     := ./configs/funding/local/dilution.jsonc
 
 # Registry Configuration
 REGISTRY        ?= ghcr.io/dangnmh
@@ -66,7 +67,7 @@ docker-push: docker-build ## Build and Push the Docker image to registry
 # ── Run ───────────────────────────────────────────────────────────────
 .PHONY: run/funding
 run/funding: ## Run the funding bot
-	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -bot $(FUNDING_BOT) -blacklist $(FUNDING_BLK) -reversion $(FUNDING_REV) -obfuscator $(FUNDING_OBF)
+	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -bot $(FUNDING_BOT) -blacklist $(FUNDING_BLK) -reversion $(FUNDING_REV) -obfuscator $(FUNDING_OBF) -dilution $(FUNDING_DIL)
 
 .PHONY: scan/funding
 scan/funding: ## Scan funding rates across supported futures exchanges. Usage: make scan/funding [exchanges=binance,bybit] [minFundingRate=0.1] [minVol=1000000]
@@ -289,6 +290,7 @@ apply-configs: ## Hot-reload configurations to the running cluster without rebui
 		--from-file=configs/funding/prod/blacklist.jsonc \
 		--from-file=configs/funding/prod/reversion.jsonc \
 		--from-file=configs/funding/prod/obfuscator.jsonc \
+		--from-file=configs/funding/prod/dilution.jsonc \
 		-n default -o yaml --dry-run=client | kubectl apply -f -
 	kubectl rollout restart deployment/crypto-bot -n default
 

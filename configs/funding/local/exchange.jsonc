@@ -13,7 +13,7 @@
     "bybit": {
       "accountType": "unified",
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.bybit.com",
         "websocket": {
           "publicURL": "wss://stream.bybit.com/v5/public/linear",
@@ -24,7 +24,7 @@
     },
     "binance": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://fapi.binance.com",
         "websocket": {
           "wsURL": "wss://fstream.binance.com/ws",
@@ -37,7 +37,7 @@
     },
     "kucoin": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api-futures.kucoin.com",
         "websocket": {
           "publicURL": "wss://ws-api-futures.kucoin.com",
@@ -48,7 +48,7 @@
     },
     "okx": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://openapi.okx.com",
         "websocket": {
           "publicURL": "wss://ws.okx.com:8443/ws/v5/public",
@@ -59,7 +59,7 @@
     },
     "gate": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.gateio.ws/api/v4",
         "websocket": {
           "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
@@ -69,7 +69,7 @@
     },
     "deepcoin": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.deepcoin.com",
         "websocket": {
           "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
@@ -90,7 +90,7 @@
     },
     "bitget": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.bitget.com",
         "websocket": {
           "publicURL": "wss://ws.bitget.com/v2/ws/public",
@@ -121,7 +121,7 @@
     },
     "bitmart": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api-cloud-v2.bitmart.com",
         "websocket": {
           "publicURL": "wss://openapi-ws-v2.bitmart.com/api?protocol=1.1",
@@ -132,7 +132,7 @@
     },
     "weex": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api-contract.weex.com",
         "websocket": {
           "publicURL": "wss://ws-contract.weex.com/v3/ws/public",
@@ -143,7 +143,7 @@
     },
     "bitunix": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://fapi.bitunix.com",
         "websocket": {
           "publicURL": "wss://fapi.bitunix.com/public/",
@@ -154,7 +154,7 @@
     },
     "xt": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://fapi.xt.com",
         "websocket": {
           "publicURL": "wss://fstream.xt.com/ws/market",
@@ -165,7 +165,7 @@
     },
     "orangex": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.orangex.com/api/v1",
         "websocket": {
           "publicURL": "wss://api.orangex.com/ws/api/v1",
@@ -176,7 +176,7 @@
     },
     "aster": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://fapi.asterdex.com",
         "websocket": {
           "publicURL": "wss://fstream.asterdex.com/ws",
@@ -187,7 +187,7 @@
     },
     "pionex": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.pionex.com",
         "websocket": {
           "publicURL": "wss://ws.pionex.com/wsPub",
@@ -198,7 +198,7 @@
     },
     "hotcoin": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api-ct.hotcoin.fit",
         "websocket": {
           "publicURL": "wss://wss-ct.hotcoin.fit/",

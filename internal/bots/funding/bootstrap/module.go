@@ -36,6 +36,7 @@ type ConfigPaths struct {
 	Blacklist  string
 	Reversion  string
 	Obfuscator string
+	Dilution   string
 }
 
 // Module wires the funding bot dependency graph and lifecycle.
@@ -92,7 +93,7 @@ func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logge
 }
 
 func provideFundingConfig(paths ConfigPaths, cfg *fundingconfig.SystemConfig) (*fundingconfig.Config, error) {
-	return fundingconfig.Load(cfg, paths.Bot, paths.Blacklist, paths.Reversion, paths.Obfuscator)
+	return fundingconfig.Load(cfg, paths.Bot, paths.Blacklist, paths.Reversion, paths.Obfuscator, paths.Dilution)
 }
 
 func provideNotifierConfig(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config) notifier.Config {

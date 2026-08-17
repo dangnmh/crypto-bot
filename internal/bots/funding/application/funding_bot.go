@@ -123,14 +123,12 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 		}
 
 		stores, hasStore := s.stores[name]
-		if !hasStore {
-			continue
-		}
-
-		// 2. Start stores + wait for initial data.
-		stores.Start(ctx)
-		if err := stores.WaitReady(ctx); err != nil {
-			return err
+		if hasStore {
+			// 2. Start stores + wait for initial data.
+			stores.Start(ctx)
+			if err := stores.WaitReady(ctx); err != nil {
+				return err
+			}
 		}
 
 		// 3. Connect WS + subscribe personal channels.
@@ -141,7 +139,9 @@ func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 		}
 
 		// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
-		stores.WireWS(prov.WSPool, prov.Adapter)
+		if hasStore {
+			stores.WireWS(prov.WSPool, prov.Adapter)
+		}
 		prov.WirePersonalWS(ctx, s.log)
 
 		if prov.Adapter != nil {

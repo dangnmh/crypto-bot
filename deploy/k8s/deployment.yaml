@@ -43,6 +43,8 @@ spec:
             - "/app/configs/funding/prod/reversion.jsonc"
             - "-obfuscator"
             - "/app/configs/funding/prod/obfuscator.jsonc"
+            - "-dilution"
+            - "/app/configs/funding/prod/dilution.jsonc"
           envFrom:
             - secretRef:
                 name: crypto-bot-vault-secrets

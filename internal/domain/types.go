@@ -50,6 +50,16 @@ func (s Side) IsLong() bool {
 	return s == SideOpenLong || s == SideCloseLong
 }
 
+// IsClose returns true if the side is a position closing order (SideCloseLong or SideCloseShort).
+func (s Side) IsClose() bool {
+	return s == SideCloseLong || s == SideCloseShort
+}
+
+// IsOpen returns true if the side is a position opening order (SideOpenLong or SideOpenShort).
+func (s Side) IsOpen() bool {
+	return s == SideOpenLong || s == SideOpenShort
+}
+
 // Opposite returns the inverse side (e.g., LONG -> SHORT).
 func (s Side) Opposite() Side {
 	switch s {

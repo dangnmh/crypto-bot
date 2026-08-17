@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"crypto-bot/internal/bots/funding/application/dilution"
 	"crypto-bot/internal/bots/funding/application/obfuscator"
 	"crypto-bot/internal/bots/funding/application/reversion"
 	"crypto-bot/internal/bots/funding/application/strategy"
@@ -20,6 +21,7 @@ import (
 var Module = fx.Options(
 	reversion.Module,
 	obfuscator.Module,
+	dilution.Module,
 	fx.Provide(
 		ProvidePriceTrackJob,
 		ProvideStatsReportJob,
@@ -63,9 +65,10 @@ func ProvideFundingBot(
 	statsReporter *StatsReportJob,
 	priceTracker *PriceTrackJob,
 	obfuscatorJob *obfuscator.ObfuscatorJob,
+	dilutionJob *dilution.DilutionJob,
 	log *slog.Logger,
 ) infraapp.Bot {
-	bgStrats := []strategy.BackgroundStrategy{reversionStrategy, statsReporter, priceTracker, obfuscatorJob}
+	bgStrats := []strategy.BackgroundStrategy{reversionStrategy, statsReporter, priceTracker, obfuscatorJob, dilutionJob}
 	return NewFundingBot(
 		cfg, sysCfg, engine, n,
 		bgStrats,

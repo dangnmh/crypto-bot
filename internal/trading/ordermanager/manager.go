@@ -75,8 +75,6 @@ func (m *OrderManager) invokeOnCompletedCallbacks(ctx context.Context, evt Order
 	}
 }
 
-const FlowIDOrderManager = "ORDER_MANAGER"
-
 // NewOrderManager initializes a new OrderManager with engine runtime exchange resolution, eventbus, trade repository, and notifier.
 func NewOrderManager(
 	ctx context.Context,
@@ -119,37 +117,20 @@ func NewOrderManager(
 	return m, nil
 }
 
-// Init registers all OrderManager micro-step topic handlers on the event bus, subscribes personal WS channels, and wires personal position stream callbacks.
+// Init registers all OrderManager micro-step topic handlers on the event bus and wires personal position stream callbacks.
 func (m *OrderManager) Init(ctx context.Context) error {
 	InitGlobalSubscriptions(ctx, m)
 
-	for name, prov := range m.engine.Providers {
+	for _, prov := range m.engine.Providers {
 		if prov != nil {
 			prov.WirePersonalWS(ctx, m.log)
 		}
-
-		go func(p *infraapp.ExchangeProvider, exName string) {
-			subCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			if p != nil && p.Adapter != nil {
-				if err := p.Adapter.SubscribePersonal(subCtx, FlowIDOrderManager); err != nil {
-					m.log.DebugContext(subCtx, "Deferred personal private WS channel subscription during OrderManager init", slog.String("exchange", exName), slog.Any("error", err))
-				}
-			}
-		}(prov, name)
 	}
 	return nil
 }
 
-// Shutdown unsubscribes personal private WS channels registered by OrderManager upon application shutdown signal.
+// Shutdown gracefully shuts down OrderManager resources upon application shutdown signal.
 func (m *OrderManager) Shutdown(ctx context.Context) error {
-	for name, prov := range m.engine.Providers {
-		if prov != nil && prov.Adapter != nil {
-			if err := prov.Adapter.UnsubscribePersonal(ctx, FlowIDOrderManager); err != nil {
-				m.log.WarnContext(ctx, "Failed to unsubscribe personal channel via SubManager during OrderManager shutdown", slog.String("exchange", name), slog.Any("error", err))
-			}
-		}
-	}
 	return nil
 }
 
@@ -205,13 +186,17 @@ func (m *OrderManager) resolveAdapter(exchangeName string) (infraws.ExchangeMana
 
 // SubscribePositionWatch subscribes to personal private WS channel via Adapter using reference counting.
 func (m *OrderManager) SubscribePositionWatch(ctx context.Context, exchangeName, strategyType, reqID string) {
-	adapter, err := m.resolveAdapter(exchangeName)
-	if err != nil {
+	prov, err := m.engine.GetProvider(exchangeName)
+	if err != nil || prov == nil {
 		return
 	}
+	prov.EnsurePersonalWS(ctx, m.log)
+
 	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
-	if err := adapter.SubscribePersonal(ctx, flowID); err != nil {
-		m.log.WarnContext(ctx, "Failed to subscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.Any("error", err))
+	if prov.Adapter != nil {
+		if err := prov.Adapter.SubscribePersonal(ctx, flowID); err != nil {
+			m.log.WarnContext(ctx, "Failed to subscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.Any("error", err))
+		}
 	}
 }
 
@@ -259,16 +244,6 @@ func (m *OrderManager) publishEvent(ctx context.Context, topic string, payload a
 		return nil
 	}
 	m.log.InfoContext(ctx, "OrderManager: Publishing Watermill micro-event", slog.String("topic", topic), slog.Any("payload", payload))
-	if evt, ok := payload.(OrderEvent); ok {
-		if evt.ShouldNotify() && m.notifier != nil {
-			msg := evt.GetNotifyMessage()
-			if msg != "" {
-				if err := m.notifier.SendRawMsg(ctx, msg); err != nil {
-					m.log.ErrorContext(ctx, "Failed to send event notification", slog.String("topic", topic), slog.Any("error", err))
-				}
-			}
-		}
-	}
 	return m.bus.Publish(topic, payload)
 }
 
@@ -304,6 +279,114 @@ func (m *OrderManager) GetExchangeOrderIDByReqID(reqID string) (string, bool) {
 	}
 	exOID, ok := val.(string)
 	return exOID, ok
+}
+
+// HasActiveOrder checks if an order with reqID is currently in active (non-terminal) state.
+func (m *OrderManager) HasActiveOrder(reqID string) bool {
+	if val, found := m.aggregates.Get(reqID); found {
+		if agg, ok := val.(*OrderExecutionAggregate); ok {
+			state := agg.State()
+			return state != StateCompleted && state != StateAborted && state != StateCanceled
+		}
+	}
+	return false
+}
+
+// GetActiveOrders returns all active (non-terminal) order aggregates for a given exchange and symbol.
+func (m *OrderManager) GetActiveOrders(exchangeName, symbol string) []*OrderExecutionAggregate {
+	var active []*OrderExecutionAggregate
+	items := m.aggregates.Items()
+	for _, item := range items {
+		if agg, ok := item.Object.(*OrderExecutionAggregate); ok {
+			if (exchangeName == "" || agg.Exchange() == exchangeName) &&
+				(symbol == "" || agg.Symbol() == symbol) {
+				state := agg.State()
+				if state != StateCompleted && state != StateAborted && state != StateCanceled {
+					active = append(active, agg)
+				}
+			}
+		}
+	}
+	return active
+}
+
+// CancelOrder cancels an active order on the exchange and updates OrderManager state.
+func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
+	m.CancelTimeoutGuard(reqID)
+	agg := m.GetAggregate(reqID)
+	if agg == nil {
+		return fmt.Errorf("order aggregate not found for reqID: %s", reqID)
+	}
+
+	exchangeName := agg.Exchange()
+	symbol := agg.Symbol()
+	orderID := agg.OrderID()
+	clientOrderID := agg.ClientOrderID()
+
+	prov, err := m.engine.GetProvider(exchangeName)
+	if err != nil || prov == nil || prov.Client == nil {
+		return fmt.Errorf("failed to resolve exchange provider for %s: %w", exchangeName, err)
+	}
+
+	if executor, ok := prov.Client.(exchange.OrderExecutor); ok {
+		if orderID != "" {
+			if err := executor.CancelOrder(ctx, symbol, orderID); err != nil {
+				m.log.WarnContext(ctx, "Failed to cancel order by exchange order ID",
+					slog.String("req_id", reqID), slog.String("order_id", orderID), slog.Any("error", err))
+			}
+		}
+	}
+
+	clock, err := m.resolveClock(exchangeName)
+	if err != nil {
+		return fmt.Errorf("resolve clock failed: %w", err)
+	}
+	now := clock.Now()
+
+	cancelEvt := OrderCanceledEvent{
+		BaseExecutionEvent: BaseExecutionEvent{
+			ReqID:         reqID,
+			ClientOrderID: clientOrderID,
+			Symbol:        symbol,
+			Exchange:      exchangeName,
+			MarketType:    agg.MarketType(),
+			StrategyType:  agg.StrategyType(),
+			PreTopic:      TopicOrderSubmitted,
+			NextTopic:     TopicOrderCanceled,
+			Timestamp:     now,
+		},
+		OrderID:    orderID,
+		Reason:     "manual_cancel",
+		CanceledAt: now,
+	}
+
+	if err := agg.Record(cancelEvt); err != nil {
+		m.log.ErrorContext(ctx, "Failed to record OrderCanceledEvent to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
+	}
+
+	return m.publishEvent(ctx, TopicOrderCanceled, cancelEvt)
+}
+
+// CancelOpenOrders cancels all open resting orders for a symbol on an exchange and cleans up active timers.
+func (m *OrderManager) CancelOpenOrders(ctx context.Context, exchangeName, symbol string) error {
+	prov, err := m.engine.GetProvider(exchangeName)
+	if err != nil || prov == nil || prov.Client == nil {
+		return fmt.Errorf("failed to resolve exchange provider for %s: %w", exchangeName, err)
+	}
+
+	if executor, ok := prov.Client.(exchange.OrderExecutor); ok {
+		if err := executor.CancelAllOpenOrders(ctx, symbol); err != nil {
+			m.log.WarnContext(ctx, "Failed to cancel all open orders on exchange",
+				slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
+		}
+	}
+
+	activeOrders := m.GetActiveOrders(exchangeName, symbol)
+	for _, agg := range activeOrders {
+		m.CancelTimeoutGuard(agg.ReqID())
+	}
+
+	return nil
 }
 
 func (m *OrderManager) configureExchangeLeverage(ctx context.Context, client ExchangeClient, evt OrderIntentEvent) (int, error) {
@@ -409,8 +492,8 @@ func (m *OrderManager) HandleFireTiming(ctx context.Context, evt OrderPreFlightC
 // HandlePositionWatchReady subscribes to real-time personal position stream updates BEFORE order execution.
 func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFireWindowReachedEvent) (OrderPositionWatchReadyEvent, error) {
 	timeout := 30 * time.Minute
-	if evt.TimeoutDuration > 0 && evt.TimeoutDuration*2 > timeout {
-		timeout = evt.TimeoutDuration * 2
+	if evt.PositionCloseTimeout > 0 && evt.PositionCloseTimeout*2 > timeout {
+		timeout = evt.PositionCloseTimeout * 2
 	}
 	m.log.InfoContext(ctx, "[Micro-Step 3] HandlePositionWatchReady",
 		slog.String("req_id", evt.GetReqID()),
@@ -419,19 +502,21 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFi
 		slog.String("exchange", evt.Exchange),
 		slog.Duration("timeout", timeout))
 
-	m.SubscribePositionWatch(ctx, evt.Exchange, string(evt.GetStrategyType()), evt.GetReqID())
-
 	clock, err := m.resolveClock(evt.Exchange)
 	if err != nil {
 		return OrderPositionWatchReadyEvent{}, fmt.Errorf("position watch failed to resolve clock: %w", err)
 	}
-	posWatcher, _ := m.resolvePositionWatcher(evt.Exchange)
 
-	if posWatcher != nil {
-		posWatcher.OnPositionUpdate(ctx, evt.Symbol, timeout, func(pos exchange.PersonalPositionUpdate) {
-			m.log.Debug("[Micro-Step 3] HandlePositionUpdate OnPositionUpdate", slog.Any("pos", pos))
-			m.HandlePositionUpdate(ctx, evt.GetReqID(), pos)
-		})
+	if !evt.Side.IsClose() {
+		m.SubscribePositionWatch(ctx, evt.Exchange, string(evt.GetStrategyType()), evt.GetReqID())
+
+		posWatcher, _ := m.resolvePositionWatcher(evt.Exchange)
+		if posWatcher != nil {
+			posWatcher.OnPositionUpdate(ctx, evt.Symbol, timeout, func(pos exchange.PersonalPositionUpdate) {
+				m.log.Debug("[Micro-Step 3] HandlePositionUpdate OnPositionUpdate", slog.Any("pos", pos))
+				m.HandlePositionUpdate(ctx, evt.GetReqID(), pos)
+			})
+		}
 	}
 
 	evt.PreTopic = TopicOrderFireWindowReached
@@ -447,7 +532,7 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFi
 // HandlePositionUpdate processes real-time position updates and dispatches filled/closed position events.
 func (m *OrderManager) HandlePositionUpdate(ctx context.Context, reqID string, pos exchange.PersonalPositionUpdate) {
 	agg := m.GetAggregate(reqID)
-	if agg == nil {
+	if agg == nil || agg.State() == StateCompleted || agg.State() == StateAborted || agg.State() == StateCanceled {
 		return
 	}
 	clock, err := m.resolveClock(agg.Exchange())
@@ -475,6 +560,9 @@ func (m *OrderManager) handlePositionFilled(
 	pos exchange.PersonalPositionUpdate,
 	contractSize, holdVolContract, holdVolCoin float64,
 ) {
+	if agg.State() == StateCompleted || agg.State() == StateAborted || agg.State() == StateCanceled {
+		return
+	}
 	fillPrice := pos.OpenAvgPrice
 	if fillPrice == 0 {
 		fillPrice = pos.HoldAvgPrice
@@ -511,6 +599,9 @@ func (m *OrderManager) handlePositionClosed(
 	pos exchange.PersonalPositionUpdate,
 	contractSize float64,
 ) {
+	if agg.State() == StateCompleted || agg.State() == StateAborted || agg.State() == StateCanceled {
+		return
+	}
 	closePrice := pos.CloseAvgPrice
 	if closePrice == 0 {
 		closePrice = pos.HoldAvgPrice
@@ -563,6 +654,9 @@ func shouldIgnoreZeroVolumeUpdate(
 	pos exchange.PersonalPositionUpdate,
 	closePrice, closeVolContract, closeVolCoin float64,
 ) bool {
+	if agg.Side().IsClose() {
+		return false
+	}
 	return !agg.HasFilled() &&
 		pos.CloseProfitLoss == 0 &&
 		pos.OpenAvgPrice == 0 &&
@@ -697,28 +791,92 @@ func (m *OrderManager) HandleTPSLSubmission(ctx context.Context, evt OrderSubmit
 	return m.HandleTPSLContingency(ctx, evt, evt.OrderIntentEvent)
 }
 
-// HandleScheduleTimeout schedules post-fill hold timeout watchdog timer upon receiving OrderSubmittedEvent.
-func (m *OrderManager) HandleScheduleTimeout(ctx context.Context, evt OrderSubmittedEvent) error {
-	dur := evt.TimeoutDuration
+// HandleScheduleUnfilledCancelTimeout schedules pre-fill resting cancel timeout (for maker orders) or immediate position close timeout (for taker orders).
+func (m *OrderManager) HandleScheduleUnfilledCancelTimeout(ctx context.Context, evt OrderSubmittedEvent) error {
+	// 1. For Maker / PostOnly / Limit orders: schedule pre-fill unfilled cancel timeout if configured.
+	if evt.OrderType.IsMaker() {
+		unfilledTimeout := evt.UnfilledCancelTimeout
+		if unfilledTimeout <= 0 {
+			m.log.InfoContext(ctx, "Skipping pre-fill timeout schedule for resting maker order (no UnfilledCancelTimeout set)",
+				slog.String("req_id", evt.GetReqID()))
+			return nil
+		}
+
+		m.log.InfoContext(ctx, "Starting pre-fill resting order timeout watchdog",
+			slog.String("req_id", evt.GetReqID()), slog.Duration("unfilled_cancel_timeout", unfilledTimeout))
+		return m.scheduleUnfilledCancelTimeoutInternal(ctx, evt.GetReqID(), evt.OrderID, evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), unfilledTimeout)
+	}
+
+	// 2. For Taker / IOC / Market orders: schedule immediate post-submit position close timeout.
+	dur := evt.PositionCloseTimeout
 	if dur <= 0 {
 		return nil
 	}
 
-	// For Maker / PostOnly / Limit orders, do not start hold timer while resting on book.
-	// The hold timer will be started when OrderFilledEvent is received.
-	if evt.OrderType == OrderTypePostOnly || evt.OrderType == OrderTypeLimit {
-		m.log.InfoContext(ctx, "Skipping pre-fill timeout schedule for resting maker order", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
-		return nil
-	}
-
-	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleTimeout", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
-	return m.scheduleTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderSubmitted)
+	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleUnfilledCancelTimeout", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+	return m.schedulePositionCloseTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderSubmitted)
 }
 
-// HandleScheduleFillTimeout schedules hold timeout watchdog timer upon position fill.
-func (m *OrderManager) HandleScheduleFillTimeout(ctx context.Context, evt OrderFilledEvent) error {
+func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context, reqID, orderID, symbol, exchangeName string, st StrategyType, mt MarketType, dur time.Duration) error {
+	clock, err := m.resolveClock(exchangeName)
+	if err != nil {
+		return fmt.Errorf("schedule unfilled cancel timeout failed to resolve clock: %w", err)
+	}
+
+	timer := time.AfterFunc(dur, func() {
+		m.timers.Delete(reqID)
+		agg := m.GetAggregate(reqID)
+		if agg == nil {
+			return
+		}
+
+		state := agg.State()
+		// Only auto-cancel if order is still resting/submitted (not filled, completed, or aborted)
+		if state == StateSubmitted || state == StateResting || state == StateInit || state == StatePreFlightDone || state == StateFireWindow || state == StatePositionWatchReady {
+			m.log.WarnContext(ctx, "⏱️ Resting order timeout expired without fill; auto-canceling on exchange",
+				slog.String("req_id", reqID),
+				slog.String("order_id", orderID),
+				slog.String("symbol", symbol),
+				slog.Duration("duration", dur),
+			)
+
+			prov, err := m.engine.GetProvider(exchangeName)
+			if err == nil && prov != nil && prov.Client != nil && orderID != "" {
+				if executor, ok := prov.Client.(exchange.OrderExecutor); ok {
+					_ = executor.CancelOrder(ctx, symbol, orderID)
+				}
+			}
+
+			resolvedEvt := OrderOutcomeResolvedEvent{
+				BaseExecutionEvent: BaseExecutionEvent{
+					ReqID:        reqID,
+					Symbol:       symbol,
+					Exchange:     exchangeName,
+					MarketType:   mt,
+					StrategyType: st,
+					PreTopic:     TopicOrderSubmitted,
+					NextTopic:    TopicOrderOutcomeResolved,
+					Timestamp:    clock.Now(),
+				},
+				Outcome:   OutcomeCanceledNoFill,
+				Reason:    "resting_timeout_expired",
+				FilledVol: 0,
+			}
+			if err := agg.Record(resolvedEvt); err != nil {
+				m.log.ErrorContext(ctx, "Failed to record resting timeout outcome to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
+			}
+			_ = m.publishEvent(ctx, TopicOrderOutcomeResolved, resolvedEvt)
+		}
+	})
+
+	m.timers.Store(reqID, timer)
+	return nil
+}
+
+// HandleSchedulePositionCloseTimeout schedules hold timeout watchdog timer upon position fill.
+func (m *OrderManager) HandleSchedulePositionCloseTimeout(ctx context.Context, evt OrderFilledEvent) error {
 	agg := m.GetAggregate(evt.GetReqID())
-	dur := agg.TimeoutDuration()
+	dur := agg.PositionCloseTimeout()
 	if dur <= 0 {
 		return nil
 	}
@@ -729,13 +887,13 @@ func (m *OrderManager) HandleScheduleFillTimeout(ctx context.Context, evt OrderF
 	}
 
 	m.log.InfoContext(ctx, "Starting post-fill hold timeout watchdog", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
-	return m.scheduleTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderFilled)
+	return m.schedulePositionCloseTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderFilled)
 }
 
-func (m *OrderManager) scheduleTimeoutInternal(ctx context.Context, reqID, clientOrderID, symbol, exchangeName string, st StrategyType, mt MarketType, dur time.Duration, preTopic string) error {
+func (m *OrderManager) schedulePositionCloseTimeoutInternal(ctx context.Context, reqID, clientOrderID, symbol, exchangeName string, st StrategyType, mt MarketType, dur time.Duration, preTopic string) error {
 	clock, err := m.resolveClock(exchangeName)
 	if err != nil {
-		return fmt.Errorf("schedule timeout failed to resolve clock: %w", err)
+		return fmt.Errorf("schedule position close timeout failed to resolve clock: %w", err)
 	}
 	agg := m.GetAggregate(reqID)
 

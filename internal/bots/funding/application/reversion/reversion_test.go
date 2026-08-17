@@ -1120,6 +1120,7 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 
 	t.Run("UseOrderManager = true dispatches ordermanager.TopicOrderIntent", func(t *testing.T) {
 		t.Parallel()
+		ctrl := gomock.NewController(t)
 		bus := eventbus.New(slog.Default())
 		t.Cleanup(func() { _ = bus.Close() })
 
@@ -1143,8 +1144,13 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 			Candidate: cand,
 		}
 
+		mockPriceStore := mocks.NewMockPriceReader(ctrl)
+		mockPriceStore.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 100, BestAsk: 101, LastPrice: 100.5}, nil).AnyTimes()
+
 		stores := map[string]strategy.FundingStoreSet{
-			"mexc": fakeFundingStoreSet{},
+			"mexc": fakeFundingStoreSet{
+				price: mockPriceStore,
+			},
 		}
 		require.NoError(t, strategyInst.Start(context.Background(), stores))
 
@@ -1201,8 +1207,13 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 			Candidate: cand,
 		}
 
+		mockPriceStore2 := mocks.NewMockPriceReader(ctrl)
+		mockPriceStore2.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 100, BestAsk: 101, LastPrice: 100.5}, nil).AnyTimes()
+
 		stores := map[string]strategy.FundingStoreSet{
-			"mexc": fakeFundingStoreSet{},
+			"mexc": fakeFundingStoreSet{
+				price: mockPriceStore2,
+			},
 		}
 		require.NoError(t, strategyInst.Start(context.Background(), stores))
 

@@ -226,7 +226,7 @@ func subscribeTopicWithReport[T ReversionEvent](
 		symbol := evt.GetSymbol()
 		traceCtx := observability.WithRequestIDValue(msgCtx, reqID)
 		clonedRunner := runner.clone(exch, reqID, symbol)
-		clonedRunner.recordEventState(topic, evt)
+		clonedRunner.recordEventState(evt)
 		return handler(traceCtx, clonedRunner, evt, msg)
 	})
 }

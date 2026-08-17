@@ -850,14 +850,14 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 			StrategyType:  ordermanager.StrategyDilution,
 			Timestamp:     clock.Now(),
 		},
-		Side:            shared.SideOpenLong,
-		OrderType:       ordermanager.OrderTypePostOnly,
-		Price:           50000.0,
-		Volume:          1.0,
-		ContractSize:    1.0,
-		PositionMode:    shared.PositionModeHedge,
-		Leverage:        20,
-		TimeoutDuration: 500 * time.Millisecond,
+		Side:                 shared.SideOpenLong,
+		OrderType:            ordermanager.OrderTypePostOnly,
+		Price:                50000.0,
+		Volume:               1.0,
+		ContractSize:         1.0,
+		PositionMode:         shared.PositionModeHedge,
+		Leverage:             20,
+		PositionCloseTimeout: 500 * time.Millisecond,
 	}
 
 	if err := mgr.Dispatch(ctx, intent); err != nil {
@@ -911,5 +911,79 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 	}
 	if saved[0].ExitPrice != 50100.0 {
 		t.Errorf("expected exit price 50100.0, got %.2f", saved[0].ExitPrice)
+	}
+}
+
+func TestBlackBox_CloseOrderFilled_EmitsCompleted(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+
+	client := &blackboxExchangeClient{
+		orderState: exchange.OrderStateFilled,
+		dealVol:    1.0,
+	}
+
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"toobit": {
+				Name:     "toobit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         "req-close-fill-001",
+			ClientOrderID: "client-close-fill-001",
+			Symbol:        "BTC-SWAP-USDT",
+			Exchange:      "toobit",
+			MarketType:    ordermanager.MarketTypeFuture,
+			StrategyType:  ordermanager.StrategyDilution,
+			Timestamp:     time.Now(),
+		},
+		Side:                 shared.SideCloseLong,
+		OrderType:            ordermanager.OrderTypePostOnly,
+		Price:                63100.0,
+		Volume:               1.0,
+		MarginMode:           shared.MarginModeIsolated,
+		PositionMode:         shared.PositionModeHedge,
+		Leverage:             5,
+		PositionCloseTimeout: 500 * time.Millisecond,
+	}
+
+	if err := mgr.Dispatch(ctx, intent); err != nil {
+		t.Fatalf("failed to dispatch intent: %v", err)
+	}
+
+	// Wait for trade record to save upon close order fill
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(repo.SavedEvents()) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	saved := repo.SavedEvents()
+	if len(saved) == 0 {
+		t.Fatalf("expected close order to emit completed and save trade record immediately on fill")
+	}
+	if saved[0].ReqID != "req-close-fill-001" {
+		t.Errorf("expected ReqID req-close-fill-001, got %s", saved[0].ReqID)
 	}
 }

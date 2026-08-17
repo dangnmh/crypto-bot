@@ -100,3 +100,9 @@ variable "config_path_obfuscator" {
   description = "Path to the obfuscator.jsonc configuration file"
   default     = "../../configs/funding/prod/obfuscator.jsonc"
 }
+
+variable "config_path_dilution" {
+  type        = string
+  description = "Path to the dilution.jsonc configuration file"
+  default     = "../../configs/funding/prod/dilution.jsonc"
+}

@@ -16,6 +16,7 @@ func main() {
 	blacklistCfgPath := flag.String("blacklist", "./configs/funding/local/blacklist.jsonc", "path to blacklist config")
 	reversionCfgPath := flag.String("reversion", "./configs/funding/local/reversion.jsonc", "path to reversion config")
 	obfuscatorCfgPath := flag.String("obfuscator", "./configs/funding/local/obfuscator.jsonc", "path to obfuscator config")
+	dilutionCfgPath := flag.String("dilution", "./configs/funding/local/dilution.jsonc", "path to dilution config")
 	flag.Parse()
 
 	fx.New(
@@ -26,6 +27,7 @@ func main() {
 			Blacklist:  *blacklistCfgPath,
 			Reversion:  *reversionCfgPath,
 			Obfuscator: *obfuscatorCfgPath,
+			Dilution:   *dilutionCfgPath,
 		}),
 		fx.StartTimeout(2*time.Minute),
 		fx.StopTimeout(10*time.Second),

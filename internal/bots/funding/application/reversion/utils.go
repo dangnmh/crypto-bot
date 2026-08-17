@@ -378,7 +378,7 @@ func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEven
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }
 
-func (r *StatelessRunner) determineFillPrice(ctx context.Context, pos exchange.PersonalPositionUpdate) float64 {
+func (r *StatelessRunner) determineFillPrice(pos exchange.PersonalPositionUpdate) float64 {
 	fillPrice := pos.OpenAvgPrice
 	if fillPrice == 0 {
 		fillPrice = pos.HoldAvgPrice
@@ -489,7 +489,7 @@ func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange
 		contractSize = cd.ContractSize
 	}
 
-	fillPrice := r.determineFillPrice(ctx, pos)
+	fillPrice := r.determineFillPrice(pos)
 
 	side := shared.SideOpenLong
 	closeSide := shared.SideCloseLong

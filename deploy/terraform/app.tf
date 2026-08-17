@@ -19,6 +19,7 @@ resource "kubernetes_config_map_v1" "crypto_bot_configs" {
     "blacklist.jsonc"  = file(startswith(var.config_path_blacklist, "/") ? var.config_path_blacklist : "${path.module}/${var.config_path_blacklist}")
     "reversion.jsonc"  = file(startswith(var.config_path_reversion, "/") ? var.config_path_reversion : "${path.module}/${var.config_path_reversion}")
     "obfuscator.jsonc" = file(startswith(var.config_path_obfuscator, "/") ? var.config_path_obfuscator : "${path.module}/${var.config_path_obfuscator}")
+    "dilution.jsonc"   = file(startswith(var.config_path_dilution, "/") ? var.config_path_dilution : "${path.module}/${var.config_path_dilution}")
   }
 }
 
@@ -85,7 +86,8 @@ resource "kubernetes_deployment_v1" "crypto_bot" {
             "-bot", "/app/configs/funding/prod/funding.jsonc",
             "-blacklist", "/app/configs/funding/prod/blacklist.jsonc",
             "-reversion", "/app/configs/funding/prod/reversion.jsonc",
-            "-obfuscator", "/app/configs/funding/prod/obfuscator.jsonc"
+            "-obfuscator", "/app/configs/funding/prod/obfuscator.jsonc",
+            "-dilution", "/app/configs/funding/prod/dilution.jsonc"
           ]
 
           env_from {

@@ -553,7 +553,7 @@ func TestObfuscatorRunner(t *testing.T) {
 	assert.Equal(t, 5, evt.Leverage)
 	assert.Equal(t, 147.0, evt.TakeProfitPrice)
 	assert.Equal(t, 151.5, evt.StopLossPrice)
-	assert.Equal(t, 15*time.Second, evt.TimeoutDuration)
+	assert.Equal(t, 15*time.Second, evt.PositionCloseTimeout)
 	assert.Equal(t, 1500000.0, evt.Vol24hUSDT)
 	assert.Equal(t, 0.0001, evt.FundingRate)
 

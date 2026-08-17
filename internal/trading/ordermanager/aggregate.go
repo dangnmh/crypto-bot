@@ -28,6 +28,7 @@ const (
 	StateTimeoutChecked     OrderLifecycleState = "TIMEOUT_CHECKED"
 	StateBailout            OrderLifecycleState = "BAILOUT"
 	StateAborted            OrderLifecycleState = "ABORTED"
+	StateCanceled           OrderLifecycleState = "CANCELED"
 	StateCompleted          OrderLifecycleState = "COMPLETED"
 )
 
@@ -85,6 +86,32 @@ func (a *OrderExecutionAggregate) ClientOrderID() string {
 	}
 	if a.reqID != "" {
 		return a.reqID
+	}
+	return ""
+}
+
+func (a *OrderExecutionAggregate) OrderID() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderSubmittedEvent:
+			if e.OrderID != "" {
+				return e.OrderID
+			}
+		case OrderCompletedEvent:
+			if e.OrderID != "" {
+				return e.OrderID
+			}
+		case OrderAbortedEvent:
+			if e.OrderID != "" {
+				return e.OrderID
+			}
+		case OrderCanceledEvent:
+			if e.OrderID != "" {
+				return e.OrderID
+			}
+		}
 	}
 	return ""
 }
@@ -290,7 +317,7 @@ func stateRank(s OrderLifecycleState) int {
 		return 9
 	case StateBailout, StatePositionClosed:
 		return 10
-	case StateCompleted, StateAborted:
+	case StateCompleted, StateAborted, StateCanceled:
 		return 11
 	default:
 		return 0
@@ -333,6 +360,8 @@ func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
 		return StateCompleted
 	case OrderAbortedEvent:
 		return StateAborted
+	case OrderCanceledEvent:
+		return StateCanceled
 	default:
 		return ""
 	}
@@ -396,22 +425,40 @@ func (a *OrderExecutionAggregate) OrderType() OrderType {
 	return ""
 }
 
-func (a *OrderExecutionAggregate) TimeoutDuration() time.Duration {
+func (a *OrderExecutionAggregate) PositionCloseTimeout() time.Duration {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	for _, evt := range a.uncommittedEvents {
 		switch e := evt.(type) {
 		case OrderIntentEvent:
-			if e.TimeoutDuration > 0 {
-				return e.TimeoutDuration
+			if e.PositionCloseTimeout > 0 {
+				return e.PositionCloseTimeout
 			}
 		case OrderSubmittedEvent:
-			if e.TimeoutDuration > 0 {
-				return e.TimeoutDuration
+			if e.PositionCloseTimeout > 0 {
+				return e.PositionCloseTimeout
 			}
 		case OrderTimeoutScheduledEvent:
 			if e.Duration > 0 {
 				return e.Duration
+			}
+		}
+	}
+	return 0
+}
+
+func (a *OrderExecutionAggregate) UnfilledCancelTimeout() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderIntentEvent:
+			if e.UnfilledCancelTimeout > 0 {
+				return e.UnfilledCancelTimeout
+			}
+		case OrderSubmittedEvent:
+			if e.UnfilledCancelTimeout > 0 {
+				return e.UnfilledCancelTimeout
 			}
 		}
 	}

@@ -66,6 +66,18 @@ func (p *ExchangeProvider) WirePersonalWS(ctx context.Context, logger *slog.Logg
 	})
 }
 
+// EnsurePersonalWS ensures that the WebSocket pool is connected and the personal position stream is wired.
+// It is thread-safe and idempotent.
+func (p *ExchangeProvider) EnsurePersonalWS(ctx context.Context, logger *slog.Logger) {
+	if p == nil {
+		return
+	}
+	p.WirePersonalWS(ctx, logger)
+	if p.WSPool != nil {
+		p.WSPool.Connect(ctx)
+	}
+}
+
 // Engine manages the lifecycle of all dynamic ExchangeProvider instances.
 type Engine struct {
 	Cfg       *sysconfig.SystemConfig

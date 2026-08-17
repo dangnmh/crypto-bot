@@ -27,6 +27,7 @@ func TestModuleDependencyGraph(t *testing.T) {
 		Blacklist:  "blacklist.jsonc",
 		Reversion:  "reversion.jsonc",
 		Obfuscator: "obfuscator.jsonc",
+		Dilution:   "dilution.jsonc",
 	}))
 	require.NoError(t, err)
 }
@@ -61,9 +62,11 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	blacklistPath := filepath.Join(dir, "blacklist.jsonc")
 	reversionPath := filepath.Join(dir, "reversion.jsonc")
 	obfuscatorPath := filepath.Join(dir, "obfuscator.jsonc")
+	dilutionPath := filepath.Join(dir, "dilution.jsonc")
 	require.NoError(t, os.WriteFile(blacklistPath, []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
 	require.NoError(t, os.WriteFile(obfuscatorPath, []byte(`{"enabled": false, "pollInterval": "1m", "lookbackWindow": "24h"}`), 0o600))
+	require.NoError(t, os.WriteFile(dilutionPath, []byte(`{"enabled": false, "pollInterval": "5s"}`), 0o600))
 
 	var (
 		log        *slog.Logger
@@ -83,6 +86,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 			Blacklist:  blacklistPath,
 			Reversion:  reversionPath,
 			Obfuscator: obfuscatorPath,
+			Dilution:   dilutionPath,
 		}),
 		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
 		fx.NopLogger,

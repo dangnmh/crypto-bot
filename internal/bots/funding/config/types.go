@@ -83,6 +83,35 @@ type ExchangeObfuscationCfg struct {
 	MaxActiveOrders     int     `json:"maxActiveOrders" validate:"gt=0"`
 }
 
+type DilutionConfig struct {
+	Enabled      bool                           `json:"enabled"`
+	PollInterval types.Duration                 `json:"pollInterval" validate:"required"`
+	Exchanges    map[string]ExchangeDilutionCfg `json:"exchanges" validate:"dive"`
+}
+
+type ExchangeDilutionCfg struct {
+	Enabled               bool           `json:"enabled"`
+	Symbol                string         `json:"symbol" validate:"required"`
+	MaxPositionUSD        float64        `json:"maxPositionUSD" validate:"gt=0"`
+	Leverage              int            `json:"leverage" validate:"gte=1"`
+	MarginUSD             float64        `json:"marginUSD" validate:"gt=0"`
+	UnfilledCancelTimeout types.Duration `json:"unfilledCancelTimeout,omitempty"`
+	PositionCloseTimeout  types.Duration `json:"positionCloseTimeout" validate:"required"`
+	TakeProfitPct         float64        `json:"takeProfitPct,omitempty" validate:"omitempty,gt=0"`
+	StopLossPct           float64        `json:"stopLossPct,omitempty" validate:"omitempty,gt=0"`
+	SpreadOffsetTicks     int            `json:"spreadOffsetTicks" validate:"gte=0"`
+}
+
+// OrderNotionalUSD computes the notional order value in USD based on MarginUSD and Leverage,
+// capped at MaxPositionUSD if specified.
+func (c ExchangeDilutionCfg) OrderNotionalUSD() float64 {
+	notional := c.MarginUSD * float64(c.Leverage)
+	if c.MaxPositionUSD > 0 && notional > c.MaxPositionUSD {
+		return c.MaxPositionUSD
+	}
+	return notional
+}
+
 type ReversionConfig struct {
 	RawFundingReversionConfig
 	Sync          SyncConfig              `json:"sync"`
@@ -94,15 +123,17 @@ type ReversionConfig struct {
 }
 
 // FundingConfig represents the array of symbol configurations loaded from funding.jsonc.
+// FundingConfig represents the array of symbol configurations loaded from funding.jsonc.
 type FundingConfig []SymbolConfig
 
-// Config is the root configuration containing System, Symbols, Blacklist, Reversion, and Obfuscator configs.
+// Config is the root configuration containing System, Symbols, Blacklist, Reversion, Obfuscator, and Dilution configs.
 type Config struct {
 	System     *SystemConfig     `json:"-" validate:"required"`
 	Symbols    []SymbolConfig    `json:"-" validate:"dive"`
 	Blacklist  *BlacklistConfig  `json:"-"`
 	Reversion  *ReversionConfig  `json:"-" validate:"required"`
 	Obfuscator *ObfuscatorConfig `json:"-" validate:"omitempty"`
+	Dilution   *DilutionConfig   `json:"-" validate:"omitempty"`
 }
 
 type RawFundingReversionConfig struct {

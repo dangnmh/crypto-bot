@@ -39,6 +39,35 @@ func registerAllSubscriptions(ctx context.Context, mgr *OrderManager) {
 	registerOrderExecutionSubscriptions(ctx, mgr)
 	registerTimeoutSubscriptions(ctx, mgr)
 	registerCompletionSubscriptions(ctx, mgr)
+	registerNotificationSubscriptions(ctx, mgr)
+}
+
+func registerNotificationSubscriptions(ctx context.Context, mgr *OrderManager) {
+	if mgr == nil || mgr.notifier == nil {
+		return
+	}
+	registerNotificationHandler[OrderSubmittedEvent](ctx, mgr, TopicOrderSubmitted)
+	registerNotificationHandler[OrderAbortedEvent](ctx, mgr, TopicOrderAborted)
+	registerNotificationHandler[OrderCompletedEvent](ctx, mgr, TopicOrderCompleted)
+}
+
+func registerNotificationHandler[T OrderEvent](ctx context.Context, mgr *OrderManager, topic string) {
+	subscribeTopic(ctx, mgr.bus, mgr.log, topic, func(msgCtx context.Context, msg *message.Message) error {
+		var evt T
+		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
+			return fmt.Errorf("unmarshal notification topic %s payload: %w", topic, err)
+		}
+		if evt.ShouldNotify() && mgr.notifier != nil {
+			notifMsg := evt.GetNotifyMessage()
+			if notifMsg != "" {
+				orderCtx := tracectx.WithRequestIDValue(msgCtx, evt.GetReqID())
+				if err := mgr.notifier.SendRawMsg(orderCtx, notifMsg); err != nil {
+					mgr.log.ErrorContext(orderCtx, "Failed to send event notification", slog.String("topic", topic), slog.Any("error", err))
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func (om *OrderManager) abortOrder(ctx context.Context, evt OrderEvent, preTopic, reason string, err error) error {
@@ -154,14 +183,14 @@ func registerOrderExecutionSubscriptions(ctx context.Context, mgr *OrderManager)
 		return om.publishEvent(ctx, TopicOrderOutcomeResolved, res)
 	})
 
-	// 5C. OrderSubmittedEvent -> HandleScheduleTimeout -> TopicOrderTimeoutScheduled
+	// 5C. OrderSubmittedEvent -> HandleScheduleUnfilledCancelTimeout -> Pre-fill resting order watchdog / taker timeout
 	registerEventSubscription(ctx, mgr, TopicOrderSubmitted, func(ctx context.Context, om *OrderManager, evt OrderSubmittedEvent) error {
-		return om.HandleScheduleTimeout(ctx, evt)
+		return om.HandleScheduleUnfilledCancelTimeout(ctx, evt)
 	})
 
-	// 5D. OrderFilledEvent -> HandleScheduleFillTimeout -> Start fill-triggered hold watchdog
+	// 5D. OrderFilledEvent -> HandleSchedulePositionCloseTimeout -> Post-fill position hold watchdog
 	registerEventSubscription(ctx, mgr, TopicOrderFilled, func(ctx context.Context, om *OrderManager, evt OrderFilledEvent) error {
-		return om.HandleScheduleFillTimeout(ctx, evt)
+		return om.HandleSchedulePositionCloseTimeout(ctx, evt)
 	})
 }
 
@@ -204,20 +233,27 @@ func registerCompletionSubscriptions(ctx context.Context, mgr *OrderManager) {
 }
 
 func registerOutcomeResolvedSubscription(ctx context.Context, mgr *OrderManager) {
-	// 8. OrderOutcomeResolvedEvent -> Only complete if canceled with no fill; resting orders await fill; filled orders remain open awaiting position close or timeout.
+	// 8. OrderOutcomeResolvedEvent -> Only complete if canceled with no fill or if closing order filled; resting orders await fill; filled opening orders remain open awaiting position close or timeout.
 	registerEventSubscription(ctx, mgr, TopicOrderOutcomeResolved, func(ctx context.Context, om *OrderManager, evt OrderOutcomeResolvedEvent) error {
 		if evt.Outcome == OutcomeResting {
 			om.log.InfoContext(ctx, "Order resting on order book awaiting stream fill or cancel", slog.String("req_id", evt.GetReqID()))
 			return nil
 		}
 
-		if evt.Outcome == OutcomeCanceledNoFill || (evt.Outcome == OutcomeUnknown && evt.FilledVol == 0) {
+		agg := om.GetAggregate(evt.GetReqID())
+		isCloseOrder := agg.Side().IsClose()
+		if evt.Outcome == OutcomeCanceledNoFill || (evt.Outcome == OutcomeUnknown && evt.FilledVol == 0) || (isCloseOrder && evt.Outcome == OutcomeFilled) {
 			om.CancelTimeoutGuard(evt.GetReqID())
-			agg := om.GetAggregate(evt.GetReqID())
-			completed, err := om.HandleEnrichAndComplete(ctx, evt.Exchange, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, agg.StrategyType(), (evt.Outcome), evt.Reason)
+			strategy := agg.StrategyType()
+			reason := evt.Reason
+			if reason == "" && isCloseOrder {
+				reason = "close_order_filled"
+			}
+			completed, err := om.HandleEnrichAndComplete(ctx, evt.Exchange, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, strategy, evt.Outcome, reason)
 			if err != nil {
 				return err
 			}
+
 			if err := agg.Record(completed); err != nil {
 				om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.GetReqID()), slog.Any("error", err))
 			}

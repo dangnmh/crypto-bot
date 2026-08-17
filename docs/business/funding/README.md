@@ -23,6 +23,7 @@ Tài liệu này là entry point cho business logic của funding bot. Mỗi flo
 | [pre_funding_flow.md](pre_funding_flow.md) | Flow Pre-Funding Wave | Design only |
 | [price_flow.md](price_flow.md) | Pricing/volume shared primitives | Shared primitive |
 | [depth.md](depth.md) | Cách dùng orderbook đã được chấp nhận | Implemented constraints |
+| [dilution_flow.md](dilution_flow.md) | Background Volume Dilution: Maker 24/7 BBO quoting pha loãng volume | Implemented |
 | [reversion_production_plan.md](reversion_production_plan.md) | Production readiness, rollout, monitoring, notification, incident runbook cho Reversion | Production plan |
 
 ### Journal And Calibration
@@ -39,6 +40,7 @@ Tài liệu này là entry point cho business logic của funding bot. Mỗi flo
 | Reversion | Implemented | T-5m scan, T±0 IOC | `funding.reversion.candidate` | [reversion_flow.md](reversion_flow.md) |
 | Straddle Trap | Implemented | T-5m scan, T+50ms limit | `funding.trap.candidate` | [trap_flow.md](trap_flow.md) |
 | Pre-Funding Wave | Design only | T-20m đến T-1m | `funding.prefunding.candidate` | [pre_funding_flow.md](pre_funding_flow.md) |
+| Volume Dilution | Implemented | 24/7 BBO Maker (pause [55m->05m]) | Background cron | [dilution_flow.md](dilution_flow.md) |
 
 ## Shared Rule
 

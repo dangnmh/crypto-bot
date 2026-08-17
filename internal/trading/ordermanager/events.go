@@ -29,6 +29,7 @@ const (
 	TopicOrderTimeoutExpired         = "ordermanager.micro.timeout_expired"
 	TopicOrderBailoutExecuted        = "ordermanager.micro.bailout_executed"
 	TopicOrderAborted                = "ordermanager.micro.aborted"
+	TopicOrderCanceled               = "ordermanager.micro.canceled"
 	TopicOrderCompleted              = "ordermanager.micro.completed"
 	TopicOrderTradeRecord            = "ordermanager.trade_record"
 )
@@ -87,6 +88,16 @@ const (
 	OrderTypeLimit    OrderType = "LIMIT"
 	OrderTypeMarket   OrderType = "MARKET"
 )
+
+// IsMaker returns true if the order type is a passive maker order (POST_ONLY or LIMIT).
+func (t OrderType) IsMaker() bool {
+	return t == OrderTypePostOnly || t == OrderTypeLimit
+}
+
+// IsTaker returns true if the order type is an aggressive taker order (IOC or MARKET).
+func (t OrderType) IsTaker() bool {
+	return t == OrderTypeIOC || t == OrderTypeMarket
+}
 
 // OrderOutcome represents the execution result.
 type OrderOutcome string
@@ -169,9 +180,10 @@ type OrderIntentEvent struct {
 	Vol24hUSDT   float64             `json:"vol_24h_usdt,omitempty"`
 
 	// Contingency & Risk Limits
-	TakeProfitPrice float64       `json:"take_profit_price,omitempty"`
-	StopLossPrice   float64       `json:"stop_loss_price,omitempty"`
-	TimeoutDuration time.Duration `json:"timeout_duration,omitempty"`
+	TakeProfitPrice       float64       `json:"take_profit_price,omitempty"`
+	StopLossPrice         float64       `json:"stop_loss_price,omitempty"`
+	PositionCloseTimeout  time.Duration `json:"position_close_timeout,omitempty"`  // Post-fill timeout to close position (bailout on expiry)
+	UnfilledCancelTimeout time.Duration `json:"unfilled_cancel_timeout,omitempty"` // Pre-fill timeout to cancel order if no fill while resting on book
 
 	// Execution & Timing Targets
 	FireTime   time.Time     `json:"fire_time"`
@@ -350,6 +362,11 @@ type OrderOutcomeResolvedEvent struct {
 
 func (e OrderOutcomeResolvedEvent) GetTopic() string { return TopicOrderOutcomeResolved }
 
+// DeduplicateKey returns unique key for Watermill EventBus deduplication middleware, discriminating by outcome.
+func (e OrderOutcomeResolvedEvent) DeduplicateKey() string {
+	return fmt.Sprintf("%s-%s-%s", e.ReqID, e.NextTopic, e.Outcome)
+}
+
 // OrderTimeoutExpiredEvent indicates post-settle timeout expired while position is open.
 type OrderTimeoutExpiredEvent struct {
 	BaseExecutionEvent
@@ -418,6 +435,17 @@ func (e OrderAbortedEvent) GetNotifyMessage() string {
 		reqID,
 	)
 }
+
+// OrderCanceledEvent indicates a resting order or intent was canceled.
+type OrderCanceledEvent struct {
+	BaseExecutionEvent
+	OrderID    string    `json:"order_id,omitempty"`
+	Reason     string    `json:"reason"`
+	CanceledAt time.Time `json:"canceled_at"`
+}
+
+func (e OrderCanceledEvent) GetTopic() string   { return TopicOrderCanceled }
+func (e OrderCanceledEvent) ShouldNotify() bool { return false }
 
 // OrderCompletedEvent indicates execution workflow terminal state reached.
 type OrderCompletedEvent struct {

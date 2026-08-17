@@ -47,7 +47,7 @@ func LoadAndValidate[T any](path string) (*T, error) {
 }
 
 // Load reads configuration files using specific paths and returns the Config.
-func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath, obfuscatorPath string) (*Config, error) {
+func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath, obfuscatorPath, dilutionPath string) (*Config, error) {
 	cfg := &Config{
 		System:    sysCfg,
 		Symbols:   nil,
@@ -71,6 +71,12 @@ func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath, obfus
 		return nil, fmt.Errorf("parse obfuscator config: %w", err)
 	}
 	cfg.Obfuscator = obf
+
+	dilutionCfg, err := LoadAndValidate[DilutionConfig](dilutionPath)
+	if err != nil {
+		return nil, fmt.Errorf("parse dilution config: %w", err)
+	}
+	cfg.Dilution = dilutionCfg
 
 	applyReversionDefaults(cfg.Reversion)
 

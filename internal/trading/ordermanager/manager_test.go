@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,6 +29,8 @@ type mockExchangeClient struct {
 	positionClosed       bool
 	allClosed            bool
 	tpslPlaced           bool
+	cancelOrderCalled    bool
+	cancelAllCalled      bool
 }
 
 func (m *mockExchangeClient) SwitchMarginMode(ctx context.Context, symbol string, mode shared.MarginMode, leverage int, side shared.Side) error {
@@ -60,6 +63,12 @@ func (m *mockExchangeClient) PlaceTPSL(ctx context.Context, req exchange.TPSLReq
 }
 
 func (m *mockExchangeClient) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	m.cancelOrderCalled = true
+	return nil
+}
+
+func (m *mockExchangeClient) CancelAllOpenOrders(ctx context.Context, symbol string) error {
+	m.cancelAllCalled = true
 	return nil
 }
 
@@ -181,16 +190,16 @@ func createTestOrderIntent() ordermanager.OrderIntentEvent {
 			StrategyType:  ordermanager.StrategyFundingReversion,
 			Timestamp:     time.Now(),
 		},
-		Side:            shared.SideOpenLong,
-		OrderType:       ordermanager.OrderTypePostOnly,
-		Price:           50000.0,
-		Volume:          1.0,
-		MarginMode:      shared.MarginModeIsolated,
-		PositionMode:    shared.PositionModeOneWay,
-		Leverage:        10,
-		TakeProfitPrice: 51000.0,
-		StopLossPrice:   49000.0,
-		TimeoutDuration: 200 * time.Millisecond,
+		Side:                 shared.SideOpenLong,
+		OrderType:            ordermanager.OrderTypePostOnly,
+		Price:                50000.0,
+		Volume:               1.0,
+		MarginMode:           shared.MarginModeIsolated,
+		PositionMode:         shared.PositionModeOneWay,
+		Leverage:             10,
+		TakeProfitPrice:      51000.0,
+		StopLossPrice:        49000.0,
+		PositionCloseTimeout: 200 * time.Millisecond,
 	}
 }
 
@@ -339,16 +348,21 @@ func TestOrderSubmittedEvent_GetNotifyMessage(t *testing.T) {
 }
 
 type mockNotifier struct {
+	mu        sync.Mutex
 	sentCount int
 }
 
 func (m *mockNotifier) Send(ctx context.Context, evt notifier.Event) error {
+	m.mu.Lock()
 	m.sentCount++
+	m.mu.Unlock()
 	return nil
 }
 
 func (m *mockNotifier) SendRawMsg(ctx context.Context, msg string) error {
+	m.mu.Lock()
 	m.sentCount++
+	m.mu.Unlock()
 	return nil
 }
 
@@ -864,4 +878,131 @@ func TestHandlePreFlight_CloseOrder_SkipsModeSwitches(t *testing.T) {
 	assert.False(t, client.marginModeSwitched, "SwitchMarginMode should be skipped for close orders")
 	assert.False(t, client.positionModeSwitched, "SwitchPositionMode should be skipped for close orders")
 	assert.False(t, client.leverageChanged, "ChangeLeverage should be skipped for close orders")
+}
+
+func TestOrderManager_CancelOrder(t *testing.T) {
+	t.Parallel()
+	bus := eventbus.New(slog.Default())
+	client := &mockExchangeClient{}
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+
+	engine := &app.Engine{
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	agg := mgr.GetAggregate("req-cancel-001")
+	err = agg.Record(ordermanager.OrderSubmittedEvent{
+		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
+			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
+				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
+					OrderIntentEvent: ordermanager.OrderIntentEvent{
+						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+							ReqID:        "req-cancel-001",
+							Symbol:       "BTCUSDT",
+							Exchange:     "MEXC",
+							StrategyType: ordermanager.StrategyDilution,
+						},
+						OrderType: ordermanager.OrderTypePostOnly,
+					},
+				},
+			},
+		},
+		OrderID: "order-to-cancel-999",
+	})
+	assert.NoError(t, err)
+
+	assert.True(t, mgr.HasActiveOrder("req-cancel-001"))
+	activeOrders := mgr.GetActiveOrders("MEXC", "BTCUSDT")
+	assert.Len(t, activeOrders, 1)
+
+	err = mgr.CancelOrder(context.Background(), "req-cancel-001")
+	assert.NoError(t, err)
+	assert.True(t, client.cancelOrderCalled)
+	assert.False(t, mgr.HasActiveOrder("req-cancel-001"))
+	assert.Equal(t, ordermanager.StateCanceled, agg.State())
+}
+
+func TestOrderManager_CancelOpenOrders(t *testing.T) {
+	t.Parallel()
+	bus := eventbus.New(slog.Default())
+	client := &mockExchangeClient{}
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+
+	engine := &app.Engine{
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	err = mgr.CancelOpenOrders(context.Background(), "MEXC", "BTCUSDT")
+	assert.NoError(t, err)
+	assert.True(t, client.cancelAllCalled)
+}
+
+func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
+	t.Parallel()
+	bus := eventbus.New(slog.Default())
+	client := &mockExchangeClient{}
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+
+	engine := &app.Engine{
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	submittedEvt := ordermanager.OrderSubmittedEvent{
+		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
+			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
+				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
+					OrderIntentEvent: ordermanager.OrderIntentEvent{
+						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+							ReqID:        "req-resting-timeout-001",
+							Symbol:       "BTCUSDT",
+							Exchange:     "mexc",
+							StrategyType: ordermanager.StrategyDilution,
+						},
+						OrderType:             ordermanager.OrderTypePostOnly,
+						UnfilledCancelTimeout: 20 * time.Millisecond,
+					},
+				},
+			},
+		},
+		OrderID: "order-resting-123",
+	}
+
+	agg := mgr.GetAggregate("req-resting-timeout-001")
+	assert.NoError(t, agg.Record(submittedEvt))
+
+	err = mgr.HandleScheduleUnfilledCancelTimeout(context.Background(), submittedEvt)
+	assert.NoError(t, err)
+
+	// Wait for resting timeout to fire
+	time.Sleep(50 * time.Millisecond)
+
+	assert.True(t, client.cancelOrderCalled, "Resting timeout expiration must call CancelOrder on exchange")
+	assert.Equal(t, ordermanager.StateCompleted, agg.State())
 }
