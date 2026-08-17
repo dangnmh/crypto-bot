@@ -47,8 +47,18 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	require.NotNil(t, log)
 
 	notiCfg := provideNotifierConfig(&fundingconfig.SystemConfig{
-		SystemConfig: config.SystemConfig{NotiConfig: config.NotiConfig{Enabled: false}},
+		SystemConfig: config.SystemConfig{
+			NotiConfig: config.NotiConfig{
+				Enabled:                false,
+				TelegramChatID:         "123",
+				TelegramCriticalChatID: "456",
+				TelegramBotToken:       "token",
+			},
+		},
 	}, &fundingconfig.Config{})
+	assert.Equal(t, "123", notiCfg.TelegramChatID)
+	assert.Equal(t, "456", notiCfg.TelegramCriticalChatID)
+	assert.Equal(t, "token", notiCfg.TelegramBotToken)
 	n, err := notifier.ProvideNotifier(lc, notiCfg, bootstrapTestLogger())
 	require.NoError(t, err)
 	require.NotNil(t, n)

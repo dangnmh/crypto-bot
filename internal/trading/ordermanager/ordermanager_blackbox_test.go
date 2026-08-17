@@ -165,7 +165,7 @@ func (n *blackboxNotifier) Send(ctx context.Context, evt notifier.Event) error {
 
 func (n *blackboxNotifier) SendRawMsg(ctx context.Context, msg string) error {
 	return n.Send(ctx, notifier.Event{
-		Level:   notifier.LevelTrading,
+		Level:   notifier.LevelNormal,
 		Message: msg,
 		IsRaw:   true,
 	})
@@ -985,5 +985,86 @@ func TestBlackBox_CloseOrderFilled_EmitsCompleted(t *testing.T) {
 	}
 	if saved[0].ReqID != "req-close-fill-001" {
 		t.Errorf("expected ReqID req-close-fill-001, got %s", saved[0].ReqID)
+	}
+}
+
+func TestBlackBox_Abort_EmitsCriticalNotification(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		createOrderErr: fmt.Errorf("insufficient balance for test"),
+	}
+
+	bus := eventbus.New(slog.Default())
+	clock := mockClock{}
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"toobit": {
+				Name:     "toobit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	defer func() { _ = engine.Shutdown(ctx) }()
+
+	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+
+	if err := mgr.Init(ctx); err != nil {
+		t.Fatalf("failed to init order manager: %v", err)
+	}
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:         "req-abort-test-001",
+			ClientOrderID: "client-abort-test-001",
+			Symbol:        "BTC-SWAP-USDT",
+			Exchange:      "toobit",
+			MarketType:    ordermanager.MarketTypeFuture,
+			StrategyType:  ordermanager.StrategyFundingReversion,
+			Timestamp:     clock.Now(),
+		},
+		Side:       shared.SideOpenLong,
+		OrderType:  ordermanager.OrderTypeIOC,
+		Price:      60000.0,
+		Volume:     1.0,
+		MarginMode: shared.MarginModeCross,
+		Leverage:   10,
+	}
+
+	// Dispatch should fail or abort
+	_ = mgr.Dispatch(ctx, intent)
+
+	// Wait for notification to be received
+	deadline := time.Now().Add(3 * time.Second)
+	var criticalNotif *notifier.Event
+	for time.Now().Before(deadline) {
+		for _, evt := range noti.SentEvents() {
+			if evt.Level == notifier.LevelCritical {
+				critCopy := evt
+				criticalNotif = &critCopy
+				break
+			}
+		}
+		if criticalNotif != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if criticalNotif == nil {
+		t.Fatalf("expected critical notification event for aborted order, got sent events: %+v", noti.SentEvents())
+	}
+	if criticalNotif.Level != notifier.LevelCritical {
+		t.Errorf("expected level %s, got %s", notifier.LevelCritical, criticalNotif.Level)
 	}
 }

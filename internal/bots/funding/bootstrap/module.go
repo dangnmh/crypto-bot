@@ -103,9 +103,10 @@ func provideNotifierConfig(cfg *fundingconfig.SystemConfig, fundingCfg *fundingc
 	}
 
 	return notifier.Config{
-		Enabled:          enabled,
-		TelegramBotToken: cfg.NotiConfig.TelegramBotToken,
-		TelegramChatID:   cfg.NotiConfig.TelegramChatID,
+		Enabled:                enabled,
+		TelegramBotToken:       cfg.NotiConfig.TelegramBotToken,
+		TelegramChatID:         cfg.NotiConfig.TelegramChatID,
+		TelegramCriticalChatID: cfg.NotiConfig.TelegramCriticalChatID,
 	}
 }
 

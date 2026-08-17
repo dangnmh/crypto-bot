@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/tracectx"
 
@@ -61,8 +62,20 @@ func registerNotificationHandler[T OrderEvent](ctx context.Context, mgr *OrderMa
 			notifMsg := evt.GetNotifyMessage()
 			if notifMsg != "" {
 				orderCtx := tracectx.WithRequestIDValue(msgCtx, evt.GetReqID())
-				if err := mgr.notifier.SendRawMsg(orderCtx, notifMsg); err != nil {
-					mgr.log.ErrorContext(orderCtx, "Failed to send event notification", slog.String("topic", topic), slog.Any("error", err))
+				level := notifier.LevelNormal
+				if lvlProvider, ok := any(evt).(NotiLevelProvider); ok {
+					level = lvlProvider.GetNotiLevel()
+				}
+				if err := mgr.notifier.Send(orderCtx, notifier.Event{
+					Level:   level,
+					Message: notifMsg,
+					IsRaw:   true,
+				}); err != nil {
+					mgr.log.ErrorContext(orderCtx, "Failed to send event notification",
+						slog.String("topic", topic),
+						slog.String("level", string(level)),
+						slog.Any("error", err),
+					)
 				}
 			}
 		}

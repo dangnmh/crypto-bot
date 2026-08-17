@@ -478,6 +478,7 @@ func TestOrderAbortedEvent_Notification(t *testing.T) {
 
 	assert.Equal(t, ordermanager.TopicOrderAborted, evt.GetTopic())
 	assert.True(t, evt.ShouldNotify())
+	assert.Equal(t, notifier.LevelCritical, evt.GetNotiLevel())
 
 	msg := evt.GetNotifyMessage()
 	assert.Contains(t, msg, "🔴 [FUNDING_REVERSION] [BINANCE] [ABORTED]")
@@ -508,6 +509,7 @@ func TestOrderCompletedEvent_Notification_Canceled(t *testing.T) {
 		Reason:  "user canceled",
 	}
 	assert.True(t, completedCanceled.ShouldNotify())
+	assert.Equal(t, notifier.LevelCritical, completedCanceled.GetNotiLevel())
 	msg := completedCanceled.GetNotifyMessage()
 	assert.Contains(t, msg, "🔵 [FUNDING_REVERSION] [BINANCE] [CANCELED_NO_FILL]")
 	assert.Contains(t, msg, "• Symbol: BTCUSDT")
@@ -537,6 +539,7 @@ func TestOrderCompletedEvent_Notification_Filled(t *testing.T) {
 		HoldDurationMs: 35000,
 	}
 	assert.True(t, completedFilled.ShouldNotify())
+	assert.Equal(t, notifier.LevelCritical, completedFilled.GetNotiLevel())
 	msg := completedFilled.GetNotifyMessage()
 	assert.Contains(t, msg, "🔴 [OBFUSCATOR] [toobit_futures] [COMPLETED]")
 	assert.Contains(t, msg, "• Symbol: LAB-SWAP-USDT")

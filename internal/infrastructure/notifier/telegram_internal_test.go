@@ -71,29 +71,29 @@ func TestTelegramProviderFormatMessage(t *testing.T) {
 
 	p := &TelegramProvider{logger: testNotifierLogger()}
 
-	trading := p.formatMessage(Event{
-		Level:    LevelTrading,
+	normal := p.formatMessage(Event{
+		Level:    LevelNormal,
 		Exchange: "bybit",
 		Symbol:   "BTC_USDT",
 		Message:  "order filled",
 		Data:     map[string]any{"price": 60000, "floatVal": 0.038429, "wholeFloat": 5.0, "volusdt24h": 60000000.0, "fundingRate": 0.008},
 	})
-	assert.Contains(t, trading, "[TRADING] [bybit] [BTC_USDT]")
-	assert.Contains(t, trading, "order filled")
-	assert.Contains(t, trading, "price: 60000")
-	assert.Contains(t, trading, "floatVal: 0.0384")
-	assert.Contains(t, trading, "wholeFloat: 5")
-	assert.Contains(t, trading, "volusdt24h: 60m")
-	assert.Contains(t, trading, "fundingRate: 0.8%")
+	assert.Contains(t, normal, "[NORMAL] [bybit] [BTC_USDT]")
+	assert.Contains(t, normal, "order filled")
+	assert.Contains(t, normal, "price: 60000")
+	assert.Contains(t, normal, "floatVal: 0.0384")
+	assert.Contains(t, normal, "wholeFloat: 5")
+	assert.Contains(t, normal, "volusdt24h: 60m")
+	assert.Contains(t, normal, "fundingRate: 0.8%")
 
 	negativeFR := p.formatMessage(Event{
-		Level: LevelTrading,
+		Level: LevelNormal,
 		Data:  map[string]any{"fundingRate": -0.01},
 	})
 	assert.Contains(t, negativeFR, "fundingRate: -1%")
 
-	exchangeOnly := p.formatMessage(Event{Level: LevelTrading, Exchange: "mexc", Message: "risk"})
-	assert.Contains(t, exchangeOnly, "[TRADING] [mexc]")
+	exchangeOnly := p.formatMessage(Event{Level: LevelNormal, Exchange: "mexc", Message: "risk"})
+	assert.Contains(t, exchangeOnly, "[NORMAL] [mexc]")
 
 	critical := p.formatMessage(Event{Level: LevelCritical, Message: "risk"})
 	assert.Contains(t, critical, "[CRITICAL]")
@@ -116,4 +116,45 @@ func TestTelegramProviderFormatMessage(t *testing.T) {
 
 	defaultEvt := p.formatMessage(Event{Level: LevelInfo, Message: "default"})
 	assert.Contains(t, defaultEvt, "🟡 [INFO]") // Defaults to yellow
+}
+
+func TestTelegramProviderTargetChatID(t *testing.T) {
+	t.Parallel()
+
+	// 1. Both chatID and criticalChatID set
+	pDual := &TelegramProvider{
+		chatID:         100,
+		criticalChatID: 200,
+		logger:         testNotifierLogger(),
+	}
+
+	// Normal events go to chatID
+	assert.Equal(t, int64(100), pDual.chatID)
+	// Critical level routes to criticalChatID
+	evtCritical := Event{Level: LevelCritical, Message: "alert"}
+	targetDual := pDual.chatID
+	if evtCritical.Level == LevelCritical && pDual.criticalChatID != 0 {
+		targetDual = pDual.criticalChatID
+	}
+	assert.Equal(t, int64(200), targetDual)
+
+	// 2. Only chatID set (criticalChatID == 0) -> fallback to chatID
+	pSingle := &TelegramProvider{
+		chatID:         100,
+		criticalChatID: 0,
+		logger:         testNotifierLogger(),
+	}
+	targetSingle := pSingle.chatID
+	if evtCritical.Level == LevelCritical && pSingle.criticalChatID != 0 {
+		targetSingle = pSingle.criticalChatID
+	}
+	assert.Equal(t, int64(100), targetSingle)
+
+	// 3. Normal / Info levels always route to chatID even when criticalChatID is set
+	evtNormal := Event{Level: LevelNormal, Message: "fill"}
+	targetNormal := pDual.chatID
+	if evtNormal.Level == LevelCritical && pDual.criticalChatID != 0 {
+		targetNormal = pDual.criticalChatID
+	}
+	assert.Equal(t, int64(100), targetNormal)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/pkg/formatutil"
 
 	"gorm.io/datatypes"
@@ -398,8 +399,9 @@ type OrderAbortedEvent struct {
 	AbortedAt time.Time `json:"aborted_at"`
 }
 
-func (e OrderAbortedEvent) GetTopic() string   { return TopicOrderAborted }
-func (e OrderAbortedEvent) ShouldNotify() bool { return true }
+func (e OrderAbortedEvent) GetTopic() string             { return TopicOrderAborted }
+func (e OrderAbortedEvent) ShouldNotify() bool           { return true }
+func (e OrderAbortedEvent) GetNotiLevel() notifier.Level { return notifier.LevelCritical }
 
 func (e OrderAbortedEvent) GetNotifyMessage() string {
 	stratName := strings.ToUpper(string(e.StrategyType))
@@ -536,6 +538,8 @@ func formatCompletedSizeUSD(entryPrice, exitPrice, volContract, volCoin, contrac
 	}
 	return "0 USDT"
 }
+
+func (e OrderCompletedEvent) GetNotiLevel() notifier.Level { return notifier.LevelCritical }
 
 //nolint:cyclop // Formats notification message depending on completion outcome
 func (e OrderCompletedEvent) GetNotifyMessage() string {

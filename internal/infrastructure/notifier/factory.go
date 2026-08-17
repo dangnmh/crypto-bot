@@ -8,9 +8,10 @@ import (
 
 // Config contains provider-agnostic notification settings.
 type Config struct {
-	Enabled          bool
-	TelegramBotToken string
-	TelegramChatID   string
+	Enabled                bool
+	TelegramBotToken       string
+	TelegramChatID         string
+	TelegramCriticalChatID string
 }
 
 // NewFromConfig creates a Notifier based on system config and a bot token.
@@ -25,7 +26,7 @@ func NewFromConfig(cfg Config, logger *slog.Logger) (Notifier, error) {
 		return nil, fmt.Errorf("notifier.chatId is required when notifier.enabled is true")
 	}
 
-	provider, err := NewTelegramProvider(cfg.TelegramBotToken, chatID, logger)
+	provider, err := NewTelegramProvider(cfg.TelegramBotToken, chatID, cfg.TelegramCriticalChatID, logger)
 	if err != nil {
 		return nil, err
 	}

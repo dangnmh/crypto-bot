@@ -190,7 +190,7 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 
 	// Check if the event wants to trigger a notification
 	if revEvt, ok := payload.(ReversionEvent); ok && revEvt.ShouldNotify() {
-		level := notifier.LevelTrading
+		level := notifier.LevelNormal
 		if topic == TopicReversionAbort || topic == TopicReversionError {
 			level = notifier.LevelCritical
 		}

@@ -12,6 +12,12 @@ import (
 func TestNewTelegramProviderValidatesInputs(t *testing.T) {
 	t.Parallel()
 
-	_, err := notifier.NewTelegramProvider("", "123", slog.Default())
+	_, err := notifier.NewTelegramProvider("", "123", "", slog.Default())
 	require.ErrorContains(t, err, "telegram bot token is required")
+
+	_, err = notifier.NewTelegramProvider("token", "invalid", "", slog.Default())
+	require.ErrorContains(t, err, "invalid chat_id")
+
+	_, err = notifier.NewTelegramProvider("token", "123", "invalid-crit", slog.Default())
+	require.ErrorContains(t, err, "invalid critical_chat_id")
 }

@@ -10,7 +10,7 @@ type Level string
 
 const (
 	LevelCritical Level = "CRITICAL"
-	LevelTrading  Level = "TRADING"
+	LevelNormal   Level = "NORMAL"
 	LevelInfo     Level = "INFO"
 )
 

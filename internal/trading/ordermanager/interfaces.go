@@ -12,6 +12,11 @@ import (
 // Notifier is an alias for notifier.Notifier interface.
 type Notifier = notifier.Notifier
 
+// NotiLevelProvider allows execution events to specify custom notification severity levels.
+type NotiLevelProvider interface {
+	GetNotiLevel() notifier.Level
+}
+
 // ExchangeClient is the interface for executing exchange setups and order operations.
 type ExchangeClient interface {
 	SwitchMarginMode(ctx context.Context, symbol string, mode shared.MarginMode, leverage int, side shared.Side) error

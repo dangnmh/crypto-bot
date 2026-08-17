@@ -36,4 +36,12 @@ func TestNewFromConfigPropagatesTelegramProviderError(t *testing.T) {
 		TelegramChatID: "123",
 	}, slog.Default())
 	require.ErrorContains(t, err, "telegram bot token is required")
+
+	_, err = notifier.NewFromConfig(notifier.Config{
+		Enabled:                true,
+		TelegramChatID:         "123",
+		TelegramCriticalChatID: "invalid",
+		TelegramBotToken:       "token",
+	}, slog.Default())
+	require.ErrorContains(t, err, "invalid critical_chat_id")
 }

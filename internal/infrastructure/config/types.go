@@ -225,7 +225,8 @@ func init() {
 type ExchangeConfig map[string]APIConfig
 
 type NotiConfig struct {
-	Enabled          bool   `json:"enable"`
-	TelegramChatID   string `json:"-"`
-	TelegramBotToken string `json:"-"`
+	Enabled                bool   `json:"enable"`
+	TelegramChatID         string `json:"-"`
+	TelegramCriticalChatID string `json:"-"`
+	TelegramBotToken       string `json:"-"`
 }

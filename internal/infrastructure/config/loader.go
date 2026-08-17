@@ -53,6 +53,7 @@ func InitializeBase(c *SystemConfig) error {
 	}
 
 	c.NotiConfig.TelegramChatID = strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
+	c.NotiConfig.TelegramCriticalChatID = strings.TrimSpace(os.Getenv("TELEGRAM_CRITICAL_CHAT_ID"))
 	c.NotiConfig.TelegramBotToken = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 
 	if err := applyBitwardenFallback(c); err != nil {
@@ -138,6 +139,11 @@ func applyBitwardenFallback(c *SystemConfig) error {
 	if c.NotiConfig.TelegramChatID == "" {
 		if val, err := loader.GetSecret("TELEGRAM_CHAT_ID"); err == nil && val != "" {
 			c.NotiConfig.TelegramChatID = strings.TrimSpace(val)
+		}
+	}
+	if c.NotiConfig.TelegramCriticalChatID == "" {
+		if val, err := loader.GetSecret("TELEGRAM_CRITICAL_CHAT_ID"); err == nil && val != "" {
+			c.NotiConfig.TelegramCriticalChatID = strings.TrimSpace(val)
 		}
 	}
 	if c.NotiConfig.TelegramBotToken == "" {

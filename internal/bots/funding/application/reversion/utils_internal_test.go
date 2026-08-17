@@ -385,7 +385,7 @@ func (n captureNotifier) Send(ctx context.Context, evt notifier.Event) error {
 }
 
 func (n captureNotifier) SendRawMsg(ctx context.Context, msg string) error {
-	return n.Send(ctx, notifier.Event{Level: notifier.LevelTrading, Message: msg, IsRaw: true})
+	return n.Send(ctx, notifier.Event{Level: notifier.LevelNormal, Message: msg, IsRaw: true})
 }
 func (captureNotifier) Start(context.Context) error { return nil }
 func (captureNotifier) Stop(context.Context) error  { return nil }
