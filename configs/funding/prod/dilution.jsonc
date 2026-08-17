@@ -9,8 +9,8 @@
       "enabled": true,
       "symbol": "BTC-SWAP-USDT",
       "maxPositionUSD": 2000, // Max position $2,000 (Uses max 100 USDT total margin at 20x)
-      "leverage": 20, // 20x leverage
-      "marginUSD": 100, // 50 USDT margin per order (quỹ 100 USDT chạy tối đa 2 orders)
+      "leverage": 10, // 20x leverage
+      "marginUSD": 200, // 50 USDT margin per order (quỹ 100 USDT chạy tối đa 2 orders)
       "unfilledCancelTimeout": "5m", // 5 minutes auto-cancel if order unfilled
       "positionCloseTimeout": "5m", // 10 minutes max hold duration after fill before bailout
       "takeProfitPct": 0.2, // 0.2% Take Profit trigger

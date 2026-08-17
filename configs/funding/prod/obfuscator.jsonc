@@ -18,9 +18,9 @@
       // Maximum notional order size in USD (ceiling)
       "maxNotionalUSD": 2000.0,
       // Real USDT collateral/margin allocated per position
-      "marginUSDT": 100.0,
+      "marginUSDT": 200.0,
       // Leverage (e.g. 2, 5, 10). If 0 or omitted, leverage is dynamically computed as ceil(notional / margin)
-      "leverage": 20,
+      "leverage": 10,
       // Target Take Profit %
       "takeProfitPct": 0.5,
       // Safety Stop Loss %
