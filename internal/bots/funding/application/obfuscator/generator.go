@@ -41,7 +41,7 @@ func (g *OrderGenerator) GenerateSpec(
 	targetLossUSD float64,
 	originReqID string,
 ) (*ObfuscationSpec, error) {
-	scaledNotional := min(max(targetLossUSD, cfg.MinNotionalUSD), cfg.MaxNotionalUSD)
+	scaledNotional := cfg.OrderNotionalUSD()
 	leverage := cfg.Leverage
 
 	marketInfo := g.resolveMarketInfo(ctx, exchangeName, symbol, shared.SideOpenLong)

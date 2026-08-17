@@ -85,6 +85,19 @@ type ExchangeObfuscationCfg struct {
 	MaxDailyLossUSD     float64 `json:"maxDailyLossUSD" validate:"gt=0"`
 }
 
+// OrderNotionalUSD computes the notional order value in USD based on MarginUSDT and Leverage,
+// clamped between MinNotionalUSD and MaxNotionalUSD.
+func (c ExchangeObfuscationCfg) OrderNotionalUSD() float64 {
+	baseNotional := c.MarginUSDT * float64(c.Leverage)
+	if c.MinNotionalUSD > 0 && baseNotional < c.MinNotionalUSD {
+		baseNotional = c.MinNotionalUSD
+	}
+	if c.MaxNotionalUSD > 0 && baseNotional > c.MaxNotionalUSD {
+		baseNotional = c.MaxNotionalUSD
+	}
+	return baseNotional
+}
+
 type DilutionConfig struct {
 	Enabled      bool                           `json:"enabled"`
 	PollInterval types.Duration                 `json:"pollInterval" validate:"required"`

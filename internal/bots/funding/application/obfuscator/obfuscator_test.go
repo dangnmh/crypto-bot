@@ -195,13 +195,15 @@ func TestOrderGenerator(t *testing.T) {
 		StopLossPct:         1.0,
 		MinHoldSec:          10,
 		MaxHoldSec:          20,
+		SacrificeLossPct:    50.0,
+		MaxDailyLossUSD:     200.0,
 	}
 	spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 30.0, "req-123")
 	require.NoError(t, err)
 	assert.Equal(t, "req-123", spec.OriginReqID)
 	assert.Equal(t, "binance", spec.Exchange)
 	assert.Equal(t, "ETHUSDT", spec.Symbol)
-	assert.Equal(t, 30.0, spec.NotionalUSDT)
+	assert.Equal(t, 25.0, spec.NotionalUSDT) // 5.0 * 5 = 25.0
 	assert.Equal(t, 5.0, spec.MarginUSDT)
 	assert.Equal(t, 5, spec.Leverage)
 	assert.Equal(t, shared.SideOpenLong, spec.Side)
@@ -217,6 +219,7 @@ func TestOrderGenerator(t *testing.T) {
 		levSpec, err := gen.GenerateSpec(context.Background(), levCfg, "binance", "ETHUSDT", 30.0, "req-lev")
 		require.NoError(t, err)
 		assert.Equal(t, 10, levSpec.Leverage)
+		assert.Equal(t, 50.0, levSpec.NotionalUSDT) // 5.0 * 10 = 50.0
 	})
 
 	t.Run("returns error when engine is nil", func(t *testing.T) {
@@ -234,7 +237,8 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 		bids       []shared.OrderBookEntry
 		asks       []shared.OrderBookEntry
 		prevSide   shared.Side
-		netProfit  float64
+		marginUSDT float64
+		leverage   int
 		minUSDT    float64
 		maxUSDT    float64
 		wantSide   shared.Side
@@ -245,7 +249,8 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 5}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 15}},
 			prevSide:   shared.SideOpenLong,
-			netProfit:  20.0,
+			marginUSDT: 20.0,
+			leverage:   1,
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
 			wantSide:   shared.SideOpenShort,
@@ -255,29 +260,32 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 			name:       "equal volume triggers fallback side of Short",
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 10}},
-			netProfit:  20.0,
+			marginUSDT: 20.0,
+			leverage:   1,
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
 			wantSide:   shared.SideOpenShort,
 			wantNotion: 20.0,
 		},
 		{
-			name:       "notional clamped to MinUSDT when scaled profit is small",
+			name:       "notional clamped to MinNotionalUSD when base notional is small",
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 5}},
 			prevSide:   shared.SideOpenLong,
-			netProfit:  2.0, // 2.0 < MinUSDT 10.0
+			marginUSDT: 2.0,
+			leverage:   1, // 2.0 * 1 = 2.0 < MinNotionalUSD 10.0
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
 			wantSide:   shared.SideOpenLong,
 			wantNotion: 10.0,
 		},
 		{
-			name:       "notional clamped to MaxUSDT when scaled profit is large",
+			name:       "notional clamped to MaxNotionalUSD when base notional is large",
 			bids:       []shared.OrderBookEntry{{Price: 100, Volume: 10}},
 			asks:       []shared.OrderBookEntry{{Price: 101, Volume: 5}},
 			prevSide:   shared.SideOpenLong,
-			netProfit:  1000.0, // 1000.0 > MaxUSDT 100.0
+			marginUSDT: 200.0,
+			leverage:   5, // 200 * 5 = 1000.0 > MaxNotionalUSD 100.0
 			minUSDT:    10.0,
 			maxUSDT:    100.0,
 			wantSide:   shared.SideOpenLong,
@@ -308,8 +316,8 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 				NetPnLThresholdUSDT: 5.0,
 				MinNotionalUSD:      tt.minUSDT,
 				MaxNotionalUSD:      tt.maxUSDT,
-				MarginUSDT:          5.0,
-				Leverage:            1,
+				MarginUSDT:          tt.marginUSDT,
+				Leverage:            tt.leverage,
 				TakeProfitPct:       1.0,
 				StopLossPct:         1.0,
 				MinHoldSec:          10,
@@ -318,7 +326,7 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 				MaxDailyLossUSD:     200.0,
 			}
 
-			spec, err := gen.GenerateSpec(context.Background(), cfg, "mexc", "BTCUSDT", tt.netProfit, "req-scenario")
+			spec, err := gen.GenerateSpec(context.Background(), cfg, "mexc", "BTCUSDT", 30.0, "req-scenario")
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantSide, spec.Side)
 			assert.Equal(t, tt.wantNotion, spec.NotionalUSDT)

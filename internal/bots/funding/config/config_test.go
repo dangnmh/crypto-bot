@@ -592,3 +592,40 @@ func TestLoad_WithDilution_CappedMaxPositionUSD(t *testing.T) {
 	require.NotNil(t, cfg.Dilution)
 	assert.Equal(t, 400.0, cfg.Dilution.Exchanges["mexc_futures"].OrderNotionalUSD())
 }
+
+func TestExchangeObfuscationCfg_OrderNotionalUSD(t *testing.T) {
+	t.Parallel()
+
+	t.Run("calculates margin * leverage within bounds", func(t *testing.T) {
+		t.Parallel()
+		cfg := config.ExchangeObfuscationCfg{
+			MarginUSDT:     200.0,
+			Leverage:       10,
+			MinNotionalUSD: 100.0,
+			MaxNotionalUSD: 3000.0,
+		}
+		assert.Equal(t, 2000.0, cfg.OrderNotionalUSD())
+	})
+
+	t.Run("clamps to minNotionalUSD", func(t *testing.T) {
+		t.Parallel()
+		cfg := config.ExchangeObfuscationCfg{
+			MarginUSDT:     5.0,
+			Leverage:       2,
+			MinNotionalUSD: 50.0,
+			MaxNotionalUSD: 500.0,
+		}
+		assert.Equal(t, 50.0, cfg.OrderNotionalUSD())
+	})
+
+	t.Run("clamps to maxNotionalUSD", func(t *testing.T) {
+		t.Parallel()
+		cfg := config.ExchangeObfuscationCfg{
+			MarginUSDT:     500.0,
+			Leverage:       10,
+			MinNotionalUSD: 50.0,
+			MaxNotionalUSD: 1000.0,
+		}
+		assert.Equal(t, 1000.0, cfg.OrderNotionalUSD())
+	})
+}
