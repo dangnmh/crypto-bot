@@ -506,6 +506,8 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 			MaxNotionalUSD:      100.0,
 			MarginUSDT:          10.0,
 			Leverage:            1,
+			TakeProfitPct:       0.5,
+			StopLossPct:         0.5,
 			MaxPriceDiffPercent: 1.0, // 1% slippage
 			MinHoldSec:          5,
 			MaxHoldSec:          5,
@@ -516,6 +518,10 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 		assert.Equal(t, shared.SideOpenLong, spec.Side)
 		// BestAsk = 101.0, slippage = 101 * 0.01 = 1.01 -> IOC limit price = 102.01
 		assert.InDelta(t, 102.01, spec.Price, 1e-6)
+		// TakeProfit for LONG must be strictly greater than order limit price
+		assert.Greater(t, spec.TakeProfitPrice, spec.Price)
+		// StopLoss for LONG must be strictly less than order limit price
+		assert.Less(t, spec.StopLossPrice, spec.Price)
 	})
 
 	t.Run("applies configured MaxPriceDiffPercent on Short order", func(t *testing.T) {
@@ -543,6 +549,8 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 			MaxNotionalUSD:      100.0,
 			MarginUSDT:          10.0,
 			Leverage:            1,
+			TakeProfitPct:       0.5,
+			StopLossPct:         0.5,
 			MaxPriceDiffPercent: 1.0, // 1% slippage
 			MinHoldSec:          5,
 			MaxHoldSec:          5,
@@ -553,6 +561,10 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 		assert.Equal(t, shared.SideOpenShort, spec.Side)
 		// BestBid = 100.0, slippage = 100 * 0.01 = 1.00 -> IOC limit price = 99.00
 		assert.InDelta(t, 99.00, spec.Price, 1e-6)
+		// TakeProfit for SHORT must be strictly less than order limit price
+		assert.Less(t, spec.TakeProfitPrice, spec.Price)
+		// StopLoss for SHORT must be strictly greater than order limit price
+		assert.Greater(t, spec.StopLossPrice, spec.Price)
 	})
 
 	t.Run("applies default 0.5% slippage buffer when MaxPriceDiffPercent is omitted", func(t *testing.T) {

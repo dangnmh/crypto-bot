@@ -51,7 +51,7 @@ func (g *OrderGenerator) GenerateSpec(
 
 	iocPrice := computeIOCPrice(side, refPrice, cfg, marketInfo)
 	volume := computeOrderVolume(scaledNotional, refPrice, contractSize, marketInfo)
-	tpPrice, slPrice := computeTPSLPrices(side, refPrice, cfg, marketInfo)
+	tpPrice, slPrice := computeTPSLPrices(side, iocPrice, cfg, marketInfo)
 	holdDuration := computeHoldDuration(cfg)
 
 	return &ObfuscationSpec{
@@ -274,30 +274,56 @@ func computeOrderVolume(notional, refPrice, contractSize float64, info MarketInf
 	return vol
 }
 
-func computeTPSLPrices(side shared.Side, refPrice float64, cfg fundingconfig.ExchangeObfuscationCfg, info MarketInfo) (float64, float64) {
-	var tpPrice, slPrice float64
+func computeTPSLPrices(side shared.Side, basePrice float64, cfg fundingconfig.ExchangeObfuscationCfg, info MarketInfo) (float64, float64) {
+	if basePrice <= 0 {
+		return 0, 0
+	}
 	priceUnit := info.PriceUnit
 	if priceUnit <= 0 {
 		priceUnit = 0.01
 	}
 
-	if cfg.TakeProfitPct > 0 && refPrice > 0 {
+	var tpPrice, slPrice float64
+	if cfg.TakeProfitPct > 0 {
 		tpPrice = tradecalc.CalculateStaticTakeProfitPrice(
 			tradecalc.Side(side),
-			refPrice,
+			basePrice,
 			cfg.TakeProfitPct/100.0,
 			priceUnit,
 			info.PriceScale,
 		)
 	}
-	if cfg.StopLossPct > 0 && refPrice > 0 {
+	if cfg.StopLossPct > 0 {
 		slPrice = tradecalc.CalculateStopLossPrice(
 			tradecalc.Side(side),
-			refPrice,
+			basePrice,
 			cfg.StopLossPct/100.0,
 			priceUnit,
 			info.PriceScale,
 		)
+	}
+
+	return validateTPSLDirection(side, basePrice, tpPrice, slPrice)
+}
+
+func validateTPSLDirection(side shared.Side, basePrice, tpPrice, slPrice float64) (float64, float64) {
+	switch side {
+	case shared.SideOpenLong:
+		if tpPrice > 0 && tpPrice <= basePrice {
+			tpPrice = 0
+		}
+		if slPrice > 0 && slPrice >= basePrice {
+			slPrice = 0
+		}
+	case shared.SideOpenShort:
+		if tpPrice > 0 && tpPrice >= basePrice {
+			tpPrice = 0
+		}
+		if slPrice > 0 && slPrice <= basePrice {
+			slPrice = 0
+		}
+	case shared.SideUnknown, shared.SideCloseLong, shared.SideCloseShort:
+		// No directional validation needed for non-opening sides
 	}
 	return tpPrice, slPrice
 }
