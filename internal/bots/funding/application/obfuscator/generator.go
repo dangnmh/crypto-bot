@@ -49,6 +49,7 @@ func (g *OrderGenerator) GenerateSpec(
 	refPrice := marketInfo.RefPrice
 	contractSize := marketInfo.ContractSize
 
+	iocPrice := computeIOCPrice(side, refPrice, cfg, marketInfo)
 	volume := computeOrderVolume(scaledNotional, refPrice, contractSize, marketInfo)
 	tpPrice, slPrice := computeTPSLPrices(side, refPrice, cfg, marketInfo)
 	holdDuration := computeHoldDuration(cfg)
@@ -61,7 +62,7 @@ func (g *OrderGenerator) GenerateSpec(
 		NotionalUSDT:    scaledNotional,
 		MarginUSDT:      cfg.MarginUSDT,
 		Leverage:        leverage,
-		Price:           refPrice,
+		Price:           iocPrice,
 		Volume:          volume,
 		ContractSize:    contractSize,
 		TakeProfitPrice: tpPrice,
@@ -69,7 +70,7 @@ func (g *OrderGenerator) GenerateSpec(
 		TakeProfitPct:   cfg.TakeProfitPct,
 		StopLossPct:     cfg.StopLossPct,
 		HoldDuration:    holdDuration,
-		OrderType:       ordermanager.OrderTypeMarket,
+		OrderType:       ordermanager.OrderTypeIOC,
 		Vol24hUSDT:      marketInfo.Vol24hUSDT,
 		FundingRate:     marketInfo.FundingRate,
 	}, nil
@@ -307,4 +308,40 @@ func computeHoldDuration(cfg fundingconfig.ExchangeObfuscationCfg) time.Duration
 		holdSec += rand.Intn(cfg.MaxHoldSec - cfg.MinHoldSec + 1)
 	}
 	return time.Duration(holdSec) * time.Second
+}
+
+const defaultObfuscatorSlippagePct = 0.5
+
+func computeIOCPrice(side shared.Side, refPrice float64, cfg fundingconfig.ExchangeObfuscationCfg, info MarketInfo) float64 {
+	bestBid := info.BestBid
+	bestAsk := info.BestAsk
+	if bestBid <= 0 && info.LastPrice > 0 {
+		bestBid = info.LastPrice
+	}
+	if bestAsk <= 0 && info.LastPrice > 0 {
+		bestAsk = info.LastPrice
+	}
+
+	maxPriceDiff := cfg.MaxPriceDiffPercent
+	if maxPriceDiff <= 0 {
+		maxPriceDiff = defaultObfuscatorSlippagePct
+	}
+
+	priceUnit := info.PriceUnit
+	if priceUnit <= 0 {
+		priceUnit = 0.01
+	}
+
+	iocPrice, err := tradecalc.CalculateIOCPrice(
+		tradecalc.Side(side),
+		bestBid,
+		bestAsk,
+		maxPriceDiff,
+		priceUnit,
+		info.PriceScale,
+	)
+	if err != nil || iocPrice <= 0 {
+		return refPrice
+	}
+	return iocPrice
 }

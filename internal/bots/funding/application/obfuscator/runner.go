@@ -60,7 +60,7 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 
 	orderType := spec.OrderType
 	if orderType == "" {
-		orderType = ordermanager.OrderTypeMarket
+		orderType = ordermanager.OrderTypeIOC
 	}
 
 	intentEvt := ordermanager.OrderIntentEvent{

@@ -211,6 +211,7 @@ func TestOrderGenerator(t *testing.T) {
 	assert.Greater(t, spec.Price, 0.0)
 	assert.Greater(t, spec.TakeProfitPrice, 0.0)
 	assert.Greater(t, spec.StopLossPrice, 0.0)
+	assert.Equal(t, ordermanager.OrderTypeIOC, spec.OrderType)
 
 	t.Run("uses configured leverage when specified", func(t *testing.T) {
 		t.Parallel()
@@ -468,11 +469,109 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 		}
 		spec, err := gen.GenerateSpec(context.Background(), cfg, "toobit_futures", "BLUR-SWAP-USDT", 10.0, "req-blur")
 		require.NoError(t, err)
-		assert.Equal(t, 0.199, spec.Price) // bid price for Short
-		assert.Equal(t, 50.0, spec.Volume) // 10 / 0.199 = 50.25 -> 50 contracts (volScale=0)
+		assert.Equal(t, 0.1981, spec.Price) // IOC limit price for Short with 0.5% slippage (0.199 - 0.000995 -> 0.1981)
+		assert.Equal(t, 50.0, spec.Volume)  // 10 / 0.199 = 50.25 -> 50 contracts (volScale=0)
 		assert.Equal(t, 10.0, spec.NotionalUSDT)
 		assert.Equal(t, 500000.0, spec.Vol24hUSDT)
 		assert.Equal(t, -0.0015, spec.FundingRate)
+	})
+}
+
+func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &mockExchangeClient{
+		ob: &shared.OrderBook{
+			Bids: []shared.OrderBookEntry{{Price: 100.0, Volume: 10}},
+			Asks: []shared.OrderBookEntry{{Price: 101.0, Volume: 5}},
+		},
+		detail: &exchange.ContractDetail{
+			Symbol:       "ETHUSDT",
+			ContractSize: 1.0,
+			MinVol:       1,
+			VolScale:     2,
+			PriceUnit:    0.01,
+			PriceScale:   2,
+		},
+	}
+	mockEngine := &mockEngineProviderGetter{client: mockClient}
+	gen, err := obfuscator.NewOrderGenerator(mockEngine)
+	require.NoError(t, err)
+
+	t.Run("applies configured MaxPriceDiffPercent on Long order", func(t *testing.T) {
+		t.Parallel()
+		cfg := fundingconfig.ExchangeObfuscationCfg{
+			Enabled:             true,
+			MinNotionalUSD:      10.0,
+			MaxNotionalUSD:      100.0,
+			MarginUSDT:          10.0,
+			Leverage:            1,
+			MaxPriceDiffPercent: 1.0, // 1% slippage
+			MinHoldSec:          5,
+			MaxHoldSec:          5,
+		}
+		// totalBid(10) > totalAsk(5) -> Long side
+		spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 10.0, "req-slip-long")
+		require.NoError(t, err)
+		assert.Equal(t, shared.SideOpenLong, spec.Side)
+		// BestAsk = 101.0, slippage = 101 * 0.01 = 1.01 -> IOC limit price = 102.01
+		assert.InDelta(t, 102.01, spec.Price, 1e-6)
+	})
+
+	t.Run("applies configured MaxPriceDiffPercent on Short order", func(t *testing.T) {
+		t.Parallel()
+		shortClient := &mockExchangeClient{
+			ob: &shared.OrderBook{
+				Bids: []shared.OrderBookEntry{{Price: 100.0, Volume: 5}},
+				Asks: []shared.OrderBookEntry{{Price: 101.0, Volume: 15}},
+			},
+			detail: &exchange.ContractDetail{
+				Symbol:       "ETHUSDT",
+				ContractSize: 1.0,
+				MinVol:       1,
+				VolScale:     2,
+				PriceUnit:    0.01,
+				PriceScale:   2,
+			},
+		}
+		shortGen, err := obfuscator.NewOrderGenerator(&mockEngineProviderGetter{client: shortClient})
+		require.NoError(t, err)
+
+		cfg := fundingconfig.ExchangeObfuscationCfg{
+			Enabled:             true,
+			MinNotionalUSD:      10.0,
+			MaxNotionalUSD:      100.0,
+			MarginUSDT:          10.0,
+			Leverage:            1,
+			MaxPriceDiffPercent: 1.0, // 1% slippage
+			MinHoldSec:          5,
+			MaxHoldSec:          5,
+		}
+		// totalAsk(15) > totalBid(5) -> Short side
+		spec, err := shortGen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 10.0, "req-slip-short")
+		require.NoError(t, err)
+		assert.Equal(t, shared.SideOpenShort, spec.Side)
+		// BestBid = 100.0, slippage = 100 * 0.01 = 1.00 -> IOC limit price = 99.00
+		assert.InDelta(t, 99.00, spec.Price, 1e-6)
+	})
+
+	t.Run("applies default 0.5% slippage buffer when MaxPriceDiffPercent is omitted", func(t *testing.T) {
+		t.Parallel()
+		cfg := fundingconfig.ExchangeObfuscationCfg{
+			Enabled:        true,
+			MinNotionalUSD: 10.0,
+			MaxNotionalUSD: 100.0,
+			MarginUSDT:     10.0,
+			Leverage:       1,
+			MinHoldSec:     5,
+			MaxHoldSec:     5,
+		}
+		// totalBid(10) > totalAsk(5) -> Long side
+		spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 10.0, "req-slip-default")
+		require.NoError(t, err)
+		assert.Equal(t, shared.SideOpenLong, spec.Side)
+		// BestAsk = 101.0, slippage = 101 * 0.005 = 0.505 -> 101.505 snapped to tick floor = 101.50
+		assert.InDelta(t, 101.50, spec.Price, 1e-6)
 	})
 }
 
@@ -501,7 +600,7 @@ func TestObfuscatorRunner(t *testing.T) {
 		TakeProfitPct:   2.0,
 		StopLossPct:     1.0,
 		HoldDuration:    15 * time.Second,
-		OrderType:       ordermanager.OrderTypeMarket,
+		OrderType:       ordermanager.OrderTypeIOC,
 		Vol24hUSDT:      1500000.0,
 		FundingRate:     0.0001,
 	}
@@ -517,6 +616,7 @@ func TestObfuscatorRunner(t *testing.T) {
 	assert.Equal(t, "SOLUSDT", evt.Symbol)
 	assert.Equal(t, shared.SideOpenShort, evt.Side)
 	assert.Equal(t, ordermanager.StrategyObfuscator, evt.StrategyType)
+	assert.Equal(t, ordermanager.OrderTypeIOC, evt.OrderType)
 	assert.Equal(t, 0.166, evt.Volume)
 	assert.Equal(t, 150.0, evt.Price)
 	assert.Equal(t, 1.0, evt.ContractSize)
@@ -527,6 +627,34 @@ func TestObfuscatorRunner(t *testing.T) {
 	assert.Equal(t, 15*time.Second, evt.PositionCloseTimeout)
 	assert.Equal(t, 1500000.0, evt.Vol24hUSDT)
 	assert.Equal(t, 0.0001, evt.FundingRate)
+
+	t.Run("defaults order type to OrderTypeIOC when empty", func(t *testing.T) {
+		t.Parallel()
+		emptyDisp := &mockDispatcher{}
+		r, err := obfuscator.NewObfuscatorRunner(emptyDisp, clock, logger)
+		require.NoError(t, err)
+
+		emptySpec := &obfuscator.ObfuscationSpec{
+			OriginReqID:  "orig-empty",
+			Exchange:     "bybit",
+			Symbol:       "SOLUSDT",
+			Side:         shared.SideOpenLong,
+			NotionalUSDT: 25.0,
+			MarginUSDT:   5.0,
+			Leverage:     5,
+			Price:        150.0,
+			Volume:       0.166,
+			ContractSize: 1.0,
+			HoldDuration: 10 * time.Second,
+		}
+		err = r.Execute(context.Background(), emptySpec)
+		require.NoError(t, err)
+		require.Len(t, emptyDisp.events, 1)
+
+		emptyEvt, ok := emptyDisp.events[0].(ordermanager.OrderIntentEvent)
+		require.True(t, ok)
+		assert.Equal(t, ordermanager.OrderTypeIOC, emptyEvt.OrderType)
+	})
 
 	t.Run("returns error when nil spec", func(t *testing.T) {
 		t.Parallel()

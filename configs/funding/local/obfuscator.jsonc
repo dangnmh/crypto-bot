@@ -36,6 +36,9 @@
       // Safety Stop Loss %
       "stopLossPct": 0.5,
 
+      // Maximum price difference % allowed for IOC order slippage tolerance (e.g. 0.5 = 0.5%)
+      "maxPriceDiffPercent": 0.5,
+
       // Minimum holding duration in seconds before closing position
       "minHoldSec": 10,
 

@@ -78,6 +78,7 @@ type ExchangeObfuscationCfg struct {
 	Leverage            int     `json:"leverage" validate:"gte=1"`
 	TakeProfitPct       float64 `json:"takeProfitPct" validate:"gt=0"`
 	StopLossPct         float64 `json:"stopLossPct" validate:"gt=0"`
+	MaxPriceDiffPercent float64 `json:"maxPriceDiffPercent,omitempty" validate:"omitempty,gt=0"`
 	MinHoldSec          int     `json:"minHoldSec" validate:"gt=0"`
 	MaxHoldSec          int     `json:"maxHoldSec" validate:"gt=0,gtefield=MinHoldSec"`
 	MaxActiveOrders     int     `json:"maxActiveOrders" validate:"gt=0"`

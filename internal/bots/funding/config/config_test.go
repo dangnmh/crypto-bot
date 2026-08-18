@@ -628,4 +628,16 @@ func TestExchangeObfuscationCfg_OrderNotionalUSD(t *testing.T) {
 		}
 		assert.Equal(t, 1000.0, cfg.OrderNotionalUSD())
 	})
+
+	t.Run("preserves configured MaxPriceDiffPercent", func(t *testing.T) {
+		t.Parallel()
+		cfg := config.ExchangeObfuscationCfg{
+			MarginUSDT:          100.0,
+			Leverage:            5,
+			MinNotionalUSD:      50.0,
+			MaxNotionalUSD:      1000.0,
+			MaxPriceDiffPercent: 0.8,
+		}
+		assert.InDelta(t, 0.8, cfg.MaxPriceDiffPercent, 1e-9)
+	})
 }
