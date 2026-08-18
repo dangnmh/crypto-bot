@@ -180,5 +180,5 @@ func provideDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
 }
 
 func provideClock() shared.Clock {
-	return SystemClock{}
+	return shared.SystemClock{}
 }

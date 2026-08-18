@@ -1,13 +1,11 @@
-package bootstrap
+package domain
 
 import (
 	"context"
 	"time"
-
-	shared "crypto-bot/internal/domain"
 )
 
-var _ shared.Clock = SystemClock{}
+var _ Clock = SystemClock{}
 
 // SystemClock provides default system time implementing domain.Clock.
 type SystemClock struct{}
