@@ -111,6 +111,7 @@ func (r *GormTradeRepository) GetSymbolPnLSummaries(ctx context.Context, exchang
 			"SUM(CASE WHEN strategy_type = 'OBFUSCATOR' THEN net_pnl ELSE 0 END) AS obfuscator_net_pnl").
 		Where("exchange = ? AND created_at >= ?", exchange, since).
 		Group("exchange, symbol").
+		Order("funding_net_profit DESC").
 		Find(&summaries).Error
 	if err != nil {
 		return nil, fmt.Errorf("fetch symbol pnl summaries: %w", err)

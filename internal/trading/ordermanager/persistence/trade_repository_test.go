@@ -125,18 +125,12 @@ func TestGormTradeRepository_GetSymbolPnLSummaries_SQLite(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, summaries, 2)
 
-	summaryMap := make(map[string]persistence.SymbolPnLSummary)
-	for _, s := range summaries {
-		summaryMap[s.Symbol] = s
-	}
+	// Verify results are sorted by funding_net_profit descending
+	assert.Equal(t, "COW-SWAP-USDT", summaries[0].Symbol)
+	assert.Equal(t, 200.0, summaries[0].FundingNetProfit)
+	assert.Equal(t, -30.0, summaries[0].ObfuscatorNetPnL)
 
-	cowSummary, ok := summaryMap["COW-SWAP-USDT"]
-	require.True(t, ok)
-	assert.Equal(t, 200.0, cowSummary.FundingNetProfit)
-	assert.Equal(t, -30.0, cowSummary.ObfuscatorNetPnL)
-
-	lptSummary, ok := summaryMap["LPT-SWAP-USDT"]
-	require.True(t, ok)
-	assert.Equal(t, 50.0, lptSummary.FundingNetProfit)
-	assert.Equal(t, 0.0, lptSummary.ObfuscatorNetPnL)
+	assert.Equal(t, "LPT-SWAP-USDT", summaries[1].Symbol)
+	assert.Equal(t, 50.0, summaries[1].FundingNetProfit)
+	assert.Equal(t, 0.0, summaries[1].ObfuscatorNetPnL)
 }
