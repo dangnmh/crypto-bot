@@ -898,63 +898,6 @@ func TestObfuscatorJob(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, countDisp.events, 1) // only 1 order executed due to MaxActiveOrders = 1
 	})
-
-	t.Run("Tick skips execution during settlement blackout window (-5m to +5m)", func(t *testing.T) {
-		t.Parallel()
-		testTimes := []struct {
-			name        string
-			time        time.Time
-			expectEvent bool
-		}{
-			{"at 11:54:00 (outside window)", time.Date(2026, 8, 15, 11, 54, 0, 0, time.UTC), true},
-			{"at 11:55:00 (-5m boundary)", time.Date(2026, 8, 15, 11, 55, 0, 0, time.UTC), false},
-			{"at 11:58:00 (inside window)", time.Date(2026, 8, 15, 11, 58, 0, 0, time.UTC), false},
-			{"at 12:00:00 (hour mark)", time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC), false},
-			{"at 12:03:00 (inside window)", time.Date(2026, 8, 15, 12, 3, 0, 0, time.UTC), false},
-			{"at 12:05:00 (+5m boundary)", time.Date(2026, 8, 15, 12, 5, 0, 0, time.UTC), false},
-			{"at 12:06:00 (outside window)", time.Date(2026, 8, 15, 12, 6, 0, 0, time.UTC), true},
-		}
-
-		for _, tt := range testTimes {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				tClock := &mockClock{now: tt.time}
-				tDisp := &mockDispatcher{}
-				tRunner, err := obfuscator.NewObfuscatorRunner(tDisp, tClock, logger)
-				require.NoError(t, err)
-
-				tReader := &mockPnLReader{
-					summaries: []ordermanagerpersistence.SymbolPnLSummary{
-						{Exchange: "binance", Symbol: "BTCUSDT", FundingNetProfit: 25.0},
-					},
-				}
-				tJob, err := obfuscator.NewObfuscatorJob(cfg, tReader, gen, tRunner, tClock, logger)
-				require.NoError(t, err)
-
-				err = tJob.Tick(context.Background())
-				require.NoError(t, err)
-
-				if tt.expectEvent {
-					assert.Len(t, tDisp.events, 1, "expected event to dispatch at %v", tt.time)
-				} else {
-					assert.Empty(t, tDisp.events, "expected event to be skipped at %v", tt.time)
-				}
-			})
-		}
-	})
-}
-
-func TestIsSettlementBlackout(t *testing.T) {
-	t.Parallel()
-
-	assert.False(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 10, 54, 0, 0, time.UTC)))
-	assert.True(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 10, 55, 0, 0, time.UTC)))
-	assert.True(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 10, 58, 0, 0, time.UTC)))
-	assert.True(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 0, 0, 0, time.UTC)))
-	assert.True(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 2, 0, 0, time.UTC)))
-	assert.True(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 5, 0, 0, time.UTC)))
-	assert.False(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 6, 0, 0, time.UTC)))
-	assert.False(t, obfuscator.IsSettlementBlackout(time.Date(2026, 8, 15, 11, 30, 0, 0, time.UTC)))
 }
 
 func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {

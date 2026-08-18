@@ -54,25 +54,6 @@ func (m mockClock) IsHealthy() bool                                  { return tr
 func (m mockClock) MsUntilTarget(target int64) int64                 { return target - m.now.UnixMilli() }
 func (m mockClock) Sleep(ctx context.Context, d time.Duration) error { return nil }
 
-func TestIsSettlementBlackout(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 50, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 55, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 58, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 59, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 59, 59, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 12, 1, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC)))
-	assert.True(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 12, 10, 0, 0, time.UTC)))
-
-	assert.False(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 11, 0, 0, time.UTC)))
-	assert.False(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 15, 0, 0, time.UTC)))
-	assert.False(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 30, 0, 0, time.UTC)))
-	assert.False(t, dilution.IsSettlementBlackout(time.Date(2026, 1, 1, 11, 49, 0, 0, time.UTC)))
-}
-
 func TestDilutionMaker_GenerateQuotes_FlatPosition(t *testing.T) {
 	t.Parallel()
 
