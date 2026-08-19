@@ -5,7 +5,7 @@
   // Interval between database scans for profitable trades
   "pollInterval": "15m",
   // Lookback window for querying historical trades (created_at >= now - lookbackWindow)
-  "lookbackWindow": "2400h",
+  "lookbackWindow": "24h",
   // Exchange-specific obfuscation settings
   "exchanges": {
     "toobit_futures": {
