@@ -39,7 +39,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COALESCE(SUM(net_pnl), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COALESCE(SUM(net_pnl), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -97,7 +97,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COALESCE(SUM(gross_pnl), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COALESCE(SUM(gross_pnl), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -155,7 +155,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COALESCE((COUNT(CASE WHEN net_pnl > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(*), 0)) * 100, 0) FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COALESCE((COUNT(CASE WHEN net_pnl > 0 THEN 1 END)::FLOAT / NULLIF(COUNT(*), 0)) * 100, 0) FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -217,7 +217,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COUNT(*) FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COUNT(*) FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -263,7 +263,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COALESCE(SUM(notional_usd), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COALESCE(SUM(notional_usd), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -309,7 +309,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COALESCE(SUM(funding_fee), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COALESCE(SUM(funding_fee), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -367,7 +367,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT COALESCE(SUM(fee), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT COALESCE(SUM(fee), 0) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -413,7 +413,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), COALESCE(SUM(net_pnl), 0) AS net_pnl FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), COALESCE(SUM(net_pnl), 0) AS net_pnl FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -459,7 +459,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT created_at AS time, SUM(net_pnl) OVER (ORDER BY created_at ASC) AS cumulative_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) ORDER BY created_at ASC",
+          "rawSql": "SELECT created_at AS time, SUM(net_pnl) OVER (ORDER BY created_at ASC) AS cumulative_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) ORDER BY created_at ASC",
           "refId": "A"
         }
       ],
@@ -505,7 +505,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(latency_rtt_ms) AS avg_latency FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) AND latency_rtt_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -548,7 +548,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(actual_slippage) AS avg_slippage FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(actual_slippage) AS avg_slippage FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) AND actual_slippage IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -591,7 +591,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), exchange, AVG((extra->>'buffer_time_ms')::numeric) AS target_buffer_ms, AVG((extra->>'fire_offset_ms')::numeric) AS actual_fire_offset_ms FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), exchange, AVG((extra->>'buffer_time_ms')::numeric) AS target_buffer_ms, AVG((extra->>'fire_offset_ms')::numeric) AS actual_fire_offset_ms FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -635,7 +635,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), exchange, AVG((extra->>'fire_offset_ms')::numeric) AS avg_fire_offset_ms, SUM(funding_fee) AS total_funding_fee_usd FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), exchange, AVG((extra->>'fire_offset_ms')::numeric) AS avg_fire_offset_ms, SUM(funding_fee) AS total_funding_fee_usd FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -685,7 +685,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT outcome, COUNT(*) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND outcome IS NOT NULL AND outcome <> '' AND $__timeFilter(created_at) GROUP BY outcome",
+          "rawSql": "SELECT outcome, COUNT(*) FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND outcome IS NOT NULL AND outcome <> '' AND $__timeFilter(created_at) GROUP BY outcome",
           "refId": "A"
         }
       ],
@@ -797,7 +797,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT (COUNT(CASE WHEN outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN exchange_order_id IS NOT NULL AND exchange_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at)",
+          "rawSql": "SELECT (COUNT(CASE WHEN outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN exchange_order_id IS NOT NULL AND exchange_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at)",
           "refId": "A"
         }
       ],
@@ -865,7 +865,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, (COUNT(CASE WHEN outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN exchange_order_id IS NOT NULL AND exchange_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "rawSql": "SELECT exchange, (COUNT(CASE WHEN outcome = 'canceled_no_fill' THEN 1 END)::FLOAT / NULLIF(COUNT(CASE WHEN exchange_order_id IS NOT NULL AND exchange_order_id <> '' THEN 1 END), 0)) * 100 AS cancel_rate FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
           "refId": "A"
         }
       ],
@@ -915,7 +915,7 @@
       "targets": [
         {
           "format": "time_series",
-          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), AVG(hold_duration_ms) AS avg_hold_duration FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) AND hold_duration_ms IS NOT NULL GROUP BY 1 ORDER BY 1",
           "refId": "A"
         }
       ],
@@ -964,7 +964,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT reason, COUNT(*) FROM trades WHERE status = 'completed' AND reason IS NOT NULL AND reason <> '' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY reason",
+          "rawSql": "SELECT reason, COUNT(*) FROM trades WHERE status = 'completed' AND reason IS NOT NULL AND reason <> '' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY reason",
           "refId": "A"
         }
       ],
@@ -1082,7 +1082,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT reason, COUNT(*) FROM trades WHERE status = 'aborted' AND reason IS NOT NULL AND reason <> '' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY reason",
+          "rawSql": "SELECT reason, COUNT(*) FROM trades WHERE status = 'aborted' AND reason IS NOT NULL AND reason <> '' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY reason",
           "refId": "A"
         }
       ],
@@ -1170,7 +1170,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(net_pnl) AS total_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange ORDER BY total_profit DESC",
+          "rawSql": "SELECT exchange, SUM(net_pnl) AS total_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange ORDER BY total_profit DESC",
           "refId": "A"
         }
       ],
@@ -1218,7 +1218,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(gross_pnl) AS total_gross_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange ORDER BY total_gross_profit DESC",
+          "rawSql": "SELECT exchange, SUM(gross_pnl) AS total_gross_profit FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange ORDER BY total_gross_profit DESC",
           "refId": "A"
         }
       ],
@@ -1266,7 +1266,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, COUNT(CASE WHEN net_pnl > 0 THEN 1 END) AS wins FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "rawSql": "SELECT exchange, COUNT(CASE WHEN net_pnl > 0 THEN 1 END) AS wins FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
           "refId": "A"
         }
       ],
@@ -1322,7 +1322,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(ABS(fee)) AS total_fee FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "rawSql": "SELECT exchange, SUM(ABS(fee)) AS total_fee FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
           "refId": "A"
         }
       ],
@@ -1378,7 +1378,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, SUM(ABS(funding_fee)) AS funding_fee FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "rawSql": "SELECT exchange, SUM(ABS(funding_fee)) AS funding_fee FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
           "refId": "A"
         }
       ],
@@ -1434,7 +1434,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, COUNT(*) AS count FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "rawSql": "SELECT exchange, COUNT(*) AS count FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
           "refId": "A"
         }
       ],
@@ -1490,7 +1490,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT exchange, COUNT(*) AS count FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
+          "rawSql": "SELECT exchange, COUNT(*) AS count FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY exchange",
           "refId": "A"
         }
       ],
@@ -1546,7 +1546,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT CASE WHEN net_pnl > 0 THEN 'Win' ELSE 'Loss' END AS outcome, COUNT(*) AS count FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1",
+          "rawSql": "SELECT CASE WHEN net_pnl > 0 THEN 'Win' ELSE 'Loss' END AS outcome, COUNT(*) AS count FROM trades WHERE status = 'completed' AND exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) GROUP BY 1",
           "refId": "A"
         }
       ],
@@ -1627,7 +1627,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT created_at AS timestamp, exchange, normalized_symbol, strategy_type, side, margin_usdt, leverage, entry_price, exit_price, net_pnl, hold_duration_ms, status, outcome, reason FROM trades WHERE exchange IN (${exchange:sqlstring}) AND $__timeFilter(created_at) ORDER BY created_at DESC",
+          "rawSql": "SELECT created_at AS timestamp, exchange, normalized_symbol, strategy_type, side, margin_usdt, leverage, entry_price, exit_price, net_pnl, hold_duration_ms, status, outcome, reason FROM trades WHERE exchange IN (${exchange:sqlstring}) AND strategy_type IN (${strategy_type:sqlstring}) AND $__timeFilter(created_at) ORDER BY created_at DESC",
           "refId": "A"
         }
       ],
@@ -1655,7 +1655,7 @@
   ],
   "title": "Crypto-Bot Trades P&L Analytics",
   "uid": "cryptobot-trades-analytics",
-  "version": 2,
+  "version": 3,
   "templating": {
     "list": [
       {
@@ -1677,6 +1677,29 @@
         "name": "exchange",
         "options": [],
         "query": "SELECT DISTINCT exchange FROM trades",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "postgres",
+          "uid": "postgres"
+        },
+        "definition": "SELECT DISTINCT strategy_type FROM trades",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Strategy Type",
+        "multi": true,
+        "name": "strategy_type",
+        "options": [],
+        "query": "SELECT DISTINCT strategy_type FROM trades",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "query"
