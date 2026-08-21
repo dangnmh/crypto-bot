@@ -1009,3 +1009,51 @@ func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
 	assert.True(t, client.cancelOrderCalled, "Resting timeout expiration must call CancelOrder on exchange")
 	assert.Equal(t, ordermanager.StateCompleted, agg.State())
 }
+
+func TestOrderManager_SkipPreFlight(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	ctx := context.Background()
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(ctx))
+
+	intent := ordermanager.OrderIntentEvent{
+		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
+			ReqID:        "req-skip-pf-001",
+			Symbol:       "BTCUSDT",
+			Exchange:     "mexc",
+			StrategyType: ordermanager.StrategyFundingReversion,
+			Timestamp:    time.Now(),
+		},
+		Side:          shared.SideOpenLong,
+		OrderType:     ordermanager.OrderTypeIOC,
+		Price:         50000.0,
+		Volume:        1.0,
+		MarginMode:    shared.MarginModeIsolated,
+		PositionMode:  shared.PositionModeOneWay,
+		Leverage:      10,
+		SkipPreFlight: true,
+	}
+
+	preflight, err := mgr.HandlePreFlight(ctx, intent)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, preflight.AdjustedLeverage)
+	assert.False(t, client.marginModeSwitched, "expected margin mode switch to be skipped")
+	assert.False(t, client.positionModeSwitched, "expected position mode switch to be skipped")
+	assert.False(t, client.leverageChanged, "expected leverage change to be skipped")
+}

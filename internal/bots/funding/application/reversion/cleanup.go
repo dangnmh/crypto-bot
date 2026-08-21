@@ -72,6 +72,9 @@ func (r *StatelessRunner) calculateFinalPnL(closeEvt PositionClosedEvent) FinalP
 
 // compileAndPublishReport compiles the reversion cycle's final report, publishes it, and evicts from the cache.
 func (r *StatelessRunner) compileAndPublishReport(ctx context.Context, reqID, topic, errorMsg string) {
+	if r == nil || r.cache == nil {
+		return
+	}
 	cachedVal, found := r.cache.Get(reqID)
 	if !found {
 		return

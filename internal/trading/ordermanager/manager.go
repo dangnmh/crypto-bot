@@ -429,7 +429,7 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 	}
 
 	adjustedLeverage := evt.Leverage
-	if !evt.Side.IsClose() {
+	if !evt.Side.IsClose() && !evt.SkipPreFlight {
 		// Switch Margin Mode
 		if err := client.SwitchMarginMode(ctx, evt.Symbol, evt.MarginMode, evt.Leverage, evt.Side); err != nil {
 			m.log.ErrorContext(ctx, "Switch margin mode failed", slog.Any("error", err))

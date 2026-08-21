@@ -185,6 +185,7 @@ type OrderIntentEvent struct {
 	StopLossPrice         float64       `json:"stop_loss_price,omitempty"`
 	PositionCloseTimeout  time.Duration `json:"position_close_timeout,omitempty"`  // Post-fill timeout to close position (bailout on expiry)
 	UnfilledCancelTimeout time.Duration `json:"unfilled_cancel_timeout,omitempty"` // Pre-fill timeout to cancel order if no fill while resting on book
+	SkipPreFlight         bool          `json:"skip_pre_flight,omitempty"`         // Skip margin mode, position mode, and leverage configuration in PreFlight
 
 	// Execution & Timing Targets
 	FireTime   time.Time     `json:"fire_time"`

@@ -1093,6 +1093,7 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 	testCand := domain.Candidate{
 		Config: domain.TradeConfig{
 			Symbol:              "BTC_USDT",
+			Exchange:            "mexc",
 			MaxPriceDiffPercent: 0.01,
 			MarginUSDT:          100,
 			Leverage:            5,
@@ -1125,27 +1126,62 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 		t.Cleanup(func() { _ = bus.Close() })
 
 		cand := testCand
+		cand.ContractSpec = domain.ContractSpec{
+			PriceUnit:    0.01,
+			VolUnit:      1,
+			MinVol:       1,
+			PriceScale:   2,
+			VolScale:     4,
+			ContractSize: 0.001,
+		}
 		cand.Config.FundingReversion.UseOrderManager = true
 
-		engine := &app.Engine{Bus: bus}
-		cfg := &config.Config{}
+		client := mocks.NewMockClient(ctrl)
+		client.EXPECT().SwitchMarginMode(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		client.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
+
+		engine := &app.Engine{
+			Bus: bus,
+			Providers: map[string]*app.ExchangeProvider{
+				"mexc": {
+					Name:    "mexc",
+					Client:  client,
+					Adapter: infraws.NewExchangeManagerAdapter(nil),
+				},
+			},
+		}
+		cfg := &config.Config{
+			Reversion: &config.ReversionConfig{
+				Safety: config.SafetyConfig{
+					MaxImpactRatio: 1.0,
+				},
+			},
+		}
 		strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, nil, slog.Default())
 
 		intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
 		require.NoError(t, err)
+
+		now := time.Now()
+		mockClock := mocks.NewMockClock(ctrl)
+		mockClock.EXPECT().Now().Return(now).AnyTimes()
+		mockClock.EXPECT().LatencyMs().Return(int64(20)).AnyTimes()
+		mockClock.EXPECT().Until(gomock.Any()).Return(50 * time.Millisecond).AnyTimes()
+		mockClock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		strategyInst.SetTestFallbacks(mockClock, nil, nil)
 
 		confirmedEvt := reversion.ConfirmedEvent{
 			BaseReversionEvent: reversion.BaseReversionEvent{
 				ReqID:      "req-om-true",
 				Symbol:     "BTC_USDT",
 				Exchange:   "mexc",
-				SettleTime: time.Now().Add(10 * time.Second),
+				SettleTime: now.Add(1 * time.Second),
 			},
 			Candidate: cand,
 		}
 
 		mockPriceStore := mocks.NewMockPriceReader(ctrl)
-		mockPriceStore.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 100, BestAsk: 101, LastPrice: 100.5}, nil).AnyTimes()
+		mockPriceStore.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 59990, BestAsk: 60000, LastPrice: 60000}, nil).AnyTimes()
 
 		stores := map[string]strategy.FundingStoreSet{
 			"mexc": fakeFundingStoreSet{
@@ -1163,6 +1199,7 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 			assert.Equal(t, "req-om-true", receivedIntent.ReqID)
 			assert.Equal(t, "BTC_USDT", receivedIntent.Symbol)
 			assert.Equal(t, ordermanager.StrategyFundingReversion, receivedIntent.StrategyType)
+			assert.Greater(t, receivedIntent.Price, 0.0)
 		case <-time.After(3 * time.Second):
 			t.Fatal("Timeout waiting for OrderIntentEvent on ordermanager.TopicOrderIntent")
 		}
