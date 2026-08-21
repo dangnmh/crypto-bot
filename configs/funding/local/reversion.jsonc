@@ -61,7 +61,7 @@
       "takeProfitPct": 1,
       "stopLossPct": 2,
       "bufferTime": "390ms",
-      "postSettleTimeout": "30s"
+      "postSettleTimeout": "3s"
     },
     "bybit_futures": {
       "takeProfitPct": 1,

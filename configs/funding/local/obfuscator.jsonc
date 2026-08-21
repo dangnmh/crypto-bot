@@ -1,10 +1,13 @@
 {
   // Order Obfuscator Configuration (Local Environment)
   // Master toggle to enable or disable background obfuscation
-  "enabled": true,
+  "enabled": false,
 
   // Interval between database scans for profitable trades (e.g. 1m, 5m, 1h)
   "pollInterval": "2m",
+
+  // Jitter duration added/subtracted randomly to pollInterval (e.g. 30s -> [1m30s, 2m30s])
+  "jitter": "30s",
 
   // Lookback window for querying historical trades (created_at >= now - lookbackWindow)
   "lookbackWindow": "2400h",

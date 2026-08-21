@@ -4,6 +4,7 @@
   // Dilutes funding volume ratio down to < 15-20%, protecting account from surveillance flags.
   "enabled": false,
   "pollInterval": "2m",
+  "jitter": "30s",
   "exchanges": {
     "toobit_futures": {
       "enabled": true,
