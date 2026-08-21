@@ -825,6 +825,18 @@ func TestObfuscatorJob(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("Start and Stop lifecycle with Jitter", func(t *testing.T) {
+		t.Parallel()
+		jitterCfg := cfg
+		jitterCfg.Jitter = types.Duration(10 * time.Second)
+		startJob, err := obfuscator.NewObfuscatorJob(jitterCfg, pnlReader, gen, runner, clock, logger)
+		require.NoError(t, err)
+		err = startJob.Start(context.Background(), nil)
+		require.NoError(t, err)
+		err = startJob.Stop(context.Background())
+		require.NoError(t, err)
+	})
+
 	t.Run("Tick handles PnL reader query error gracefully", func(t *testing.T) {
 		t.Parallel()
 		errReader := &mockPnLReader{err: errors.New("db query error")}

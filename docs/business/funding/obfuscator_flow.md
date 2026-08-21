@@ -32,7 +32,7 @@ The Obfuscator subsystem acts as an automated anti-surveillance camouflage mecha
 
 ```mermaid
 flowchart TD
-    TICK["ObfuscatorJob.Tick()<br/>(@every pollInterval: e.g. 15m)"] --> SCAN["Query Symbol PnL Summaries<br/>(pnlReader.GetSymbolPnLSummaries)"]
+    TICK["ObfuscatorJob.Tick()<br/>(Dynamic loop: pollInterval ± jitter)"] --> SCAN["Query Symbol PnL Summaries<br/>(pnlReader.GetSymbolPnLSummaries)"]
     
     SCAN --> LOOP{"For each Symbol<br/>in Exchange"}
     
@@ -152,6 +152,8 @@ When the obfuscation position finishes:
   "enabled": true,
   // Interval between database scans for profitable trades
   "pollInterval": "15m",
+  // Jitter duration added/subtracted randomly to pollInterval (e.g. 2m -> [13m, 17m])
+  "jitter": "2m",
   // Lookback window for querying historical trades (created_at >= now - lookbackWindow)
   "lookbackWindow": "2400h",
   // Exchange-specific obfuscation settings
@@ -195,7 +197,8 @@ When the obfuscation position finishes:
 | Config Field | Type | Default / Example | Description |
 | :--- | :--- | :--- | :--- |
 | `enabled` | `bool` | `true` | Master switch for the Order Obfuscator background engine. |
-| `pollInterval` | `types.Duration` | `15m` | Frequency at which the cron scheduler checks symbol PnL budgets. |
+| `pollInterval` | `types.Duration` | `15m` | Frequency at which the background loop checks symbol PnL budgets. |
+| `jitter` | `types.Duration` | `2m` | Jitter duration randomized within `[pollInterval - jitter, pollInterval + jitter]` to eliminate periodic patterns. |
 | `lookbackWindow` | `types.Duration` | `2400h` | Time window for querying historical trade profits from the database. |
 | `exchanges.<name>.enabled` | `bool` | `true` | Enables or disables obfuscation for the designated exchange. |
 | `netPnLThresholdUSDT` | `float64` | `40.0` | Minimum net funding profit (USDT) on a symbol to trigger obfuscation. |

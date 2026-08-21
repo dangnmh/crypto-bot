@@ -65,6 +65,7 @@ type PriceTrackerConfig struct {
 type ObfuscatorConfig struct {
 	Enabled        bool                              `json:"enabled"`
 	PollInterval   types.Duration                    `json:"pollInterval" validate:"required"`
+	Jitter         types.Duration                    `json:"jitter,omitempty"`
 	LookbackWindow types.Duration                    `json:"lookbackWindow" validate:"required"`
 	Exchanges      map[string]ExchangeObfuscationCfg `json:"exchanges" validate:"dive"`
 }
@@ -102,6 +103,7 @@ func (c ExchangeObfuscationCfg) OrderNotionalUSD() float64 {
 type DilutionConfig struct {
 	Enabled      bool                           `json:"enabled"`
 	PollInterval types.Duration                 `json:"pollInterval" validate:"required"`
+	Jitter       types.Duration                 `json:"jitter,omitempty"`
 	Exchanges    map[string]ExchangeDilutionCfg `json:"exchanges" validate:"dive"`
 }
 

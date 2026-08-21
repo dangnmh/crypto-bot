@@ -10,8 +10,7 @@ import (
 	"crypto-bot/internal/bots/funding/application/strategy"
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
-
-	"github.com/robfig/cron/v3"
+	"crypto-bot/pkg/ticker"
 )
 
 var _ strategy.BackgroundStrategy = (*ObfuscatorJob)(nil)
@@ -24,7 +23,6 @@ type ObfuscatorJob struct {
 	runner    *ObfuscatorRunner
 	clock     shared.Clock
 	logger    *slog.Logger
-	cron      *cron.Cron
 	cancel    context.CancelFunc
 	mu        sync.Mutex
 }
@@ -54,7 +52,7 @@ func NewObfuscatorJob(
 	}, nil
 }
 
-// Start begins the background cron scheduler implementing strategy.BackgroundStrategy.
+// Start begins the background scheduler implementing strategy.BackgroundStrategy.
 func (j *ObfuscatorJob) Start(ctx context.Context, stores map[string]strategy.FundingStoreSet) error {
 	if !j.cfg.Enabled {
 		j.logger.InfoContext(ctx, "Order Obfuscator disabled in config; skipping background job start")
@@ -62,40 +60,33 @@ func (j *ObfuscatorJob) Start(ctx context.Context, stores map[string]strategy.Fu
 	}
 
 	pollInterval := time.Duration(j.cfg.PollInterval)
-	j.logger.InfoContext(ctx, "🚀 Starting Order Obfuscator background job", slog.Duration("poll_interval", pollInterval))
+	jitter := time.Duration(j.cfg.Jitter)
+	j.logger.InfoContext(ctx, "🚀 Starting Order Obfuscator background job",
+		slog.Duration("poll_interval", pollInterval),
+		slog.Duration("jitter", jitter),
+	)
 
 	j.mu.Lock()
 	cronCtx, cancel := context.WithCancel(ctx)
 	j.cancel = cancel
 
-	c := cron.New(cron.WithLocation(time.Local))
-	spec := fmt.Sprintf("@every %s", pollInterval)
-	_, err := c.AddFunc(spec, func() {
+	go ticker.RunWithJitter(cronCtx, pollInterval, jitter, func() bool {
 		if err := j.Tick(cronCtx); err != nil {
 			j.logger.ErrorContext(cronCtx, "Obfuscator job tick failed", slog.Any("error", err))
 		}
+		return true
 	})
-	if err != nil {
-		cancel()
-		j.mu.Unlock()
-		return fmt.Errorf("schedule obfuscator cron: %w", err)
-	}
 
-	j.cron = c
-	c.Start()
 	j.mu.Unlock()
 	return nil
 }
 
-// Stop gracefully shuts down the background cron scheduler.
+// Stop gracefully shuts down the background scheduler.
 func (j *ObfuscatorJob) Stop(ctx context.Context) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
 	j.logger.InfoContext(ctx, "🛑 Order Obfuscator background job stopped")
-	if j.cron != nil {
-		j.cron.Stop()
-	}
 	if j.cancel != nil {
 		j.cancel()
 	}

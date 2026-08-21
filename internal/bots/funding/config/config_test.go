@@ -474,6 +474,7 @@ func TestLoad_WithObfuscator(t *testing.T) {
 	obfuscatorContent := `{
 		"enabled": true,
 		"pollInterval": "1m",
+		"jitter": "15s",
 		"lookbackWindow": "24h",
 		"exchanges": {
 			"toobit_futures": {
@@ -500,6 +501,7 @@ func TestLoad_WithObfuscator(t *testing.T) {
 	require.NotNil(t, cfg.Obfuscator)
 	assert.True(t, cfg.Obfuscator.Enabled)
 	assert.Equal(t, types.Duration(1*time.Minute), cfg.Obfuscator.PollInterval)
+	assert.Equal(t, types.Duration(15*time.Second), cfg.Obfuscator.Jitter)
 	assert.Equal(t, types.Duration(24*time.Hour), cfg.Obfuscator.LookbackWindow)
 	require.Contains(t, cfg.Obfuscator.Exchanges, "toobit_futures")
 	assert.Equal(t, 5, cfg.Obfuscator.Exchanges["toobit_futures"].Leverage)
@@ -527,6 +529,7 @@ func TestLoad_WithDilution(t *testing.T) {
 	dilutionContent := `{
 		"enabled": true,
 		"pollInterval": "10s",
+		"jitter": "2s",
 		"exchanges": {
 			"mexc_futures": {
 				"enabled": true,
@@ -547,6 +550,7 @@ func TestLoad_WithDilution(t *testing.T) {
 	require.NotNil(t, cfg.Dilution)
 	assert.True(t, cfg.Dilution.Enabled)
 	assert.Equal(t, types.Duration(10*time.Second), cfg.Dilution.PollInterval)
+	assert.Equal(t, types.Duration(2*time.Second), cfg.Dilution.Jitter)
 	assert.Contains(t, cfg.Dilution.Exchanges, "mexc_futures")
 	assert.Equal(t, 500.0, cfg.Dilution.Exchanges["mexc_futures"].OrderNotionalUSD())
 }

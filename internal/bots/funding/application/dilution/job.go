@@ -12,8 +12,7 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
-
-	"github.com/robfig/cron/v3"
+	"crypto-bot/pkg/ticker"
 )
 
 var _ strategy.BackgroundStrategy = (*DilutionJob)(nil)
@@ -26,7 +25,6 @@ type DilutionJob struct {
 	runner *DilutionRunner
 	clock  shared.Clock
 	logger *slog.Logger
-	cron   *cron.Cron
 	cancel context.CancelFunc
 	mu     sync.Mutex
 }
@@ -60,7 +58,7 @@ func NewDilutionJob(
 	}, nil
 }
 
-// Start starts the background dilution cron scheduler.
+// Start starts the background dilution scheduler.
 func (j *DilutionJob) Start(ctx context.Context, stores map[string]strategy.FundingStoreSet) error {
 	if j.cfg == nil || !j.cfg.Enabled {
 		j.logger.InfoContext(ctx, "Volume Dilution disabled in config; skipping background job start")
@@ -71,40 +69,33 @@ func (j *DilutionJob) Start(ctx context.Context, stores map[string]strategy.Fund
 	if pollInterval <= 0 {
 		pollInterval = 5 * time.Second
 	}
-	j.logger.InfoContext(ctx, "🚀 Starting Background Volume Dilution job", slog.Duration("poll_interval", pollInterval))
+	jitter := time.Duration(j.cfg.Jitter)
+	j.logger.InfoContext(ctx, "🚀 Starting Background Volume Dilution job",
+		slog.Duration("poll_interval", pollInterval),
+		slog.Duration("jitter", jitter),
+	)
 
 	j.mu.Lock()
 	cronCtx, cancel := context.WithCancel(ctx)
 	j.cancel = cancel
 
-	c := cron.New(cron.WithLocation(time.Local))
-	spec := fmt.Sprintf("@every %s", pollInterval)
-	_, err := c.AddFunc(spec, func() {
+	go ticker.RunWithJitter(cronCtx, pollInterval, jitter, func() bool {
 		if err := j.Tick(cronCtx); err != nil {
 			j.logger.ErrorContext(cronCtx, "Dilution job tick failed", slog.Any("error", err))
 		}
+		return true
 	})
-	if err != nil {
-		cancel()
-		j.mu.Unlock()
-		return fmt.Errorf("schedule dilution cron: %w", err)
-	}
 
-	j.cron = c
-	c.Start()
 	j.mu.Unlock()
 	return nil
 }
 
-// Stop gracefully stops the background cron scheduler.
+// Stop gracefully stops the background scheduler.
 func (j *DilutionJob) Stop(ctx context.Context) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
 	j.logger.InfoContext(ctx, "🛑 Background Volume Dilution job stopped")
-	if j.cron != nil {
-		j.cron.Stop()
-	}
 	if j.cancel != nil {
 		j.cancel()
 	}

@@ -26,7 +26,7 @@ The Dilution strategy runs an ambient, low-profile maker grid/scalper $24/7$ on 
 
 ```mermaid
 flowchart TD
-    TICK["DilutionJob.Tick()<br/>(@every pollInterval: 5s - 30s)"] --> CHECK_BO{"IsSettlementBlackout?<br/>Minutes [55 -> 05]"}
+    TICK["DilutionJob.Tick()<br/>(Dynamic loop: pollInterval ± jitter)"] --> CHECK_BO{"IsSettlementBlackout?<br/>Minutes [55 -> 05]"}
     
     CHECK_BO -- "Yes (Settlement Window)" --> SKIP["Log & Skip<br/>Yield 100% Margin/CPU to Funding"]
     CHECK_BO -- "No (Normal Window)" --> POS["Resolve PositionSummary<br/>(LongVol, ShortVol, NetUSD, GrossUSD)"]
@@ -121,6 +121,7 @@ The strategy employs a two-tier safety architecture to guarantee zero taker fees
 {
   "enabled": true,
   "pollInterval": "30s",
+  "jitter": "5s",
   "exchanges": {
     "toobit_futures": {
       "enabled": true,
@@ -148,6 +149,7 @@ The strategy employs a two-tier safety architecture to guarantee zero taker fees
 | :--- | :--- |
 | `enabled` | Enable or disable the Background Volume Dilution subsystem |
 | `pollInterval` | Polling and quote refresh frequency (default: `30s`) |
+| `jitter` | Jitter duration randomized within `[pollInterval - jitter, pollInterval + jitter]` |
 | `symbol` | Highest liquidity pair for maker quoting (e.g., `BTC_USDT` or `BTC-SWAP-USDT`) |
 | `maxPositionUSD` | Maximum accumulated gross/net position threshold ($2,000 — 100 USDT total margin at 20x) |
 | `leverage` | Account leverage to configure for dilution orders (20x) |

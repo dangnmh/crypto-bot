@@ -432,6 +432,74 @@ func TestDilutionJob_Tick_QuotesPositionExit(t *testing.T) {
 	require.Len(t, dispatcher.dispatched, 2)
 }
 
+func TestDilutionJob_StartStopLifecycle(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockClient := mocks.NewMockClient(ctrl)
+
+	startTime := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	clock := &mockTimeClock{currentTime: startTime}
+	engineGetter := &mockEngineGetter{
+		prov: &infraapp.ExchangeProvider{
+			Client: mockClient,
+		},
+	}
+	maker, err := dilution.NewDilutionMaker(engineGetter)
+	require.NoError(t, err)
+	dispatcher := &mockDispatcher{}
+	runner, err := dilution.NewDilutionRunner(dispatcher, clock, slog.Default())
+	require.NoError(t, err)
+
+	t.Run("Start when disabled returns nil", func(t *testing.T) {
+		t.Parallel()
+		rootCfg := &fundingconfig.Config{
+			Dilution: &fundingconfig.DilutionConfig{
+				Enabled: false,
+			},
+		}
+		job, err := dilution.NewDilutionJob(rootCfg, engineGetter, maker, runner, clock, slog.Default())
+		require.NoError(t, err)
+		err = job.Start(context.Background(), nil)
+		require.NoError(t, err)
+		err = job.Stop(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("Start and Stop lifecycle without jitter", func(t *testing.T) {
+		t.Parallel()
+		rootCfg := &fundingconfig.Config{
+			Dilution: &fundingconfig.DilutionConfig{
+				Enabled:      true,
+				PollInterval: types.Duration(10 * time.Second),
+			},
+		}
+		job, err := dilution.NewDilutionJob(rootCfg, engineGetter, maker, runner, clock, slog.Default())
+		require.NoError(t, err)
+		err = job.Start(context.Background(), nil)
+		require.NoError(t, err)
+		err = job.Stop(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("Start and Stop lifecycle with jitter", func(t *testing.T) {
+		t.Parallel()
+		rootCfg := &fundingconfig.Config{
+			Dilution: &fundingconfig.DilutionConfig{
+				Enabled:      true,
+				PollInterval: types.Duration(10 * time.Second),
+				Jitter:       types.Duration(2 * time.Second),
+			},
+		}
+		job, err := dilution.NewDilutionJob(rootCfg, engineGetter, maker, runner, clock, slog.Default())
+		require.NoError(t, err)
+		err = job.Start(context.Background(), nil)
+		require.NoError(t, err)
+		err = job.Stop(context.Background())
+		require.NoError(t, err)
+	})
+}
+
 type mockTimeClock struct {
 	currentTime time.Time
 }
