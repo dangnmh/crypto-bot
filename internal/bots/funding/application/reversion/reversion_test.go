@@ -67,6 +67,9 @@ func (f *fakeExchangeAdapter) ParseTicker(data []byte) (symbol string, pd *store
 func (f *fakeExchangeAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	return nil, nil
 }
+func (f *fakeExchangeAdapter) ParseDepth(data []byte) (string, *shared.OrderBook, error) {
+	return "", nil, nil
+}
 func (f *fakeExchangeAdapter) Subscribe(ctx context.Context, topic, flowID string, subMsg any) error {
 	return nil
 }

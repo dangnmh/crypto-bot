@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
@@ -52,6 +53,9 @@ func (m *mockAdapter) UnsubscribePublic(context.Context, string, any) error { re
 func (m *mockAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) { return "", nil, nil }
 func (m *mockAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error) {
 	return nil, nil
+}
+func (m *mockAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	return "", nil, nil
 }
 
 type dummyClient struct{ exchange.Client }
