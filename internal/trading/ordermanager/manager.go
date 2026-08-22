@@ -344,20 +344,18 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 	now := clock.Now()
 
 	cancelEvt := OrderCanceledEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         reqID,
-			ClientOrderID: clientOrderID,
-			Symbol:        symbol,
-			Exchange:      exchangeName,
-			MarketType:    agg.MarketType(),
-			StrategyType:  agg.StrategyType(),
-			PreTopic:      TopicOrderSubmitted,
-			NextTopic:     TopicOrderCanceled,
-			Timestamp:     now,
-		},
-		OrderID:    orderID,
-		Reason:     "manual_cancel",
-		CanceledAt: now,
+		ReqID:         reqID,
+		ClientOrderID: clientOrderID,
+		Symbol:        symbol,
+		Exchange:      exchangeName,
+		MarketType:    agg.MarketType(),
+		StrategyType:  agg.StrategyType(),
+		PreTopic:      TopicOrderSubmitted,
+		NextTopic:     TopicOrderCanceled,
+		Timestamp:     now,
+		OrderID:       orderID,
+		Reason:        "manual_cancel",
+		CanceledAt:    now,
 	}
 
 	if err := agg.Record(cancelEvt); err != nil {
@@ -569,17 +567,15 @@ func (m *OrderManager) handlePositionFilled(
 	}
 	volumeUSDT := calculateVolumeUSDT(holdVolCoin, holdVolContract, fillPrice, contractSize)
 	evt := OrderFilledEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         reqID,
-			ClientOrderID: agg.ClientOrderID(),
-			Symbol:        pos.Symbol,
-			Exchange:      agg.Exchange(),
-			MarketType:    agg.MarketType(),
-			StrategyType:  agg.StrategyType(),
-			PreTopic:      TopicOrderPositionWatchReady,
-			NextTopic:     TopicOrderFilled,
-			Timestamp:     clk.Now(),
-		},
+		ReqID:           reqID,
+		ClientOrderID:   agg.ClientOrderID(),
+		Symbol:          pos.Symbol,
+		Exchange:        agg.Exchange(),
+		MarketType:      agg.MarketType(),
+		StrategyType:    agg.StrategyType(),
+		PreTopic:        TopicOrderPositionWatchReady,
+		NextTopic:       TopicOrderFilled,
+		Timestamp:       clk.Now(),
 		Side:            agg.Side(),
 		FillPrice:       fillPrice,
 		FillVolContract: holdVolContract,
@@ -621,17 +617,15 @@ func (m *OrderManager) handlePositionClosed(
 
 	volUSDT := calculateVolumeUSDT(closeVolCoin, closeVolContract, closePrice, contractSize)
 	evt := OrderPositionClosedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         reqID,
-			ClientOrderID: agg.ClientOrderID(),
-			Symbol:        pos.Symbol,
-			Exchange:      agg.Exchange(),
-			MarketType:    agg.MarketType(),
-			StrategyType:  agg.StrategyType(),
-			PreTopic:      TopicOrderFilled,
-			NextTopic:     TopicOrderPositionClosed,
-			Timestamp:     clk.Now(),
-		},
+		ReqID:            reqID,
+		ClientOrderID:    agg.ClientOrderID(),
+		Symbol:           pos.Symbol,
+		Exchange:         agg.Exchange(),
+		MarketType:       agg.MarketType(),
+		StrategyType:     agg.StrategyType(),
+		PreTopic:         TopicOrderFilled,
+		NextTopic:        TopicOrderPositionClosed,
+		Timestamp:        clk.Now(),
 		EntryPrice:       pos.OpenAvgPrice,
 		ClosePrice:       closePrice,
 		CloseVolContract: closeVolContract,
@@ -769,17 +763,15 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 	}
 
 	return &OrderTPSLDispatchedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         evt.GetReqID(),
-			ClientOrderID: evt.GetClientOrderID(),
-			Symbol:        evt.Symbol,
-			Exchange:      evt.Exchange,
-			MarketType:    evt.GetMarketType(),
-			StrategyType:  evt.StrategyType,
-			PreTopic:      TopicOrderSubmitted,
-			NextTopic:     TopicOrderTPSLDispatched,
-			Timestamp:     clock.Now(),
-		},
+		ReqID:           evt.GetReqID(),
+		ClientOrderID:   evt.GetClientOrderID(),
+		Symbol:          evt.Symbol,
+		Exchange:        evt.Exchange,
+		MarketType:      evt.GetMarketType(),
+		StrategyType:    evt.StrategyType,
+		PreTopic:        TopicOrderSubmitted,
+		NextTopic:       TopicOrderTPSLDispatched,
+		Timestamp:       clock.Now(),
 		TakeProfitPrice: intent.TakeProfitPrice,
 		StopLossPrice:   intent.StopLossPrice,
 		DispatchedAt:    clock.Now(),
@@ -848,19 +840,17 @@ func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context
 			}
 
 			resolvedEvt := OrderOutcomeResolvedEvent{
-				BaseExecutionEvent: BaseExecutionEvent{
-					ReqID:        reqID,
-					Symbol:       symbol,
-					Exchange:     exchangeName,
-					MarketType:   mt,
-					StrategyType: st,
-					PreTopic:     TopicOrderSubmitted,
-					NextTopic:    TopicOrderOutcomeResolved,
-					Timestamp:    clock.Now(),
-				},
-				Outcome:   OutcomeCanceledNoFill,
-				Reason:    "resting_timeout_expired",
-				FilledVol: 0,
+				ReqID:        reqID,
+				Symbol:       symbol,
+				Exchange:     exchangeName,
+				MarketType:   mt,
+				StrategyType: st,
+				PreTopic:     TopicOrderSubmitted,
+				NextTopic:    TopicOrderOutcomeResolved,
+				Timestamp:    clock.Now(),
+				Outcome:      OutcomeCanceledNoFill,
+				Reason:       "resting_timeout_expired",
+				FilledVol:    0,
 			}
 			if err := agg.Record(resolvedEvt); err != nil {
 				m.log.ErrorContext(ctx, "Failed to record resting timeout outcome to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
@@ -900,19 +890,17 @@ func (m *OrderManager) schedulePositionCloseTimeoutInternal(ctx context.Context,
 	timer := time.AfterFunc(dur, func() {
 		m.timers.Delete(reqID)
 		timeoutEvt := OrderTimeoutScheduledEvent{
-			BaseExecutionEvent: BaseExecutionEvent{
-				ReqID:         reqID,
-				ClientOrderID: clientOrderID,
-				Symbol:        symbol,
-				Exchange:      exchangeName,
-				MarketType:    mt,
-				StrategyType:  st,
-				PreTopic:      preTopic,
-				NextTopic:     TopicOrderTimeoutScheduled,
-				Timestamp:     clock.Now(),
-			},
-			Duration:    dur,
-			ScheduledAt: clock.Now(),
+			ReqID:         reqID,
+			ClientOrderID: clientOrderID,
+			Symbol:        symbol,
+			Exchange:      exchangeName,
+			MarketType:    mt,
+			StrategyType:  st,
+			PreTopic:      preTopic,
+			NextTopic:     TopicOrderTimeoutScheduled,
+			Timestamp:     clock.Now(),
+			Duration:      dur,
+			ScheduledAt:   clock.Now(),
 		}
 		_ = agg.Record(timeoutEvt)
 		_ = m.publishEvent(context.WithoutCancel(ctx), TopicOrderTimeoutScheduled, timeoutEvt)
@@ -940,19 +928,17 @@ func (m *OrderManager) ScheduleTimeoutTimer(reqID, symbol string, dur time.Durat
 	m.timers.Store(reqID, timer)
 
 	return OrderTimeoutScheduledEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         reqID,
-			ClientOrderID: agg.ClientOrderID(),
-			Symbol:        symbol,
-			Exchange:      agg.Exchange(),
-			MarketType:    agg.MarketType(),
-			StrategyType:  agg.StrategyType(),
-			PreTopic:      TopicOrderSubmitted,
-			NextTopic:     TopicOrderTimeoutScheduled,
-			Timestamp:     clock.Now(),
-		},
-		Duration:    dur,
-		ScheduledAt: clock.Now(),
+		ReqID:         reqID,
+		ClientOrderID: agg.ClientOrderID(),
+		Symbol:        symbol,
+		Exchange:      agg.Exchange(),
+		MarketType:    agg.MarketType(),
+		StrategyType:  agg.StrategyType(),
+		PreTopic:      TopicOrderSubmitted,
+		NextTopic:     TopicOrderTimeoutScheduled,
+		Timestamp:     clock.Now(),
+		Duration:      dur,
+		ScheduledAt:   clock.Now(),
 	}, nil
 }
 
@@ -1000,21 +986,19 @@ func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderT
 	}
 
 	return OrderTimeoutPositionCheckedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         evt.GetReqID(),
-			ClientOrderID: evt.GetClientOrderID(),
-			Symbol:        evt.Symbol,
-			Exchange:      evt.Exchange,
-			MarketType:    evt.GetMarketType(),
-			StrategyType:  evt.StrategyType,
-			PreTopic:      TopicOrderTimeoutScheduled,
-			NextTopic:     TopicOrderTimeoutPositionChecked,
-			Timestamp:     clock.Now(),
-		},
-		Timeout:   evt.Duration,
-		HoldVol:   holdVol,
-		Error:     errText,
-		CheckedAt: clock.Now(),
+		ReqID:         evt.GetReqID(),
+		ClientOrderID: evt.GetClientOrderID(),
+		Symbol:        evt.Symbol,
+		Exchange:      evt.Exchange,
+		MarketType:    evt.GetMarketType(),
+		StrategyType:  evt.StrategyType,
+		PreTopic:      TopicOrderTimeoutScheduled,
+		NextTopic:     TopicOrderTimeoutPositionChecked,
+		Timestamp:     clock.Now(),
+		Timeout:       evt.Duration,
+		HoldVol:       holdVol,
+		Error:         errText,
+		CheckedAt:     clock.Now(),
 	}, nil
 }
 
@@ -1048,22 +1032,20 @@ func (m *OrderManager) HandleOutcomeWatcher(ctx context.Context, evt OrderSubmit
 	}
 
 	return OrderOutcomeResolvedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         evt.GetReqID(),
-			ClientOrderID: evt.GetClientOrderID(),
-			Symbol:        evt.Symbol,
-			Exchange:      evt.Exchange,
-			MarketType:    evt.GetMarketType(),
-			StrategyType:  evt.StrategyType,
-			PreTopic:      TopicOrderSubmitted,
-			NextTopic:     TopicOrderOutcomeResolved,
-			Timestamp:     clock.Now(),
-		},
-		Outcome:    outcome,
-		FilledVol:  filledVol,
-		AvgPrice:   avgPrice,
-		Reason:     reason,
-		ResolvedAt: clock.Now(),
+		ReqID:         evt.GetReqID(),
+		ClientOrderID: evt.GetClientOrderID(),
+		Symbol:        evt.Symbol,
+		Exchange:      evt.Exchange,
+		MarketType:    evt.GetMarketType(),
+		StrategyType:  evt.StrategyType,
+		PreTopic:      TopicOrderSubmitted,
+		NextTopic:     TopicOrderOutcomeResolved,
+		Timestamp:     clock.Now(),
+		Outcome:       outcome,
+		FilledVol:     filledVol,
+		AvgPrice:      avgPrice,
+		Reason:        reason,
+		ResolvedAt:    clock.Now(),
 	}, nil
 }
 
@@ -1153,19 +1135,17 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 	}
 
 	return &OrderTimeoutExpiredEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         evt.GetReqID(),
-			ClientOrderID: evt.GetClientOrderID(),
-			Symbol:        evt.Symbol,
-			Exchange:      evt.Exchange,
-			MarketType:    evt.GetMarketType(),
-			StrategyType:  evt.StrategyType,
-			PreTopic:      TopicOrderTimeoutScheduled,
-			NextTopic:     TopicOrderTimeoutExpired,
-			Timestamp:     clock.Now(),
-		},
-		HoldVol:   holdVol,
-		ExpiredAt: clock.Now(),
+		ReqID:         evt.GetReqID(),
+		ClientOrderID: evt.GetClientOrderID(),
+		Symbol:        evt.Symbol,
+		Exchange:      evt.Exchange,
+		MarketType:    evt.GetMarketType(),
+		StrategyType:  evt.StrategyType,
+		PreTopic:      TopicOrderTimeoutScheduled,
+		NextTopic:     TopicOrderTimeoutExpired,
+		Timestamp:     clock.Now(),
+		HoldVol:       holdVol,
+		ExpiredAt:     clock.Now(),
 	}, nil
 }
 
@@ -1211,17 +1191,15 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 	}
 
 	return OrderBailoutExecutedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         reqID,
-			ClientOrderID: agg.ClientOrderID(),
-			Symbol:        symbol,
-			Exchange:      exchangeName,
-			MarketType:    agg.MarketType(),
-			StrategyType:  agg.StrategyType(),
-			PreTopic:      TopicOrderTimeoutPositionChecked,
-			NextTopic:     TopicOrderBailoutExecuted,
-			Timestamp:     clock.Now(),
-		},
+		ReqID:           reqID,
+		ClientOrderID:   agg.ClientOrderID(),
+		Symbol:          symbol,
+		Exchange:        exchangeName,
+		MarketType:      agg.MarketType(),
+		StrategyType:    agg.StrategyType(),
+		PreTopic:        TopicOrderTimeoutPositionChecked,
+		NextTopic:       TopicOrderBailoutExecuted,
+		Timestamp:       clock.Now(),
 		Side:            side,
 		Volume:          volume,
 		ExitPrice:       0.0,
@@ -1544,18 +1522,16 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 	details.mergePnL(pnl)
 
 	return OrderCompletedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         reqID,
-			RefID:         details.refID,
-			ClientOrderID: clientOrderID,
-			Symbol:        symbol,
-			Exchange:      exchangeName,
-			MarketType:    MarketTypeFuture,
-			StrategyType:  strategyType,
-			PreTopic:      TopicOrderPositionClosed,
-			NextTopic:     TopicOrderCompleted,
-			Timestamp:     clock.Now(),
-		},
+		ReqID:            reqID,
+		RefID:            details.refID,
+		ClientOrderID:    clientOrderID,
+		Symbol:           symbol,
+		Exchange:         exchangeName,
+		MarketType:       MarketTypeFuture,
+		StrategyType:     strategyType,
+		PreTopic:         TopicOrderPositionClosed,
+		NextTopic:        TopicOrderCompleted,
+		Timestamp:        clock.Now(),
 		Side:             details.side,
 		OrderID:          exchangeOrderID,
 		Outcome:          outcome,

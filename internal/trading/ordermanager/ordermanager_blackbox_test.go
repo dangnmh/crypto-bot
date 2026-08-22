@@ -227,22 +227,20 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 	}
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-bb-001",
-			ClientOrderID: "client-bb-001",
-			Symbol:        "BTCUSDT",
-			Exchange:      "bybit",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			Timestamp:     clock.Now(),
-		},
-		Side:         shared.SideOpenLong,
-		OrderType:    ordermanager.OrderTypeIOC,
-		Price:        50000.0,
-		Volume:       1.0,
-		ContractSize: 1.0,
-		MarginMode:   shared.MarginModeCross,
-		PositionMode: shared.PositionModeOneWay,
-		Leverage:     10,
+		ReqID:         "req-bb-001",
+		ClientOrderID: "client-bb-001",
+		Symbol:        "BTCUSDT",
+		Exchange:      "bybit",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Timestamp:     clock.Now(),
+		Side:          shared.SideOpenLong,
+		OrderType:     ordermanager.OrderTypeIOC,
+		Price:         50000.0,
+		Volume:        1.0,
+		ContractSize:  1.0,
+		MarginMode:    shared.MarginModeCross,
+		PositionMode:  shared.PositionModeOneWay,
+		Leverage:      10,
 	}
 
 	if err := mgr.Dispatch(ctx, intent); err != nil {
@@ -353,25 +351,15 @@ func TestBlackBox_OutcomeWatcherFill(t *testing.T) {
 	}
 
 	submittedEvt := ordermanager.OrderSubmittedEvent{
-		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
-			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
-					OrderIntentEvent: ordermanager.OrderIntentEvent{
-						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-							ReqID:         "req-ws-001",
-							ClientOrderID: "client-ws-001",
-							Symbol:        "ETHUSDT",
-							Exchange:      "mexc",
-							StrategyType:  ordermanager.StrategyFundingReversion,
-							Timestamp:     clock.Now(),
-						},
-					},
-				},
-			},
-		},
-		Price:       3000.0,
-		Volume:      2.0,
-		SubmittedAt: clock.Now(),
+		ReqID:         "req-ws-001",
+		ClientOrderID: "client-ws-001",
+		Symbol:        "ETHUSDT",
+		Exchange:      "mexc",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Timestamp:     clock.Now(),
+		Price:         3000.0,
+		Volume:        2.0,
+		SubmittedAt:   clock.Now(),
 	}
 	_ = mgr.GetAggregate(submittedEvt.GetReqID()).Record(submittedEvt)
 
@@ -447,11 +435,9 @@ func TestBlackBox_ContractSizeNotionalUSD(t *testing.T) {
 	agg := ordermanager.NewOrderExecutionAggregate("req-cs-001")
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-cs-001",
-			Symbol:       "BTCUSDT",
-			StrategyType: ordermanager.StrategyFundingArbitrage,
-		},
+		ReqID:        "req-cs-001",
+		Symbol:       "BTCUSDT",
+		StrategyType: ordermanager.StrategyFundingArbitrage,
 		Side:         shared.SideOpenLong,
 		OrderType:    ordermanager.OrderTypeLimit,
 		Volume:       5.0,
@@ -460,11 +446,9 @@ func TestBlackBox_ContractSizeNotionalUSD(t *testing.T) {
 	_ = agg.Record(intent)
 
 	completed := ordermanager.OrderCompletedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-cs-001",
-			Symbol:       "BTCUSDT",
-			StrategyType: ordermanager.StrategyFundingArbitrage,
-		},
+		ReqID:            "req-cs-001",
+		Symbol:           "BTCUSDT",
+		StrategyType:     ordermanager.StrategyFundingArbitrage,
 		Outcome:          ordermanager.OutcomeFilled,
 		EntryPrice:       50000.0,
 		ExitPrice:        52000.0,
@@ -518,10 +502,8 @@ func TestBlackBox_TimeoutGuardCancellation(t *testing.T) {
 
 	agg := mgr.GetAggregate("req-tg-001")
 	_ = agg.Record(ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:    "req-tg-001",
-			Exchange: "bybit",
-		},
+		ReqID:    "req-tg-001",
+		Exchange: "bybit",
 	})
 
 	timerFired := false
@@ -593,19 +575,17 @@ func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 			clientOID := fmt.Sprintf("client-concurrent-%d", id)
 
 			intent := ordermanager.OrderIntentEvent{
-				BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-					ReqID:         reqID,
-					ClientOrderID: clientOID,
-					Symbol:        "BTCUSDT",
-					Exchange:      "bybit",
-					StrategyType:  ordermanager.StrategyFundingArbitrage,
-					Timestamp:     clock.Now(),
-				},
-				Side:         shared.SideOpenLong,
-				OrderType:    ordermanager.OrderTypeIOC,
-				Price:        50000.0,
-				Volume:       1.0,
-				ContractSize: 1.0,
+				ReqID:         reqID,
+				ClientOrderID: clientOID,
+				Symbol:        "BTCUSDT",
+				Exchange:      "bybit",
+				StrategyType:  ordermanager.StrategyFundingArbitrage,
+				Timestamp:     clock.Now(),
+				Side:          shared.SideOpenLong,
+				OrderType:     ordermanager.OrderTypeIOC,
+				Price:         50000.0,
+				Volume:        1.0,
+				ContractSize:  1.0,
 			}
 
 			if err := mgr.Dispatch(ctx, intent); err != nil {
@@ -677,19 +657,17 @@ func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
 	}
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-canceled-001",
-			ClientOrderID: "client-canceled-001",
-			Symbol:        "BTCUSDT",
-			Exchange:      "bybit",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			Timestamp:     clock.Now(),
-		},
-		Side:         shared.SideOpenLong,
-		OrderType:    ordermanager.OrderTypeIOC,
-		Price:        50000.0,
-		Volume:       1.0,
-		ContractSize: 1.0,
+		ReqID:         "req-canceled-001",
+		ClientOrderID: "client-canceled-001",
+		Symbol:        "BTCUSDT",
+		Exchange:      "bybit",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Timestamp:     clock.Now(),
+		Side:          shared.SideOpenLong,
+		OrderType:     ordermanager.OrderTypeIOC,
+		Price:         50000.0,
+		Volume:        1.0,
+		ContractSize:  1.0,
 	}
 
 	if err := mgr.Dispatch(ctx, intent); err != nil {
@@ -749,19 +727,17 @@ func TestBlackBox_OrderFilled_WaitsForPositionClose(t *testing.T) {
 	}
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-filled-wait-001",
-			ClientOrderID: "client-filled-wait-001",
-			Symbol:        "BTCUSDT",
-			Exchange:      "bybit",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			Timestamp:     clock.Now(),
-		},
-		Side:         shared.SideOpenLong,
-		OrderType:    ordermanager.OrderTypeIOC,
-		Price:        50000.0,
-		Volume:       1.0,
-		ContractSize: 1.0,
+		ReqID:         "req-filled-wait-001",
+		ClientOrderID: "client-filled-wait-001",
+		Symbol:        "BTCUSDT",
+		Exchange:      "bybit",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Timestamp:     clock.Now(),
+		Side:          shared.SideOpenLong,
+		OrderType:     ordermanager.OrderTypeIOC,
+		Price:         50000.0,
+		Volume:        1.0,
+		ContractSize:  1.0,
 	}
 
 	if err := mgr.Dispatch(ctx, intent); err != nil {
@@ -842,14 +818,12 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 	}
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-maker-resting-001",
-			ClientOrderID: "client-maker-resting-001",
-			Symbol:        "BTCUSDT",
-			Exchange:      "mexc",
-			StrategyType:  ordermanager.StrategyDilution,
-			Timestamp:     clock.Now(),
-		},
+		ReqID:                "req-maker-resting-001",
+		ClientOrderID:        "client-maker-resting-001",
+		Symbol:               "BTCUSDT",
+		Exchange:             "mexc",
+		StrategyType:         ordermanager.StrategyDilution,
+		Timestamp:            clock.Now(),
 		Side:                 shared.SideOpenLong,
 		OrderType:            ordermanager.OrderTypePostOnly,
 		Price:                50000.0,
@@ -947,15 +921,13 @@ func TestBlackBox_CloseOrderFilled_EmitsCompleted(t *testing.T) {
 	}
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-close-fill-001",
-			ClientOrderID: "client-close-fill-001",
-			Symbol:        "BTC-SWAP-USDT",
-			Exchange:      "toobit",
-			MarketType:    ordermanager.MarketTypeFuture,
-			StrategyType:  ordermanager.StrategyDilution,
-			Timestamp:     time.Now(),
-		},
+		ReqID:                "req-close-fill-001",
+		ClientOrderID:        "client-close-fill-001",
+		Symbol:               "BTC-SWAP-USDT",
+		Exchange:             "toobit",
+		MarketType:           ordermanager.MarketTypeFuture,
+		StrategyType:         ordermanager.StrategyDilution,
+		Timestamp:            time.Now(),
 		Side:                 shared.SideCloseLong,
 		OrderType:            ordermanager.OrderTypePostOnly,
 		Price:                63100.0,
@@ -1024,21 +996,19 @@ func TestBlackBox_Abort_EmitsCriticalNotification(t *testing.T) {
 	}
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-abort-test-001",
-			ClientOrderID: "client-abort-test-001",
-			Symbol:        "BTC-SWAP-USDT",
-			Exchange:      "toobit",
-			MarketType:    ordermanager.MarketTypeFuture,
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			Timestamp:     clock.Now(),
-		},
-		Side:       shared.SideOpenLong,
-		OrderType:  ordermanager.OrderTypeIOC,
-		Price:      60000.0,
-		Volume:     1.0,
-		MarginMode: shared.MarginModeCross,
-		Leverage:   10,
+		ReqID:         "req-abort-test-001",
+		ClientOrderID: "client-abort-test-001",
+		Symbol:        "BTC-SWAP-USDT",
+		Exchange:      "toobit",
+		MarketType:    ordermanager.MarketTypeFuture,
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Timestamp:     clock.Now(),
+		Side:          shared.SideOpenLong,
+		OrderType:     ordermanager.OrderTypeIOC,
+		Price:         60000.0,
+		Volume:        1.0,
+		MarginMode:    shared.MarginModeCross,
+		Leverage:      10,
 	}
 
 	// Dispatch should fail or abort

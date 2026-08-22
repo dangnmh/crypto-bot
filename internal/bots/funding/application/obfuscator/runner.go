@@ -64,18 +64,16 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 	}
 
 	intentEvt := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         reqID,
-			RefID:         spec.OriginReqID,
-			Symbol:        spec.Symbol,
-			Exchange:      spec.Exchange,
-			MarketType:    ordermanager.MarketTypeFuture,
-			StrategyType:  ordermanager.StrategyObfuscator,
-			PreTopic:      "",
-			NextTopic:     ordermanager.TopicOrderIntent,
-			Timestamp:     now,
-			ClientOrderID: exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
-		},
+		ReqID:                reqID,
+		RefID:                spec.OriginReqID,
+		Symbol:               spec.Symbol,
+		Exchange:             spec.Exchange,
+		MarketType:           ordermanager.MarketTypeFuture,
+		StrategyType:         ordermanager.StrategyObfuscator,
+		PreTopic:             "",
+		NextTopic:            ordermanager.TopicOrderIntent,
+		Timestamp:            now,
+		ClientOrderID:        exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
 		Side:                 spec.Side,
 		OrderType:            orderType,
 		Price:                spec.Price,

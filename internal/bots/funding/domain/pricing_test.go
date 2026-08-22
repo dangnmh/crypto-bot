@@ -103,16 +103,12 @@ func TestCalculateIOCPrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				MarketData: domain.MarketData{
-					BestBid: tt.bestBid,
-					BestAsk: tt.bestAsk,
-				},
-				ContractSpec: domain.ContractSpec{
-					PriceUnit:  tt.priceUnit,
-					PriceScale: tt.priceScale,
-				},
-				Config: domain.TradeConfig{MaxPriceDiffPercent: tt.maxPriceDiffPercent},
+				Side:       tt.side,
+				BestBid:    tt.bestBid,
+				BestAsk:    tt.bestAsk,
+				PriceUnit:  tt.priceUnit,
+				PriceScale: tt.priceScale,
+				Config:     domain.TradeConfig{MaxPriceDiffPercent: tt.maxPriceDiffPercent},
 			}
 			got, err := c.CalculateIOCPrice()
 
@@ -198,15 +194,11 @@ func TestCalculateVolume(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &domain.Candidate{
-				Config: domain.TradeConfig{MarginUSDT: tt.marginUSDT, Leverage: tt.leverage},
-				ContractSpec: domain.ContractSpec{
-					ContractSize: tt.contractSize,
-					MinVol:       int(tt.minVol),
-					VolScale:     tt.volScale,
-				},
-				MarketData: domain.MarketData{
-					LastPrice: tt.lastPrice,
-				},
+				Config:       domain.TradeConfig{MarginUSDT: tt.marginUSDT, Leverage: tt.leverage},
+				ContractSize: tt.contractSize,
+				MinVol:       int(tt.minVol),
+				VolScale:     tt.volScale,
+				LastPrice:    tt.lastPrice,
 			}
 			got := c.CalculateVolume()
 			if !almostEqual(got, tt.want, 0.001) {
@@ -220,12 +212,10 @@ func TestVolumeAndNotionalInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	c := &domain.Candidate{
-		ContractSpec: domain.ContractSpec{
-			ContractSize: 1,
-			MinVol:       2,
-			VolScale:     0,
-		},
-		MarketData: domain.MarketData{LastPrice: 100},
+		ContractSize: 1,
+		MinVol:       2,
+		VolScale:     0,
+		LastPrice:    100,
 	}
 
 	assertZero := func(name string, got float64) {
@@ -306,8 +296,8 @@ func TestGetPeakPrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				MarketData:  domain.MarketData{BestBid: tt.bestBid, BestAsk: tt.bestAsk},
+				Side:    tt.side,
+				BestBid: tt.bestBid, BestAsk: tt.bestAsk,
 			}
 			if got := c.GetPeakPrice(); got != tt.want {
 				t.Errorf("got %v, want %v", got, tt.want)
@@ -357,18 +347,14 @@ func TestCalculateVolume_UsesRefPrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				Config:      domain.TradeConfig{MarginUSDT: 100, Leverage: 10},
-				ContractSpec: domain.ContractSpec{
-					ContractSize: 1.0,
-					MinVol:       1,
-					VolScale:     2,
-				},
-				MarketData: domain.MarketData{
-					LastPrice: tt.lastPrice,
-					BestBid:   tt.bestBid,
-					BestAsk:   tt.bestAsk,
-				},
+				Side:         tt.side,
+				Config:       domain.TradeConfig{MarginUSDT: 100, Leverage: 10},
+				ContractSize: 1.0,
+				MinVol:       1,
+				VolScale:     2,
+				LastPrice:    tt.lastPrice,
+				BestBid:      tt.bestBid,
+				BestAsk:      tt.bestAsk,
 			}
 			got := c.CalculateVolume()
 			// notional = 100*10 = 1000, vol = 1000 / (1.0 * refPrice)
@@ -384,16 +370,12 @@ func TestCalculateVolumeMaxVolCapping(t *testing.T) {
 	t.Parallel()
 
 	c := &domain.Candidate{
-		Config: domain.TradeConfig{MarginUSDT: 100, Leverage: 10},
-		ContractSpec: domain.ContractSpec{
-			ContractSize: 1.0,
-			MinVol:       1,
-			MaxVol:       5,
-			VolScale:     0,
-		},
-		MarketData: domain.MarketData{
-			LastPrice: 10.0,
-		},
+		Config:       domain.TradeConfig{MarginUSDT: 100, Leverage: 10},
+		ContractSize: 1.0,
+		MinVol:       1,
+		MaxVol:       5,
+		VolScale:     0,
+		LastPrice:    10.0,
 	}
 
 	// Without MaxVol limit, vol would be 100 * 10 / 10 = 100.

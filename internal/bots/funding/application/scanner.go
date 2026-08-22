@@ -223,24 +223,22 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 	}
 
 	startEvt := reversion.CandidateFoundEvent{
-		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:         reversion.FlowReversion,
-			ReqID:        orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowReversion),
-			Symbol:       candidate.Symbol,
-			Exchange:     candidate.Config.Exchange,
-			SendNotify:   false,
-			Timestamp:    eventTimestamp,
-			EventID:      watermill.NewUUID(),
-			Seq:          1,
-			Topic:        reversion.TopicReversionCandidate,
-			ExternalID:   externalID,
-			SettleTime:   settle,
-			Side:         candidate.Side,
-			FundingRate:  candidate.FundingRate,
-			Vol24hUSDT:   candidate.Vol24USDT,
-			ContractSize: candidate.ContractSize,
-		},
-		Candidate: candidate,
+		Flow:         reversion.FlowReversion,
+		ReqID:        orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowReversion),
+		Symbol:       candidate.Symbol,
+		Exchange:     candidate.Config.Exchange,
+		SendNotify:   false,
+		Timestamp:    eventTimestamp,
+		EventID:      watermill.NewUUID(),
+		Seq:          1,
+		Topic:        reversion.TopicReversionCandidate,
+		ExternalID:   externalID,
+		SettleTime:   settle,
+		Side:         candidate.Side,
+		FundingRate:  candidate.FundingRate,
+		Vol24hUSDT:   candidate.Vol24USDT,
+		ContractSize: candidate.ContractSize,
+		Candidate:    candidate,
 	}
 
 	if err := j.engine.Bus.Publish(reversion.TopicReversionCandidate, startEvt); err != nil {
@@ -415,13 +413,11 @@ func (s *ConfiguredScanner) buildCandidate(sc config.SymbolConfig, td *store.Tic
 	return domain.Candidate{
 		Config:      ToTradeConfig(sc),
 		TradeIntent: intent,
-		MarketData: domain.MarketData{
-			LastPrice: td.LastPrice,
-			BestBid:   td.BestBid,
-			BestAsk:   td.BestAsk,
-			Volume24:  td.Volume24,
-			Vol24USDT: amtUSDT,
-		},
+		LastPrice:   td.LastPrice,
+		BestBid:     td.BestBid,
+		BestAsk:     td.BestAsk,
+		Volume24:    td.Volume24,
+		Vol24USDT:   amtUSDT,
 	}
 }
 
@@ -810,13 +806,11 @@ func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Tic
 	return domain.Candidate{
 		Config:      ToTradeConfig(sc),
 		TradeIntent: intent,
-		MarketData: domain.MarketData{
-			LastPrice: td.LastPrice,
-			BestBid:   td.Bid1,
-			BestAsk:   td.Ask1,
-			Volume24:  td.Volume24,
-			Vol24USDT: td.AmountUSDT24,
-		},
+		LastPrice:   td.LastPrice,
+		BestBid:     td.Bid1,
+		BestAsk:     td.Ask1,
+		Volume24:    td.Volume24,
+		Vol24USDT:   td.AmountUSDT24,
 	}
 }
 

@@ -89,17 +89,15 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 	}
 
 	orderIntent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         evt.ReqID,
-			ClientOrderID: evt.ExternalID,
-			Symbol:        evt.Symbol,
-			Exchange:      evt.Exchange,
-			MarketType:    ordermanager.MarketTypeFuture,
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			PreTopic:      TopicReversionFirePlanChecked,
-			NextTopic:     ordermanager.TopicOrderIntent,
-			Timestamp:     now,
-		},
+		ReqID:                evt.ReqID,
+		ClientOrderID:        evt.ExternalID,
+		Symbol:               evt.Symbol,
+		Exchange:             evt.Exchange,
+		MarketType:           ordermanager.MarketTypeFuture,
+		StrategyType:         ordermanager.StrategyFundingReversion,
+		PreTopic:             TopicReversionFirePlanChecked,
+		NextTopic:            ordermanager.TopicOrderIntent,
+		Timestamp:            now,
 		Side:                 cand.Side,
 		OrderType:            ordermanager.OrderTypeIOC,
 		Price:                iocPrice,

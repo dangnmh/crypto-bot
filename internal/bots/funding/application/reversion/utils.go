@@ -358,14 +358,12 @@ func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate)
 
 func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, exchangeName string, reason ReversionReason) {
 	evt := AbortEvent{
-		BaseReversionEvent: BaseReversionEvent{
-			Flow:      FlowReversion,
-			ReqID:     reqID,
-			Symbol:    symbol,
-			Exchange:  exchangeName,
-			Timestamp: r.deps.Clock.Now(),
-		},
-		Reason: reason,
+		Flow:      FlowReversion,
+		ReqID:     reqID,
+		Symbol:    symbol,
+		Exchange:  exchangeName,
+		Timestamp: r.deps.Clock.Now(),
+		Reason:    reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
 }

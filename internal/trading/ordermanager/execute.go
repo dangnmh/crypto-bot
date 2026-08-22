@@ -92,20 +92,18 @@ func (om *OrderManager) abortOrder(ctx context.Context, evt OrderEvent, preTopic
 		errStr = err.Error()
 	}
 	aborted := OrderAbortedEvent{
-		BaseExecutionEvent: BaseExecutionEvent{
-			ReqID:         evt.GetReqID(),
-			ClientOrderID: evt.GetClientOrderID(),
-			Symbol:        evt.GetSymbol(),
-			Exchange:      evt.GetExchange(),
-			MarketType:    evt.GetMarketType(),
-			StrategyType:  evt.GetStrategyType(),
-			PreTopic:      preTopic,
-			NextTopic:     TopicOrderAborted,
-			Timestamp:     time.Now(),
-		},
-		Reason:    reason,
-		Error:     errStr,
-		AbortedAt: time.Now(),
+		ReqID:         evt.GetReqID(),
+		ClientOrderID: evt.GetClientOrderID(),
+		Symbol:        evt.GetSymbol(),
+		Exchange:      evt.GetExchange(),
+		MarketType:    evt.GetMarketType(),
+		StrategyType:  evt.GetStrategyType(),
+		PreTopic:      preTopic,
+		NextTopic:     TopicOrderAborted,
+		Timestamp:     time.Now(),
+		Reason:        reason,
+		Error:         errStr,
+		AbortedAt:     time.Now(),
 	}
 	_ = agg.Record(aborted)
 	_ = om.publishEvent(ctx, TopicOrderAborted, aborted)

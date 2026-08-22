@@ -54,7 +54,7 @@ func loadWith(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string) *co
 
 	defaults, ok := getTestDefaults(sysCfg)
 	if !ok {
-		defaults = testDefaults{RawFundingReversionConfig: config.RawFundingReversionConfig{Enabled: true}}
+		defaults = testDefaults{Enabled: true}
 	}
 
 	mockRev := struct {
@@ -105,17 +105,15 @@ func loadWithError(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string
 
 func sysWithDefaults(defaults testDefaults) *config.SystemConfig {
 	sc := &config.SystemConfig{
-		SystemConfig: sysconfig.SystemConfig{
-			ExchangeConfig: sysconfig.ExchangeConfig{
-				"mexc": sysconfig.APIConfig{
-					Future: &sysconfig.RESTConfig{
-						Enable:    true,
-						BaseURL:   "https://mexc.test",
-						WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
-					},
-					APIKey:    "mock-key",
-					APISecret: "mock-secret",
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			"mexc": sysconfig.APIConfig{
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://mexc.test",
+					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
 				},
+				APIKey:    "mock-key",
+				APISecret: "mock-secret",
 			},
 		},
 	}
@@ -175,11 +173,9 @@ func TestLoad_EmptySymbols(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("[]"), 0o600))
 
 	sysCfg := sysWithDefaults(testDefaults{
-		RawFundingReversionConfig: config.RawFundingReversionConfig{
-			Enabled: true,
-			Default: config.ExchangeReversionConfig{
-				MarginUSD: 100,
-			},
+		Enabled: true,
+		Default: config.ExchangeReversionConfig{
+			MarginUSD: 100,
 		},
 	})
 
@@ -253,20 +249,18 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	t.Parallel()
 
 	sysCfg := sysWithDefaults(testDefaults{
-		RawFundingReversionConfig: config.RawFundingReversionConfig{
-			Enabled:      true,
-			OpenType:     "ISOLATED",
-			PositionMode: "HEDGE",
-			Default: config.ExchangeReversionConfig{
-				Leverage: 10,
-			},
-			Exchanges: map[string]config.ExchangeReversionConfig{
-				"mexc": {
-					TakeProfitPct:  15,
-					StopLossPct:    3,
-					BufferTime:     types.Duration(10 * time.Millisecond),
-					MinFundingRate: 0.5,
-				},
+		Enabled:      true,
+		OpenType:     "ISOLATED",
+		PositionMode: "HEDGE",
+		Default: config.ExchangeReversionConfig{
+			Leverage: 10,
+		},
+		Exchanges: map[string]config.ExchangeReversionConfig{
+			"mexc": {
+				TakeProfitPct:  15,
+				StopLossPct:    3,
+				BufferTime:     types.Duration(10 * time.Millisecond),
+				MinFundingRate: 0.5,
 			},
 		},
 		Safety: config.SafetyConfig{
@@ -294,11 +288,9 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 	t.Parallel()
 
 	sysCfg := sysWithDefaults(testDefaults{
-		RawFundingReversionConfig: config.RawFundingReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				Leverage:       10,
-				MinFundingRate: 0.5,
-			},
+		Default: config.ExchangeReversionConfig{
+			Leverage:       10,
+			MinFundingRate: 0.5,
 		},
 		Safety: config.SafetyConfig{},
 	})
@@ -314,10 +306,8 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 func TestLoad_ValidTradeSide(t *testing.T) {
 	t.Parallel()
 	sysCfg := sysWithDefaults(testDefaults{
-		RawFundingReversionConfig: config.RawFundingReversionConfig{
-			Enabled:   true,
-			TradeSide: " LONG ",
-		},
+		Enabled:   true,
+		TradeSide: " LONG ",
 	})
 	cfg := loadWith(t, sysCfg, `[]`)
 	assert.Equal(t, "long", cfg.Reversion.TradeSide)
@@ -345,7 +335,7 @@ func TestLoad_NormalizesPercentages(t *testing.T) {
 func TestLoad_DefaultTPSL_WhenZero(t *testing.T) {
 	t.Parallel()
 
-	cfg := loadWith(t, sysWithDefaults(testDefaults{RawFundingReversionConfig: config.RawFundingReversionConfig{Enabled: true}}),
+	cfg := loadWith(t, sysWithDefaults(testDefaults{Enabled: true}),
 		`[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100, "leverage": 5}]`)
 	sc := cfg.Symbols[0]
 
@@ -405,11 +395,9 @@ func TestLoad_WithTradingDefaults(t *testing.T) {
 	t.Parallel()
 
 	sysCfg := sysWithDefaults(testDefaults{
-		RawFundingReversionConfig: config.RawFundingReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				Leverage:       10,
-				MinFundingRate: 0.3,
-			},
+		Default: config.ExchangeReversionConfig{
+			Leverage:       10,
+			MinFundingRate: 0.3,
 		},
 		Safety: config.SafetyConfig{
 			MaxPriceDiffPercent: 0.1,

@@ -63,8 +63,8 @@ func TestScanFundingRates(t *testing.T) {
 func TestEnrichWithContractSpec(t *testing.T) {
 	t.Parallel()
 	candidates := []domain.Candidate{
-		{TradeIntent: domain.TradeIntent{Symbol: "BTC_USDT"}},
-		{TradeIntent: domain.TradeIntent{Symbol: "ETH_USDT"}},
+		{Symbol: "BTC_USDT"},
+		{Symbol: "ETH_USDT"},
 	}
 
 	specs := map[string]domain.ContractSpec{

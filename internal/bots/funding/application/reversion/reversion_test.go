@@ -84,20 +84,18 @@ func executeReversionHelper(t *testing.T, bus *eventbus.Bus, reqID string, candi
 	candidate.ExternalID = orders.ExternalOrderID(candidate.Symbol, settleTime, candidate.Config.Exchange)
 
 	startEvt := reversion.CandidateFoundEvent{
-		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:       reversion.FlowReversion,
-			ReqID:      reqID,
-			Symbol:     candidate.Symbol,
-			Exchange:   candidate.Config.Exchange,
-			SendNotify: false,
-			Timestamp:  time.Now(),
-			EventID:    watermill.NewUUID(),
-			Seq:        1,
-			Topic:      reversion.TopicReversionCandidate,
-			ExternalID: candidate.ExternalID,
-			SettleTime: settleTime,
-		},
-		Candidate: candidate,
+		Flow:       reversion.FlowReversion,
+		ReqID:      reqID,
+		Symbol:     candidate.Symbol,
+		Exchange:   candidate.Config.Exchange,
+		SendNotify: false,
+		Timestamp:  time.Now(),
+		EventID:    watermill.NewUUID(),
+		Seq:        1,
+		Topic:      reversion.TopicReversionCandidate,
+		ExternalID: candidate.ExternalID,
+		SettleTime: settleTime,
+		Candidate:  candidate,
 	}
 
 	return bus.Publish(reversion.TopicReversionCandidate, startEvt)
@@ -182,10 +180,8 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD: 10000,
-				},
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD: 10000,
 			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
@@ -200,29 +196,23 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			Exchange:    "mexc",
 			MinVol24USD: 10000,
 		},
-		TradeIntent: domain.TradeIntent{
-			Symbol:      "BTC_USDT",
-			FundingRate: 0.001, // positive FR means open long
-			Side:        shared.SideOpenLong,
-			CloseSide:   shared.SideCloseLong,
-		},
-		ContractSpec: domain.ContractSpec{
-			PriceUnit:    0.01,
-			VolUnit:      1,
-			MinVol:       1,
-			PriceScale:   2,
-			VolScale:     4,
-			ContractSize: 0.001,
-			TakerFeeRate: 0.0006,
-			MakerFeeRate: 0.0002,
-		},
-		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Vol24USDT: 60000000,
-		},
+		Symbol:       "BTC_USDT",
+		FundingRate:  0.001, // positive FR means open long
+		Side:         shared.SideOpenLong,
+		CloseSide:    shared.SideCloseLong,
+		PriceUnit:    0.01,
+		VolUnit:      1,
+		MinVol:       1,
+		PriceScale:   2,
+		VolScale:     4,
+		ContractSize: 0.001,
+		TakerFeeRate: 0.0006,
+		MakerFeeRate: 0.0002,
+		LastPrice:    60000.0,
+		BestBid:      59990.0,
+		BestAsk:      60000.0,
+		Volume24:     1000,
+		Vol24USDT:    60000000,
 	}
 
 	// 1. Arm expectations
@@ -410,10 +400,8 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD: 10000,
-				},
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD: 10000,
 			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
@@ -428,29 +416,23 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 			Exchange:    "mexc",
 			MinVol24USD: 10000,
 		},
-		TradeIntent: domain.TradeIntent{
-			Symbol:      "BTC_USDT",
-			FundingRate: 0.001,
-			Side:        shared.SideOpenLong,
-			CloseSide:   shared.SideCloseLong,
-		},
-		ContractSpec: domain.ContractSpec{
-			PriceUnit:    0.01,
-			VolUnit:      1,
-			MinVol:       1,
-			PriceScale:   2,
-			VolScale:     4,
-			ContractSize: 0.001,
-			TakerFeeRate: 0.0006,
-			MakerFeeRate: 0.0002,
-		},
-		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Vol24USDT: 60000000,
-		},
+		Symbol:       "BTC_USDT",
+		FundingRate:  0.001,
+		Side:         shared.SideOpenLong,
+		CloseSide:    shared.SideCloseLong,
+		PriceUnit:    0.01,
+		VolUnit:      1,
+		MinVol:       1,
+		PriceScale:   2,
+		VolScale:     4,
+		ContractSize: 0.001,
+		TakerFeeRate: 0.0006,
+		MakerFeeRate: 0.0002,
+		LastPrice:    60000.0,
+		BestBid:      59990.0,
+		BestAsk:      60000.0,
+		Volume24:     1000,
+		Vol24USDT:    60000000,
 	}
 
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
@@ -642,10 +624,8 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD: 10000,
-				},
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD: 10000,
 			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
@@ -661,29 +641,23 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 			MinVol24USD: 10000,
 			Leverage:    10,
 		},
-		TradeIntent: domain.TradeIntent{
-			Symbol:      "BTC_USDT",
-			FundingRate: 0.001,
-			Side:        shared.SideOpenLong,
-			CloseSide:   shared.SideCloseLong,
-		},
-		ContractSpec: domain.ContractSpec{
-			PriceUnit:    0.01,
-			VolUnit:      1,
-			MinVol:       1,
-			PriceScale:   2,
-			VolScale:     4,
-			ContractSize: 0.001,
-			TakerFeeRate: 0.0006,
-			MakerFeeRate: 0.0002,
-		},
-		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Vol24USDT: 60000000,
-		},
+		Symbol:       "BTC_USDT",
+		FundingRate:  0.001,
+		Side:         shared.SideOpenLong,
+		CloseSide:    shared.SideCloseLong,
+		PriceUnit:    0.01,
+		VolUnit:      1,
+		MinVol:       1,
+		PriceScale:   2,
+		VolScale:     4,
+		ContractSize: 0.001,
+		TakerFeeRate: 0.0006,
+		MakerFeeRate: 0.0002,
+		LastPrice:    60000.0,
+		BestBid:      59990.0,
+		BestAsk:      60000.0,
+		Volume24:     1000,
+		Vol24USDT:    60000000,
 	}
 
 	// 1. Arm expectations
@@ -769,20 +743,18 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 
 	// Build candidate found event with SupportLeverageOnOrder = true
 	startEvt := reversion.CandidateFoundEvent{
-		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:       reversion.FlowReversion,
-			ReqID:      "req_skip_leverage",
-			Symbol:     candidate.Symbol,
-			Exchange:   candidate.Config.Exchange,
-			SendNotify: false,
-			Timestamp:  time.Now(),
-			EventID:    watermill.NewUUID(),
-			Seq:        1,
-			Topic:      reversion.TopicReversionCandidate,
-			ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
-			SettleTime: now.Add(10 * time.Second),
-		},
-		Candidate: candidate,
+		Flow:       reversion.FlowReversion,
+		ReqID:      "req_skip_leverage",
+		Symbol:     candidate.Symbol,
+		Exchange:   candidate.Config.Exchange,
+		SendNotify: false,
+		Timestamp:  time.Now(),
+		EventID:    watermill.NewUUID(),
+		Seq:        1,
+		Topic:      reversion.TopicReversionCandidate,
+		ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
+		SettleTime: now.Add(10 * time.Second),
+		Candidate:  candidate,
 	}
 
 	err = bus.Publish(reversion.TopicReversionCandidate, startEvt)
@@ -928,10 +900,8 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	globalCfg := &config.Config{
 		System: &config.SystemConfig{},
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD: 10000,
-				},
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD: 10000,
 			},
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
@@ -947,29 +917,23 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 			MinVol24USD: 10000,
 			Leverage:    5,
 		},
-		TradeIntent: domain.TradeIntent{
-			Symbol:      "BTC_USDT",
-			FundingRate: 0.001,
-			Side:        shared.SideOpenLong,
-			CloseSide:   shared.SideCloseLong,
-		},
-		ContractSpec: domain.ContractSpec{
-			PriceUnit:    0.01,
-			VolUnit:      1,
-			MinVol:       1,
-			PriceScale:   2,
-			VolScale:     4,
-			ContractSize: 0.001,
-			TakerFeeRate: 0.0006,
-			MakerFeeRate: 0.0002,
-		},
-		MarketData: domain.MarketData{
-			LastPrice: 60000.0,
-			BestBid:   59990.0,
-			BestAsk:   60000.0,
-			Volume24:  1000,
-			Vol24USDT: 60000000,
-		},
+		Symbol:       "BTC_USDT",
+		FundingRate:  0.001,
+		Side:         shared.SideOpenLong,
+		CloseSide:    shared.SideCloseLong,
+		PriceUnit:    0.01,
+		VolUnit:      1,
+		MinVol:       1,
+		PriceScale:   2,
+		VolScale:     4,
+		ContractSize: 0.001,
+		TakerFeeRate: 0.0006,
+		MakerFeeRate: 0.0002,
+		LastPrice:    60000.0,
+		BestBid:      59990.0,
+		BestAsk:      60000.0,
+		Volume24:     1000,
+		Vol24USDT:    60000000,
 	}
 
 	// 1. Arm expectations
@@ -1062,20 +1026,18 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	require.NoError(t, err)
 
 	startEvt := reversion.CandidateFoundEvent{
-		BaseReversionEvent: reversion.BaseReversionEvent{
-			Flow:       reversion.FlowReversion,
-			ReqID:      "req_capped_leverage",
-			Symbol:     candidate.Symbol,
-			Exchange:   candidate.Config.Exchange,
-			SendNotify: false,
-			Timestamp:  time.Now(),
-			EventID:    watermill.NewUUID(),
-			Seq:        1,
-			Topic:      reversion.TopicReversionCandidate,
-			ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
-			SettleTime: now.Add(10 * time.Second),
-		},
-		Candidate: candidate,
+		Flow:       reversion.FlowReversion,
+		ReqID:      "req_capped_leverage",
+		Symbol:     candidate.Symbol,
+		Exchange:   candidate.Config.Exchange,
+		SendNotify: false,
+		Timestamp:  time.Now(),
+		EventID:    watermill.NewUUID(),
+		Seq:        1,
+		Topic:      reversion.TopicReversionCandidate,
+		ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
+		SettleTime: now.Add(10 * time.Second),
+		Candidate:  candidate,
 	}
 
 	err = bus.Publish(reversion.TopicReversionCandidate, startEvt)
@@ -1107,19 +1069,13 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 				MaxLatency:        types.Duration(50 * time.Millisecond),
 			},
 		},
-		TradeIntent: domain.TradeIntent{
-			Symbol:    "BTC_USDT",
-			Side:      shared.SideOpenLong,
-			CloseSide: shared.SideCloseLong,
-		},
-		MarketData: domain.MarketData{
-			LastPrice: 60000,
-			BestBid:   59990,
-			BestAsk:   60000,
-		},
-		TradePlan: domain.TradePlan{
-			Volume: 1,
-		},
+		Symbol:    "BTC_USDT",
+		Side:      shared.SideOpenLong,
+		CloseSide: shared.SideCloseLong,
+		LastPrice: 60000,
+		BestBid:   59990,
+		BestAsk:   60000,
+		Volume:    1,
 	}
 
 	t.Run("UseOrderManager = true dispatches ordermanager.TopicOrderIntent", func(t *testing.T) {
@@ -1174,13 +1130,11 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 		strategyInst.SetTestFallbacks(mockClock, nil, nil)
 
 		confirmedEvt := reversion.ConfirmedEvent{
-			BaseReversionEvent: reversion.BaseReversionEvent{
-				ReqID:      "req-om-true",
-				Symbol:     "BTC_USDT",
-				Exchange:   "mexc",
-				SettleTime: now.Add(1 * time.Second),
-			},
-			Candidate: cand,
+			ReqID:      "req-om-true",
+			Symbol:     "BTC_USDT",
+			Exchange:   "mexc",
+			SettleTime: now.Add(1 * time.Second),
+			Candidate:  cand,
 		}
 
 		mockPriceStore := mocks.NewMockPriceReader(ctrl)
@@ -1238,13 +1192,11 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 		require.NoError(t, err)
 
 		confirmedEvt := reversion.ConfirmedEvent{
-			BaseReversionEvent: reversion.BaseReversionEvent{
-				ReqID:      "req-om-false",
-				Symbol:     "BTC_USDT",
-				Exchange:   "mexc",
-				SettleTime: time.Now().Add(10 * time.Second),
-			},
-			Candidate: cand,
+			ReqID:      "req-om-false",
+			Symbol:     "BTC_USDT",
+			Exchange:   "mexc",
+			SettleTime: time.Now().Add(10 * time.Second),
+			Candidate:  cand,
 		}
 
 		mockPriceStore2 := mocks.NewMockPriceReader(ctrl)

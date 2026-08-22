@@ -21,14 +21,12 @@ func TestGormTradeRepository_NilDBHandling(t *testing.T) {
 	ctx := context.Background()
 
 	record := ordermanager.OrderTradeRecordEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-100",
-			Symbol:       "BTCUSDT",
-			Exchange:     "MEXC",
-			StrategyType: "PENNY_JUMPER",
-		},
-		Side:   "LONG",
-		NetPnL: 990.0,
+		ReqID:        "req-100",
+		Symbol:       "BTCUSDT",
+		Exchange:     "MEXC",
+		StrategyType: "PENNY_JUMPER",
+		Side:         "LONG",
+		NetPnL:       990.0,
 	}
 
 	// Saving with nil DB should gracefully return nil
@@ -73,50 +71,42 @@ func TestGormTradeRepository_GetSymbolPnLSummaries_SQLite(t *testing.T) {
 
 	// 1. Insert funding profit trades for COW (+200 USD) and LPT (+50 USD)
 	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "f-cow-1",
-			Symbol:       "COW-SWAP-USDT",
-			Exchange:     "toobit_futures",
-			StrategyType: ordermanager.StrategyFundingReversion,
-		},
-		Side:       "LONG",
-		NetPnL:     150.0,
-		RecordedAt: now.Add(-1 * time.Hour),
+		ReqID:        "f-cow-1",
+		Symbol:       "COW-SWAP-USDT",
+		Exchange:     "toobit_futures",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Side:         "LONG",
+		NetPnL:       150.0,
+		RecordedAt:   now.Add(-1 * time.Hour),
 	}))
 	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "f-cow-2",
-			Symbol:       "COW-SWAP-USDT",
-			Exchange:     "toobit_futures",
-			StrategyType: ordermanager.StrategyFundingArbitrage,
-		},
-		Side:       "SHORT",
-		NetPnL:     50.0,
-		RecordedAt: now.Add(-30 * time.Minute),
+		ReqID:        "f-cow-2",
+		Symbol:       "COW-SWAP-USDT",
+		Exchange:     "toobit_futures",
+		StrategyType: ordermanager.StrategyFundingArbitrage,
+		Side:         "SHORT",
+		NetPnL:       50.0,
+		RecordedAt:   now.Add(-30 * time.Minute),
 	}))
 	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "f-lpt-1",
-			Symbol:       "LPT-SWAP-USDT",
-			Exchange:     "toobit_futures",
-			StrategyType: ordermanager.StrategyFundingReversion,
-		},
-		Side:       "LONG",
-		NetPnL:     50.0,
-		RecordedAt: now.Add(-20 * time.Minute),
+		ReqID:        "f-lpt-1",
+		Symbol:       "LPT-SWAP-USDT",
+		Exchange:     "toobit_futures",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Side:         "LONG",
+		NetPnL:       50.0,
+		RecordedAt:   now.Add(-20 * time.Minute),
 	}))
 
 	// 2. Insert Obfuscator trade for COW (-30 USD)
 	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "obf-cow-1",
-			Symbol:       "COW-SWAP-USDT",
-			Exchange:     "toobit_futures",
-			StrategyType: ordermanager.StrategyObfuscator,
-		},
-		Side:       "LONG",
-		NetPnL:     -30.0,
-		RecordedAt: now.Add(-10 * time.Minute),
+		ReqID:        "obf-cow-1",
+		Symbol:       "COW-SWAP-USDT",
+		Exchange:     "toobit_futures",
+		StrategyType: ordermanager.StrategyObfuscator,
+		Side:         "LONG",
+		NetPnL:       -30.0,
+		RecordedAt:   now.Add(-10 * time.Minute),
 	}))
 
 	// 3. Query summaries

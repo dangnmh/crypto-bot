@@ -15,8 +15,8 @@ func TestEvaluateSafety(t *testing.T) {
 			Leverage:            10,
 			MaxPriceDiffPercent: 0.5,
 		},
-		TradeIntent: domain.TradeIntent{FundingRate: 0.02}, // 2%
-		TradePlan:   domain.TradePlan{Volume: 50, Slippage: 0},
+		FundingRate: 0.02, // 2%
+		Volume:      50, Slippage: 0,
 		MarketData: domain.MarketData{
 			LastPrice: 100,
 			BestAsk:   101,
@@ -105,18 +105,16 @@ func TestApplySafetySizing_SizesDownHighImpactRatio(t *testing.T) {
 			Leverage:            10,
 			MaxPriceDiffPercent: 0.5,
 		},
-		TradeIntent: domain.TradeIntent{FundingRate: 0.02},
-		TradePlan:   domain.TradePlan{Volume: 50},
+		FundingRate: 0.02,
+		Volume:      50,
 		MarketData: domain.MarketData{
 			LastPrice: 100,
 			BestAsk:   101,
 			Vol24USDT: 1000000, // max = 1000000 / 1440 * 5% = 34.7222
 		},
-		ContractSpec: domain.ContractSpec{
-			ContractSize: 0.01,
-			MinVol:       10,
-			TakerFeeRate: 0.0006,
-		},
+		ContractSize: 0.01,
+		MinVol:       10,
+		TakerFeeRate: 0.0006,
 	}
 
 	res := c.ApplySafetySizing(domain.SafetyLimits{MaxImpactRatio: 0.05})
@@ -143,18 +141,14 @@ func TestApplySafetySizing_InvalidRefPrice(t *testing.T) {
 			Leverage:            10,
 			MaxPriceDiffPercent: 0.5,
 		},
-		TradeIntent: domain.TradeIntent{FundingRate: 0.02},
-		TradePlan:   domain.TradePlan{Volume: 50},
-		MarketData: domain.MarketData{
-			LastPrice: 0, // Invalid refPrice
-			BestAsk:   0,
-			Vol24USDT: 1000000,
-		},
-		ContractSpec: domain.ContractSpec{
-			ContractSize: 0.01,
-			MinVol:       10,
-			TakerFeeRate: 0.0006,
-		},
+		FundingRate:  0.02,
+		Volume:       50,
+		LastPrice:    0, // Invalid refPrice
+		BestAsk:      0,
+		Vol24USDT:    1000000,
+		ContractSize: 0.01,
+		MinVol:       10,
+		TakerFeeRate: 0.0006,
 	}
 
 	res := c.ApplySafetySizing(domain.SafetyLimits{MaxImpactRatio: 0.05})

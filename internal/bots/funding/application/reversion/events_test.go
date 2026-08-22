@@ -56,21 +56,15 @@ func TestReversionEventsExposeStableMetadata(t *testing.T) {
 	baseWithOrderAndSideNoNotifyWithFR.FundingRate = 0.001
 
 	candidate := fundingdomain.Candidate{
-		TradeIntent: fundingdomain.TradeIntent{
-			Symbol:      "BTC_USDT",
-			FundingRate: 0.001,
-			Side:        shared.SideOpenLong,
-			CloseSide:   shared.SideCloseLong,
-		},
-		MarketData: fundingdomain.MarketData{
-			BestBid:   59990,
-			BestAsk:   60000,
-			LastPrice: 59995,
-		},
-		TradePlan: fundingdomain.TradePlan{
-			Volume:   12.5,
-			Slippage: 0.02,
-		},
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.001,
+		Side:        shared.SideOpenLong,
+		CloseSide:   shared.SideCloseLong,
+		BestBid:     59990,
+		BestAsk:     60000,
+		LastPrice:   59995,
+		Volume:      12.5,
+		Slippage:    0.02,
 	}
 
 	ioc := reversion.IOCSubmittedEvent{
@@ -299,7 +293,7 @@ func TestReversionEventsNotifyOnErrorsEvenWhenSendNotifyFalse(t *testing.T) {
 	t.Parallel()
 
 	base := reversion.BaseReversionEvent{Symbol: "ETH_USDT"}
-	candidate := fundingdomain.Candidate{TradeIntent: fundingdomain.TradeIntent{Symbol: "ETH_USDT"}}
+	candidate := fundingdomain.Candidate{Symbol: "ETH_USDT"}
 	ioc := reversion.IOCSubmittedEvent{BaseReversionEvent: base, Candidate: candidate, Error: "exchange rejected"}
 	assert.True(t, ioc.ShouldNotify())
 	assert.Contains(t, ioc.GetMessage(), "failed")
@@ -448,10 +442,8 @@ func TestCandidateFoundEvent_DeduplicateKeyInherited(t *testing.T) {
 	t.Parallel()
 
 	evt := reversion.CandidateFoundEvent{
-		BaseReversionEvent: reversion.BaseReversionEvent{
-			ExternalID: "client_id_123",
-			Topic:      "funding.reversion.candidate",
-		},
+		ExternalID: "client_id_123",
+		Topic:      "funding.reversion.candidate",
 	}
 	assert.Equal(t, "client_id_123funding.reversion.candidate", evt.DeduplicateKey())
 }

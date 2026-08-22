@@ -705,9 +705,7 @@ func TestEventBusDispatcher(t *testing.T) {
 	t.Run("dispatch valid event publishes to eventbus", func(t *testing.T) {
 		t.Parallel()
 		evt := ordermanager.OrderIntentEvent{
-			BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-				ReqID: "req-disp-001",
-			},
+			ReqID: "req-disp-001",
 		}
 		err := disp.Dispatch(context.Background(), evt)
 		require.NoError(t, err)

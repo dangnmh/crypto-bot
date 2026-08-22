@@ -49,8 +49,8 @@ func TestDetermineCandidateLeverage(t *testing.T) {
 	t.Run("capped by symbol max leverage", func(t *testing.T) {
 		t.Parallel()
 		c := &domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 20},
-			ContractSpec: domain.ContractSpec{MaxLeverage: 10},
+			Config:      domain.TradeConfig{Leverage: 20},
+			MaxLeverage: 10,
 		}
 		client := &mockLeverageClient{supportOnOrder: true}
 		assert.Equal(t, 10, domain.DetermineCandidateLeverage(ctx, client, c, nil))
@@ -59,8 +59,8 @@ func TestDetermineCandidateLeverage(t *testing.T) {
 	t.Run("client supports leverage on order", func(t *testing.T) {
 		t.Parallel()
 		c := &domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 15},
-			ContractSpec: domain.ContractSpec{MaxLeverage: 20},
+			Config:      domain.TradeConfig{Leverage: 15},
+			MaxLeverage: 20,
 		}
 		client := &mockLeverageClient{supportOnOrder: true}
 		assert.Equal(t, 15, domain.DetermineCandidateLeverage(ctx, client, c, nil))
@@ -69,9 +69,9 @@ func TestDetermineCandidateLeverage(t *testing.T) {
 	t.Run("risk limit leverage provider caps leverage", func(t *testing.T) {
 		t.Parallel()
 		c := &domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 20, MarginUSDT: 10},
-			ContractSpec: domain.ContractSpec{MaxLeverage: 50, ContractSize: 1.0},
-			MarketData:   domain.MarketData{LastPrice: 100.0},
+			Config:      domain.TradeConfig{Leverage: 20, MarginUSDT: 10},
+			MaxLeverage: 50, ContractSize: 1.0,
+			LastPrice: 100.0,
 		}
 		client := &mockLeverageClient{
 			supportOnOrder: false,
@@ -83,8 +83,8 @@ func TestDetermineCandidateLeverage(t *testing.T) {
 	t.Run("risk limit provider error fallback", func(t *testing.T) {
 		t.Parallel()
 		c := &domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 20, MarginUSDT: 10},
-			ContractSpec: domain.ContractSpec{MaxLeverage: 50},
+			Config:      domain.TradeConfig{Leverage: 20, MarginUSDT: 10},
+			MaxLeverage: 50,
 		}
 		client := &mockLeverageClient{
 			supportOnOrder: false,
@@ -102,8 +102,8 @@ func TestDetermineCandidateLeverage(t *testing.T) {
 		}
 
 		c := &domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			ContractSpec: domain.ContractSpec{MaxLeverage: 20},
+			Config:      domain.TradeConfig{Leverage: 10},
+			MaxLeverage: 20,
 		}
 		assert.Equal(t, 5, domain.DetermineCandidateLeverage(ctx, structClient, c, nil))
 	})

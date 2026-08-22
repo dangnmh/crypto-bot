@@ -402,12 +402,10 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	// Setup minimal config
 	cfg := &config.Config{
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD:       1000000,
-					MarginUSD:         5.0,
-					MaxCandidateTrade: 1,
-				},
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD:       1000000,
+				MarginUSD:         5.0,
+				MaxCandidateTrade: 1,
 			},
 		},
 		Symbols: []config.SymbolConfig{
@@ -511,12 +509,10 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 
 			cfg := &config.Config{
 				Reversion: &config.ReversionConfig{
-					RawFundingReversionConfig: config.RawFundingReversionConfig{
-						Default: config.ExchangeReversionConfig{
-							MinVol24USD:       1000000,
-							MarginUSD:         15.0,
-							MaxCandidateTrade: 1,
-						},
+					Default: config.ExchangeReversionConfig{
+						MinVol24USD:       1000000,
+						MarginUSD:         15.0,
+						MaxCandidateTrade: 1,
 					},
 				},
 				Symbols: []config.SymbolConfig{
@@ -568,13 +564,9 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 			MinFundingRate: 0.001,
 			MinVol24USD:    1000000,
 		},
-		TradeIntent: domain.TradeIntent{
-			Symbol:      "BTC_USDT",
-			FundingRate: 0.005,
-		},
-		MarketData: domain.MarketData{
-			Vol24USDT: 2000000,
-		},
+		Symbol:      "BTC_USDT",
+		FundingRate: 0.005,
+		Vol24USDT:   2000000,
 	}
 	assert.True(t, job.shouldTrigger(candOk, time.Now().Add(10*time.Minute)))
 
@@ -657,9 +649,7 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 		// Config with tradeSide set to "long" (so SHORT candidate should be skipped)
 		cfg := &config.Config{
 			Reversion: &config.ReversionConfig{
-				RawFundingReversionConfig: config.RawFundingReversionConfig{
-					TradeSide: "long",
-				},
+				TradeSide: "long",
 			},
 			Symbols: []config.SymbolConfig{
 				{Symbol: "BTC_USDT", Exchange: "mexc"},
@@ -722,11 +712,9 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 		// Config with tradeSide = "long"
 		cfg := &config.Config{
 			Reversion: &config.ReversionConfig{
-				RawFundingReversionConfig: config.RawFundingReversionConfig{
-					TradeSide: "long",
-					Default: config.ExchangeReversionConfig{
-						MinVol24USD: 1000000,
-					},
+				TradeSide: "long",
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD: 1000000,
 				},
 			},
 		}
@@ -779,13 +767,11 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 	// Configure total marginUSD = 11 and maxCandidateTrade = 2
 	cfg := &config.Config{
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD:             1000000,
-					MarginUSD:               11.0,
-					MaxCandidateTrade:       2,
-					MaxMarginUSDOfCandidate: 5.5,
-				},
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD:             1000000,
+				MarginUSD:               11.0,
+				MaxCandidateTrade:       2,
+				MaxMarginUSDOfCandidate: 5.5,
 			},
 		},
 	}
@@ -838,13 +824,11 @@ func TestScheduleScanner_LeverageAndVolumePreDetermined(t *testing.T) {
 
 	cfg := &config.Config{
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					Leverage:          20,
-					MinVol24USD:       100000,
-					MarginUSD:         100.0,
-					MaxCandidateTrade: 1,
-				},
+			Default: config.ExchangeReversionConfig{
+				Leverage:          20,
+				MinVol24USD:       100000,
+				MarginUSD:         100.0,
+				MaxCandidateTrade: 1,
 			},
 		},
 	}
@@ -896,14 +880,12 @@ func TestScheduleScanner_MaxMarginUSDOfCandidateCapping(t *testing.T) {
 	// marginUSD = 100, maxCandidateTrade = 1 (uncapped allocatedMargin would be 100), but maxMarginUSDOfCandidate = 15.0
 	cfg := &config.Config{
 		Reversion: &config.ReversionConfig{
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					Leverage:                10,
-					MinVol24USD:             100000,
-					MarginUSD:               100.0,
-					MaxCandidateTrade:       1,
-					MaxMarginUSDOfCandidate: 15.0,
-				},
+			Default: config.ExchangeReversionConfig{
+				Leverage:                10,
+				MinVol24USD:             100000,
+				MarginUSD:               100.0,
+				MaxCandidateTrade:       1,
+				MaxMarginUSDOfCandidate: 15.0,
 			},
 		},
 	}
@@ -1007,13 +989,11 @@ func TestScheduleScanner_ImpactRatioSurplusRedistribution(t *testing.T) {
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 0.05,
 			},
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					Leverage:          20,
-					MinVol24USD:       100000,
-					MarginUSD:         100.0,
-					MaxCandidateTrade: 2,
-				},
+			Default: config.ExchangeReversionConfig{
+				Leverage:          20,
+				MinVol24USD:       100000,
+				MarginUSD:         100.0,
+				MaxCandidateTrade: 2,
 			},
 		},
 	}
@@ -1074,13 +1054,11 @@ func TestScheduleScanner_Scan_PreFilterInvalidCandidates(t *testing.T) {
 				MaxImpactRatio:     1.0,
 				MaxSymbolUSDTPrice: 50.0, // MaxSymbolUSDTPrice = 50.0
 			},
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					Leverage:          10,
-					MinVol24USD:       100000,
-					MarginUSD:         5.0,
-					MaxCandidateTrade: 1, // Max candidate trade is 1
-				},
+			Default: config.ExchangeReversionConfig{
+				Leverage:          10,
+				MinVol24USD:       100000,
+				MarginUSD:         5.0,
+				MaxCandidateTrade: 1, // Max candidate trade is 1
 			},
 		},
 	}
@@ -1136,13 +1114,11 @@ func TestScheduleScanner_Scan_PreFilterInvalidSettleTime(t *testing.T) {
 			Safety: config.SafetyConfig{
 				MaxImpactRatio: 1.0,
 			},
-			RawFundingReversionConfig: config.RawFundingReversionConfig{
-				Default: config.ExchangeReversionConfig{
-					Leverage:          10,
-					MinVol24USD:       100000,
-					MarginUSD:         5.0,
-					MaxCandidateTrade: 1,
-				},
+			Default: config.ExchangeReversionConfig{
+				Leverage:          10,
+				MinVol24USD:       100000,
+				MarginUSD:         5.0,
+				MaxCandidateTrade: 1,
 			},
 		},
 	}

@@ -17,18 +17,16 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 	}
 
 	evt1 := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-999",
-			Symbol:       "BTCUSDT",
-			Exchange:     "MEXC",
-			StrategyType: ordermanager.StrategyFundingReversion,
-			Timestamp:    time.Now(),
-		},
-		Side:      shared.SideOpenLong,
-		OrderType: ordermanager.OrderTypeIOC,
-		Price:     50000.0,
-		Volume:    1.0,
-		FireTime:  time.Unix(1700000000, 0),
+		ReqID:        "req-999",
+		Symbol:       "BTCUSDT",
+		Exchange:     "MEXC",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    ordermanager.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		FireTime:     time.Unix(1700000000, 0),
 	}
 
 	evt2 := ordermanager.OrderPreFlightCompletedEvent{
@@ -37,32 +35,24 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 	}
 
 	evt3 := ordermanager.OrderSubmittedEvent{
-		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
-			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-				OrderPreFlightCompletedEvent: evt2,
-			},
-		},
-		Price:  50000.0,
-		Volume: 1.0,
+		OrderPreFlightCompletedEvent: evt2,
+		Price:                        50000.0,
+		Volume:                       1.0,
 	}
 
 	evt4 := ordermanager.OrderOutcomeResolvedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:     "req-999",
-			Symbol:    "BTCUSDT",
-			Timestamp: time.Now(),
-		},
+		ReqID:     "req-999",
+		Symbol:    "BTCUSDT",
+		Timestamp: time.Now(),
 		Outcome:   ordermanager.OutcomeFilled,
 		FilledVol: 1.0,
 		AvgPrice:  50000.0,
 	}
 
 	evt5 := ordermanager.OrderCompletedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:     "req-999",
-			Symbol:    "BTCUSDT",
-			Timestamp: time.Now(),
-		},
+		ReqID:            "req-999",
+		Symbol:           "BTCUSDT",
+		Timestamp:        time.Now(),
 		Outcome:          "filled",
 		EntryPrice:       50000.0,
 		ExitPrice:        51000.0,
@@ -117,15 +107,13 @@ func TestOrderExecutionAggregate_SettleTime(t *testing.T) {
 
 	agg := ordermanager.NewOrderExecutionAggregate("req-settle-1")
 	evt1 := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-settle-1",
-			Symbol:       "BTCUSDT",
-			Exchange:     "MEXC",
-			StrategyType: ordermanager.StrategyFundingReversion,
-			Timestamp:    time.Now(),
-		},
-		Side:       shared.SideOpenLong,
-		SettleTime: &settleTime,
+		ReqID:        "req-settle-1",
+		Symbol:       "BTCUSDT",
+		Exchange:     "MEXC",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		SettleTime:   &settleTime,
 	}
 
 	_ = agg.Record(evt1)
@@ -141,14 +129,12 @@ func TestOrderExecutionAggregate_SettleTime(t *testing.T) {
 	// Test nil SettleTime
 	aggNil := ordermanager.NewOrderExecutionAggregate("req-settle-nil")
 	evtNil := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-settle-nil",
-			Symbol:       "BTCUSDT",
-			Exchange:     "MEXC",
-			StrategyType: ordermanager.StrategyFundingReversion,
-			Timestamp:    time.Now(),
-		},
-		Side: shared.SideOpenLong,
+		ReqID:        "req-settle-nil",
+		Symbol:       "BTCUSDT",
+		Exchange:     "MEXC",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
 	}
 	_ = aggNil.Record(evtNil)
 	recordNil := aggNil.BuildTradeRecord()
@@ -170,17 +156,15 @@ func TestOrderExecutionAggregate_Concurrency(t *testing.T) {
 			defer func() { done <- struct{}{} }()
 
 			evt := ordermanager.OrderIntentEvent{
-				BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-					ReqID:        "req-concurrent-test",
-					Symbol:       "BTCUSDT",
-					Exchange:     "bybit",
-					StrategyType: ordermanager.StrategyFundingReversion,
-					Timestamp:    time.Now(),
-				},
-				Side:      shared.SideOpenLong,
-				OrderType: ordermanager.OrderTypeIOC,
-				Price:     50000.0,
-				Volume:    float64(idx + 1),
+				ReqID:        "req-concurrent-test",
+				Symbol:       "BTCUSDT",
+				Exchange:     "bybit",
+				StrategyType: ordermanager.StrategyFundingReversion,
+				Timestamp:    time.Now(),
+				Side:         shared.SideOpenLong,
+				OrderType:    ordermanager.OrderTypeIOC,
+				Price:        50000.0,
+				Volume:       float64(idx + 1),
 			}
 
 			_ = agg.Record(evt)

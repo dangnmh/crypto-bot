@@ -37,7 +37,7 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 	t.Run("zero or negative margin pool", func(t *testing.T) {
 		t.Parallel()
 		candidates := []domain.Candidate{
-			{TradeIntent: domain.TradeIntent{Symbol: "BTCUSDT"}},
+			{Symbol: "BTCUSDT"},
 		}
 		resZero := allocator.AllocateMargins(ctx, candidates, 0, 50.0, 5.0, nil, nil)
 		assert.Nil(t, resZero)
@@ -50,16 +50,16 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		t.Parallel()
 
 		c1 := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "HIGHVOL"},
-			MarketData:   domain.MarketData{Vol24USDT: 10_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "HIGHVOL",
+			Vol24USDT: 10_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 		c2 := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "LOWVOL"},
-			MarketData:   domain.MarketData{Vol24USDT: 1_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "LOWVOL",
+			Vol24USDT: 1_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 
 		candidates := []domain.Candidate{c1, c2}
@@ -79,10 +79,10 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		t.Parallel()
 
 		c := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "BTCUSDT"},
-			MarketData:   domain.MarketData{Vol24USDT: 100_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "BTCUSDT",
+			Vol24USDT: 100_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 
 		// Total pool = 1000 USDT, max per candidate = 200 USDT
@@ -99,10 +99,10 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		// 5% max impact ratio -> 5 USDT max position volume.
 		// 10x leverage -> 0.5 USDT required margin.
 		c := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "TINYVOL"},
-			MarketData:   domain.MarketData{Vol24USDT: 144_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "TINYVOL",
+			Vol24USDT: 144_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 
 		res := allocator.AllocateMargins(ctx, []domain.Candidate{c}, 100.0, 100.0, 0.05, nil, nil)
@@ -115,10 +115,10 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		t.Parallel()
 
 		c := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 20},
-			TradeIntent:  domain.TradeIntent{Symbol: "RISKY"},
-			MarketData:   domain.MarketData{Vol24USDT: 100_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 50},
+			Config:    domain.TradeConfig{Leverage: 20},
+			Symbol:    "RISKY",
+			Vol24USDT: 100_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 50,
 		}
 
 		// Risk limit client forces max leverage = 5 for position size
@@ -135,16 +135,16 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		t.Parallel()
 
 		c1 := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "LOWVOL"},
-			MarketData:   domain.MarketData{Vol24USDT: 1_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "LOWVOL",
+			Vol24USDT: 1_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 		c2 := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "HIGHVOL"},
-			MarketData:   domain.MarketData{Vol24USDT: 10_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "HIGHVOL",
+			Vol24USDT: 10_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 
 		// Total pool = 100 USDT, max candidate margin = 100 USDT.
@@ -163,10 +163,10 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		// High price (1,000,000 USDT) with integer lot size (VolScale=0) and small margin (1 USDT).
 		// Volume = 1 * 10 / (1,000,000 * 1) = 0.00001 -> rounds down to 0.0 contracts.
 		c := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "HUGEPRICE"},
-			MarketData:   domain.MarketData{Vol24USDT: 10_000_000, LastPrice: 1_000_000.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10, VolScale: 0},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "HUGEPRICE",
+			Vol24USDT: 10_000_000, LastPrice: 1_000_000.0,
+			ContractSize: 1.0, MaxLeverage: 10, VolScale: 0,
 		}
 
 		res := allocator.AllocateMargins(ctx, []domain.Candidate{c}, 1.0, 1.0, 0.0, nil, nil)
@@ -179,10 +179,10 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		t.Parallel()
 
 		c := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 10},
-			TradeIntent:  domain.TradeIntent{Symbol: "UNCONSTRAINED"},
-			MarketData:   domain.MarketData{Vol24USDT: 100_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 10},
+			Symbol:    "UNCONSTRAINED",
+			Vol24USDT: 100_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 
 		// maxCandidateMargin = 0 (unconstrained) -> uses all 500 USDT available
@@ -196,16 +196,16 @@ func TestScoreMarginAllocator_AllocateMargins(t *testing.T) {
 		t.Parallel()
 
 		c1 := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 5},
-			TradeIntent:  domain.TradeIntent{Symbol: "SYM5X"},
-			MarketData:   domain.MarketData{Vol24USDT: 1_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 10},
+			Config:    domain.TradeConfig{Leverage: 5},
+			Symbol:    "SYM5X",
+			Vol24USDT: 1_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 10,
 		}
 		c2 := domain.Candidate{
-			Config:       domain.TradeConfig{Leverage: 20},
-			TradeIntent:  domain.TradeIntent{Symbol: "SYM20X"},
-			MarketData:   domain.MarketData{Vol24USDT: 2_000_000, LastPrice: 1.0},
-			ContractSpec: domain.ContractSpec{ContractSize: 1.0, MaxLeverage: 50},
+			Config:    domain.TradeConfig{Leverage: 20},
+			Symbol:    "SYM20X",
+			Vol24USDT: 2_000_000, LastPrice: 1.0,
+			ContractSize: 1.0, MaxLeverage: 50,
 		}
 
 		res := allocator.AllocateMargins(ctx, []domain.Candidate{c1, c2}, 200.0, 100.0, 0.0, nil, nil)

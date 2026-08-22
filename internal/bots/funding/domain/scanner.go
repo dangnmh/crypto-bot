@@ -150,17 +150,13 @@ func ScanFundingRates(tickers []ScanResult, configs []ScanConfig) []Candidate {
 		}
 
 		c := Candidate{
-			TradeIntent: TradeIntent{
-				Symbol:      t.Symbol,
-				FundingRate: t.FundingRate,
-			},
-			MarketData: MarketData{
-				LastPrice: t.LastPrice,
-				BestBid:   t.BestBid,
-				BestAsk:   t.BestAsk,
-				Volume24:  t.Volume24,
-				Vol24USDT: amtUSDT,
-			},
+			Symbol:      t.Symbol,
+			FundingRate: t.FundingRate,
+			LastPrice:   t.LastPrice,
+			BestBid:     t.BestBid,
+			BestAsk:     t.BestAsk,
+			Volume24:    t.Volume24,
+			Vol24USDT:   amtUSDT,
 		}
 
 		// ⭐ Side determination — Reversion strategy

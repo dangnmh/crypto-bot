@@ -8,6 +8,8 @@
 # ── Configuration ────────────────────────────────────────────────────
 GO              := go
 GOLANGCI_LINT   := go tool -modfile=go.tool.mod golangci-lint
+MODERNIZE       := go tool -modfile=go.tool.mod modernize
+GOIMPORTS       := go tool -modfile=go.tool.mod goimports
 COVERAGE_DIR    := .coverage
 COVERAGE_FILE   := $(COVERAGE_DIR)/coverage.out
 COVERAGE_HTML   := $(COVERAGE_DIR)/coverage.html
@@ -22,6 +24,11 @@ FUNDING_BLK     := ./configs/funding/local/blacklist.jsonc
 FUNDING_REV     := ./configs/funding/local/reversion.jsonc
 FUNDING_OBF     := ./configs/funding/local/obfuscator.jsonc
 FUNDING_DIL     := ./configs/funding/local/dilution.jsonc
+
+PENNY_JUMPER_SYS  := ./configs/penny_jumper/local/system.jsonc
+PENNY_JUMPER_EXCH := ./configs/penny_jumper/local/exchange.jsonc
+PENNY_JUMPER_BOT  := ./configs/penny_jumper/local/penny_jumper.jsonc
+PENNY_JUMPER_BLK  := ./configs/penny_jumper/local/blacklist.jsonc
 
 # Registry Configuration
 REGISTRY        ?= ghcr.io/dangnmh
@@ -52,6 +59,10 @@ build: ## Build all binaries
 build-funding: ## Build the funding bot
 	$(GO) build -ldflags="$(LDFLAGS)" -o bin/funding-bot ./cmd/funding
 
+.PHONY: build-penny-jumper
+build-penny-jumper: ## Build the penny jumper bot
+	$(GO) build -ldflags="$(LDFLAGS)" -o bin/penny-jumper-bot ./cmd/penny_jumper
+
 .PHONY: docker-build
 docker-build: ## Build and tag the Docker container image locally and for registry
 	docker build \
@@ -68,6 +79,13 @@ docker-push: docker-build ## Build and Push the Docker image to registry
 .PHONY: run/funding
 run/funding: ## Run the funding bot
 	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -bot $(FUNDING_BOT) -blacklist $(FUNDING_BLK) -reversion $(FUNDING_REV) -obfuscator $(FUNDING_OBF) -dilution $(FUNDING_DIL)
+
+.PHONY: run/penny-jumper
+run/penny-jumper: ## Run the penny jumper bot
+	$(GO) run ./cmd/penny_jumper -sys $(PENNY_JUMPER_SYS) -exch $(PENNY_JUMPER_EXCH) -bot $(PENNY_JUMPER_BOT) -blacklist $(PENNY_JUMPER_BLK)
+
+.PHONY: run/penny_jumper
+run/penny_jumper: run/penny-jumper ## Alias for run/penny-jumper
 
 .PHONY: scan/funding
 scan/funding: ## Scan funding rates across supported futures exchanges. Usage: make scan/funding [exchanges=binance,bybit] [minFundingRate=0.1] [minVol=1000000]
@@ -126,19 +144,26 @@ lint-fix: mod-tidy fmt vet ## Run golangci-lint with auto-fix
 .PHONY: fmt
 fmt: ## Format all Go files
 	$(GO) fmt ./...
-	$(GO) run golang.org/x/tools/cmd/goimports@latest -w .
+	$(GOIMPORTS) -w .
 
 .PHONY: vet
 vet: ## Run go vet
 	$(GO) vet ./...
-	$(GO) run golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@latest -fix ./...
+	$(MODERNIZE) -fix ./...
 # 	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...
 
 # ── Modules ──────────────────────────────────────────────────────────
+.PHONY: upgrade
+upgrade: ## Upgrade dependencies in go.mod and go.tool.mod
+	$(GO) get -u ./...
+	$(GO) get -modfile=go.tool.mod -u ./...
+
 .PHONY: mod-tidy
 mod-tidy: ## Tidy go.mod and go.sum
 	$(GO) mod tidy
 	$(GO) mod verify
+	$(GO) mod tidy -modfile=go.tool.mod
+	$(GO) mod verify -modfile=go.tool.mod
 
 # ── Quality Gate ─────────────────────────────────────────────────────
 .PHONY: ci

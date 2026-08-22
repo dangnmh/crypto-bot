@@ -80,11 +80,9 @@ func TestCalculateStopLossPrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				ContractSpec: domain.ContractSpec{
-					PriceUnit:  tt.priceUnit,
-					PriceScale: tt.scale,
-				},
+				Side:       tt.side,
+				PriceUnit:  tt.priceUnit,
+				PriceScale: tt.scale,
 				Config: domain.TradeConfig{
 					FundingReversion: domain.FundingReversionConfig{
 						StopLossPct: tt.slPct,
@@ -155,11 +153,9 @@ func TestCalculateStaticTakeProfitPrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				ContractSpec: domain.ContractSpec{
-					PriceUnit:  tt.priceUnit,
-					PriceScale: tt.scale,
-				},
+				Side:       tt.side,
+				PriceUnit:  tt.priceUnit,
+				PriceScale: tt.scale,
 				Config: domain.TradeConfig{
 					FundingReversion: domain.FundingReversionConfig{
 						TakeProfitPct: tt.tpPct,

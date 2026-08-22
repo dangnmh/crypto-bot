@@ -61,18 +61,16 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 	}
 
 	intentEvt := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         reqID,
-			RefID:         reqID,
-			Symbol:        spec.Symbol,
-			Exchange:      spec.Exchange,
-			MarketType:    ordermanager.MarketTypeFuture,
-			StrategyType:  ordermanager.StrategyDilution,
-			PreTopic:      "",
-			NextTopic:     ordermanager.TopicOrderIntent,
-			Timestamp:     now,
-			ClientOrderID: exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
-		},
+		ReqID:                 reqID,
+		RefID:                 reqID,
+		Symbol:                spec.Symbol,
+		Exchange:              spec.Exchange,
+		MarketType:            ordermanager.MarketTypeFuture,
+		StrategyType:          ordermanager.StrategyDilution,
+		PreTopic:              "",
+		NextTopic:             ordermanager.TopicOrderIntent,
+		Timestamp:             now,
+		ClientOrderID:         exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
 		Side:                  spec.Side,
 		OrderType:             orderType,
 		Price:                 spec.Price,

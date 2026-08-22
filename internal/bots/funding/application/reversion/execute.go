@@ -128,13 +128,11 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 		traceCtx := observability.WithRequestIDValue(msgCtx, evt.ReqID)
 		runner.log.InfoContext(traceCtx, "Received OrderManager completion in Funding Reversion strategy", slog.String("req_id", evt.ReqID), slog.String("outcome", string(evt.Outcome)))
 		finalEvt := ReversionCompletedEvent{
-			BaseReversionEvent: BaseReversionEvent{
-				ReqID:     evt.ReqID,
-				Exchange:  evt.Exchange,
-				Symbol:    evt.Symbol,
-				Timestamp: runner.now(),
-			},
-			Reason: "ordermanager_completed",
+			ReqID:     evt.ReqID,
+			Exchange:  evt.Exchange,
+			Symbol:    evt.Symbol,
+			Timestamp: runner.now(),
+			Reason:    "ordermanager_completed",
 		}
 		return runner.publishEvent(traceCtx, TopicReversionCompleted, finalEvt)
 	})

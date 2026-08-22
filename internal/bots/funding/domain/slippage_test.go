@@ -64,15 +64,11 @@ func TestStaticSlippage_ViaIOCPrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := &domain.Candidate{
-				TradeIntent: domain.TradeIntent{Side: tt.side},
-				MarketData: domain.MarketData{
-					BestBid: tt.bestBid,
-					BestAsk: tt.bestAsk,
-				},
-				ContractSpec: domain.ContractSpec{
-					PriceUnit:  tt.priceUnit,
-					PriceScale: tt.priceScale,
-				},
+				Side:       tt.side,
+				BestBid:    tt.bestBid,
+				BestAsk:    tt.bestAsk,
+				PriceUnit:  tt.priceUnit,
+				PriceScale: tt.priceScale,
 				Config: domain.TradeConfig{
 					MaxPriceDiffPercent: tt.maxDiffPct,
 				},

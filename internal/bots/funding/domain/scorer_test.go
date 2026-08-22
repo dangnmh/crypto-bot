@@ -10,59 +10,47 @@ func TestScoreAndRank(t *testing.T) {
 	t.Parallel()
 	candidates := []domain.Candidate{
 		{
-			TradeIntent: domain.TradeIntent{Symbol: "COIN_A"},
-			TradePlan: domain.TradePlan{
-				SafetyResult: &domain.SafetyResult{
-					Passed:         true,
-					ExpectedProfit: 1.5,
-				},
+			Symbol: "COIN_A",
+			SafetyResult: &domain.SafetyResult{
+				Passed:         true,
+				ExpectedProfit: 1.5,
 			},
 			MarketData: domain.MarketData{
 				Vol24USDT: 1000000, // 10^6 -> log10=6 -> score=0.6 -> CoinScore = 1.5 * 10000 * 0.6 = 9000
 			},
 		},
 		{
-			TradeIntent: domain.TradeIntent{Symbol: "COIN_B"},
-			TradePlan: domain.TradePlan{
-				SafetyResult: &domain.SafetyResult{
-					Passed:         true,
-					ExpectedProfit: 2.0,
-				},
+			Symbol: "COIN_B",
+			SafetyResult: &domain.SafetyResult{
+				Passed:         true,
+				ExpectedProfit: 2.0,
 			},
 			MarketData: domain.MarketData{
 				Vol24USDT: 100, // 10^2 -> log10=2 -> score=0.2 -> CoinScore = 2.0 * 10000 * 0.2 = 4000
 			},
 		},
 		{
-			TradeIntent: domain.TradeIntent{Symbol: "COIN_C"},
-			TradePlan: domain.TradePlan{
-				SafetyResult: &domain.SafetyResult{
-					Passed:         true,
-					ExpectedProfit: 0.5,
-				},
+			Symbol: "COIN_C",
+			SafetyResult: &domain.SafetyResult{
+				Passed:         true,
+				ExpectedProfit: 0.5,
 			},
 			MarketData: domain.MarketData{
 				Vol24USDT: 10000000000, // 10^10 -> log10=10 -> score=1.0 (capped) -> CoinScore = 0.5 * 10000 * 1.0 = 5000
 			},
 		},
 		{
-			TradeIntent: domain.TradeIntent{Symbol: "COIN_FAIL"},
-			TradePlan: domain.TradePlan{
-				SafetyResult: &domain.SafetyResult{
-					Passed:         false, // Should be filtered out
-					ExpectedProfit: 10.0,
-				},
+			Symbol: "COIN_FAIL",
+			SafetyResult: &domain.SafetyResult{
+				Passed:         false, // Should be filtered out
+				ExpectedProfit: 10.0,
 			},
-			MarketData: domain.MarketData{
-				Vol24USDT: 1000000,
-			},
+			Vol24USDT: 1000000,
 		},
 		{
-			TradeIntent: domain.TradeIntent{Symbol: "COIN_NIL_SAFETY"},
-			TradePlan:   domain.TradePlan{SafetyResult: nil}, // Should be filtered out
-			MarketData: domain.MarketData{
-				Vol24USDT: 1000000,
-			},
+			Symbol:       "COIN_NIL_SAFETY",
+			SafetyResult: nil, // Should be filtered out
+			Vol24USDT:    1000000,
 		},
 	}
 

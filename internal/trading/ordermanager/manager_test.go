@@ -182,14 +182,12 @@ func TestOrderManager_MicroEventPipeline(t *testing.T) {
 
 func createTestOrderIntent() ordermanager.OrderIntentEvent {
 	return ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-001",
-			ClientOrderID: "client-oid-001",
-			Symbol:        "BTCUSDT",
-			Exchange:      "MEXC",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-			Timestamp:     time.Now(),
-		},
+		ReqID:                "req-001",
+		ClientOrderID:        "client-oid-001",
+		Symbol:               "BTCUSDT",
+		Exchange:             "MEXC",
+		StrategyType:         ordermanager.StrategyFundingReversion,
+		Timestamp:            time.Now(),
 		Side:                 shared.SideOpenLong,
 		OrderType:            ordermanager.OrderTypePostOnly,
 		Price:                50000.0,
@@ -305,31 +303,21 @@ func TestOrderSubmittedEvent_GetNotifyMessage(t *testing.T) {
 	t.Parallel()
 
 	evt := ordermanager.OrderSubmittedEvent{
-		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
-			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
-					OrderIntentEvent: ordermanager.OrderIntentEvent{
-						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-							ReqID:         "12082026170000PROMTOOBITFUTURES",
-							ClientOrderID: "12082026170000PROMTOOBITFUTURES",
-							Symbol:        "PROM-SWAP-USDT",
-							Exchange:      "toobit_futures",
-							StrategyType:  ordermanager.StrategyFundingReversion,
-						},
-						Side:         shared.SideOpenLong,
-						Leverage:     20,
-						MarginUSDT:   30.0,
-						FundingRate:  -0.021,
-						Vol24hUSDT:   1200000.0,
-						ContractSize: 1.0,
-						Extra: map[string]any{
-							"margin_usdt":  30.0,
-							"funding_rate": -0.021,
-							"vol_usdt_24h": 1200000.0,
-						},
-					},
-				},
-			},
+		ReqID:         "12082026170000PROMTOOBITFUTURES",
+		ClientOrderID: "12082026170000PROMTOOBITFUTURES",
+		Symbol:        "PROM-SWAP-USDT",
+		Exchange:      "toobit_futures",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Side:          shared.SideOpenLong,
+		Leverage:      20,
+		MarginUSDT:    30.0,
+		FundingRate:   -0.021,
+		Vol24hUSDT:    1200000.0,
+		ContractSize:  1.0,
+		Extra: map[string]any{
+			"margin_usdt":  30.0,
+			"funding_rate": -0.021,
+			"vol_usdt_24h": 1200000.0,
 		},
 		OrderID: "2279963257363092992",
 		Price:   3.032,
@@ -434,17 +422,15 @@ func TestOrderManager_Dispatch_EDD(t *testing.T) {
 
 			ctx := context.Background()
 			intent := ordermanager.OrderIntentEvent{
-				BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-					ReqID:        tt.reqID,
-					Symbol:       tt.symbol,
-					Exchange:     "MEXC",
-					StrategyType: ordermanager.StrategyFundingReversion,
-					Timestamp:    time.Now(),
-				},
-				Side:      tt.side,
-				OrderType: ordermanager.OrderTypeIOC,
-				Price:     tt.price,
-				Volume:    tt.vol,
+				ReqID:        tt.reqID,
+				Symbol:       tt.symbol,
+				Exchange:     "MEXC",
+				StrategyType: ordermanager.StrategyFundingReversion,
+				Timestamp:    time.Now(),
+				Side:         tt.side,
+				OrderType:    ordermanager.OrderTypeIOC,
+				Price:        tt.price,
+				Volume:       tt.vol,
 			}
 
 			if err := mgr.Dispatch(ctx, intent); err != nil {
@@ -463,17 +449,15 @@ func TestOrderAbortedEvent_Notification(t *testing.T) {
 	t.Parallel()
 
 	evt := ordermanager.OrderAbortedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-abort-123",
-			ClientOrderID: "client-abort-123",
-			Symbol:        "BTCUSDT",
-			Exchange:      "BINANCE",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-		},
-		OrderID:   "ex-order-999",
-		Reason:    "submit_error",
-		Error:     "insufficient margin",
-		AbortedAt: time.Now(),
+		ReqID:         "req-abort-123",
+		ClientOrderID: "client-abort-123",
+		Symbol:        "BTCUSDT",
+		Exchange:      "BINANCE",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		OrderID:       "ex-order-999",
+		Reason:        "submit_error",
+		Error:         "insufficient margin",
+		AbortedAt:     time.Now(),
 	}
 
 	assert.Equal(t, ordermanager.TopicOrderAborted, evt.GetTopic())
@@ -497,16 +481,14 @@ func TestOrderCompletedEvent_Notification_Canceled(t *testing.T) {
 	assert.True(t, completedNormal.ShouldNotify())
 
 	completedCanceled := ordermanager.OrderCompletedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-canceled-123",
-			ClientOrderID: "client-canceled-123",
-			Symbol:        "BTCUSDT",
-			Exchange:      "BINANCE",
-			StrategyType:  ordermanager.StrategyFundingReversion,
-		},
-		OrderID: "ex-order-123",
-		Outcome: ordermanager.OutcomeCanceledNoFill,
-		Reason:  "user canceled",
+		ReqID:         "req-canceled-123",
+		ClientOrderID: "client-canceled-123",
+		Symbol:        "BTCUSDT",
+		Exchange:      "BINANCE",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		OrderID:       "ex-order-123",
+		Outcome:       ordermanager.OutcomeCanceledNoFill,
+		Reason:        "user canceled",
 	}
 	assert.True(t, completedCanceled.ShouldNotify())
 	assert.Equal(t, notifier.LevelCritical, completedCanceled.GetNotiLevel())
@@ -520,13 +502,11 @@ func TestOrderCompletedEvent_Notification_Filled(t *testing.T) {
 	t.Parallel()
 
 	completedFilled := ordermanager.OrderCompletedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:         "req-filled-123",
-			ClientOrderID: "client-filled-123",
-			Symbol:        "LAB-SWAP-USDT",
-			Exchange:      "toobit_futures",
-			StrategyType:  ordermanager.StrategyObfuscator,
-		},
+		ReqID:          "req-filled-123",
+		ClientOrderID:  "client-filled-123",
+		Symbol:         "LAB-SWAP-USDT",
+		Exchange:       "toobit_futures",
+		StrategyType:   ordermanager.StrategyObfuscator,
 		OrderID:        "2282128112719258880",
 		Outcome:        ordermanager.OutcomeFilled,
 		Side:           shared.SideOpenLong,
@@ -583,23 +563,15 @@ func TestOrderManager_SubmitError_PublishesAbort(t *testing.T) {
 	ctx := context.Background()
 	reqID := "req-submit-err-001"
 	watchReady := ordermanager.OrderPositionWatchReadyEvent{
-		OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-			OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
-				OrderIntentEvent: ordermanager.OrderIntentEvent{
-					BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-						ReqID:        reqID,
-						Symbol:       "BTCUSDT",
-						Exchange:     "mexc",
-						StrategyType: ordermanager.StrategyFundingReversion,
-						Timestamp:    time.Now(),
-					},
-					Side:      shared.SideOpenLong,
-					OrderType: ordermanager.OrderTypeIOC,
-					Price:     50000.0,
-					Volume:    1.0,
-				},
-			},
-		},
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "mexc",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    ordermanager.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
 	}
 
 	_, submitErr := mgr.HandleExecuteOrder(ctx, watchReady)
@@ -632,21 +604,13 @@ func TestHandlePositionUpdate_IgnoresZeroVolumeBeforeFill(t *testing.T) {
 
 	agg := mgr.GetAggregate(reqID)
 	assert.NoError(t, agg.Record(ordermanager.OrderPositionWatchReadyEvent{
-		OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-			OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
-				OrderIntentEvent: ordermanager.OrderIntentEvent{
-					BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-						ReqID:        reqID,
-						Symbol:       "BTCUSDT",
-						Exchange:     "mexc",
-						StrategyType: ordermanager.StrategyFundingReversion,
-					},
-					Side:   shared.SideOpenLong,
-					Price:  50000.0,
-					Volume: 1.0,
-				},
-			},
-		},
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "mexc",
+		StrategyType: ordermanager.StrategyFundingReversion,
+		Side:         shared.SideOpenLong,
+		Price:        50000.0,
+		Volume:       1.0,
 	}))
 
 	posZero := exchange.PersonalPositionUpdate{
@@ -780,9 +744,7 @@ func TestOrderManager_RegisterOnCompletedCallback_MultipleCallbacks(t *testing.T
 
 	// Trigger completed event through eventbus
 	err = bus.Publish(ordermanager.TopicOrderCompleted, ordermanager.OrderCompletedEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID: "req-multicb-001",
-		},
+		ReqID: "req-multicb-001",
 	})
 	assert.NoError(t, err)
 
@@ -813,10 +775,8 @@ func TestOrderCompletedEvent_PropagatesRefID(t *testing.T) {
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID: "req-ref-001",
-			RefID: "orig-trade-999",
-		},
+		ReqID: "req-ref-001",
+		RefID: "orig-trade-999",
 	}
 	assert.NoError(t, mgr.GetAggregate(intent.GetReqID()).Record(intent))
 
@@ -858,13 +818,11 @@ func TestHandlePreFlight_CloseOrder_SkipsModeSwitches(t *testing.T) {
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-close-001",
-			Symbol:       "BTCUSDT",
-			Exchange:     "MEXC",
-			StrategyType: ordermanager.StrategyDilution,
-			Timestamp:    time.Now(),
-		},
+		ReqID:        "req-close-001",
+		Symbol:       "BTCUSDT",
+		Exchange:     "MEXC",
+		StrategyType: ordermanager.StrategyDilution,
+		Timestamp:    time.Now(),
 		Side:         shared.SideCloseLong,
 		OrderType:    ordermanager.OrderTypePostOnly,
 		Price:        50000.0,
@@ -904,22 +862,12 @@ func TestOrderManager_CancelOrder(t *testing.T) {
 
 	agg := mgr.GetAggregate("req-cancel-001")
 	err = agg.Record(ordermanager.OrderSubmittedEvent{
-		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
-			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
-					OrderIntentEvent: ordermanager.OrderIntentEvent{
-						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-							ReqID:        "req-cancel-001",
-							Symbol:       "BTCUSDT",
-							Exchange:     "MEXC",
-							StrategyType: ordermanager.StrategyDilution,
-						},
-						OrderType: ordermanager.OrderTypePostOnly,
-					},
-				},
-			},
-		},
-		OrderID: "order-to-cancel-999",
+		ReqID:        "req-cancel-001",
+		Symbol:       "BTCUSDT",
+		Exchange:     "MEXC",
+		StrategyType: ordermanager.StrategyDilution,
+		OrderType:    ordermanager.OrderTypePostOnly,
+		OrderID:      "order-to-cancel-999",
 	})
 	assert.NoError(t, err)
 
@@ -978,23 +926,13 @@ func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	submittedEvt := ordermanager.OrderSubmittedEvent{
-		OrderPositionWatchReadyEvent: ordermanager.OrderPositionWatchReadyEvent{
-			OrderFireWindowReachedEvent: ordermanager.OrderFireWindowReachedEvent{
-				OrderPreFlightCompletedEvent: ordermanager.OrderPreFlightCompletedEvent{
-					OrderIntentEvent: ordermanager.OrderIntentEvent{
-						BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-							ReqID:        "req-resting-timeout-001",
-							Symbol:       "BTCUSDT",
-							Exchange:     "mexc",
-							StrategyType: ordermanager.StrategyDilution,
-						},
-						OrderType:             ordermanager.OrderTypePostOnly,
-						UnfilledCancelTimeout: 20 * time.Millisecond,
-					},
-				},
-			},
-		},
-		OrderID: "order-resting-123",
+		ReqID:                 "req-resting-timeout-001",
+		Symbol:                "BTCUSDT",
+		Exchange:              "mexc",
+		StrategyType:          ordermanager.StrategyDilution,
+		OrderType:             ordermanager.OrderTypePostOnly,
+		UnfilledCancelTimeout: 20 * time.Millisecond,
+		OrderID:               "order-resting-123",
 	}
 
 	agg := mgr.GetAggregate("req-resting-timeout-001")
@@ -1033,13 +971,11 @@ func TestOrderManager_SkipPreFlight(t *testing.T) {
 	assert.NoError(t, mgr.Init(ctx))
 
 	intent := ordermanager.OrderIntentEvent{
-		BaseExecutionEvent: ordermanager.BaseExecutionEvent{
-			ReqID:        "req-skip-pf-001",
-			Symbol:       "BTCUSDT",
-			Exchange:     "mexc",
-			StrategyType: ordermanager.StrategyFundingReversion,
-			Timestamp:    time.Now(),
-		},
+		ReqID:         "req-skip-pf-001",
+		Symbol:        "BTCUSDT",
+		Exchange:      "mexc",
+		StrategyType:  ordermanager.StrategyFundingReversion,
+		Timestamp:     time.Now(),
 		Side:          shared.SideOpenLong,
 		OrderType:     ordermanager.OrderTypeIOC,
 		Price:         50000.0,
