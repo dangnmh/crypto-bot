@@ -284,7 +284,7 @@ func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime int64)
 	params := map[string]string{
 		symbolKey:   symbol,
 		"startTime": strconv.FormatInt(startTime, 10),
-		"limit":     "1000",
+		paramLimit:  "1000",
 	}
 
 	rows, err := c.rawGetBalanceFlow(ctx, params)

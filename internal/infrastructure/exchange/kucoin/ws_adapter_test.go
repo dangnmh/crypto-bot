@@ -309,3 +309,81 @@ func TestWsAdapter_ParsePosition(t *testing.T) {
 	assert.Equal(t, 70130.5725363, updateUserEvent.LiquidatePrice)
 	assert.Equal(t, int64(1771474169458), updateUserEvent.UpdateTime)
 }
+
+func TestWsAdapter_ParseDepth(t *testing.T) {
+	t.Parallel()
+
+	adapter := kucoin.NewWsAdapter()
+
+	// 1. Valid ask update with sequence and price,side,size
+	rawAsk := []byte(`{
+		"topic": "/contractMarket/level2:XBTUSDTM",
+		"type": "message",
+		"subject": "level2",
+		"sn": 1709400450243,
+		"data": {
+			"sequence": 1709400450243,
+			"change": "90631.2,sell,2",
+			"timestamp": 1731897467182
+		}
+	}`)
+
+	sym, ob, err := adapter.ParseDepth(rawAsk)
+	require.NoError(t, err)
+	assert.Equal(t, "XBTUSDTM", sym)
+	require.NotNil(t, ob)
+	assert.Equal(t, int64(1709400450243), ob.Version)
+	assert.Empty(t, ob.Bids)
+	require.Len(t, ob.Asks, 1)
+	assert.Equal(t, 90631.2, ob.Asks[0].Price)
+	assert.Equal(t, 2.0, ob.Asks[0].Volume)
+
+	// 2. Valid bid deletion (size == 0)
+	rawBidDel := []byte(`{
+		"topic": "/contractMarket/level2:XBTUSDTM",
+		"type": "message",
+		"subject": "level2",
+		"sn": 1709400450244,
+		"data": {
+			"sequence": 1709400450244,
+			"change": "3988.50,buy,0",
+			"timestamp": 1731897467190
+		}
+	}`)
+
+	sym2, ob2, err2 := adapter.ParseDepth(rawBidDel)
+	require.NoError(t, err2)
+	assert.Equal(t, "XBTUSDTM", sym2)
+	require.NotNil(t, ob2)
+	assert.Equal(t, int64(1709400450244), ob2.Version)
+	require.Len(t, ob2.Bids, 1)
+	assert.Equal(t, 3988.50, ob2.Bids[0].Price)
+	assert.Equal(t, 0.0, ob2.Bids[0].Volume)
+	assert.Empty(t, ob2.Asks)
+
+	// 3. Invalid change string
+	rawInvalid := []byte(`{
+		"topic": "/contractMarket/level2:XBTUSDTM",
+		"data": {
+			"sequence": 100,
+			"change": "invalid"
+		}
+	}`)
+	_, _, errInvalid := adapter.ParseDepth(rawInvalid)
+	assert.Error(t, errInvalid)
+}
+
+func TestWsAdapter_SubscribeDepth(t *testing.T) {
+	t.Parallel()
+
+	adapter := kucoin.NewWsAdapter()
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
+	defer pool.Close()
+	adapter.SetPool(pool)
+
+	subCtx, subCancel := context.WithCancel(context.Background())
+	subCancel()
+
+	_ = adapter.SubscribeDepth(subCtx, "XBTUSDTM")
+	_ = adapter.UnsubscribeDepth(subCtx, "XBTUSDTM")
+}

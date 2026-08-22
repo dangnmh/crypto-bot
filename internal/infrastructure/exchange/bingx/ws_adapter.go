@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
@@ -390,4 +391,9 @@ func (a *WsAdapter) keepAliveLoop(ctx context.Context, listenKey string) {
 			}
 		}
 	}
+}
+
+// ParseDepth parses depth messages into domain.OrderBook.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	return "", nil, nil
 }

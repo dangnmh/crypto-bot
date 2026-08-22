@@ -270,3 +270,76 @@ func TestWsAdapter_ParsePosition_Errors(t *testing.T) {
 	_, err = adapter.ParsePosition([]byte(`[{"event": "outboundContractPositionInfo"}]`))
 	require.Error(t, err)
 }
+
+func TestWsAdapter_ParseDepth(t *testing.T) {
+	t.Parallel()
+
+	adapter := toobit.NewWsAdapter("")
+
+	// Valid depth payload array with string version ("112801745_18")
+	raw := []byte(`{
+		"topic": "depth",
+		"symbol": "BTC-SWAP-USDT",
+		"data": [{
+			"b": [["60000.5", "1.2"], ["60000.0", "3.4"]],
+			"a": [["60001.0", "0.5"], ["60001.5", "2.1"]],
+			"v": "112801745_18",
+			"t": 1600000000000
+		}],
+		"f": true
+	}`)
+
+	sym, ob, err := adapter.ParseDepth(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-SWAP-USDT", sym)
+	require.NotNil(t, ob)
+	assert.Equal(t, int64(112801745), ob.Version)
+	require.Len(t, ob.Bids, 2)
+	assert.Equal(t, 60000.5, ob.Bids[0].Price)
+	assert.Equal(t, 1.2, ob.Bids[0].Volume)
+	require.Len(t, ob.Asks, 2)
+	assert.Equal(t, 60001.0, ob.Asks[0].Price)
+	assert.Equal(t, 0.5, ob.Asks[0].Volume)
+
+	// Valid depth payload single object
+	rawSingle := []byte(`{
+		"topic": "depth",
+		"symbol": "ETH-SWAP-USDT",
+		"data": {
+			"b": [["3000.0", "10.0"]],
+			"a": [["3001.0", "5.0"]],
+			"v": 67890
+		}
+	}`)
+
+	sym2, ob2, err := adapter.ParseDepth(rawSingle)
+	require.NoError(t, err)
+	assert.Equal(t, "ETH-SWAP-USDT", sym2)
+	require.NotNil(t, ob2)
+	assert.Equal(t, int64(67890), ob2.Version)
+	require.Len(t, ob2.Bids, 1)
+
+	// Invalid JSON
+	_, _, err = adapter.ParseDepth([]byte(`invalid`))
+	require.Error(t, err)
+
+	// Empty data
+	symEmpty, obEmpty, err := adapter.ParseDepth([]byte(`{"topic": "depth", "symbol": "BTC-SWAP-USDT", "data": []}`))
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-SWAP-USDT", symEmpty)
+	assert.Nil(t, obEmpty)
+}
+
+func TestWsAdapter_DepthSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	adapter := toobit.NewWsAdapter("wss://stream.toobit.com")
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
+	adapter.SetPool(pool)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = adapter.SubscribeDepth(ctx, "BTC-SWAP-USDT")
+	_ = adapter.UnsubscribeDepth(ctx, "BTC-SWAP-USDT")
+}

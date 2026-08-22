@@ -62,6 +62,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 					"GET|/api/v1/futures/riskLimits",
 					"POST|/api/v1/listenKey",
 					"PUT|/api/v1/listenKey",
+					"GET|/quote/v1/depth",
 				},
 			}),
 			transportlog.LogOptionRedactSensitive(true),

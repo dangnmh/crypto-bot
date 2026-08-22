@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	infraws "crypto-bot/internal/infrastructure/ws"
@@ -214,4 +215,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 		HoldAvgPrice:    entryPrice,
 		UpdateTime:      time.Now().UnixMilli(),
 	}, nil
+}
+
+// ParseDepth parses depth messages into domain.OrderBook.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	return "", nil, nil
 }

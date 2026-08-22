@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
@@ -290,4 +291,9 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	return update, nil
+}
+
+// ParseDepth parses depth messages into domain.OrderBook.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	return "", nil, nil
 }

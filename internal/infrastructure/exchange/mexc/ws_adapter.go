@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
@@ -18,6 +19,11 @@ import (
 	"github.com/buger/jsonparser"
 
 	"crypto-bot/pkg/xjson"
+)
+
+var (
+	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
+	_ exchange.DepthParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for MEXC Futures.
@@ -70,6 +76,30 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 		paramParam:  map[string]string{paramSymbol: symbol},
 	}
 	topic := symbol + ":" + channelTicker
+	return a.pool.UnsubscribePublic(ctx, topic, msg)
+}
+
+// SubscribeDepth subscribes to Level 2 incremental orderbook depth updates (push.depth).
+func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		paramMethod: "sub.depth",
+		paramParam: map[string]any{
+			paramSymbol: symbol,
+		},
+	}
+	topic := symbol + ":" + channelDepth
+	return a.pool.SubscribePublic(ctx, topic, msg)
+}
+
+// UnsubscribeDepth unsubscribes from Level 2 incremental orderbook depth updates.
+func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		paramMethod: "unsub.depth",
+		paramParam: map[string]any{
+			paramSymbol: symbol,
+		},
+	}
+	topic := symbol + ":" + channelDepth
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
@@ -148,7 +178,7 @@ func mapMexcChannel(channel string) string {
 	switch channel {
 	case "push.ticker":
 		return channelTicker
-	case "push.depth.full", "push.depth.step":
+	case "push.depth", "push.depth.full", "push.depth.step":
 		return channelDepth
 	case "push.kline":
 		return channelKline
@@ -275,4 +305,75 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	return &update, nil
+}
+
+type wsMexcDepthData struct {
+	Begin   int64            `json:"begin"`
+	End     int64            `json:"end"`
+	Version int64            `json:"version"`
+	Bids    [][]xjson.Number `json:"bids"`
+	Asks    [][]xjson.Number `json:"asks"`
+}
+
+// ParseDepth parses MEXC depth messages into domain.OrderBook.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	var msg struct {
+		Symbol  string          `json:"symbol"`
+		Channel string          `json:"channel"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := xjson.Unmarshal(data, &msg); err != nil {
+		return "", nil, err
+	}
+
+	var depthData wsMexcDepthData
+	if err := xjson.Unmarshal(msg.Data, &depthData); err != nil {
+		return "", nil, err
+	}
+
+	sym := msg.Symbol
+	firstVer := depthData.Begin
+	endVer := depthData.End
+	if endVer == 0 {
+		endVer = depthData.Version
+	}
+	if firstVer == 0 {
+		firstVer = endVer
+	}
+
+	bids := make([]domain.OrderBookEntry, 0, len(depthData.Bids))
+	for _, b := range depthData.Bids {
+		if len(b) >= 2 {
+			p := xjson.ToFloat64(b[0])
+			v := xjson.ToFloat64(b[1])
+			if len(b) >= 3 {
+				v = xjson.ToFloat64(b[2]) // Index 2 is contract quantity
+			}
+			if p > 0 {
+				bids = append(bids, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	asks := make([]domain.OrderBookEntry, 0, len(depthData.Asks))
+	for _, a := range depthData.Asks {
+		if len(a) >= 2 {
+			p := xjson.ToFloat64(a[0])
+			v := xjson.ToFloat64(a[1])
+			if len(a) >= 3 {
+				v = xjson.ToFloat64(a[2]) // Index 2 is contract quantity
+			}
+			if p > 0 {
+				asks = append(asks, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	return sym, &domain.OrderBook{
+		Symbol:       sym,
+		FirstVersion: firstVer,
+		Version:      endVer,
+		Bids:         bids,
+		Asks:         asks,
+	}, nil
 }

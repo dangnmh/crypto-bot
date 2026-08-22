@@ -30,3 +30,8 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		return errors.New("invalid duration")
 	}
 }
+
+// Duration returns the underlying time.Duration.
+func (d Duration) Duration() time.Duration {
+	return time.Duration(d)
+}

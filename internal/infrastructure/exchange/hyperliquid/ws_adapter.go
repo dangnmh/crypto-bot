@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
@@ -166,6 +167,11 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 
 // ParseDepthCommit is a stub.
 func (a *WsAdapter) ParseDepthCommit(data []byte) (symbol string, commit *exchange.DepthCommit, err error) {
+	return "", nil, nil
+}
+
+// ParseDepth parses depth messages into domain.OrderBook.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
 	return "", nil, nil
 }
 

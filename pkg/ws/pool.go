@@ -18,11 +18,12 @@ type Pool struct {
 	privateClient *Client
 	privateMsgs   []any
 
-	mu             sync.RWMutex
-	publicClients  []*Client
-	clientSubCount []int
-	topicRouting   map[string]int // topic -> public client index
-	subscriptions  map[string]publicSubscription
+	mu                  sync.RWMutex
+	publicClients       []*Client
+	publicClientTargets []string
+	clientSubCount      []int
+	topicRouting        map[string]int // topic -> public client index
+	subscriptions       map[string]publicSubscription
 
 	handlerMu sync.RWMutex
 	handlers  map[string][]Handler
@@ -157,7 +158,7 @@ func (p *Pool) getOrCreatePublicClientIdx(targetURL string) (int, bool, *Client)
 		targetURL = p.publicURL
 	}
 	for i, count := range p.clientSubCount {
-		if count < p.maxPairs && p.publicClients[i].url == targetURL {
+		if count < p.maxPairs && (i < len(p.publicClientTargets) && p.publicClientTargets[i] == targetURL) {
 			return i, false, p.publicClients[i]
 		}
 	}
@@ -170,6 +171,7 @@ func (p *Pool) getOrCreatePublicClientIdx(targetURL string) (int, bool, *Client)
 	newClient := NewClient(targetURL, p.logger, opts...)
 	p.attachHandlers(newClient)
 	p.publicClients = append(p.publicClients, newClient)
+	p.publicClientTargets = append(p.publicClientTargets, targetURL)
 	p.clientSubCount = append(p.clientSubCount, 0)
 
 	return idx, true, newClient

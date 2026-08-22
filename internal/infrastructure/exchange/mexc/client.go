@@ -55,6 +55,8 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 						"GET|/api/v1/contract/detail",
 						"GET|/api/v1/contract/funding_rate/*",
 						"GET|/api/v1/contract/kline/*",
+						"GET|/api/v1/contract/depth/*",
+						"GET|/api/v1/contract/depth_commits/*",
 					}, // ignore ping spam
 				}),
 				transportlog.LogOptionRedactSensitive(true),
@@ -66,7 +68,11 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
 	}
 
-	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+	configs := map[string]ratelimit.EndpointConfig{
+		"/api/v1/contract/depth/":         {Limit: rate.Limit(3), Burst: 1, Weight: 1}, // 10 times / 2s -> 3 req/s, Burst: 1 spaces out calls every 333ms
+		"/api/v1/contract/depth_commits/": {Limit: rate.Limit(5), Burst: 2, Weight: 1}, // 20 times / 2s -> 5 req/s
+	}
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(20), 5, configs)
 
 	return &Client{
 		httpClient: &clientCopy,

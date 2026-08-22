@@ -12,6 +12,9 @@ type ExchangeManagerAdapterSubscriber interface {
 	SubscribeTicker(ctx context.Context, flowID, symbol string) error
 	UnsubscribeTicker(ctx context.Context, flowID, symbol string) error
 
+	SubscribeDepth(ctx context.Context, flowID, symbol string) error
+	UnsubscribeDepth(ctx context.Context, flowID, symbol string) error
+
 	SubscribePersonal(ctx context.Context, flowID string) error
 	UnsubscribePersonal(ctx context.Context, flowID string) error
 	SubscribePublic(ctx context.Context, topic string, subMsg any) error
@@ -116,6 +119,24 @@ func (a *exchangeManagerAdapter) SubscribeTicker(ctx context.Context, flowID, sy
 func (a *exchangeManagerAdapter) UnsubscribeTicker(ctx context.Context, flowID, symbol string) error {
 	return a.unsubscribeInternal(ctx, flowID, symbol, func(c context.Context) error {
 		return a.ExchangeAdapter.UnsubscribeTicker(c, symbol)
+	})
+}
+
+func (a *exchangeManagerAdapter) SubscribeDepth(ctx context.Context, flowID, symbol string) error {
+	return a.subscribeInternal(ctx, flowID, symbol, func(c context.Context) error {
+		if ds, ok := a.ExchangeAdapter.(DepthSubscriber); ok {
+			return ds.SubscribeDepth(c, symbol)
+		}
+		return nil
+	})
+}
+
+func (a *exchangeManagerAdapter) UnsubscribeDepth(ctx context.Context, flowID, symbol string) error {
+	return a.unsubscribeInternal(ctx, flowID, symbol, func(c context.Context) error {
+		if ds, ok := a.ExchangeAdapter.(DepthSubscriber); ok {
+			return ds.UnsubscribeDepth(c, symbol)
+		}
+		return nil
 	})
 }
 

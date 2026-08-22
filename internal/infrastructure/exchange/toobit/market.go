@@ -7,10 +7,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/xjson"
+)
+
+var (
+	_ exchange.DepthProvider     = (*Client)(nil)
+	_ exchange.TopGainerProvider = (*Client)(nil)
 )
 
 type toobitTicker struct {
@@ -89,6 +96,14 @@ func (c *Client) rawGetFundingRates(ctx context.Context) ([]byte, error) {
 	return c.request(ctx, http.MethodGet, "/api/v1/futures/fundingRate", nil, false)
 }
 
+func (c *Client) rawGetDepth(ctx context.Context, symbol string, limit int) ([]byte, error) {
+	params := map[string]string{
+		"symbol":   symbol,
+		paramLimit: strconv.Itoa(limit),
+	}
+	return c.RawRequest(ctx, http.MethodGet, "/quote/v1/depth", params, nil)
+}
+
 // Public mapper methods.
 
 // GetContractDetails returns contracts specs.
@@ -110,6 +125,9 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	details := make([]exchange.ContractDetail, 0, len(contracts))
 	for i := range contracts {
 		raw := &contracts[i]
+		if !isToobitValidPerpSymbol(raw.Symbol) {
+			continue
+		}
 
 		priceUnit := 0.0
 		minVol := 0.0
@@ -175,6 +193,33 @@ func (c *Client) GetContractDetails(ctx context.Context) ([]exchange.ContractDet
 	return details, nil
 }
 
+func isToobitValidPerpSymbol(symbol string) bool {
+	if strings.HasPrefix(symbol, "TBV_") || strings.HasPrefix(symbol, "TEST") {
+		return false
+	}
+	if strings.HasSuffix(symbol, "-SWAP-USDT") || strings.HasSuffix(symbol, "-SWAP-USDC") {
+		return true
+	}
+	return false
+}
+
+func isToobitValidPerpTicker(symbol string, timestamp, nowMs int64) bool {
+	if !isToobitValidPerpSymbol(symbol) {
+		return false
+	}
+	if timestamp > 0 && nowMs > 0 {
+		diff := nowMs - timestamp
+		if diff < 0 {
+			diff = -diff
+		}
+		// Filter out stale/delisted tickers not updated within 24 hours
+		if diff > int64(24*time.Hour/time.Millisecond) {
+			return false
+		}
+	}
+	return true
+}
+
 // GetTickers returns 24hr ticker price change statistics for all or a specific symbol.
 func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Ticker, error) {
 	body, err := c.rawGetTickers(ctx, symbol)
@@ -187,9 +232,17 @@ func (c *Client) GetTickers(ctx context.Context, symbol string) ([]exchange.Tick
 		return nil, fmt.Errorf("unmarshal tickers: %w", err)
 	}
 
+	nowMs := int64(0)
+	if c.clock != nil {
+		nowMs = c.clock.Now().UnixMilli()
+	}
+
 	tickers := make([]exchange.Ticker, 0, len(rawList))
 	for i := range rawList {
 		item := &rawList[i]
+		if symbol == "" && !isToobitValidPerpTicker(item.S, item.T, nowMs) {
+			continue
+		}
 		last, _ := strconv.ParseFloat(item.C, 64)
 		bid, _ := strconv.ParseFloat(item.B, 64)
 		ask, _ := strconv.ParseFloat(item.A, 64)
@@ -333,9 +386,17 @@ func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest
 		return nil, fmt.Errorf("unmarshal toobit top gainer tickers: %w", err)
 	}
 
+	nowMs := int64(0)
+	if c.clock != nil {
+		nowMs = c.clock.Now().UnixMilli()
+	}
+
 	results := make([]exchange.TopGainerResult, 0, len(rawList))
 	for i := range rawList {
 		item := &rawList[i]
+		if !isToobitValidPerpTicker(item.S, item.T, nowMs) {
+			continue
+		}
 		last, _ := strconv.ParseFloat(item.C, 64)
 		bid, _ := strconv.ParseFloat(item.B, 64)
 		ask, _ := strconv.ParseFloat(item.A, 64)
@@ -401,4 +462,51 @@ func parseToobitRiskLimits(rawLimits []toobitRiskLimit) (int, []exchange.RiskLim
 		maxLeverage = int(highestLev)
 	}
 	return maxLeverage, parsedRiskLimits
+}
+
+type toobitDepthResponse struct {
+	Time int64            `json:"time"`
+	Bids [][]xjson.Number `json:"bids"`
+	Asks [][]xjson.Number `json:"asks"`
+}
+
+// GetDepth implements exchange.DepthProvider and orderbook.DepthSnapshotProvider.
+// It retrieves the current full L2 depth snapshot for a symbol via REST API.
+func (c *Client) GetDepth(ctx context.Context, symbol string) (*domain.OrderBook, error) {
+	body, err := c.rawGetDepth(ctx, symbol, 100)
+	if err != nil {
+		return nil, fmt.Errorf("toobit get depth for %s: %w", symbol, err)
+	}
+
+	var data toobitDepthResponse
+	if err := xjson.Unmarshal(body, &data); err != nil {
+		return nil, fmt.Errorf("toobit parse depth for %s: %w", symbol, err)
+	}
+
+	bids := make([]domain.OrderBookEntry, 0, len(data.Bids))
+	for _, b := range data.Bids {
+		if len(b) >= 2 {
+			p, v := xjson.ToFloat64(b[0]), xjson.ToFloat64(b[1])
+			if p > 0 && v > 0 {
+				bids = append(bids, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	asks := make([]domain.OrderBookEntry, 0, len(data.Asks))
+	for _, a := range data.Asks {
+		if len(a) >= 2 {
+			p, v := xjson.ToFloat64(a[0]), xjson.ToFloat64(a[1])
+			if p > 0 && v > 0 {
+				asks = append(asks, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	return &domain.OrderBook{
+		Symbol:  symbol,
+		Version: data.Time,
+		Bids:    bids,
+		Asks:    asks,
+	}, nil
 }

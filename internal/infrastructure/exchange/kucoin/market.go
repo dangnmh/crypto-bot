@@ -2,11 +2,17 @@ package kucoin
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
+	"sort"
+	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 type kucoinContract struct {
@@ -23,6 +29,12 @@ type kucoinContract struct {
 	FundingFeeRate          float64 `json:"fundingFeeRate"`
 	NextFundingRateDateTime int64   `json:"nextFundingRateDateTime"`
 	MaxLeverage             float64 `json:"maxLeverage"`
+	LastTradePrice          float64 `json:"lastTradePrice"`
+	MarkPrice               float64 `json:"markPrice"`
+	IndexPrice              float64 `json:"indexPrice"`
+	PriceChgPct             float64 `json:"priceChgPct"`
+	ChangeRate24h           float64 `json:"changeRate24h"`
+	ChangePrice24h          float64 `json:"changePrice24h"`
 }
 
 type kucoinContractsRequest struct{}
@@ -43,14 +55,18 @@ type kucoinSingleTicker struct {
 }
 
 type kucoinTicker struct {
-	Symbol       string `json:"symbol"`
-	BestBidPrice string `json:"bestBidPrice"`
-	BestAskPrice string `json:"bestAskPrice"`
-	LastPrice    string `json:"lastPrice"`
-	Price        string `json:"price"`
-	Volume       string `json:"volume"`
-	Vol          string `json:"vol"`
-	Ts           int64  `json:"ts"`
+	Symbol             string `json:"symbol"`
+	BestBidPrice       string `json:"bestBidPrice"`
+	BestAskPrice       string `json:"bestAskPrice"`
+	LastPrice          string `json:"lastPrice"`
+	Price              string `json:"price"`
+	Volume             string `json:"volume"`
+	Vol                string `json:"vol"`
+	PriceChangePercent string `json:"priceChangePercent"`
+	PriceChgPct        string `json:"priceChgPct"`
+	ChangeRate         string `json:"changeRate"`
+	ChangePrice        string `json:"changePrice"`
+	Ts                 int64  `json:"ts"`
 }
 
 // Private raw methods invoking the KuCoin REST API.
@@ -340,6 +356,212 @@ func (c *Client) GetPotentialFundingSymbols(
 	return results, nil
 }
 
-func (c *Client) GetTopGainer(_ context.Context, _ exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
-	return nil, nil
+func extractKuCoinLastPrice(inst *kucoinContract, t *kucoinTicker, hasTicker bool) float64 {
+	last := inst.LastTradePrice
+	if hasTicker {
+		tLast := decmath.ParseFloat(t.LastPrice)
+		if tLast == 0 {
+			tLast = decmath.ParseFloat(t.Price)
+		}
+		if tLast > 0 {
+			last = tLast
+		}
+	}
+	if last <= 0 {
+		last = inst.MarkPrice
+		if last <= 0 {
+			last = inst.IndexPrice
+		}
+	}
+	return last
+}
+
+func extractKuCoinGainPct(inst *kucoinContract, t *kucoinTicker, hasTicker bool) float64 {
+	gainPct := inst.PriceChgPct
+	if gainPct == 0 {
+		gainPct = inst.ChangeRate24h
+	}
+	if hasTicker && gainPct == 0 {
+		tGain := decmath.ParseFloat(t.PriceChangePercent)
+		if tGain == 0 {
+			tGain = decmath.ParseFloat(t.PriceChgPct)
+		}
+		if tGain == 0 {
+			tGain = decmath.ParseFloat(t.ChangeRate)
+		}
+		gainPct = tGain
+	}
+	if gainPct != 0 && math.Abs(gainPct) < 2.0 {
+		gainPct *= 100.0
+	}
+	return gainPct
+}
+
+func buildKuCoinTopGainer(inst *kucoinContract, tickerMap map[string]kucoinTicker) (exchange.TopGainerResult, bool) {
+	if inst.Status != statusOpen {
+		return exchange.TopGainerResult{}, false
+	}
+
+	t, hasTicker := tickerMap[inst.Symbol]
+	last := extractKuCoinLastPrice(inst, &t, hasTicker)
+	if last <= 0 {
+		return exchange.TopGainerResult{}, false
+	}
+
+	bid := 0.0
+	ask := 0.0
+	ts := time.Now().UnixMilli()
+	if hasTicker {
+		bid = decmath.ParseFloat(t.BestBidPrice)
+		ask = decmath.ParseFloat(t.BestAskPrice)
+		if t.Ts > 0 {
+			ts = t.Ts
+		}
+	}
+
+	volUSDT := inst.TurnoverOf24h
+	if volUSDT == 0 && inst.VolumeOf24h > 0 {
+		volUSDT = inst.VolumeOf24h * last
+	}
+
+	spreadPct := 0.0
+	if bid > 0 && ask > 0 {
+		spreadPct = ((ask - bid) / bid) * 100.0
+	}
+
+	return exchange.TopGainerResult{
+		Symbol:        inst.Symbol,
+		LastPrice:     last,
+		Bid1:          bid,
+		Ask1:          ask,
+		Volume24hUSDT: volUSDT,
+		Gain24hPct:    extractKuCoinGainPct(inst, &t, hasTicker),
+		SpreadPct:     spreadPct,
+		Timestamp:     ts,
+	}, true
+}
+
+// GetTopGainer returns tickers sorted by 24h price change percentage descending.
+func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest) ([]exchange.TopGainerResult, error) {
+	contracts, err := c.getRawContractDetails(ctx, kucoinContractsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("kucoin get top gainer contracts: %w", err)
+	}
+
+	tickers, err := c.getRawTickers(ctx, kucoinTickersRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("kucoin get top gainer tickers: %w", err)
+	}
+
+	tickerMap := make(map[string]kucoinTicker, len(tickers))
+	for i := range tickers {
+		tickerMap[tickers[i].Symbol] = tickers[i]
+	}
+
+	results := make([]exchange.TopGainerResult, 0, len(contracts))
+	for i := range contracts {
+		if res, ok := buildKuCoinTopGainer(&contracts[i], tickerMap); ok {
+			results = append(results, res)
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Gain24hPct > results[j].Gain24hPct
+	})
+
+	if req.Limit > 0 && req.Limit < len(results) {
+		results = results[:req.Limit]
+	}
+
+	return results, nil
+}
+
+type kucoinDepthRawData struct {
+	Sequence int64            `json:"sequence"`
+	Symbol   string           `json:"symbol"`
+	Bids     [][]xjson.Number `json:"bids"`
+	Asks     [][]xjson.Number `json:"asks"`
+	Ts       int64            `json:"ts"`
+}
+
+func parseKucoinDepthEntries(rawBids, rawAsks [][]xjson.Number) ([]domain.OrderBookEntry, []domain.OrderBookEntry) {
+	bids := make([]domain.OrderBookEntry, 0, len(rawBids))
+	for _, b := range rawBids {
+		if len(b) >= 2 {
+			p, v := xjson.ToFloat64(b[0]), xjson.ToFloat64(b[1])
+			if p > 0 && v > 0 {
+				bids = append(bids, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	asks := make([]domain.OrderBookEntry, 0, len(rawAsks))
+	for _, a := range rawAsks {
+		if len(a) >= 2 {
+			p, v := xjson.ToFloat64(a[0]), xjson.ToFloat64(a[1])
+			if p > 0 && v > 0 {
+				asks = append(asks, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	return bids, asks
+}
+
+// GetDepth implements exchange.DepthProvider.
+// It retrieves the current full Level 2 depth snapshot for a symbol via KuCoin REST API.
+func (c *Client) GetDepth(ctx context.Context, symbol string) (*domain.OrderBook, error) {
+	params := map[string]string{
+		paramSymbol: symbol,
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, pathDepthSnapshot, params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("kucoin get depth for %s: %w", symbol, err)
+	}
+
+	data, err := ParseResponse[kucoinDepthRawData](body, "depth_snapshot")
+	if err != nil {
+		return nil, fmt.Errorf("kucoin parse depth snapshot for %s: %w", symbol, err)
+	}
+
+	bids, asks := parseKucoinDepthEntries(data.Bids, data.Asks)
+
+	return &domain.OrderBook{
+		Symbol:  symbol,
+		Version: data.Sequence,
+		Bids:    bids,
+		Asks:    asks,
+	}, nil
+}
+
+// GetDepthCommits implements exchange.DepthCommitsProvider.
+// It retrieves part orderbook depth data via /api/v1/level2/depth{size} (e.g. depth20 or depth100).
+func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
+	path := pathDepth100
+	if limit > 0 && limit <= 20 {
+		path = pathDepth20
+	}
+
+	params := map[string]string{
+		paramSymbol: symbol,
+	}
+	body, err := c.RawRequest(ctx, http.MethodGet, path, params, nil)
+	if err != nil {
+		return nil, fmt.Errorf("kucoin get depth commits for %s: %w", symbol, err)
+	}
+
+	data, err := ParseResponse[kucoinDepthRawData](body, "depth_commits")
+	if err != nil {
+		return nil, fmt.Errorf("kucoin parse depth commits for %s: %w", symbol, err)
+	}
+
+	bids, asks := parseKucoinDepthEntries(data.Bids, data.Asks)
+
+	return []exchange.DepthCommit{
+		{
+			Version: data.Sequence,
+			Bids:    bids,
+			Asks:    asks,
+		},
+	}, nil
 }

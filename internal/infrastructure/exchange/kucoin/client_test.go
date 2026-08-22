@@ -778,3 +778,211 @@ func TestClient_RemainingMethods(t *testing.T) {
 	// 8. GetTickers with single symbol
 	_, _ = client.GetTickers(context.Background(), "XBTUSDTM")
 }
+
+func TestClient_GetDepth(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/api/v1/level2/snapshot", r.URL.Path)
+		assert.Equal(t, "XBTUSDTM", r.URL.Query().Get("symbol"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"data": {
+				"sequence": 16,
+				"symbol": "XBTUSDTM",
+				"bids": [
+					["3988.51", 56],
+					["3988.50", 15]
+				],
+				"asks": [
+					["3988.59", 3],
+					["3988.60", 47]
+				]
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(
+		server.Client(),
+		server.URL,
+		"key",
+		"secret",
+		"passphrase",
+		config.LoggingConfig{},
+	)
+
+	ob, err := client.GetDepth(context.Background(), "XBTUSDTM")
+	require.NoError(t, err)
+	require.NotNil(t, ob)
+	assert.Equal(t, "XBTUSDTM", ob.Symbol)
+	assert.Equal(t, int64(16), ob.Version)
+	require.Len(t, ob.Bids, 2)
+	assert.Equal(t, 3988.51, ob.Bids[0].Price)
+	assert.Equal(t, 56.0, ob.Bids[0].Volume)
+	require.Len(t, ob.Asks, 2)
+	assert.Equal(t, 3988.59, ob.Asks[0].Price)
+	assert.Equal(t, 3.0, ob.Asks[0].Volume)
+}
+
+func TestClient_GetDepthCommits(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "XBTUSDTM", r.URL.Query().Get("symbol"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if r.URL.Path == "/api/v1/level2/depth20" {
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": {
+					"sequence": 17,
+					"symbol": "XBTUSDTM",
+					"bids": [["3988.55", 10]],
+					"asks": [["3988.58", 5]]
+				}
+			}`))
+			return
+		}
+
+		assert.Equal(t, "/api/v1/level2/depth100", r.URL.Path)
+		_, _ = w.Write([]byte(`{
+			"code": "200000",
+			"data": {
+				"sequence": 18,
+				"symbol": "XBTUSDTM",
+				"bids": [["3988.50", 20]],
+				"asks": [["3988.60", 15]]
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(
+		server.Client(),
+		server.URL,
+		"key",
+		"secret",
+		"passphrase",
+		config.LoggingConfig{},
+	)
+
+	// 1. limit <= 20 routes to depth20
+	commits, err := client.GetDepthCommits(context.Background(), "XBTUSDTM", 20)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+	assert.Equal(t, int64(17), commits[0].Version)
+	require.Len(t, commits[0].Bids, 1)
+	assert.Equal(t, 3988.55, commits[0].Bids[0].Price)
+
+	// 2. limit > 20 routes to depth100
+	commits, err = client.GetDepthCommits(context.Background(), "XBTUSDTM", 100)
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+	assert.Equal(t, int64(18), commits[0].Version)
+	require.Len(t, commits[0].Bids, 1)
+	assert.Equal(t, 3988.50, commits[0].Bids[0].Price)
+}
+
+func TestClient_GetTopGainer(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v1/contracts/active":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": [
+					{
+						"symbol": "BTCUSDTM",
+						"status": "Open",
+						"turnoverOf24h": 5000000,
+						"volumeOf24h": 100,
+						"lastTradePrice": 50000,
+						"priceChgPct": 0.05
+					},
+					{
+						"symbol": "ETHUSDTM",
+						"status": "Open",
+						"turnoverOf24h": 2000000,
+						"volumeOf24h": 1000,
+						"lastTradePrice": 3000,
+						"priceChgPct": 0.10
+					},
+					{
+						"symbol": "CLOSED_M",
+						"status": "Closed",
+						"turnoverOf24h": 100,
+						"lastTradePrice": 10,
+						"priceChgPct": 0.50
+					}
+				]
+			}`))
+		case "/api/v1/allTickers":
+			_, _ = w.Write([]byte(`{
+				"code": "200000",
+				"data": [
+					{
+						"symbol": "BTCUSDTM",
+						"bestBidPrice": "49990",
+						"bestAskPrice": "50010",
+						"lastPrice": "50000",
+						"ts": 1700000000000
+					},
+					{
+						"symbol": "ETHUSDTM",
+						"bestBidPrice": "2995",
+						"bestAskPrice": "3005",
+						"lastPrice": "3000",
+						"ts": 1700000000000
+					}
+				]
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := kucoin.NewClient(
+		server.Client(),
+		server.URL,
+		"key",
+		"secret",
+		"passphrase",
+		config.LoggingConfig{},
+	)
+
+	// Test full list with sorting
+	results, err := client.GetTopGainer(context.Background(), exchange.TopGainerRequest{})
+	require.NoError(t, err)
+	require.Len(t, results, 2) // CLOSED_M should be filtered out
+
+	// ETHUSDTM has 10% gain, BTCUSDTM has 5% gain
+	assert.Equal(t, "ETHUSDTM", results[0].Symbol)
+	assert.Equal(t, 10.0, results[0].Gain24hPct)
+	assert.Equal(t, 3000.0, results[0].LastPrice)
+	assert.Equal(t, 2995.0, results[0].Bid1)
+	assert.Equal(t, 3005.0, results[0].Ask1)
+	assert.Equal(t, 2000000.0, results[0].Volume24hUSDT)
+	assert.InDelta(t, ((3005.0-2995.0)/2995.0)*100, results[0].SpreadPct, 0.001)
+
+	assert.Equal(t, "BTCUSDTM", results[1].Symbol)
+	assert.Equal(t, 5.0, results[1].Gain24hPct)
+
+	// Test with Limit
+	limited, err := client.GetTopGainer(context.Background(), exchange.TopGainerRequest{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, limited, 1)
+	assert.Equal(t, "ETHUSDTM", limited[0].Symbol)
+}

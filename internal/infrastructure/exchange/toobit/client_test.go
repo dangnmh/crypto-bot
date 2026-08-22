@@ -39,12 +39,34 @@ func TestClient_GetTickers(t *testing.T) {
 					"qv": "15.3",
 					"pc": "1.0",
 					"pcp": "2.0"
+				},
+				{
+					"t": 1538725500422,
+					"s": "TBV_TON-SWAP-TBV_USDT",
+					"c": "200.0",
+					"qv": "1000.0",
+					"pcp": "100.0"
+				},
+				{
+					"t": 1000000000000,
+					"s": "NC-SWAP-USDT",
+					"c": "0.21",
+					"qv": "1000.0",
+					"pcp": "800.0"
+				},
+				{
+					"t": 1538725500422,
+					"s": "TESTA1S3-SWAP-TESTX8Z9",
+					"c": "1.0",
+					"qv": "1000.0",
+					"pcp": "50.0"
 				}
 			]`))
 		}))
 		defer server.Close()
 
 		client := toobit.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+		client.SetClock(mockClock{now: time.UnixMilli(1538725500422)})
 		tickers, err := client.GetTickers(context.Background(), "")
 		require.NoError(t, err)
 		require.Len(t, tickers, 1)
@@ -290,6 +312,7 @@ func TestClient_GetPotentialFundingSymbols(t *testing.T) {
 	defer server.Close()
 
 	client := toobit.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(mockClock{now: time.UnixMilli(1538725500422)})
 	res, err := client.GetPotentialFundingSymbols(context.Background(), 1000000, 10000000, []string{"BTC-SWAP-USDT"}, nil)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
@@ -872,6 +895,27 @@ func TestClient_GetTopGainer(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`[
 			{
+				"s": "TBV_TON-SWAP-TBV_USDT",
+				"c": "200.0",
+				"qv": "500000.0",
+				"pcp": "11900.0",
+				"t": 1600000000000
+			},
+			{
+				"s": "NC-SWAP-USDT",
+				"c": "0.21",
+				"qv": "500000.0",
+				"pcp": "800.0",
+				"t": 1000000000000
+			},
+			{
+				"s": "TESTA1S3-SWAP-TESTX8Z9",
+				"c": "1.0",
+				"qv": "500000.0",
+				"pcp": "500.0",
+				"t": 1600000000000
+			},
+			{
 				"s": "ETH-SWAP-USDT",
 				"c": "3000.0",
 				"b": "2999.0",
@@ -903,6 +947,7 @@ func TestClient_GetTopGainer(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client := toobit.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	client.SetClock(mockClock{now: time.UnixMilli(1600000000000)})
 
 	t.Run("limit 2 top gainers", func(t *testing.T) {
 		t.Parallel()

@@ -10,9 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 
 	"crypto-bot/pkg/xjson"
+)
+
+var (
+	_ exchange.DepthProvider        = (*Client)(nil)
+	_ exchange.DepthCommitsProvider = (*Client)(nil)
+	_ exchange.TopGainerProvider    = (*Client)(nil)
 )
 
 // Explicit request/response structs for market data endpoints.
@@ -209,6 +216,27 @@ func (c *Client) getRawFundingRateHistory(ctx context.Context, req mexcFundingRa
 	return data.ResultList, nil
 }
 
+func (c *Client) getRawKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]byte, error) {
+	path := fmt.Sprintf("/api/v1/contract/kline/%s", symbol)
+	params := map[string]string{
+		"interval": mapMexcInterval(interval),
+		"start":    strconv.FormatInt(start.Unix(), 10),
+		"end":      strconv.FormatInt(end.Unix(), 10),
+	}
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) getRawDepth(ctx context.Context, symbol string, limit int) ([]byte, error) {
+	path := fmt.Sprintf("/api/v1/contract/depth/%s", symbol)
+	params := map[string]string{paramLimit: strconv.Itoa(limit)}
+	return c.RawRequest(ctx, http.MethodGet, path, params, nil)
+}
+
+func (c *Client) getRawDepthCommits(ctx context.Context, symbol string, limit int) ([]byte, error) {
+	path := fmt.Sprintf("/api/v1/contract/depth_commits/%s/%d", symbol, limit)
+	return c.RawRequest(ctx, http.MethodGet, path, nil, nil)
+}
+
 // Public mapper methods implementing the exchange.MarketDataProvider interface.
 
 // GetContractDetails returns all contract specifications.
@@ -335,6 +363,10 @@ func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest
 	results := make([]exchange.TopGainerResult, 0, len(rawList))
 	for i := range rawList {
 		raw := &rawList[i]
+		if raw.LastPrice <= 0 {
+			continue
+		}
+
 		volUSDT := raw.Amount24
 		if volUSDT == 0 {
 			volUSDT = raw.Volume24 * raw.LastPrice
@@ -524,13 +556,7 @@ func mapMexcInterval(interval exchange.Interval) string {
 }
 
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
-	path := fmt.Sprintf("/api/v1/contract/kline/%s", symbol)
-	params := map[string]string{
-		"interval": mapMexcInterval(interval),
-		"start":    strconv.FormatInt(start.Unix(), 10),
-		"end":      strconv.FormatInt(end.Unix(), 10),
-	}
-	body, err := c.RawRequest(ctx, http.MethodGet, path, params, nil)
+	body, err := c.getRawKlines(ctx, symbol, interval, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("mexc fetch klines: %w", err)
 	}
@@ -653,4 +679,81 @@ func (c *Client) GetMaxLeverageForValue(ctx context.Context, symbol string, valu
 	}
 
 	return 0, fmt.Errorf("mexc could not determine max leverage for symbol %s value %f", symbol, value)
+}
+
+type mexcDepthRawData struct {
+	Bids    [][]xjson.Number `json:"bids"`
+	Asks    [][]xjson.Number `json:"asks"`
+	Version int64            `json:"version"`
+}
+
+// GetDepth implements exchange.DepthProvider.
+// It retrieves the current full L2 depth snapshot for a symbol via REST API.
+func (c *Client) GetDepth(ctx context.Context, symbol string) (*domain.OrderBook, error) {
+	body, err := c.getRawDepth(ctx, symbol, 1000)
+	if err != nil {
+		return nil, fmt.Errorf("mexc get depth for %s: %w", symbol, err)
+	}
+
+	data, err := ParseResponse[mexcDepthRawData](body, "depth_snapshot")
+	if err != nil {
+		return nil, fmt.Errorf("mexc parse depth snapshot for %s: %w", symbol, err)
+	}
+
+	return parseMexcDepthSnapshot(symbol, data), nil
+}
+
+// GetDepthCommits retrieves recent incremental depth commits for gap recovery.
+func (c *Client) GetDepthCommits(ctx context.Context, symbol string, limit int) ([]exchange.DepthCommit, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	body, err := c.getRawDepthCommits(ctx, symbol, limit)
+	if err != nil {
+		return nil, fmt.Errorf("mexc get depth commits for %s: %w", symbol, err)
+	}
+
+	rawCommits, err := ParseResponse[[]mexcDepthRawData](body, "depth_commits")
+	if err != nil {
+		return nil, fmt.Errorf("mexc parse depth commits for %s: %w", symbol, err)
+	}
+
+	return parseMexcDepthCommits(rawCommits), nil
+}
+
+func parseMexcDepthEntries(raw [][]xjson.Number, requirePositiveVolume bool) []domain.OrderBookEntry {
+	entries := make([]domain.OrderBookEntry, 0, len(raw))
+	for _, item := range raw {
+		if len(item) >= 2 {
+			p, v := xjson.ToFloat64(item[0]), xjson.ToFloat64(item[1])
+			if len(item) >= 3 {
+				v = xjson.ToFloat64(item[2]) // Index 2 is contract quantity
+			}
+			if p > 0 && (!requirePositiveVolume || v > 0) {
+				entries = append(entries, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+	return entries
+}
+
+func parseMexcDepthSnapshot(symbol string, data mexcDepthRawData) *domain.OrderBook {
+	return &domain.OrderBook{
+		Symbol:  symbol,
+		Version: data.Version,
+		Bids:    parseMexcDepthEntries(data.Bids, true),
+		Asks:    parseMexcDepthEntries(data.Asks, true),
+	}
+}
+
+func parseMexcDepthCommits(rawCommits []mexcDepthRawData) []exchange.DepthCommit {
+	commits := make([]exchange.DepthCommit, 0, len(rawCommits))
+	for _, raw := range rawCommits {
+		commits = append(commits, exchange.DepthCommit{
+			Version: raw.Version,
+			Bids:    parseMexcDepthEntries(raw.Bids, false),
+			Asks:    parseMexcDepthEntries(raw.Asks, false),
+		})
+	}
+	return commits
 }

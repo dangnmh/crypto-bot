@@ -17,6 +17,7 @@ const (
 
 	channelPersonalPosition = "personal.position"
 	channelTicker           = "ticker"
+	channelDepth            = "depth"
 	channelPong             = "pong"
 	channelPing             = "ping"
 
@@ -33,6 +34,7 @@ const (
 
 	topicBookTicker = "bookTicker"
 	topicRealtimes  = "realtimes"
+	topicDepth      = "depth"
 
 	eventSub = "sub"
 	topicKey = "topic"
@@ -41,4 +43,6 @@ const (
 	tifPOSTONLY = "POST_ONLY"
 	tifIOC      = "IOC"
 	tifFOK      = "FOK"
+
+	paramLimit = "limit"
 )

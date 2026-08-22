@@ -7,14 +7,23 @@ import (
 	"strings"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
 
 	"crypto-bot/pkg/xjson"
+)
+
+// Interface assertions.
+var (
+	_ ws.ExchangeAdapter       = (*WsAdapter)(nil)
+	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
+	_ exchange.DepthParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for KuCoin Futures.
@@ -128,6 +137,32 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 		paramResponse:       true,
 	}
 	return a.pool.UnsubscribePublic(ctx, symbol+":tickers", msg)
+}
+
+// SubscribeDepth subscribes to Level 2 incremental orderbook depth updates.
+func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
+	topic := "/contractMarket/level2:" + symbol
+	msg := map[string]any{
+		"id":                "sub-" + symbol + "-depth",
+		paramType:           opSubscribe,
+		paramTopic:          topic,
+		paramPrivateChannel: false,
+		paramResponse:       true,
+	}
+	return a.pool.SubscribePublic(ctx, symbol+":depth", msg)
+}
+
+// UnsubscribeDepth unsubscribes from Level 2 incremental orderbook depth updates.
+func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
+	topic := "/contractMarket/level2:" + symbol
+	msg := map[string]any{
+		"id":                "unsub-" + symbol + "-depth",
+		paramType:           opUnsubscribe,
+		paramTopic:          topic,
+		paramPrivateChannel: false,
+		paramResponse:       true,
+	}
+	return a.pool.UnsubscribePublic(ctx, symbol+":depth", msg)
 }
 
 // SubscribePersonal subscribes to all private futures channels.
@@ -290,4 +325,58 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	}
 
 	return update, nil
+}
+
+// ParseDepth parses incremental Level 2 depth messages from /contractMarket/level2:{symbol}.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	topic, _ := jsonparser.GetString(data, "topic")
+	symbol := strings.TrimPrefix(topic, "/contractMarket/level2:")
+	if symbol == "" {
+		symbol, _ = jsonparser.GetString(data, "data", "symbol")
+	}
+
+	dataNode, _, _, err := jsonparser.Get(data, "data")
+	if err != nil {
+		return symbol, nil, err
+	}
+
+	sequence, err := jsonparser.GetInt(dataNode, "sequence")
+	if err != nil {
+		return symbol, nil, err
+	}
+
+	changeStr, err := jsonparser.GetString(dataNode, "change")
+	if err != nil {
+		return symbol, nil, err
+	}
+
+	// Change format: "price,side,size" e.g. "90631.2,sell,2", "3988.50,buy,44", or "3988.61,sell,0"
+	parts := strings.Split(changeStr, ",")
+	if len(parts) < 3 {
+		return symbol, nil, fmt.Errorf("invalid kucoin level2 change format: %s", changeStr)
+	}
+
+	price := decmath.ParseFloat(parts[0])
+	side := strings.ToLower(strings.TrimSpace(parts[1]))
+	size := decmath.ParseFloat(parts[2])
+
+	var bids []domain.OrderBookEntry
+	var asks []domain.OrderBookEntry
+
+	entry := domain.OrderBookEntry{Price: price, Volume: size}
+	if side == sideBuy || side == "bid" {
+		bids = []domain.OrderBookEntry{entry}
+	} else {
+		asks = []domain.OrderBookEntry{entry}
+	}
+
+	ob := &domain.OrderBook{
+		Symbol:       symbol,
+		FirstVersion: sequence,
+		Version:      sequence,
+		Bids:         bids,
+		Asks:         asks,
+	}
+
+	return symbol, ob, nil
 }

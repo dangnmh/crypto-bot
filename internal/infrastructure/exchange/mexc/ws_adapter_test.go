@@ -77,6 +77,7 @@ func TestWsAdapter_GetChannelExtractor(t *testing.T) {
 		want  string
 	}{
 		{"ticker", `{"channel":"push.ticker"}`, "ticker"},
+		{"depth incremental", `{"channel":"push.depth"}`, "depth"},
 		{"depth full", `{"channel":"push.depth.full"}`, "depth"},
 		{"depth step", `{"channel":"push.depth.step"}`, "depth"},
 		{"kline", `{"channel":"push.kline"}`, "kline"},
@@ -230,4 +231,123 @@ func TestWsAdapter_LoginSync(t *testing.T) {
 		cancel()
 		assert.NoError(t, err)
 	})
+}
+
+func TestWsAdapter_ParseDepth(t *testing.T) {
+	t.Parallel()
+
+	adapter := mexc.NewWsAdapter()
+
+	raw := []byte(`{
+		"channel": "push.depth.full",
+		"symbol": "BTC_USDT",
+		"data": {
+			"bids": [[60000.5, 1, 1.2], [60000.0, 1, 3.4]],
+			"asks": [[60001.0, 1, 0.5], [60001.5, 1, 2.1]],
+			"version": 123456
+		},
+		"ts": 1600000000000
+	}`)
+
+	sym, ob, err := adapter.ParseDepth(raw)
+	assert.NoError(t, err)
+	assert.Equal(t, "BTC_USDT", sym)
+	assert.NotNil(t, ob)
+	assert.Equal(t, int64(123456), ob.Version)
+	assert.Len(t, ob.Bids, 2)
+	assert.Equal(t, 60000.5, ob.Bids[0].Price)
+	assert.Equal(t, 1.2, ob.Bids[0].Volume)
+	assert.Len(t, ob.Asks, 2)
+	assert.Equal(t, 60001.0, ob.Asks[0].Price)
+	assert.Equal(t, 0.5, ob.Asks[0].Volume)
+
+	// String format numbers
+	rawStrings := []byte(`{
+		"channel": "push.depth.full",
+		"symbol": "ETH_USDT",
+		"data": {
+			"bids": [["3000.5", "10.0"]],
+			"asks": [["3001.0", "5.0"]],
+			"version": 7890
+		}
+	}`)
+	sym2, ob2, err := adapter.ParseDepth(rawStrings)
+	assert.NoError(t, err)
+	assert.Equal(t, "ETH_USDT", sym2)
+	assert.NotNil(t, ob2)
+	assert.Equal(t, int64(7890), ob2.Version)
+	assert.Len(t, ob2.Bids, 1)
+
+	// Delta deletion message with volume 0
+	rawZeroVol := []byte(`{
+		"channel": "push.depth.step",
+		"symbol": "SOL_USDT",
+		"data": {
+			"bids": [["150.0", "0.0"]],
+			"asks": [["151.0", "0.0"]],
+			"version": 9999
+		}
+	}`)
+	sym3, ob3, err := adapter.ParseDepth(rawZeroVol)
+	assert.NoError(t, err)
+	assert.Equal(t, "SOL_USDT", sym3)
+	assert.NotNil(t, ob3)
+	assert.Len(t, ob3.Bids, 1)
+	assert.Equal(t, 150.0, ob3.Bids[0].Price)
+	assert.Equal(t, 0.0, ob3.Bids[0].Volume)
+	assert.Len(t, ob3.Asks, 1)
+	assert.Equal(t, 151.0, ob3.Asks[0].Price)
+	assert.Equal(t, 0.0, ob3.Asks[0].Volume)
+
+	// 3-element format [price, orderCount, quantity] with begin and end versions
+	raw3Elem := []byte(`{
+		"channel": "push.depth",
+		"symbol": "BTC_USDT",
+		"data": {
+			"begin": 40949478001,
+			"end": 40949478038,
+			"version": 40949478038,
+			"cts": 1787301607692,
+			"asks": [
+				[77515.4, 16284, 2.5],
+				[77513.9, 0, 0]
+			],
+			"bids": [
+				[77506.4, 5969, 5.0]
+			]
+		},
+		"ts": 1787301607702
+	}`)
+	sym4, ob4, err := adapter.ParseDepth(raw3Elem)
+	assert.NoError(t, err)
+	assert.Equal(t, "BTC_USDT", sym4)
+	assert.NotNil(t, ob4)
+	assert.Equal(t, int64(40949478001), ob4.FirstVersion)
+	assert.Equal(t, int64(40949478038), ob4.Version)
+	assert.Len(t, ob4.Bids, 1)
+	assert.Equal(t, 77506.4, ob4.Bids[0].Price)
+	assert.Equal(t, 5.0, ob4.Bids[0].Volume) // Quantity at index 2, not order count (5969)
+	assert.Len(t, ob4.Asks, 2)
+	assert.Equal(t, 77515.4, ob4.Asks[0].Price)
+	assert.Equal(t, 2.5, ob4.Asks[0].Volume) // Quantity at index 2, not order count (16284)
+	assert.Equal(t, 77513.9, ob4.Asks[1].Price)
+	assert.Equal(t, 0.0, ob4.Asks[1].Volume) // Deletion preserved
+
+	// Invalid json
+	_, _, err = adapter.ParseDepth([]byte(`invalid`))
+	assert.Error(t, err)
+}
+
+func TestWsAdapter_DepthSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	adapter := mexc.NewWsAdapter()
+	pool := pkgws.NewPool("ws://127.0.0.1:1", 30, slog.Default())
+	adapter.SetPool(pool)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = adapter.SubscribeDepth(ctx, "BTC_USDT")
+	_ = adapter.UnsubscribeDepth(ctx, "BTC_USDT")
 }

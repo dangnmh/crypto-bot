@@ -23,6 +23,16 @@ import (
 	"crypto-bot/pkg/xjson"
 )
 
+// Interface assertions.
+var (
+	_ exchange.MarketDataProvider   = (*Client)(nil)
+	_ exchange.OrderExecutor        = (*Client)(nil)
+	_ exchange.DepthProvider        = (*Client)(nil)
+	_ exchange.DepthCommitsProvider = (*Client)(nil)
+	_ exchange.KlineProvider        = (*Client)(nil)
+	_ exchange.TPSLProvider         = (*Client)(nil)
+)
+
 // Client is the KuCoin Futures REST API client.
 type Client struct {
 	httpClient *http.Client
@@ -36,18 +46,24 @@ type Client struct {
 	limiter    *ratelimit.ExchangeRateLimiter
 }
 
-// NewClient creates a new KuCoin API client using the provided HTTP client.
-func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase string, logCfg config.LoggingConfig) *Client {
-	logger := slog.Default().With("component", "exchange").With("exchange", "kucoin")
+// NewClient creates a new KuCoin Futures API client.
+func NewClient(
+	httpClient *http.Client,
+	baseURL string,
+	apiKey string,
+	apiSecret string,
+	passphrase string,
+	logCfg config.LoggingConfig,
+) *Client {
+	logger := slog.Default().With("exchange", exchange.ExchangeKucoin)
+
 	var clientCopy http.Client
 	if httpClient != nil {
 		clientCopy = *httpClient
-	}
-
-	if httpClient != nil && clientCopy.Transport != nil {
 		if logCfg.HTTP {
 			rt := clientCopy.Transport
-			rt = transportlog.NewTransportLog(rt,
+			rt = transportlog.NewTransportLog(
+				rt,
 				transportlog.LogOptionLogger(logger),
 				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 					OnStatus:       []int{0},
@@ -58,6 +74,9 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 						"GET|/api/v1/contracts/active",
 						"POST|/api/v1/bullet-public",
 						"POST|/api/v1/bullet-private",
+						"GET|/api/v1/level2/depth20",
+						"GET|/api/v1/level2/depth100",
+						"GET|/api/v1/level2/snapshot",
 					},
 				}),
 				transportlog.LogOptionRedactSensitive(true),
@@ -80,7 +99,12 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, passphrase s
 		baseURL = defaultRestURL
 	}
 
-	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+	configs := map[string]ratelimit.EndpointConfig{
+		"/api/v1/level2/depth20":  {Limit: rate.Limit(10), Burst: 5, Weight: 5},
+		"/api/v1/level2/depth100": {Limit: rate.Limit(10), Burst: 5, Weight: 5},
+		"/api/v1/level2/snapshot": {Limit: rate.Limit(10), Burst: 5, Weight: 3},
+	}
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 10, configs)
 
 	return &Client{
 		httpClient: finalClient,

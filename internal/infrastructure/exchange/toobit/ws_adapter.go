@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	infraws "crypto-bot/internal/infrastructure/ws"
@@ -128,6 +129,32 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 	return err2
 }
 
+// SubscribeDepth streams orderbook depth.
+func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		eventKey:  eventSub,
+		topicKey:  topicDepth,
+		symbolKey: symbol,
+		paramsKey: map[string]any{
+			binaryKey: false,
+		},
+	}
+	return a.pool.SubscribePublic(ctx, symbol+":"+topicDepth, msg)
+}
+
+// UnsubscribeDepth stops streaming orderbook depth.
+func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		eventKey:  cancelKey,
+		topicKey:  topicDepth,
+		symbolKey: symbol,
+		paramsKey: map[string]any{
+			binaryKey: false,
+		},
+	}
+	return a.pool.UnsubscribePublic(ctx, symbol+":"+topicDepth, msg)
+}
+
 // SubscribePersonal is a no-op since connecting to user stream with listenKey automatically subscribes.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	return nil
@@ -197,13 +224,29 @@ func extractObjectChannel(data []byte) string {
 	var msg struct {
 		Topic string `json:"topic"`
 		Event string `json:"event"`
+		Code  any    `json:"code"`
+		Desc  string `json:"desc"`
+		Msg   string `json:"msg"`
 	}
 	if err := xjson.Unmarshal(data, &msg); err == nil {
 		if msg.Topic == topicBookTicker || msg.Topic == topicRealtimes {
 			return channelTicker
 		}
+		if msg.Topic == topicDepth || msg.Topic == "diffDepth" || msg.Event == "depth" {
+			return channelDepth
+		}
 		if msg.Event == outboundContractPositionInfo || msg.Topic == outboundContractPositionInfo {
 			return channelPersonalPosition
+		}
+		if msg.Code != nil {
+			codeStr := fmt.Sprintf("%v", msg.Code)
+			if codeStr != "" && codeStr != "0" && codeStr != "200" && codeStr != successCode {
+				desc := msg.Desc
+				if desc == "" {
+					desc = msg.Msg
+				}
+				slog.Warn("🟡 Toobit WS error received", slog.String("code", codeStr), slog.String("desc", desc))
+			}
 		}
 	}
 	return ""
@@ -282,6 +325,82 @@ func (a *WsAdapter) ParseTicker(data []byte) (string, *store.PriceData, error) {
 	default:
 		return "", nil, fmt.Errorf("unknown ticker topic: %s", basic.Topic)
 	}
+}
+
+type wsDepthEntry struct {
+	Bids [][]xjson.Number `json:"b"`
+	Asks [][]xjson.Number `json:"a"`
+	V    json.RawMessage  `json:"v"`
+	T    int64            `json:"t"`
+}
+
+func parseToobitDepthVersion(raw json.RawMessage) int64 {
+	if len(raw) == 0 {
+		return 0
+	}
+	s := strings.Trim(string(raw), "\"")
+	if idx := strings.Index(s, "_"); idx != -1 {
+		s = s[:idx]
+	}
+	v, _ := strconv.ParseInt(s, 10, 64)
+	return v
+}
+
+// ParseDepth parses depth messages into domain.OrderBook.
+func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
+	var basic struct {
+		Topic  string          `json:"topic"`
+		Symbol string          `json:"symbol"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if err := xjson.Unmarshal(data, &basic); err != nil {
+		return "", nil, fmt.Errorf("unmarshal depth basic: %w", err)
+	}
+
+	sym := basic.Symbol
+
+	var entries []wsDepthEntry
+	if err := xjson.Unmarshal(basic.Data, &entries); err != nil {
+		var single wsDepthEntry
+		if err2 := xjson.Unmarshal(basic.Data, &single); err2 != nil {
+			return "", nil, fmt.Errorf("unmarshal depth data: %w", err)
+		}
+		entries = []wsDepthEntry{single}
+	}
+
+	if len(entries) == 0 {
+		return sym, nil, nil
+	}
+
+	latest := entries[len(entries)-1]
+	bids := make([]domain.OrderBookEntry, 0, len(latest.Bids))
+	for _, b := range latest.Bids {
+		if len(b) >= 2 {
+			p := xjson.ToFloat64(b[0])
+			v := xjson.ToFloat64(b[1])
+			if p > 0 && v > 0 {
+				bids = append(bids, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	asks := make([]domain.OrderBookEntry, 0, len(latest.Asks))
+	for _, a := range latest.Asks {
+		if len(a) >= 2 {
+			p := xjson.ToFloat64(a[0])
+			v := xjson.ToFloat64(a[1])
+			if p > 0 && v > 0 {
+				asks = append(asks, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	return sym, &domain.OrderBook{
+		Symbol:  sym,
+		Version: parseToobitDepthVersion(latest.V),
+		Bids:    bids,
+		Asks:    asks,
+	}, nil
 }
 
 type wsPositionData struct {

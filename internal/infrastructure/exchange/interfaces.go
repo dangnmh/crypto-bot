@@ -67,10 +67,31 @@ const (
 	Interval1M  Interval = "1M"
 )
 
+// TopGainerProvider is the interface for retrieving ranked top gaining tickers across an exchange.
+type TopGainerProvider interface {
+	GetTopGainer(ctx context.Context, req TopGainerRequest) ([]TopGainerResult, error)
+}
+
+// DepthSubscriber defines the interface for managing WebSocket depth subscriptions on exchange adapters.
+type DepthSubscriber interface {
+	SubscribeDepth(ctx context.Context, symbol string) error
+	UnsubscribeDepth(ctx context.Context, symbol string) error
+}
+
+// DepthParser defines the interface for parsing raw WebSocket depth messages into domain.OrderBook.
+type DepthParser interface {
+	ParseDepth(data []byte) (string, *domain.OrderBook, error)
+}
+
 // DepthProvider is an optional interface that exchange REST clients can implement
 // to support retrieving orderbook depth snapshots on-demand via REST API.
 type DepthProvider interface {
 	GetDepth(ctx context.Context, symbol string) (*domain.OrderBook, error)
+}
+
+// DepthCommitsProvider is an optional interface for exchanges offering historical depth commit logs (e.g. MEXC).
+type DepthCommitsProvider interface {
+	GetDepthCommits(ctx context.Context, symbol string, limit int) ([]DepthCommit, error)
 }
 
 // KlineProvider is an optional interface that exchange REST clients can implement

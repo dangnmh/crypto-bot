@@ -2,10 +2,11 @@ package ws
 
 import (
 	"context"
-	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/store"
 	"time"
 
+	"crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/store"
 	pkgws "crypto-bot/pkg/ws"
 )
 
@@ -19,6 +20,12 @@ type Subscriber interface {
 	UnsubscribePersonal(ctx context.Context) error
 	SubscribePublic(ctx context.Context, topic string, subMsg any) error
 	UnsubscribePublic(ctx context.Context, topic string, unsubMsg any) error
+}
+
+// DepthSubscriber handles depth streaming subscription/unsubscription.
+type DepthSubscriber interface {
+	SubscribeDepth(ctx context.Context, symbol string) error
+	UnsubscribeDepth(ctx context.Context, symbol string) error
 }
 
 // ExchangeAdapter encapsulates all exchange-specific WS logic.
@@ -39,4 +46,5 @@ type ExchangeAdapterParser interface {
 	// Parsers (raw JSON []byte to domain objects).
 	ParseTicker(data []byte) (symbol string, pd *store.PriceData, err error)
 	ParsePosition(data []byte) (*exchange.PersonalPositionUpdate, error)
+	ParseDepth(data []byte) (symbol string, ob *domain.OrderBook, err error)
 }

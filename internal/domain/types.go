@@ -228,10 +228,11 @@ type OrderBookEntry struct {
 
 // OrderBook represents the full or partial depth of a market.
 type OrderBook struct {
-	Symbol  string
-	Version int64
-	Asks    []OrderBookEntry // Sorted by price ascending (lowest ask first)
-	Bids    []OrderBookEntry // Sorted by price descending (highest bid first)
+	Symbol       string
+	FirstVersion int64            // Starting commit version for batched updates (e.g. MEXC data.begin)
+	Version      int64            // Ending commit version / sequence (e.g. MEXC data.end / KuCoin sequence)
+	Asks         []OrderBookEntry // Sorted by price ascending (lowest ask first)
+	Bids         []OrderBookEntry // Sorted by price descending (highest bid first)
 }
 
 // ──────────────────────────────────────────────────────────────────────
