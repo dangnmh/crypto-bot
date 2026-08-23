@@ -3,10 +3,8 @@ package kucoin
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"crypto-bot/internal/infrastructure/exchange"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -55,18 +53,4 @@ func toAPIError(code int, message, path string) *exchange.APIError {
 		Message: message,
 		Path:    path,
 	}
-}
-
-// toHTTPError creates an APIError for non-200 HTTP status codes.
-func toHTTPError(statusCode int, body []byte, path string) *exchange.APIError {
-	return &exchange.APIError{
-		StatusCode: statusCode,
-		Message:    string(body),
-		Path:       path,
-	}
-}
-
-// isRateLimited checks if an HTTP response indicates rate limiting.
-func isRateLimited(statusCode int) bool {
-	return statusCode == http.StatusTooManyRequests
 }

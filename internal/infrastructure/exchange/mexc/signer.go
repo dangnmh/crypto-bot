@@ -22,8 +22,15 @@ func SignRequest(apiKey, apiSecret, timestamp, method string, params any) string
 
 	switch method {
 	case "GET", "DELETE":
-		if p, ok := params.(map[string]any); ok {
+		switch p := params.(type) {
+		case map[string]any:
 			paramStr = buildSortedQueryString(p)
+		case map[string]string:
+			m := make(map[string]any, len(p))
+			for k, v := range p {
+				m[k] = v
+			}
+			paramStr = buildSortedQueryString(m)
 		}
 	case "POST":
 		if params != nil {
@@ -65,4 +72,11 @@ func buildSortedQueryString(params map[string]any) string {
 		parts = append(parts, fmt.Sprintf("%s=%v", k, params[k]))
 	}
 	return strings.Join(parts, "&")
+}
+
+// SignSpot generates the MEXC Spot HMAC-SHA256 signature for query strings.
+func SignSpot(queryString, apiSecret string) string {
+	mac := hmac.New(sha256.New, []byte(apiSecret))
+	mac.Write([]byte(queryString))
+	return hex.EncodeToString(mac.Sum(nil))
 }
