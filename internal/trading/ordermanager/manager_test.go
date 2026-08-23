@@ -347,13 +347,6 @@ func (m *mockNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	return nil
 }
 
-func (m *mockNotifier) SendRawMsg(ctx context.Context, msg string) error {
-	m.mu.Lock()
-	m.sentCount++
-	m.mu.Unlock()
-	return nil
-}
-
 func (m *mockNotifier) Start(ctx context.Context) error { return nil }
 func (m *mockNotifier) Stop(ctx context.Context) error  { return nil }
 

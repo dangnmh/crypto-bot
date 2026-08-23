@@ -164,7 +164,6 @@ type RawFundingReversionConfig struct {
 }
 
 type ExchangeReversionConfig struct {
-	UseOrderManager         *bool          `json:"useOrderManager,omitempty"`
 	TakeProfitPct           float64        `json:"takeProfitPct" validate:"omitempty,gt=0"`
 	StopLossPct             float64        `json:"stopLossPct" validate:"omitempty,gt=0"`
 	BufferTime              types.Duration `json:"bufferTime"`

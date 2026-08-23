@@ -36,7 +36,7 @@ func TestProviderFactoriesReturnStrategies(t *testing.T) {
 
 	global := &fundingconfig.Config{}
 
-	assert.Equal(t, "reversion", reversion.ProvideReversionStrategy(engine, global, nil, nil, nil, bootstrapTestLogger()).Flow())
+	assert.Equal(t, reversion.FlowIDFundingReversion, reversion.ProvideReversionStrategy(engine, global, nil, nil, bootstrapTestLogger()).Flow())
 }
 
 func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
@@ -73,7 +73,7 @@ func TestProvideLoggerNotifierHTTPAndBot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = engine.Bus.Close() })
 
-	revStrat := reversion.ProvideReversionStrategy(engine, &fundingconfig.Config{}, nil, nil, nil, bootstrapTestLogger())
+	revStrat := reversion.ProvideReversionStrategy(engine, &fundingconfig.Config{}, nil, nil, bootstrapTestLogger())
 
 	bot := application.ProvideFundingBot(
 		&fundingconfig.Config{},

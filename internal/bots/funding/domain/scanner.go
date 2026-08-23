@@ -60,7 +60,6 @@ type TradeConfig struct {
 // FundingReversionConfig holds configuration specific to the reversion strategy.
 type FundingReversionConfig struct {
 	Enabled           bool           `json:"enabled"`
-	UseOrderManager   bool           `json:"useOrderManager"`
 	TakeProfitPct     float64        `json:"takeProfitPct"`
 	StopLossPct       float64        `json:"stopLossPct"`
 	MaxLatency        types.Duration `json:"maxLatency"`

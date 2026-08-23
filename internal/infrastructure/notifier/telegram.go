@@ -8,15 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"crypto-bot/pkg/formatutil"
 	"crypto-bot/pkg/version"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-)
-
-const (
-	keyVolUSDT24h  = "volusdt24h"
-	keyFundingRate = "fundingRate"
 )
 
 type TelegramProvider struct {
@@ -88,17 +82,10 @@ func (p *TelegramProvider) Send(ctx context.Context, evt Event) error {
 	}
 }
 
-func (p *TelegramProvider) SendRawMsg(ctx context.Context, msg string) error {
-	return p.Send(ctx, Event{
-		Message: msg,
-		IsRaw:   true,
-	})
-}
-
 func (p *TelegramProvider) Start(ctx context.Context) error {
 	p.startOnce.Do(func() {
 		_ = p.Send(ctx, Event{
-			Level:   LevelInfo,
+			Level:   LevelNormal,
 			Message: fmt.Sprintf("🚀 Funding Bot started successfully (version: %s, commit: %s, built: %s)", version.Version, version.Commit, version.BuildTime),
 		})
 
@@ -114,7 +101,7 @@ func (p *TelegramProvider) Start(ctx context.Context) error {
 func (p *TelegramProvider) Stop(ctx context.Context) error {
 	p.stopOnce.Do(func() {
 		p.sendTelegram(Event{
-			Level:   LevelInfo,
+			Level:   LevelNormal,
 			Message: "🛑 Funding Bot stopped",
 		})
 
@@ -134,7 +121,7 @@ func (p *TelegramProvider) sendTelegram(evt Event) {
 	if evt.Level == LevelCritical && p.criticalChatID != 0 {
 		targetChatID = p.criticalChatID
 	}
-	msg := tgbotapi.NewMessage(targetChatID, p.formatMessage(evt))
+	msg := tgbotapi.NewMessage(targetChatID, evt.Message)
 	if _, err := p.bot.Send(msg); err != nil {
 		p.logger.Error("Failed to send telegram message",
 			slog.Int64("chat_id", targetChatID),
@@ -142,75 +129,4 @@ func (p *TelegramProvider) sendTelegram(evt Event) {
 			slog.Any("event", evt),
 		)
 	}
-}
-
-func getEmoji(color string) string {
-	switch color {
-	case ColorGreen:
-		return "🟢"
-	case ColorRed:
-		return "🔴"
-	case ColorBlue:
-		return "🔵"
-	default:
-		return "🟡"
-	}
-}
-
-//nolint:cyclop // Formats telegram message based on event attributes
-func (p *TelegramProvider) formatMessage(evt Event) string {
-	if evt.IsRaw {
-		return evt.Message
-	}
-
-	color := evt.Color
-	if color == "" {
-		color = ColorYellow
-	}
-
-	prefix := fmt.Sprintf("%s [%s]", getEmoji(color), evt.Level)
-
-	contextLabel := ""
-	if evt.Strategy != "" {
-		contextLabel = fmt.Sprintf(" [%s]", strings.ToUpper(evt.Strategy))
-	}
-	if evt.Exchange != "" {
-		contextLabel = fmt.Sprintf("%s [%s]", contextLabel, strings.ToLower(evt.Exchange))
-	}
-	if evt.Symbol != "" {
-		contextLabel = fmt.Sprintf("%s [%s]", contextLabel, evt.Symbol)
-	}
-
-	data := ""
-	for k, v := range evt.Data {
-		valStr := fmt.Sprintf("%v", v)
-		switch val := v.(type) {
-		case float64:
-			switch k {
-			case keyVolUSDT24h:
-				valStr = formatutil.FormatCompactUSD(val)
-			case keyFundingRate:
-				valStr = formatutil.FormatFloatMax4(val*100) + "%"
-			default:
-				valStr = formatutil.FormatFloatMax4(val)
-			}
-		case float32:
-			switch k {
-			case keyVolUSDT24h:
-				valStr = formatutil.FormatCompactUSD(float64(val))
-			case keyFundingRate:
-				valStr = formatutil.FormatFloatMax4(float64(val)*100) + "%"
-			default:
-				valStr = formatutil.FormatFloatMax4(float64(val))
-			}
-		}
-		data = fmt.Sprintf("%s\n%s: %s", data, k, valStr)
-	}
-
-	msgStr := strings.TrimSpace(evt.Message)
-	dataStr := strings.TrimSpace(data)
-	if dataStr != "" {
-		return fmt.Sprintf("%s%s\n%s\n%s", prefix, contextLabel, msgStr, dataStr)
-	}
-	return fmt.Sprintf("%s%s\n%s", prefix, contextLabel, msgStr)
 }

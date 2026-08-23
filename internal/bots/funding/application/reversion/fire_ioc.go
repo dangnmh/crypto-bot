@@ -8,7 +8,6 @@ import (
 	"math"
 	"time"
 
-	"crypto-bot/internal/bots/funding/application/orders"
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -35,7 +34,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	settleTime := confirmedEvt.SettleTime
 	if settleTime.IsZero() {
 		err := errors.New("settle time not found")
-		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, ReversionReason(err.Error()))
+		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
@@ -43,7 +42,7 @@ func (r *StatelessRunner) handleFireIOC(ctx context.Context, confirmedEvt Confir
 	maxLatency := time.Duration(confirmedEvt.Candidate.Config.FundingReversion.MaxLatency)
 	if maxLatency > 0 && time.Duration(latencyMs)*time.Millisecond > maxLatency {
 		err := errors.New("latency too high")
-		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, ReversionReason(err.Error()))
+		r.abortAfter(ctx, confirmedEvt.BaseReversionEvent, confirmedEvt.Symbol, err.Error())
 		return err
 	}
 
@@ -144,7 +143,7 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 	err := r.deps.Client.SwitchMarginMode(ctx, evt.Symbol, marginMode, evt.Candidate.Config.Leverage, evt.Candidate.Side)
 	if err != nil {
 		r.log.ErrorContext(ctx, "Failed to switch margin mode", slog.Any("error", err), slog.String("symbol", evt.Symbol))
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("switch margin mode failed: "+err.Error()))
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "switch margin mode failed: "+err.Error())
 		return fmt.Errorf("switch margin mode failed: %w", err)
 	}
 
@@ -152,7 +151,7 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 		targetMode := shared.PositionMode(evt.Candidate.Config.ParsedPositionMode)
 		if err := switcher.SwitchPositionMode(ctx, evt.Symbol, targetMode); err != nil {
 			r.log.ErrorContext(ctx, "Failed to switch position mode", slog.Any("error", err), slog.String("symbol", evt.Symbol))
-			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("switch position mode failed: "+err.Error()))
+			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "switch position mode failed: "+err.Error())
 			return fmt.Errorf("switch position mode failed: %w", err)
 		}
 	}
@@ -175,7 +174,7 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 		})
 		if err != nil {
 			r.log.ErrorContext(ctx, "Failed to adjust leverage", slog.Any("error", err), slog.String("symbol", evt.Symbol))
-			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("change leverage failed: "+err.Error()))
+			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "change leverage failed: "+err.Error())
 			return fmt.Errorf("change leverage failed: %w", err)
 		}
 	}
@@ -203,13 +202,13 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTimingReadyEvent) error {
 	snapshotOffset := time.Duration(evt.SnapshotOffsetMs) * time.Millisecond
 	if err := r.waitUntilFuture(ctx, evt.Symbol, evt.SettleTime.Add(-snapshotOffset)); err != nil {
-		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("wait snapshot failed: "+err.Error()))
+		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait snapshot failed: "+err.Error())
 		return err
 	}
 
 	c := evt.Candidate
 	if err := r.refreshPrice(ctx, &c); err != nil {
-		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, ReversionReason("refresh price fail: "+err.Error()))
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "refresh price fail: "+err.Error())
 		return err
 	}
 
@@ -217,7 +216,7 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 	c.Volume = requestedVolume
 	ioc, err := c.CalculateIOCPrice()
 	if err != nil {
-		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, ReversionReason("IOC calc failed: "+err.Error()))
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, "IOC calc failed: "+err.Error())
 		return err
 	}
 	refPrice := executionRefPrice(c)
@@ -253,140 +252,17 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 
 func (r *StatelessRunner) handleFirePlanChecked(ctx context.Context, evt FirePlanCheckedEvent) error {
 	c := evt.Candidate
+	// Clean up WebSocket ticker subscription as Reversion phase completes and OrderManager takes over
+	r.unsubscribeWS(ctx, c.Symbol)
+
 	if !evt.Passed {
-		submitted := IOCSubmittedEvent{
-			BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
-			Candidate:          c,
-			FireTimestamp:      r.deps.Clock.Now(),
-			Error:              evt.RejectReason,
-		}
-		_ = r.publishEvent(ctx, TopicReversionIOCSubmitted, submitted)
-		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, ReversionReason(evt.RejectReason))
+		r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, evt.RejectReason)
 		return errors.New(evt.RejectReason)
 	}
 
 	fireOffset := time.Duration(evt.FireOffsetMs) * time.Millisecond
 	targetTime := evt.SettleTime.Add(-fireOffset)
 
-	if evt.Candidate.Config.FundingReversion.UseOrderManager {
-		tpPrice, slPrice := c.CalculateOrderTPSL(ctx, evt.IOCPrice, r.log)
-		return r.dispatchOrderManagerIntent(ctx, evt, targetTime, evt.IOCPrice, tpPrice, slPrice)
-	}
-
-	if r.deps.Clock.Until(targetTime) > 0 {
-		if err := r.waitUntilFuture(ctx, evt.Symbol, targetTime); err != nil {
-			r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, ReversionReason("wait fire failed: "+err.Error()))
-			return err
-		}
-	}
-
-	fireTime := r.deps.Clock.Now()
-
-	next := FireWindowReachedEvent{
-		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, fireTime),
-		Candidate:          c,
-		LatencyRTTMs:       evt.LatencyRTTMs,
-		FireTimestamp:      fireTime,
-	}
-
-	return r.publishEvent(ctx, TopicReversionFireWindowReached, next)
-}
-
-func (r *StatelessRunner) handleFireWindowReached(ctx context.Context, evt FireWindowReachedEvent) error {
-	timeout := time.Duration(evt.Candidate.Config.FundingReversion.PostSettleTimeout)
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-
-	next := PositionWatchReadyEvent{
-		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, evt.Symbol, r.deps.Clock.Now()),
-		Candidate:          evt.Candidate,
-		LatencyRTTMs:       evt.LatencyRTTMs,
-		FireTimestamp:      evt.FireTimestamp,
-		Timeout:            timeout,
-	}
-	watchBase := next.BaseReversionEvent
-	watchBase.Topic = TopicReversionPositionWatchReady
-	watchTimeout := max(timeout*2, 30*time.Second)
-	r.deps.OrderNotifier.OnPositionUpdate(ctx, evt.Symbol, watchTimeout, func(pos exchange.PersonalPositionUpdate) {
-		r.handlePositionUpdate(ctx, pos, watchBase)
-	})
-	return r.publishEvent(ctx, TopicReversionPositionWatchReady, next)
-}
-
-func (r *StatelessRunner) handlePositionWatchReady(ctx context.Context, evt PositionWatchReadyEvent) error {
-	c := evt.Candidate
-	res := orders.FireIOC(ctx, r.deps.Client, &c, r.deps.Clock, r.log)
-
-	if res.IsSuccess() {
-		// Update the cache immediately to prevent race conditions with WebSocket notifications
-		_cacheMu.Lock()
-		if cachedVal, found := r.cache.Get(evt.ReqID); found {
-			if state, ok := cachedVal.(*CycleState); ok {
-				state.mu.Lock()
-				state.IOCOrderID = res.OrderID
-				state.FireIOCTime = res.FireIOCTime
-				state.LocalFireIOCTime = res.LocalFireIOCTime
-				state.mu.Unlock()
-			}
-		}
-		_cacheMu.Unlock()
-
-		base := nextNotifyReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp)
-		base.OrderID = res.OrderID
-		base.ExternalID = res.ExternalID
-		next := IOCSubmittedEvent{
-			BaseReversionEvent: base,
-			Candidate:          c,
-			IntendedPrice:      res.Price,
-			TPPrice:            res.TakeProfitPrice,
-			SLPrice:            res.StopLossPrice,
-			TPSLSubmitted:      res.TPSLSubmitted,
-			FireTimestamp:      evt.FireTimestamp,
-			FireIOCTime:        res.FireIOCTime,
-			LocalFireIOCTime:   res.LocalFireIOCTime,
-			LatencyRTTMs:       evt.LatencyRTTMs,
-		}
-
-		if !res.TPSLSubmitted && (res.TakeProfitPrice > 0 || res.StopLossPrice > 0) {
-			tpslEvt := TPSLRequiredEvent{
-				BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
-				PositionMode:       shared.PositionMode(c.Config.ParsedPositionMode),
-				TakeProfitPrice:    res.TakeProfitPrice,
-				StopLossPrice:      res.StopLossPrice,
-				Volume:             res.Volume,
-			}
-			go r.publishTPSLBackground(ctx, tpslEvt)
-		}
-
-		return r.publishEvent(ctx, TopicReversionIOCSubmitted, next)
-	}
-
-	errText := "IOC order failed"
-	if res.Error != nil {
-		errText = res.Error.Error()
-	}
-	base := nextReversionBase(evt.BaseReversionEvent, c.Symbol, evt.FireTimestamp)
-	base.OrderID = res.OrderID
-	base.ExternalID = res.ExternalID
-	next := IOCSubmittedEvent{
-		BaseReversionEvent: base,
-		Candidate:          c,
-		IntendedPrice:      res.Price,
-		FireTimestamp:      evt.FireTimestamp,
-		FireIOCTime:        res.FireIOCTime,
-		LocalFireIOCTime:   res.LocalFireIOCTime,
-		LatencyRTTMs:       evt.LatencyRTTMs,
-		Error:              errText,
-	}
-	_ = r.publishEvent(ctx, TopicReversionIOCSubmitted, next)
-	r.abortAfter(ctx, evt.BaseReversionEvent, c.Symbol, ReversionReason(errText))
-	return errors.New(errText)
-}
-
-func (r *StatelessRunner) publishTPSLBackground(ctx context.Context, evt TPSLRequiredEvent) {
-	detached := context.WithoutCancel(ctx)
-	if err := r.publishEvent(detached, TopicReversionTPSLRequired, evt); err != nil {
-		r.log.Error("Failed to publish TopicReversionTPSLRequired", slog.Any("error", err))
-	}
+	tpPrice, slPrice := c.CalculateOrderTPSL(ctx, evt.IOCPrice, r.log)
+	return r.dispatchOrderManagerIntent(ctx, evt, targetTime, evt.IOCPrice, tpPrice, slPrice)
 }

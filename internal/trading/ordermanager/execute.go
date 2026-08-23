@@ -69,7 +69,6 @@ func registerNotificationHandler[T OrderEvent](ctx context.Context, mgr *OrderMa
 				if err := mgr.notifier.Send(orderCtx, notifier.Event{
 					Level:   level,
 					Message: notifMsg,
-					IsRaw:   true,
 				}); err != nil {
 					mgr.log.ErrorContext(orderCtx, "Failed to send event notification",
 						slog.String("topic", topic),

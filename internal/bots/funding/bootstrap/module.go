@@ -172,7 +172,6 @@ func provideGoCache() *cache.Cache {
 func provideDatabase(lc fx.Lifecycle) (*gorm.DB, error) {
 	return infraapp.InitDatabase(
 		lc,
-		&persistence.ReversionTradeReport{},
 		&persistence.GormSymbolFundingReport{},
 		&persistence.GormFundingPriceTick{},
 		&ordermanagerpersistence.TradeRecord{},

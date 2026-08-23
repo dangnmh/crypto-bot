@@ -25,7 +25,6 @@ import (
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,11 +83,10 @@ func executeReversionHelper(t *testing.T, bus *eventbus.Bus, reqID string, candi
 	candidate.ExternalID = orders.ExternalOrderID(candidate.Symbol, settleTime, candidate.Config.Exchange)
 
 	startEvt := reversion.CandidateFoundEvent{
-		Flow:       reversion.FlowReversion,
+		Flow:       reversion.FlowIDFundingReversion,
 		ReqID:      reqID,
 		Symbol:     candidate.Symbol,
 		Exchange:   candidate.Config.Exchange,
-		SendNotify: false,
 		Timestamp:  time.Now(),
 		EventID:    watermill.NewUUID(),
 		Seq:        1,
@@ -110,7 +108,6 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	mockClient := mocks.NewMockClient(ctrl)
 	mockClient.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
-	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
 	mockContractStore := mocks.NewMockContractReader(ctrl)
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
@@ -197,7 +194,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 			MinVol24USD: 10000,
 		},
 		Symbol:       "BTC_USDT",
-		FundingRate:  0.001, // positive FR means open long
+		FundingRate:  0.001,
 		Side:         shared.SideOpenLong,
 		CloseSide:    shared.SideCloseLong,
 		PriceUnit:    0.01,
@@ -234,61 +231,17 @@ func TestStrategy_Execute_Success(t *testing.T) {
 
 	// 3. FireIOC expectations
 	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 0, gomock.Any()).Return(nil)
-	createOrderCalled := make(chan struct{})
-	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-			close(createOrderCalled)
-			return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
-		},
-	)
-	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
-		OrderID:      "ord_123",
-		Symbol:       "BTC_USDT",
-		State:        exchange.OrderStateFilled,
-		DealVol:      1,
-		DealAvgPrice: 60005.0,
-	}, nil).AnyTimes()
-	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVolContract: 1},
-	}, nil).AnyTimes()
-	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
 
-	// 4. Watcher/notifier expectations
-	watcherDone := make(chan struct{})
-	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
-		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
-			// Trigger a fill update asynchronously
-			go func() {
-				defer close(watcherDone)
-				time.Sleep(100 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:          "BTC_USDT",
-					HoldVolContract: 1.5,
-					OpenAvgPrice:    60005.0,
-				})
-				time.Sleep(100 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:           "BTC_USDT",
-					HoldVolContract:  0.0,
-					CloseVolContract: 1.5,
-					OpenAvgPrice:     60100.0,
-				})
-			}()
-		},
-	)
-
-	// Notifier expectations for events with SendNotify = true
+	// 4. Notifier expectations
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	// Subscribe to TopicReversionCompleted to wait for the asynchronous flow to finish in tests
-	subCtx := t.Context()
-	ch, err := bus.Subscribe(subCtx, reversion.TopicReversionCompleted)
+	// Subscribe to OrderIntent to verify OrderManager dispatch
+	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
 	require.NoError(t, err)
 
-	repo := &fakeTradeReportRepository{}
 	c := cache.New(5*time.Minute, 10*time.Minute)
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, c, slog.Default())
+	strategyInst.SetTestFallbacks(mockClock, nil, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"mexc": fakeFundingStoreSet{
@@ -304,28 +257,19 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	err = executeReversionHelper(t, bus, "req_success_1", candidate, now.Add(10*time.Second))
 	assert.NoError(t, err)
 
-	waitCompleted(t, ch, createOrderCalled, watcherDone, 15*time.Second)
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		repo.mu.Lock()
-		count := len(repo.savedReports)
-		repo.mu.Unlock()
-		if count > 0 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Wait for OrderIntent to be dispatched
+	select {
+	case msg := <-intentSub:
+		var intent ordermanager.OrderIntentEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
+		assert.Equal(t, "req_success_1", intent.ReqID)
+		assert.Equal(t, "BTC_USDT", intent.Symbol)
+		assert.Equal(t, ordermanager.StrategyFundingReversion, intent.StrategyType)
+		assert.Greater(t, intent.Price, 0.0)
+		msg.Ack()
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for TopicOrderIntent")
 	}
-
-	repo.mu.Lock()
-	defer repo.mu.Unlock()
-	require.Len(t, repo.savedReports, 1)
-	saved := repo.savedReports[0]
-	assert.Equal(t, "req_success_1", saved.ReqID)
-	assert.False(t, saved.FireIOCTime.IsZero())
-	assert.True(t, saved.FireIOCTime.After(now))
-	assert.False(t, saved.LocalFireIOCTime.IsZero())
-	assert.WithinDuration(t, time.Now(), saved.LocalFireIOCTime, 5*time.Second)
 }
 
 func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
@@ -337,7 +281,6 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	mockClient := mocks.NewMockClient(ctrl)
 	mockClient.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
-	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
 	mockContractStore := mocks.NewMockContractReader(ctrl)
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
@@ -451,55 +394,13 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	}, nil)
 
 	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 0, gomock.Any()).Return(nil)
-	createOrderCalled := make(chan struct{})
-	// Capture the ExternalOID that is passed to CreateOrder
-	var capturedExtOID string
-	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-			capturedExtOID = req.ExternalOID
-			close(createOrderCalled)
-			return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
-		},
-	)
-
-	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
-		OrderID:      "ord_123",
-		Symbol:       "BTC_USDT",
-		State:        exchange.OrderStateFilled,
-		DealVol:      1,
-		DealAvgPrice: 60005.0,
-	}, nil).AnyTimes()
-	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVolContract: 1},
-	}, nil).AnyTimes()
-	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
-
-	watcherDone := make(chan struct{})
-	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
-		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
-			go func() {
-				defer close(watcherDone)
-				time.Sleep(50 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:          "BTC_USDT",
-					HoldVolContract: 1.5,
-					OpenAvgPrice:    60005.0,
-				})
-				time.Sleep(50 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:           "BTC_USDT",
-					HoldVolContract:  0.0,
-					CloseVolContract: 1.5,
-					OpenAvgPrice:     60100.0,
-				})
-			}()
-		},
-	)
-
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// Capture and verify ExternalID on event bus for the first event (CandidateFoundEvent)
 	candidateChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCandidate)
+	require.NoError(t, err)
+
+	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
 	require.NoError(t, err)
 
 	var candidateEvt reversion.CandidateFoundEvent
@@ -510,13 +411,9 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		msg.Ack()
 	})
 
-	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
-	require.NoError(t, err)
-
 	c := cache.New(5*time.Minute, 10*time.Minute)
-	repo := &fakeTradeReportRepository{}
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, c, slog.Default())
+	strategyInst.SetTestFallbacks(mockClock, nil, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"mexc": fakeFundingStoreSet{
@@ -532,19 +429,23 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	err = executeReversionHelper(t, bus, "req_prop_1", candidate, now.Add(10*time.Second))
 	assert.NoError(t, err)
 
-	// Wait for CandidateFoundEvent to be captured
 	wg.Wait()
 
-	waitCompleted(t, compChan, createOrderCalled, watcherDone, 5*time.Second)
+	select {
+	case msg := <-intentSub:
+		var intent ordermanager.OrderIntentEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
+		msg.Ack()
+		assert.Equal(t, candidateEvt.ExternalID, intent.ClientOrderID)
+		assert.Equal(t, "req_prop_1", intent.ReqID)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for TopicOrderIntent")
+	}
 
-	// Verify that the generated ExternalID is <= 32 chars, not empty, and matches the new format
 	assert.NotEmpty(t, candidateEvt.ExternalID)
 	expectedID := orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange)
 	assert.Equal(t, expectedID, candidateEvt.ExternalID)
 	assert.LessOrEqual(t, len(candidateEvt.ExternalID), 32)
-
-	// CRITICAL ASSERTION: The external ID sent to exchange exactly matches the one generated at the start of the flow!
-	assert.Equal(t, candidateEvt.ExternalID, capturedExtOID)
 }
 
 func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
@@ -556,7 +457,6 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	mockClient := mocks.NewMockClient(ctrl)
 	mockClient.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
-	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
 	mockContractStore := mocks.NewMockContractReader(ctrl)
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
@@ -660,7 +560,6 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		Vol24USDT:    60000000,
 	}
 
-	// 1. Arm expectations
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid:   59990.0,
@@ -672,63 +571,19 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		ContractSize: 0.001,
 	}, nil).AnyTimes()
 
-	// 2. Recheck expectations
 	mockClient.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
 		{Symbol: "BTC_USDT", Rate: 0.001},
 	}, nil)
 
-	// 3. FireIOC expectations (we assert CreateOrder receives Leverage = 10, and ChangeLeverage is NOT called)
 	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 10, gomock.Any()).Return(nil)
-	createOrderCalled := make(chan struct{})
-	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-		assert.Equal(t, 10, req.Leverage)
-		close(createOrderCalled)
-		return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
-	})
-	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
-		OrderID:      "ord_123",
-		Symbol:       "BTC_USDT",
-		State:        exchange.OrderStateFilled,
-		DealVol:      1,
-		DealAvgPrice: 60005.0,
-	}, nil).AnyTimes()
-	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVolContract: 1},
-	}, nil).AnyTimes()
-	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
-
-	// 4. Watcher/notifier expectations
-	watcherDone := make(chan struct{})
-	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
-		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
-			go func() {
-				defer close(watcherDone)
-				time.Sleep(50 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:          "BTC_USDT",
-					HoldVolContract: 1.5,
-					OpenAvgPrice:    60005.0,
-				})
-				time.Sleep(50 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:           "BTC_USDT",
-					HoldVolContract:  0.0,
-					CloseVolContract: 1.5,
-					OpenAvgPrice:     60100.0,
-				})
-			}()
-		},
-	)
-
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
+	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
 	require.NoError(t, err)
 
 	c := cache.New(5*time.Minute, 10*time.Minute)
-	repo := &fakeTradeReportRepository{}
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, c, slog.Default())
+	strategyInst.SetTestFallbacks(mockClock, nil, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"bybit": fakeFundingStoreSet{
@@ -741,13 +596,11 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	err = strategyInst.Start(context.Background(), stores)
 	require.NoError(t, err)
 
-	// Build candidate found event with SupportLeverageOnOrder = true
 	startEvt := reversion.CandidateFoundEvent{
-		Flow:       reversion.FlowReversion,
+		Flow:       reversion.FlowIDFundingReversion,
 		ReqID:      "req_skip_leverage",
 		Symbol:     candidate.Symbol,
 		Exchange:   candidate.Config.Exchange,
-		SendNotify: false,
 		Timestamp:  time.Now(),
 		EventID:    watermill.NewUUID(),
 		Seq:        1,
@@ -760,52 +613,16 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	err = bus.Publish(reversion.TopicReversionCandidate, startEvt)
 	require.NoError(t, err)
 
-	waitCompleted(t, compChan, createOrderCalled, watcherDone, 5*time.Second)
-}
-
-func waitCompleted(t *testing.T, ch <-chan *message.Message, createOrderCalled, watcherDone <-chan struct{}, timeout time.Duration) {
-	t.Helper()
-	for {
-		select {
-		case msg, ok := <-ch:
-			require.True(t, ok)
-			var compEvt reversion.ReversionCompletedEvent
-			err := json.Unmarshal(msg.Payload, &compEvt)
-			if err == nil && compEvt.Symbol == "BTC_USDT" {
-				msg.Ack()
-				select {
-				case <-createOrderCalled:
-				case <-time.After(5 * time.Second):
-					t.Fatal("Timeout waiting for CreateOrder to be called")
-				}
-				select {
-				case <-watcherDone:
-				case <-time.After(5 * time.Second):
-					t.Fatal("Timeout waiting for watcher to finish")
-				}
-				return
-			}
-			msg.Ack()
-		case <-time.After(timeout):
-			t.Fatal("Timeout waiting for TopicReversionCompleted")
-		}
+	select {
+	case msg := <-intentSub:
+		var intent ordermanager.OrderIntentEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
+		msg.Ack()
+		assert.Equal(t, 10, intent.Leverage)
+		assert.Equal(t, "req_skip_leverage", intent.ReqID)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for TopicOrderIntent")
 	}
-}
-
-type fakeTradeReportRepository struct {
-	savedReports []*domain.TradeReport
-	mu           sync.Mutex
-}
-
-func (f *fakeTradeReportRepository) Save(ctx context.Context, report *domain.TradeReport) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.savedReports = append(f.savedReports, report)
-	return nil
-}
-
-func (f *fakeTradeReportRepository) MarkObfuscated(ctx context.Context, reqID string, obfuscatedAt time.Time) error {
-	return nil
 }
 
 type mockClientWithMaxLeverage struct {
@@ -827,7 +644,6 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	mockClient := mocks.NewMockClient(ctrl)
 	mockClient.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
 	mockWs := mocks.NewMockSubscriber(ctrl)
-	mockOrderNotifier := mocks.NewMockOrderNotifier(ctrl)
 	mockTickerStore := mocks.NewMockTickerReader(ctrl)
 	mockContractStore := mocks.NewMockContractReader(ctrl)
 	mockPriceStore := mocks.NewMockPriceReader(ctrl)
@@ -936,7 +752,6 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		Vol24USDT:    60000000,
 	}
 
-	// 1. Arm expectations
 	mockPriceStore.EXPECT().SubscribePrice(gomock.Any(), "BTC_USDT").Return(nil)
 	mockPriceStore.EXPECT().GetPrice(gomock.Any(), "BTC_USDT", gomock.Any()).Return(&store.PriceData{
 		BestBid:   59990.0,
@@ -948,12 +763,10 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		ContractSize: 0.001,
 	}, nil).AnyTimes()
 
-	// 2. Recheck expectations
 	mockClient.EXPECT().GetFundingRates(gomock.Any(), []string{"BTC_USDT"}).Return([]exchange.FundingRateResult{
 		{Symbol: "BTC_USDT", Rate: 0.001},
 	}, nil)
 
-	// 3. FireIOC expectations (we assert ChangeLeverage is called with leverage = 5 due to risk limit capping)
 	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 5, gomock.Any()).Return(nil)
 
 	changeLeverageCalled := make(chan struct{})
@@ -963,56 +776,14 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		return nil
 	})
 
-	createOrderCalled := make(chan struct{})
-	mockClient.EXPECT().CreateOrder(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-		assert.Equal(t, 5, req.Leverage) // Asserts that order also gets the capped leverage
-		close(createOrderCalled)
-		return exchange.CreateOrderResult{OrderID: "ord_123", TPSLSubmitted: false}, nil
-	})
-	mockClient.EXPECT().GetOrder(gomock.Any(), gomock.Any(), "ord_123").Return(&exchange.OrderInfo{
-		OrderID:      "ord_123",
-		Symbol:       "BTC_USDT",
-		State:        exchange.OrderStateFilled,
-		DealVol:      1,
-		DealAvgPrice: 60005.0,
-	}, nil).AnyTimes()
-	mockClient.EXPECT().GetOpenPositions(gomock.Any(), "BTC_USDT").Return([]exchange.Position{
-		{Symbol: "BTC_USDT", HoldVolContract: 1},
-	}, nil).AnyTimes()
-	mockClient.EXPECT().CloseAllPositions(gomock.Any(), "BTC_USDT").Return(nil).AnyTimes()
-
-	// 4. Watcher/notifier expectations
-	watcherDone := make(chan struct{})
-	mockOrderNotifier.EXPECT().OnPositionUpdate(gomock.Any(), "BTC_USDT", gomock.Any(), gomock.Any()).Do(
-		func(ctx context.Context, symbol string, timeout time.Duration, cb func(exchange.PersonalPositionUpdate)) {
-			go func() {
-				defer close(watcherDone)
-				time.Sleep(50 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:          "BTC_USDT",
-					HoldVolContract: 1.5,
-					OpenAvgPrice:    60005.0,
-				})
-				time.Sleep(50 * time.Millisecond)
-				cb(exchange.PersonalPositionUpdate{
-					Symbol:           "BTC_USDT",
-					HoldVolContract:  0.0,
-					CloseVolContract: 1.5,
-					OpenAvgPrice:     60100.0,
-				})
-			}()
-		},
-	)
-
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	compChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCompleted)
+	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
 	require.NoError(t, err)
 
 	c := cache.New(5*time.Minute, 10*time.Minute)
-	repo := &fakeTradeReportRepository{}
-	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, repo, c, slog.Default())
-	strategyInst.SetTestFallbacks(mockClock, mockOrderNotifier, infraws.NewExchangeManagerAdapter(nil))
+	strategyInst := reversion.NewStrategy(engine, globalCfg, mockNotifier, c, slog.Default())
+	strategyInst.SetTestFallbacks(mockClock, nil, infraws.NewExchangeManagerAdapter(nil))
 
 	stores := map[string]strategy.FundingStoreSet{
 		"bybit": fakeFundingStoreSet{
@@ -1026,11 +797,10 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	require.NoError(t, err)
 
 	startEvt := reversion.CandidateFoundEvent{
-		Flow:       reversion.FlowReversion,
+		Flow:       reversion.FlowIDFundingReversion,
 		ReqID:      "req_capped_leverage",
 		Symbol:     candidate.Symbol,
 		Exchange:   candidate.Config.Exchange,
-		SendNotify: false,
 		Timestamp:  time.Now(),
 		EventID:    watermill.NewUUID(),
 		Seq:        1,
@@ -1043,17 +813,25 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 	err = bus.Publish(reversion.TopicReversionCandidate, startEvt)
 	require.NoError(t, err)
 
-	waitCompleted(t, compChan, createOrderCalled, watcherDone, 5*time.Second)
-
-	// Wait for change leverage to have been called
 	select {
 	case <-changeLeverageCalled:
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("Timeout waiting for ChangeLeverage to be called")
+	}
+
+	select {
+	case msg := <-intentSub:
+		var intent ordermanager.OrderIntentEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
+		msg.Ack()
+		assert.Equal(t, 5, intent.Leverage)
+		assert.Equal(t, "req_capped_leverage", intent.ReqID)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for TopicOrderIntent")
 	}
 }
 
-func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
+func TestReversion_OrderManager_DispatchesOrderIntent(t *testing.T) {
 	t.Parallel()
 	testCand := domain.Candidate{
 		Config: domain.TradeConfig{
@@ -1078,147 +856,83 @@ func TestReversion_UseOrderManager_FlagToggle(t *testing.T) {
 		Volume:    1,
 	}
 
-	t.Run("UseOrderManager = true dispatches ordermanager.TopicOrderIntent", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		bus := eventbus.New(slog.Default())
-		t.Cleanup(func() { _ = bus.Close() })
+	ctrl := gomock.NewController(t)
+	bus := eventbus.New(slog.Default())
+	t.Cleanup(func() { _ = bus.Close() })
 
-		cand := testCand
-		cand.ContractSpec = domain.ContractSpec{
-			PriceUnit:    0.01,
-			VolUnit:      1,
-			MinVol:       1,
-			PriceScale:   2,
-			VolScale:     4,
-			ContractSize: 0.001,
-		}
-		cand.Config.FundingReversion.UseOrderManager = true
+	cand := testCand
+	cand.ContractSpec = domain.ContractSpec{
+		PriceUnit:    0.01,
+		VolUnit:      1,
+		MinVol:       1,
+		PriceScale:   2,
+		VolScale:     4,
+		ContractSize: 0.001,
+	}
 
-		client := mocks.NewMockClient(ctrl)
-		client.EXPECT().SwitchMarginMode(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		client.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SwitchMarginMode(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	client.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
 
-		engine := &app.Engine{
-			Bus: bus,
-			Providers: map[string]*app.ExchangeProvider{
-				"mexc": {
-					Name:    "mexc",
-					Client:  client,
-					Adapter: infraws.NewExchangeManagerAdapter(nil),
-				},
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:    "mexc",
+				Client:  client,
+				Adapter: infraws.NewExchangeManagerAdapter(nil),
 			},
-		}
-		cfg := &config.Config{
-			Reversion: &config.ReversionConfig{
-				Safety: config.SafetyConfig{
-					MaxImpactRatio: 1.0,
-				},
+		},
+	}
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			Safety: config.SafetyConfig{
+				MaxImpactRatio: 1.0,
 			},
-		}
-		strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, nil, slog.Default())
+		},
+	}
+	strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, slog.Default())
 
-		intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
-		require.NoError(t, err)
+	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+	require.NoError(t, err)
 
-		now := time.Now()
-		mockClock := mocks.NewMockClock(ctrl)
-		mockClock.EXPECT().Now().Return(now).AnyTimes()
-		mockClock.EXPECT().LatencyMs().Return(int64(20)).AnyTimes()
-		mockClock.EXPECT().Until(gomock.Any()).Return(50 * time.Millisecond).AnyTimes()
-		mockClock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		strategyInst.SetTestFallbacks(mockClock, nil, nil)
+	now := time.Now()
+	mockClock := mocks.NewMockClock(ctrl)
+	mockClock.EXPECT().Now().Return(now).AnyTimes()
+	mockClock.EXPECT().LatencyMs().Return(int64(20)).AnyTimes()
+	mockClock.EXPECT().Until(gomock.Any()).Return(50 * time.Millisecond).AnyTimes()
+	mockClock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	strategyInst.SetTestFallbacks(mockClock, nil, nil)
 
-		confirmedEvt := reversion.ConfirmedEvent{
-			ReqID:      "req-om-true",
-			Symbol:     "BTC_USDT",
-			Exchange:   "mexc",
-			SettleTime: now.Add(1 * time.Second),
-			Candidate:  cand,
-		}
+	confirmedEvt := reversion.ConfirmedEvent{
+		ReqID:      "req-om-true",
+		Symbol:     "BTC_USDT",
+		Exchange:   "mexc",
+		SettleTime: now.Add(1 * time.Second),
+		Candidate:  cand,
+	}
 
-		mockPriceStore := mocks.NewMockPriceReader(ctrl)
-		mockPriceStore.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 59990, BestAsk: 60000, LastPrice: 60000}, nil).AnyTimes()
+	mockPriceStore := mocks.NewMockPriceReader(ctrl)
+	mockPriceStore.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 59990, BestAsk: 60000, LastPrice: 60000}, nil).AnyTimes()
 
-		stores := map[string]strategy.FundingStoreSet{
-			"mexc": fakeFundingStoreSet{
-				price: mockPriceStore,
-			},
-		}
-		require.NoError(t, strategyInst.Start(context.Background(), stores))
+	stores := map[string]strategy.FundingStoreSet{
+		"mexc": fakeFundingStoreSet{
+			price: mockPriceStore,
+		},
+	}
+	require.NoError(t, strategyInst.Start(context.Background(), stores))
 
-		require.NoError(t, bus.Publish(reversion.TopicReversionConfirmed, confirmedEvt))
+	require.NoError(t, bus.Publish(reversion.TopicReversionConfirmed, confirmedEvt))
 
-		select {
-		case msg := <-intentSub:
-			var receivedIntent ordermanager.OrderIntentEvent
-			require.NoError(t, json.Unmarshal(msg.Payload, &receivedIntent))
-			assert.Equal(t, "req-om-true", receivedIntent.ReqID)
-			assert.Equal(t, "BTC_USDT", receivedIntent.Symbol)
-			assert.Equal(t, ordermanager.StrategyFundingReversion, receivedIntent.StrategyType)
-			assert.Greater(t, receivedIntent.Price, 0.0)
-		case <-time.After(3 * time.Second):
-			t.Fatal("Timeout waiting for OrderIntentEvent on ordermanager.TopicOrderIntent")
-		}
-	})
-
-	t.Run("UseOrderManager = false dispatches TopicReversionMarginModeReady", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		bus := eventbus.New(slog.Default())
-		t.Cleanup(func() { _ = bus.Close() })
-
-		cand := testCand
-		cand.Config.FundingReversion.UseOrderManager = false
-
-		client := mocks.NewMockClient(ctrl)
-		client.EXPECT().SwitchMarginMode(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		client.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
-
-		engine := &app.Engine{
-			Bus: bus,
-			Providers: map[string]*app.ExchangeProvider{
-				"mexc": {
-					Name:    "mexc",
-					Client:  client,
-					Adapter: infraws.NewExchangeManagerAdapter(nil),
-				},
-			},
-		}
-		cfg := &config.Config{}
-		strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, nil, slog.Default())
-
-		marginSub, err := bus.Subscribe(context.Background(), reversion.TopicReversionMarginModeReady)
-		require.NoError(t, err)
-
-		confirmedEvt := reversion.ConfirmedEvent{
-			ReqID:      "req-om-false",
-			Symbol:     "BTC_USDT",
-			Exchange:   "mexc",
-			SettleTime: time.Now().Add(10 * time.Second),
-			Candidate:  cand,
-		}
-
-		mockPriceStore2 := mocks.NewMockPriceReader(ctrl)
-		mockPriceStore2.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 100, BestAsk: 101, LastPrice: 100.5}, nil).AnyTimes()
-
-		stores := map[string]strategy.FundingStoreSet{
-			"mexc": fakeFundingStoreSet{
-				price: mockPriceStore2,
-			},
-		}
-		require.NoError(t, strategyInst.Start(context.Background(), stores))
-
-		require.NoError(t, bus.Publish(reversion.TopicReversionConfirmed, confirmedEvt))
-
-		select {
-		case msg := <-marginSub:
-			var receivedMarginReady reversion.MarginModeReadyEvent
-			require.NoError(t, json.Unmarshal(msg.Payload, &receivedMarginReady))
-			assert.Equal(t, "req-om-false", receivedMarginReady.ReqID)
-			assert.Equal(t, "BTC_USDT", receivedMarginReady.Symbol)
-		case <-time.After(3 * time.Second):
-			t.Fatal("Timeout waiting for MarginModeReadyEvent on TopicReversionMarginModeReady")
-		}
-	})
+	select {
+	case msg := <-intentSub:
+		var receivedIntent ordermanager.OrderIntentEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &receivedIntent))
+		assert.Equal(t, "req-om-true", receivedIntent.ReqID)
+		assert.Equal(t, "BTC_USDT", receivedIntent.Symbol)
+		assert.Equal(t, ordermanager.StrategyFundingReversion, receivedIntent.StrategyType)
+		assert.Greater(t, receivedIntent.Price, 0.0)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Timeout waiting for OrderIntentEvent on ordermanager.TopicOrderIntent")
+	}
 }

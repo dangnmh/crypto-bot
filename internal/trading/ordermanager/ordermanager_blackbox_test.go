@@ -163,14 +163,6 @@ func (n *blackboxNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	return nil
 }
 
-func (n *blackboxNotifier) SendRawMsg(ctx context.Context, msg string) error {
-	return n.Send(ctx, notifier.Event{
-		Level:   notifier.LevelNormal,
-		Message: msg,
-		IsRaw:   true,
-	})
-}
-
 func (n *blackboxNotifier) SentEvents() []notifier.Event {
 	n.mu.Lock()
 	defer n.mu.Unlock()

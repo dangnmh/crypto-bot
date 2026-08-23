@@ -67,7 +67,7 @@ func NewClient(ctx context.Context, httpClient *http.Client, baseURL, apiKey, ap
 	var spotMeta *hl.SpotMeta
 	var spotState *hl.MixedArray
 
-	if strings.HasPrefix(baseURL, "http://") || strings.Contains(baseURL, "127.0.0.1") {
+	if meta == nil {
 		meta = &hl.Meta{
 			Universe: []hl.AssetInfo{
 				{

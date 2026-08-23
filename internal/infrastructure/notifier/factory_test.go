@@ -17,7 +17,7 @@ func TestNewFromConfigDisabledReturnsNoop(t *testing.T) {
 	require.NoError(t, err)
 	require.Implements(t, (*notifier.Notifier)(nil), n)
 	require.NoError(t, n.Start(context.Background()))
-	require.NoError(t, n.Send(context.Background(), notifier.Event{Level: notifier.LevelInfo, Message: "ignored"}))
+	require.NoError(t, n.Send(context.Background(), notifier.Event{Level: notifier.LevelNormal, Message: "ignored"}))
 	require.NoError(t, n.Stop(context.Background()))
 }
 

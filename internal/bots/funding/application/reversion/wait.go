@@ -20,7 +20,7 @@ func (r *StatelessRunner) handleWait(ctx context.Context, armedEvt ArmedEvent) e
 
 	target := settleTime.Add(-5 * time.Second)
 	if err := r.waitUntilFuture(ctx, armedEvt.Symbol, target); err != nil {
-		r.abortAfter(ctx, armedEvt.BaseReversionEvent, armedEvt.Symbol, ReversionReason("wait period failed: "+err.Error()))
+		r.abortAfter(ctx, armedEvt.BaseReversionEvent, armedEvt.Symbol, "wait period failed: "+err.Error())
 		return err
 	}
 

@@ -223,11 +223,10 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 	}
 
 	startEvt := reversion.CandidateFoundEvent{
-		Flow:         reversion.FlowReversion,
-		ReqID:        orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowReversion),
+		Flow:         reversion.FlowIDFundingReversion,
+		ReqID:        orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowIDFundingReversion),
 		Symbol:       candidate.Symbol,
 		Exchange:     candidate.Config.Exchange,
-		SendNotify:   false,
 		Timestamp:    eventTimestamp,
 		EventID:      watermill.NewUUID(),
 		Seq:          1,

@@ -24,7 +24,7 @@ func TestTelegramProviderSendQueueAndStop(t *testing.T) {
 		queue:  make(chan Event, 1),
 	}
 
-	err := p.Send(context.Background(), Event{Level: LevelInfo, Message: "queued"})
+	err := p.Send(context.Background(), Event{Level: LevelNormal, Message: "queued"})
 	require.NoError(t, err)
 	assert.Equal(t, "queued", (<-p.queue).Message)
 
@@ -64,58 +64,6 @@ func TestTelegramProviderStartDrainsQueueWithNilBot(t *testing.T) {
 		return len(p.queue) == 0
 	}, time.Second, 10*time.Millisecond)
 	require.NoError(t, p.Stop(context.Background()))
-}
-
-func TestTelegramProviderFormatMessage(t *testing.T) {
-	t.Parallel()
-
-	p := &TelegramProvider{logger: testNotifierLogger()}
-
-	normal := p.formatMessage(Event{
-		Level:    LevelNormal,
-		Exchange: "bybit",
-		Symbol:   "BTC_USDT",
-		Message:  "order filled",
-		Data:     map[string]any{"price": 60000, "floatVal": 0.038429, "wholeFloat": 5.0, "volusdt24h": 60000000.0, "fundingRate": 0.008},
-	})
-	assert.Contains(t, normal, "[NORMAL] [bybit] [BTC_USDT]")
-	assert.Contains(t, normal, "order filled")
-	assert.Contains(t, normal, "price: 60000")
-	assert.Contains(t, normal, "floatVal: 0.0384")
-	assert.Contains(t, normal, "wholeFloat: 5")
-	assert.Contains(t, normal, "volusdt24h: 60m")
-	assert.Contains(t, normal, "fundingRate: 0.8%")
-
-	negativeFR := p.formatMessage(Event{
-		Level: LevelNormal,
-		Data:  map[string]any{"fundingRate": -0.01},
-	})
-	assert.Contains(t, negativeFR, "fundingRate: -1%")
-
-	exchangeOnly := p.formatMessage(Event{Level: LevelNormal, Exchange: "mexc", Message: "risk"})
-	assert.Contains(t, exchangeOnly, "[NORMAL] [mexc]")
-
-	critical := p.formatMessage(Event{Level: LevelCritical, Message: "risk"})
-	assert.Contains(t, critical, "[CRITICAL]")
-
-	info := p.formatMessage(Event{Level: LevelInfo, Message: "started"})
-	assert.Contains(t, info, "[INFO]")
-
-	// Test color mapping
-	greenEvt := p.formatMessage(Event{Level: LevelInfo, Color: "green", Message: "gain"})
-	assert.Contains(t, greenEvt, "🟢 [INFO]")
-
-	redEvt := p.formatMessage(Event{Level: LevelInfo, Color: "red", Message: "loss"})
-	assert.Contains(t, redEvt, "🔴 [INFO]")
-
-	blueEvt := p.formatMessage(Event{Level: LevelInfo, Color: "blue", Message: "info"})
-	assert.Contains(t, blueEvt, "🔵 [INFO]")
-
-	yellowEvt := p.formatMessage(Event{Level: LevelInfo, Color: "yellow", Message: "warn"})
-	assert.Contains(t, yellowEvt, "🟡 [INFO]")
-
-	defaultEvt := p.formatMessage(Event{Level: LevelInfo, Message: "default"})
-	assert.Contains(t, defaultEvt, "🟡 [INFO]") // Defaults to yellow
 }
 
 func TestTelegramProviderTargetChatID(t *testing.T) {

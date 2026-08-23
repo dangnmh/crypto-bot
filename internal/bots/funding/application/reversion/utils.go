@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
 	"crypto-bot/internal/bots/funding/application/strategy"
@@ -12,21 +13,14 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	infrawatcher "crypto-bot/internal/infrastructure/watcher"
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
+	"crypto-bot/pkg/formatutil"
 
 	"github.com/ThreeDotsLabs/watermill"
-	"github.com/cenkalti/backoff/v4"
 	"github.com/patrickmn/go-cache"
-	"github.com/samber/lo"
-)
-
-const (
-	reversionReasonNoFill        ReversionReason = "no_fill"
-	reversionMethodFallbackClose ReversionReason = "fallback_close"
 )
 
 // Strategy implements strategy.BackgroundStrategy interface in a lightweight, stateless manner.
@@ -36,7 +30,6 @@ type Strategy struct {
 	notifier notifier.Notifier
 	log      *slog.Logger
 	stores   map[string]strategy.FundingStoreSet
-	repo     domain.TradeReportRepository
 	cache    *cache.Cache
 
 	// Test fallbacks
@@ -49,16 +42,14 @@ func NewStrategy(
 	engine *app.Engine,
 	global *config.Config,
 	n notifier.Notifier,
-	repo domain.TradeReportRepository,
 	c *cache.Cache,
 	log *slog.Logger,
 ) *Strategy {
-	logger := log.With("flow", FlowReversion)
+	logger := log.With("flow", FlowIDFundingReversion)
 	return &Strategy{
 		engine:   engine,
 		global:   global,
 		notifier: n,
-		repo:     repo,
 		cache:    c,
 		log:      logger,
 	}
@@ -67,7 +58,7 @@ func NewStrategy(
 var _ strategy.BackgroundStrategy = (*Strategy)(nil)
 
 func (s *Strategy) Flow() string {
-	return FlowReversion
+	return FlowIDFundingReversion
 }
 
 func (s *Strategy) Enabled(cfg config.SymbolConfig) bool {
@@ -78,14 +69,13 @@ func (s *Strategy) Start(ctx context.Context, stores map[string]strategy.Funding
 	s.stores = stores
 
 	runner := &StatelessRunner{
-		globalCfg:  s.global,
-		bus:        s.engine.Bus,
-		log:        s.log,
-		engine:     s.engine,
-		stores:     s.stores,
-		notifier:   s.notifier,
-		cache:      s.cache,
-		reportRepo: s.repo,
+		globalCfg: s.global,
+		bus:       s.engine.Bus,
+		log:       s.log,
+		engine:    s.engine,
+		stores:    s.stores,
+		notifier:  s.notifier,
+		cache:     s.cache,
 		// Pass test fallbacks
 		clock:         s.clock,
 		orderNotifier: s.orderNotifier,
@@ -113,11 +103,10 @@ type StatelessRunner struct {
 	bus       *eventbus.Bus
 	log       *slog.Logger
 
-	engine     *app.Engine
-	stores     map[string]strategy.FundingStoreSet
-	notifier   notifier.Notifier
-	cache      *cache.Cache
-	reportRepo domain.TradeReportRepository
+	engine   *app.Engine
+	stores   map[string]strategy.FundingStoreSet
+	notifier notifier.Notifier
+	cache    *cache.Cache
 
 	// Target context to resolve configuration conflicts across multiple exchanges
 	exchange string
@@ -188,29 +177,200 @@ func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payloa
 		return err
 	}
 
-	// Check if the event wants to trigger a notification
-	if revEvt, ok := payload.(ReversionEvent); ok && revEvt.ShouldNotify() {
-		level := notifier.LevelNormal
-		if topic == TopicReversionAbort || topic == TopicReversionError {
-			level = notifier.LevelCritical
-		}
-
-		evt := notifier.Event{
-			Level:     level,
-			Exchange:  revEvt.GetExchange(),
-			Symbol:    revEvt.GetSymbol(),
-			Message:   revEvt.GetMessage(),
-			Color:     string(revEvt.GetColor()),
-			Data:      revEvt.GetDataMap(),
-			Timestamp: r.deps.Clock.Now(),
-		}
-
-		if err := r.deps.Notifier.Send(ctx, evt); err != nil {
-			r.log.ErrorContext(ctx, "Failed to send notification", slog.Any("error", err))
+	if topic == TopicReversionArmed || topic == TopicReversionAbort {
+		if revEvt, ok := payload.(ReversionEvent); ok {
+			msg := formatReversionNotification(topic, revEvt)
+			if err := r.deps.Notifier.Send(ctx, notifier.Event{
+				Level:     notifier.LevelNormal,
+				Message:   msg,
+				Timestamp: r.deps.Clock.Now(),
+			}); err != nil {
+				r.log.ErrorContext(ctx, "Failed to send notification", slog.Any("error", err))
+			}
 		}
 	}
 
 	return nil
+}
+
+const (
+	sideDisplayLong  = "Long"
+	sideDisplayShort = "Short"
+
+	statusCandidate = "CANDIDATE"
+	statusAborted   = "ABORTED"
+)
+
+var topicStatusTags = map[string]string{
+	TopicReversionArmed: statusCandidate,
+	TopicReversionAbort: statusAborted,
+}
+
+func topicToStatusTag(topic string) string {
+	if tag, ok := topicStatusTags[topic]; ok {
+		return tag
+	}
+	parts := strings.Split(topic, ".")
+	if len(parts) > 0 {
+		return strings.ToUpper(parts[len(parts)-1])
+	}
+	return "REVERSION"
+}
+
+func formatSide(side shared.Side) string {
+	switch side {
+	case shared.SideOpenLong, shared.SideCloseLong:
+		return sideDisplayLong
+	case shared.SideOpenShort, shared.SideCloseShort:
+		return sideDisplayShort
+	default:
+		return ""
+	}
+}
+
+func formatPrice(price float64) string {
+	if price == 0 {
+		return "0"
+	}
+	return formatutil.FormatPriceWithCommas(price)
+}
+
+func formatFR(rate float64) string {
+	sign := ""
+	if rate > 0 {
+		sign = "+"
+	}
+	return fmt.Sprintf("%s%.1f%%", sign, rate*100)
+}
+
+func formatCandidateNotification(
+	header, symbol string, side shared.Side, cfg domain.TradeConfig,
+	price, volume, fundingRate, vol24h float64,
+	orderID, extID, reqID, note string,
+) string {
+	var lines []string
+	lines = append(lines, header)
+
+	sideStr := formatSide(side)
+	if sideStr != "" {
+		lines = append(lines, fmt.Sprintf("• Symbol: %s | Side: %s", symbol, sideStr))
+	} else {
+		lines = append(lines, fmt.Sprintf("• Symbol: %s", symbol))
+	}
+
+	if cfg.MarginUSDT > 0 || cfg.Leverage > 0 {
+		lines = append(lines, fmt.Sprintf("• Margin: %.2f USDT | Leverage: %dx", cfg.MarginUSDT, cfg.Leverage))
+	}
+
+	sizeUSDT := price * volume
+	if sizeUSDT > 0 {
+		lines = append(lines, fmt.Sprintf("• Price: %s | Size: %.2f USDT", formatPrice(price), sizeUSDT))
+	} else if price > 0 {
+		lines = append(lines, fmt.Sprintf("• Price: %s", formatPrice(price)))
+	}
+
+	frStr := formatFR(fundingRate)
+	volStr := formatutil.FormatCompactUSD(vol24h)
+	lines = append(lines, fmt.Sprintf("• FR: %s | Vol24h: $%s", frStr, volStr))
+
+	if note != "" {
+		lines = append(lines, fmt.Sprintf("• Note: %s", note))
+	}
+	if orderID != "" {
+		lines = append(lines, fmt.Sprintf("• Order ID: %s", orderID))
+	}
+	if extID != "" {
+		lines = append(lines, fmt.Sprintf("• Client ID: %s", extID))
+	}
+	if reqID != "" {
+		lines = append(lines, fmt.Sprintf("• Req ID: %s", reqID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatAbortNotification(header string, e AbortEvent) string {
+	lines := []string{header, fmt.Sprintf("• Symbol: %s", e.Symbol)}
+	if e.Reason != "" {
+		lines = append(lines, fmt.Sprintf("• Reason: %s", e.Reason))
+	}
+	if e.OrderID != "" {
+		lines = append(lines, fmt.Sprintf("• Order ID: %s", e.OrderID))
+	}
+	if e.ExternalID != "" {
+		lines = append(lines, fmt.Sprintf("• Client ID: %s", e.ExternalID))
+	}
+	if e.ReqID != "" {
+		lines = append(lines, fmt.Sprintf("• Req ID: %s", e.ReqID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatDefaultNotification(header string, revEvt ReversionEvent) string {
+	lines := []string{header, fmt.Sprintf("• Symbol: %s", revEvt.GetSymbol())}
+	if revEvt.GetOrderID() != "" {
+		lines = append(lines, fmt.Sprintf("• Order ID: %s", revEvt.GetOrderID()))
+	}
+	if revEvt.GetExternalID() != "" {
+		lines = append(lines, fmt.Sprintf("• Client ID: %s", revEvt.GetExternalID()))
+	}
+	if revEvt.GetReqID() != "" {
+		lines = append(lines, fmt.Sprintf("• Req ID: %s", revEvt.GetReqID()))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatReversionNotification(topic string, revEvt ReversionEvent) string {
+	emoji := "🟡"
+	if topic == TopicReversionAbort {
+		emoji = "🔴"
+	}
+	exch := strings.ToLower(revEvt.GetExchange())
+	if exch == "" {
+		exch = "unknown"
+	}
+	status := topicToStatusTag(topic)
+	header := fmt.Sprintf("%s [FUNDING_REVERSION] [%s] [%s]", emoji, exch, status)
+
+	switch e := revEvt.(type) {
+	case CandidateFoundEvent:
+		side := e.Candidate.Side
+		if side == shared.SideUnknown {
+			side = e.Side
+		}
+		return formatCandidateNotification(
+			header, e.Symbol, side, e.Candidate.Config,
+			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
+			e.OrderID, e.ExternalID, e.ReqID, "",
+		)
+
+	case ArmMarketReadyEvent:
+		side := e.Candidate.Side
+		if side == shared.SideUnknown {
+			side = e.Side
+		}
+		return formatCandidateNotification(
+			header, e.Symbol, side, e.Candidate.Config,
+			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
+			e.OrderID, e.ExternalID, e.ReqID, "",
+		)
+
+	case ArmedEvent:
+		side := e.Candidate.Side
+		if side == shared.SideUnknown {
+			side = e.Side
+		}
+		return formatCandidateNotification(
+			header, e.Symbol, side, e.Candidate.Config,
+			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
+			e.OrderID, e.ExternalID, e.ReqID, "",
+		)
+
+	case AbortEvent:
+		return formatAbortNotification(header, e)
+
+	default:
+		return formatDefaultNotification(header, revEvt)
+	}
 }
 
 func stampEventTrace(topic string, payload any) any {
@@ -269,11 +429,10 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		seq = prev.Seq + 1
 	}
 	return BaseReversionEvent{
-		Flow:          FlowReversion,
+		Flow:          FlowIDFundingReversion,
 		ReqID:         prev.ReqID,
 		Symbol:        symbol,
 		Exchange:      prev.Exchange,
-		Color:         prev.Color,
 		OrderID:       prev.OrderID,
 		ExternalID:    prev.ExternalID,
 		Timestamp:     timestamp,
@@ -285,12 +444,6 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 		Vol24hUSDT:    prev.Vol24hUSDT,
 		ContractSize:  prev.ContractSize,
 	}
-}
-
-func nextNotifyReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Time) BaseReversionEvent {
-	base := nextReversionBase(prev, symbol, timestamp)
-	base.SendNotify = true
-	return base
 }
 
 func (r *StatelessRunner) WaitUntil(ctx context.Context, symbol string, target time.Time) bool {
@@ -315,10 +468,16 @@ func (r *StatelessRunner) waitUntilFuture(ctx context.Context, symbol string, ta
 }
 
 func (r *StatelessRunner) subscribeWS(ctx context.Context, symbol string) error {
+	if r.deps.WsSub == nil {
+		return nil
+	}
 	return r.deps.WsSub.SubscribeTicker(ctx, FlowIDFundingReversion, symbol)
 }
 
 func (r *StatelessRunner) unsubscribeWS(ctx context.Context, symbol string) {
+	if r.deps.WsSub == nil {
+		return
+	}
 	if err := r.deps.WsSub.UnsubscribeTicker(ctx, FlowIDFundingReversion, symbol); err != nil {
 		r.log.WarnContext(ctx, "⚠️ Failed to unsubscribe ticker", slog.String("symbol", symbol), slog.Any("error", err))
 	}
@@ -356,281 +515,10 @@ func (r *StatelessRunner) refreshPrice(ctx context.Context, c *domain.Candidate)
 	return nil
 }
 
-func (r *StatelessRunner) abort(ctx context.Context, symbol, reqID, exchangeName string, reason ReversionReason) {
-	evt := AbortEvent{
-		Flow:      FlowReversion,
-		ReqID:     reqID,
-		Symbol:    symbol,
-		Exchange:  exchangeName,
-		Timestamp: r.deps.Clock.Now(),
-		Reason:    reason,
-	}
-	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
-}
-
-func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEvent, symbol string, reason ReversionReason) {
+func (r *StatelessRunner) abortAfter(ctx context.Context, prev BaseReversionEvent, symbol, reason string) {
 	evt := AbortEvent{
 		BaseReversionEvent: nextReversionBase(prev, symbol, r.deps.Clock.Now()),
 		Reason:             reason,
 	}
 	_ = r.publishEvent(ctx, TopicReversionAbort, evt)
-}
-
-func (r *StatelessRunner) determineFillPrice(pos exchange.PersonalPositionUpdate) float64 {
-	fillPrice := pos.OpenAvgPrice
-	if fillPrice == 0 {
-		fillPrice = pos.HoldAvgPrice
-	}
-	return fillPrice
-}
-
-func normalizeVolume(volContract, volCoin, contractSize float64) (float64, float64) {
-	if volContract == 0 && volCoin > 0 && contractSize > 0 {
-		volContract = volCoin / contractSize
-	}
-	if volCoin == 0 && volContract > 0 && contractSize > 0 {
-		volCoin = volContract * contractSize
-	}
-	return volContract, volCoin
-}
-
-func (r *StatelessRunner) isCycleOpened(reqID string) bool {
-	cachedVal, found := r.cache.Get(reqID)
-	if !found {
-		return false
-	}
-	state, ok := cachedVal.(*CycleState)
-	if !ok {
-		return false
-	}
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	return state.OrderFilled || state.FillPrice > 0
-}
-
-func (r *StatelessRunner) markCycleFilled(reqID string, fillPrice float64) {
-	if cachedVal, found := r.cache.Get(reqID); found {
-		if state, ok := cachedVal.(*CycleState); ok {
-			state.mu.Lock()
-			state.OrderFilled = true
-			if fillPrice > 0 {
-				state.FillPrice = fillPrice
-			}
-			state.mu.Unlock()
-		}
-	}
-}
-
-func (r *StatelessRunner) handleOpenPositionUpdate(
-	ctx context.Context,
-	pos exchange.PersonalPositionUpdate,
-	prev BaseReversionEvent,
-	fillPrice float64,
-	side, closeSide shared.Side,
-	holdVolContract, holdVolCoin float64,
-) {
-	r.markCycleFilled(prev.ReqID, fillPrice)
-
-	base := nextReversionBase(prev, pos.Symbol, r.deps.Clock.Now())
-	if base.OrderID == "" {
-		if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
-			base.OrderID = resolved
-		}
-	}
-	evt := OrderFilledEvent{
-		BaseReversionEvent: base,
-		Side:               side,
-		CloseSide:          closeSide,
-		FillPrice:          fillPrice,
-		FillVolContract:    holdVolContract,
-		FillVolCoin:        holdVolCoin,
-		VolumeUSDT:         fillPrice * holdVolCoin,
-	}
-	go func() {
-		_ = r.publishEvent(ctx, TopicReversionOrderFilled, evt)
-	}()
-}
-
-func (r *StatelessRunner) handleClosedPositionUpdate(
-	ctx context.Context,
-	pos exchange.PersonalPositionUpdate,
-	prev BaseReversionEvent,
-	fillPrice float64,
-	side shared.Side,
-	contractSize float64,
-) {
-	if !r.isCycleOpened(prev.ReqID) && pos.CloseProfitLoss == 0 && pos.OpenAvgPrice == 0 {
-		r.log.DebugContext(ctx, "Ignoring 0 volume position update for unopened position", slog.String("req_id", prev.ReqID), slog.String("symbol", pos.Symbol))
-		return
-	}
-
-	evt, err := r.buildAndEnrichClosedEvent(ctx, pos, fillPrice, side, prev, contractSize)
-	if err != nil {
-		r.log.ErrorContext(ctx, "Failed to build closed event", slog.Any("pos", pos), slog.Any("error", err))
-		return
-	}
-	go func() {
-		_ = r.publishEvent(ctx, TopicReversionPositionClosed, evt)
-	}()
-}
-
-func (r *StatelessRunner) handlePositionUpdate(ctx context.Context, pos exchange.PersonalPositionUpdate, prev BaseReversionEvent) {
-	if _, found := r.cache.Get(prev.ReqID); !found {
-		r.log.DebugContext(ctx, "Ignoring position update; cycle already cleaned up or inactive", slog.String("req_id", prev.ReqID))
-		return
-	}
-
-	r.log.Debug("Position update received", slog.Any("pos", pos))
-
-	contractSize := 1.0
-	if cd, err := r.deps.ContractStore.GetContract(ctx, pos.Symbol); err == nil && cd.ContractSize > 0 {
-		contractSize = cd.ContractSize
-	}
-
-	fillPrice := r.determineFillPrice(pos)
-
-	side := shared.SideOpenLong
-	closeSide := shared.SideCloseLong
-	if pos.PositionType == exchange.PositionTypeShort {
-		side = shared.SideOpenShort
-		closeSide = shared.SideCloseShort
-	}
-
-	holdVolContract, holdVolCoin := normalizeVolume(pos.HoldVolContract, pos.HoldVolCoin, contractSize)
-
-	if holdVolContract > 0 || holdVolCoin > 0 {
-		r.handleOpenPositionUpdate(ctx, pos, prev, fillPrice, side, closeSide, holdVolContract, holdVolCoin)
-	} else {
-		r.handleClosedPositionUpdate(ctx, pos, prev, fillPrice, side, contractSize)
-	}
-}
-
-func calculatePnLPct(entry, exit float64, side shared.Side) float64 {
-	if entry <= 0 {
-		return 0
-	}
-	if side == shared.SideOpenLong {
-		return ((exit - entry) / entry) * 100.0
-	}
-	return ((entry - exit) / entry) * 100.0
-}
-
-func (r *StatelessRunner) buildAndEnrichClosedEvent(
-	ctx context.Context,
-	pos exchange.PersonalPositionUpdate,
-	fillPrice float64,
-	side shared.Side,
-	prev BaseReversionEvent,
-	contractSize float64,
-) (*PositionClosedEvent, error) {
-	closePrice := fillPrice
-	if pos.CloseAvgPrice > 0 {
-		closePrice = pos.CloseAvgPrice
-	}
-
-	closeVolContract, closeVolCoin := normalizeVolume(pos.CloseVolContract, pos.CloseVolCoin, contractSize)
-	volUSDT := closeVolCoin * closePrice
-
-	evt := PositionClosedEvent{
-		BaseReversionEvent: nextNotifyReversionBase(prev, pos.Symbol, r.deps.Clock.Now()),
-		EntryPrice:         fillPrice,
-		ClosePrice:         closePrice,
-		CloseVolContract:   closeVolContract,
-		CloseVolCoin:       closeVolCoin,
-		Reason:             "exchange_push",
-		GrossProfit:        pos.CloseProfitLoss,
-		NetProfit:          pos.CloseProfitLoss - pos.Fee + pos.HoldFee,
-		PnLPct:             calculatePnLPct(fillPrice, closePrice, side),
-		VolumeUSDT:         volUSDT,
-		Fee:                pos.Fee,
-		HoldFee:            pos.HoldFee,
-		Method:             "watcher",
-	}
-
-	if err := r.enrichFromClosedPnLProvider(ctx, pos.Symbol, prev, contractSize, &evt); err != nil {
-		r.log.WarnContext(ctx, "ClosedPnLProvider enrichment failed; using position update metrics", slog.String("symbol", pos.Symbol), slog.Any("error", err))
-	}
-
-	if evt.OrderID == "" {
-		if resolved, err := r.resolveOrderID(prev.ReqID, prev.OrderID); err == nil {
-			evt.OrderID = resolved
-		}
-	}
-
-	return &evt, nil
-}
-
-func (r *StatelessRunner) enrichFromClosedPnLProvider(
-	ctx context.Context,
-	symbol string,
-	prev BaseReversionEvent,
-	contractSize float64,
-	evt *PositionClosedEvent,
-) error {
-	provider, ok := r.deps.Client.(exchange.ClosedPnLProvider)
-	if !ok {
-		return nil
-	}
-
-	_ = r.deps.Clock.Sleep(ctx, 30*time.Second)
-
-	var orderID string
-	var closedInfo *exchange.ClosedPnLInfo
-
-	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewExponentialBackOff(
-				backoff.WithInitialInterval(2*time.Second),
-				backoff.WithMaxInterval(time.Second*10),
-				backoff.WithRandomizationFactor(0.5)),
-			10),
-		ctx,
-	)
-
-	err := backoff.Retry(func() error {
-		var err error
-		orderID, err = r.resolveOrderID(prev.ReqID, prev.OrderID)
-		if err != nil {
-			return err
-		}
-		closedInfo, err = provider.GetOrderPNL(ctx, symbol, orderID)
-		return err
-	}, bo)
-	if err != nil {
-		return err
-	}
-
-	evt.OrderID = orderID
-	evt.EntryPrice = closedInfo.EntryPrice
-	evt.ClosePrice = closedInfo.ExitPrice
-	evt.CloseVolContract = lo.FromPtr(closedInfo.ClosedSizeContract)
-	evt.CloseVolCoin = lo.FromPtr(closedInfo.ClosedSizeCoin)
-	evt.CloseVolContract, evt.CloseVolCoin = normalizeVolume(evt.CloseVolContract, evt.CloseVolCoin, contractSize)
-
-	evt.GrossProfit = closedInfo.GrossPnL
-	evt.Fee = closedInfo.Fee
-	evt.HoldFee = closedInfo.FundingFee
-	evt.PnLPct = closedInfo.PnLRate
-	evt.NetProfit = closedInfo.NetPnl
-	evt.VolumeUSDT = evt.CloseVolCoin * closedInfo.ExitPrice
-	evt.HoldDurationMs = closedInfo.DurationMs
-
-	return nil
-}
-
-func (r *StatelessRunner) resolveOrderID(reqID, orderID string) (string, error) {
-	if orderID != "" {
-		return orderID, nil
-	}
-	if cachedVal, found := r.cache.Get(reqID); found {
-		if state, ok := cachedVal.(*CycleState); ok {
-			state.mu.Lock()
-			resolved := state.IOCOrderID
-			state.mu.Unlock()
-			if resolved != "" {
-				return resolved, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("order ID is empty and could not be resolved from cache for request %s", reqID)
 }

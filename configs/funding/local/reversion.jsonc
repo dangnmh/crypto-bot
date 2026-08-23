@@ -5,7 +5,6 @@
   "positionMode": "HEDGE",
   "tradeSide": "both",
   "default": {
-    "useOrderManager": true,
     "takeProfitPct": 1,
     "stopLossPct": 2,
     "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier

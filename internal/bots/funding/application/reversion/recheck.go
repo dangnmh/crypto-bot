@@ -21,12 +21,12 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 	rates, err := r.deps.Client.GetFundingRates(ctx, []string{c.Symbol})
 	if err != nil {
 		r.log.WarnContext(ctx, "Failed to fetch funding rate for recheck", slog.String("symbol", c.Symbol), slog.Any("error", err))
-		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, ReversionReason("no funding data for recheck"))
+		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, "no funding data for recheck")
 		return fmt.Errorf("no funding data for recheck: %w", err)
 	}
 	if len(rates) == 0 {
 		r.log.WarnContext(ctx, "No funding rates returned for recheck", slog.String("symbol", c.Symbol))
-		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, ReversionReason("no funding data for recheck"))
+		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, "no funding data for recheck")
 		return fmt.Errorf("no funding data for recheck")
 	}
 
@@ -38,7 +38,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 			slog.Float64("old", c.FundingRate*100),
 			slog.Float64("new", fundingRate*100),
 		)
-		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, ReversionReason("FR sign flip"))
+		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, "FR sign flip")
 		return ErrFRSignFlip
 	}
 
@@ -48,7 +48,7 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 			slog.Float64("fr", fundingRate*100),
 			slog.Float64("min", c.Config.MinFundingRate*100),
 		)
-		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, ReversionReason("FR below threshold"))
+		r.abortAfter(ctx, waitEvt.BaseReversionEvent, c.Symbol, "FR below threshold")
 		return ErrFRBelowThreshold
 	}
 

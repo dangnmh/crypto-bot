@@ -7,9 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"crypto-bot/internal/bots/funding/domain"
 	"crypto-bot/internal/infrastructure/observability"
-	ordermanager "crypto-bot/internal/trading/ordermanager"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -69,132 +67,6 @@ func registerAllSubscriptions(ctx context.Context, bus *eventbus.Bus, runner *St
 	registerEventSubscription(ctx, runner, TopicReversionFirePlanChecked, func(ctx context.Context, r *StatelessRunner, evt FirePlanCheckedEvent) error {
 		return r.handleFirePlanChecked(ctx, evt)
 	})
-	registerEventSubscription(ctx, runner, TopicReversionFireWindowReached, func(ctx context.Context, r *StatelessRunner, evt FireWindowReachedEvent) error {
-		return r.handleFireWindowReached(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionPositionWatchReady, func(ctx context.Context, r *StatelessRunner, evt PositionWatchReadyEvent) error {
-		return r.handlePositionWatchReady(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionIOCSubmitted, func(ctx context.Context, r *StatelessRunner, evt IOCSubmittedEvent) error {
-		return r.handleIOCSubmitted(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionIOCOutcomeChecked, func(ctx context.Context, r *StatelessRunner, evt IOCOutcomeCheckedEvent) error {
-		return r.handleIOCOutcomeChecked(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionTPSLRequired, func(ctx context.Context, r *StatelessRunner, evt TPSLRequiredEvent) error {
-		return r.handleTPSLRequired(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionOrderFilled, func(ctx context.Context, r *StatelessRunner, evt OrderFilledEvent) error {
-		return nil
-	})
-
-	// Stage 3
-	registerEventSubscription(ctx, runner, TopicReversionTimeoutGuardScheduled, func(ctx context.Context, r *StatelessRunner, evt TimeoutGuardScheduledEvent) error {
-		return r.handleTimeoutGuardScheduled(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionTimeoutPositionChecked, func(ctx context.Context, r *StatelessRunner, evt TimeoutPositionCheckedEvent) error {
-		return r.handleTimeoutPositionChecked(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionForceCloseInitiated, func(ctx context.Context, r *StatelessRunner, evt ForceCloseInitiatedEvent) error {
-		return r.handleForceCloseInitiated(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionForceCloseCompleted, func(ctx context.Context, r *StatelessRunner, evt ForceCloseCompletedEvent) error {
-		return r.handleForceCloseCompleted(ctx, evt)
-	})
-	registerEventSubscription(ctx, runner, TopicReversionTimeout, func(ctx context.Context, r *StatelessRunner, evt TimeoutEvent) error {
-		return r.handleTimeout(ctx, evt)
-	})
-
-	// Cleanup subscriptions wrapped with report recording
-	subscribeTopicWithReport(ctx, runner, TopicReversionPositionClosed, func(ctx context.Context, r *StatelessRunner, evt PositionClosedEvent, msg *message.Message) error {
-		return r.handleCleanup(ctx, msg)
-	})
-	subscribeTopicWithReport(ctx, runner, TopicReversionAbort, func(ctx context.Context, r *StatelessRunner, evt AbortEvent, msg *message.Message) error {
-		return r.handleCleanup(ctx, msg)
-	})
-	subscribeTopicWithReport(ctx, runner, TopicReversionError, func(ctx context.Context, r *StatelessRunner, evt ErrorEvent, msg *message.Message) error {
-		return r.handleCleanup(ctx, msg)
-	})
-
-	// OrderManager completion subscriber for UseOrderManager == true
-	subscribeTopic(ctx, bus, runner.log, ordermanager.TopicOrderCompleted, func(msgCtx context.Context, msg *message.Message) error {
-		var evt ordermanager.OrderCompletedEvent
-		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-			return err
-		}
-		if evt.StrategyType != ordermanager.StrategyFundingReversion {
-			return nil
-		}
-		traceCtx := observability.WithRequestIDValue(msgCtx, evt.ReqID)
-		runner.log.InfoContext(traceCtx, "Received OrderManager completion in Funding Reversion strategy", slog.String("req_id", evt.ReqID), slog.String("outcome", string(evt.Outcome)))
-		finalEvt := ReversionCompletedEvent{
-			ReqID:     evt.ReqID,
-			Exchange:  evt.Exchange,
-			Symbol:    evt.Symbol,
-			Timestamp: runner.now(),
-			Reason:    "ordermanager_completed",
-		}
-		return runner.publishEvent(traceCtx, TopicReversionCompleted, finalEvt)
-	})
-
-	// Database persistence subscriber
-	subscribeTopic(ctx, bus, runner.log, TopicReversionTradeReport, runner.handleReportPersistence)
-}
-
-func (r *StatelessRunner) handleReportPersistence(ctx context.Context, msg *message.Message) error {
-	var evt ReversionTradeReportEvent
-	if err := json.Unmarshal(msg.Payload, &evt); err != nil {
-		return err
-	}
-	traceCtx := observability.WithRequestIDValue(ctx, evt.ReqID)
-
-	// Map to domain entity TradeReport
-	report := &domain.TradeReport{
-		ReqID:               evt.ReqID,
-		EventID:             evt.EventID,
-		Timestamp:           evt.Timestamp,
-		SettleTime:          evt.SettleTime,
-		Exchange:            evt.Exchange,
-		Symbol:              evt.Symbol,
-		NormalizedSymbol:    evt.NormalizedSymbol,
-		Side:                evt.Side,
-		FundingRate:         evt.FundingRate,
-		CandidateFoundTime:  evt.CandidateFoundTime,
-		MarginUSDT:          evt.MarginUSDT,
-		Leverage:            evt.Leverage,
-		BufferTimeMs:        evt.BufferTimeMs,
-		LatencyRTTMs:        evt.LatencyRTTMs,
-		ActualSlippage:      evt.ActualSlippage,
-		FireOffsetMs:        evt.FireOffsetMs,
-		IOCOrderID:          evt.IOCOrderID,
-		IOCOutcome:          evt.IOCOutcome,
-		IOCReason:           evt.IOCReason,
-		FireIOCTime:         evt.FireIOCTime,
-		LocalFireIOCTime:    evt.LocalFireIOCTime,
-		OrderFilled:         evt.OrderFilled,
-		FillPrice:           evt.FillPrice,
-		ClosePrice:          evt.ClosePrice,
-		VolumeUSDT:          evt.VolumeUSDT,
-		GrossProfit:         evt.GrossProfit,
-		NetProfit:           evt.NetProfit,
-		PnLPct:              evt.PnLPct,
-		Fee:                 evt.Fee,
-		HoldFee:             evt.HoldFee,
-		HoldDurationMs:      evt.HoldDurationMs,
-		ExitReason:          evt.ExitReason,
-		CloseRetryCount:     evt.CloseRetryCount,
-		ForceCloseAttempted: evt.ForceCloseAttempted,
-		ForceCloseSucceeded: evt.ForceCloseSucceeded,
-		Status:              evt.Status,
-		ErrorMsg:            evt.ErrorMsg,
-	}
-
-	if err := r.reportRepo.Save(traceCtx, report); err != nil {
-		r.log.ErrorContext(traceCtx, "Failed to persist trade report to database", slog.Any("error", err))
-		return err
-	}
-	r.log.InfoContext(traceCtx, "Successfully persisted trade report to database", slog.String("req_id", evt.ReqID))
-	return nil
 }
 
 func registerEventSubscription[T ReversionEvent](
@@ -202,17 +74,6 @@ func registerEventSubscription[T ReversionEvent](
 	runner *StatelessRunner,
 	topic string,
 	action func(context.Context, *StatelessRunner, T) error,
-) {
-	subscribeTopicWithReport(ctx, runner, topic, func(ctx context.Context, r *StatelessRunner, evt T, msg *message.Message) error {
-		return action(ctx, r, evt)
-	})
-}
-
-func subscribeTopicWithReport[T ReversionEvent](
-	ctx context.Context,
-	runner *StatelessRunner,
-	topic string,
-	handler func(context.Context, *StatelessRunner, T, *message.Message) error,
 ) {
 	subscribeTopic(ctx, runner.bus, runner.log, topic, func(msgCtx context.Context, msg *message.Message) error {
 		var evt T
@@ -224,8 +85,7 @@ func subscribeTopicWithReport[T ReversionEvent](
 		symbol := evt.GetSymbol()
 		traceCtx := observability.WithRequestIDValue(msgCtx, reqID)
 		clonedRunner := runner.clone(exch, reqID, symbol)
-		clonedRunner.recordEventState(evt)
-		return handler(traceCtx, clonedRunner, evt, msg)
+		return action(traceCtx, clonedRunner, evt)
 	})
 }
 

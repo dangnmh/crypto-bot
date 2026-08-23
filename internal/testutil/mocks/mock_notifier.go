@@ -49,14 +49,6 @@ func (m *MockNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	return ret0
 }
 
-// SendRawMsg mocks base method.
-func (m *MockNotifier) SendRawMsg(ctx context.Context, msg string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendRawMsg", ctx, msg)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
 // Send indicates an expected call of Send.
 func (mr *MockNotifierMockRecorder) Send(ctx, evt any) *MockNotifierSendCall {
 	mr.mock.ctrl.T.Helper()
@@ -83,36 +75,6 @@ func (c *MockNotifierSendCall) Do(f func(context.Context, notifier.Event) error)
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockNotifierSendCall) DoAndReturn(f func(context.Context, notifier.Event) error) *MockNotifierSendCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SendRawMsg indicates an expected call of SendRawMsg.
-func (mr *MockNotifierMockRecorder) SendRawMsg(ctx, msg any) *MockNotifierSendRawMsgCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendRawMsg", reflect.TypeOf((*MockNotifier)(nil).SendRawMsg), ctx, msg)
-	return &MockNotifierSendRawMsgCall{Call: call}
-}
-
-// MockNotifierSendRawMsgCall wrap *gomock.Call
-type MockNotifierSendRawMsgCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockNotifierSendRawMsgCall) Return(arg0 error) *MockNotifierSendRawMsgCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockNotifierSendRawMsgCall) Do(f func(context.Context, string) error) *MockNotifierSendRawMsgCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockNotifierSendRawMsgCall) DoAndReturn(f func(context.Context, string) error) *MockNotifierSendRawMsgCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

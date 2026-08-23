@@ -9,10 +9,10 @@
   //   "simulateSettle": "2026-08-14T18:30:00.000+07:00"
   // },
   {
-    "symbol": "ONG-SWAP-USDT",
+    "symbol": "COTI-SWAP-USDT",
     "marginUSDT": 5,
     "exchange": "toobit_futures",
-    "simulateSettle": "2026-08-21T09:40:00.000+07:00"
+    "simulateSettle": "2026-08-23T16:30:00.000+07:00"
   },
   // {
   //   "symbol": "PRLUSDT",

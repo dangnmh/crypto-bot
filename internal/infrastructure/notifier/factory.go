@@ -36,7 +36,6 @@ func NewFromConfig(cfg Config, logger *slog.Logger) (Notifier, error) {
 
 type noopNotifier struct{}
 
-func (n *noopNotifier) Send(_ context.Context, _ Event) error        { return nil }
-func (n *noopNotifier) SendRawMsg(_ context.Context, _ string) error { return nil }
-func (n *noopNotifier) Start(_ context.Context) error                { return nil }
-func (n *noopNotifier) Stop(_ context.Context) error                 { return nil }
+func (n *noopNotifier) Send(_ context.Context, _ Event) error { return nil }
+func (n *noopNotifier) Start(_ context.Context) error         { return nil }
+func (n *noopNotifier) Stop(_ context.Context) error          { return nil }

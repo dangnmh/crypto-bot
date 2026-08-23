@@ -4,7 +4,6 @@ import (
 	"log/slog"
 
 	fundingconfig "crypto-bot/internal/bots/funding/config"
-	"crypto-bot/internal/bots/funding/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
 
@@ -24,9 +23,8 @@ func ProvideReversionStrategy(
 	engine *infraapp.Engine,
 	cfg *fundingconfig.Config,
 	n notifier.Notifier,
-	repo domain.TradeReportRepository,
 	c *cache.Cache,
 	log *slog.Logger,
 ) *Strategy {
-	return NewStrategy(engine, cfg, n, repo, c, log)
+	return NewStrategy(engine, cfg, n, c, log)
 }

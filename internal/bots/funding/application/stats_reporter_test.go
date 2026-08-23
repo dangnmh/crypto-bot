@@ -87,9 +87,8 @@ func (m *mockNotifier) Send(ctx context.Context, evt notifier.Event) error {
 	return m.err
 }
 
-func (m *mockNotifier) SendRawMsg(_ context.Context, _ string) error { return nil }
-func (m *mockNotifier) Start(ctx context.Context) error              { return nil }
-func (m *mockNotifier) Stop(ctx context.Context) error               { return nil }
+func (m *mockNotifier) Start(ctx context.Context) error { return nil }
+func (m *mockNotifier) Stop(ctx context.Context) error  { return nil }
 
 func TestStatsReportJob_Tick(t *testing.T) {
 	t.Parallel()
