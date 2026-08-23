@@ -31,7 +31,7 @@ func TestEngineBuilder_WithOptionalDependenciesBuilds(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				},
 				APIKey:    "key",
 				APISecret: "secret",
@@ -58,7 +58,7 @@ func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				},
 				APIKey:    "key",
 				APISecret: "secret",
@@ -81,7 +81,7 @@ func TestEngineBuilder_MissingWSURL(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "", MaxPairsPerWSConn: 10},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				},
 				APIKey:    "key",
 				APISecret: "secret",
@@ -104,7 +104,7 @@ func TestEngineBuilder_InvalidMaxPairs(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
 				},
 				APIKey:    "key",
 				APISecret: "secret",
@@ -127,7 +127,7 @@ func TestEngineBuilder_MissingAPIKey(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				},
 				APIKey:    "",
 				APISecret: "secret",
@@ -150,7 +150,7 @@ func TestEngineBuilder_MissingAPISecret(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 				},
 				APIKey:    "key",
 				APISecret: "",

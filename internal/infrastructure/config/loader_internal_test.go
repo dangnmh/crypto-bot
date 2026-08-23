@@ -88,7 +88,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "mexc missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"mexc": APIConfig{
-				Future:    &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{PublicURL: "wss://mexc.example", PrivateURL: "wss://mexc.example"}},
 				APISecret: "secret",
 			}}},
 			wantErr: "mexc: API key and secret are required",
@@ -96,7 +96,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "mexc missing secret",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"mexc": APIConfig{
-				Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
+				Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{PublicURL: "wss://mexc.example", PrivateURL: "wss://mexc.example"}},
 				APIKey: "key",
 			}}},
 			wantErr: "mexc: API key and secret are required",
@@ -104,7 +104,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "gate missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
-				Future:    &RESTConfig{Enable: true, BaseURL: "https://gate.example", WebSocket: WebSocketConfig{WSURL: "wss://gate.example"}},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://gate.example", WebSocket: WebSocketConfig{PublicURL: "wss://gate.example", PrivateURL: "wss://gate.example"}},
 				APISecret: "secret",
 			}}},
 			wantErr: "gate: API key and secret are required",
@@ -112,7 +112,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "gate missing secret",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"gate": APIConfig{
-				Future: &RESTConfig{Enable: true, BaseURL: "https://gate.example", WebSocket: WebSocketConfig{WSURL: "wss://gate.example"}},
+				Future: &RESTConfig{Enable: true, BaseURL: "https://gate.example", WebSocket: WebSocketConfig{PublicURL: "wss://gate.example", PrivateURL: "wss://gate.example"}},
 				APIKey: "key",
 			}}},
 			wantErr: "gate: API key and secret are required",
@@ -129,7 +129,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "kucoin missing passphrase",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"kucoin": APIConfig{
-				Future:    &RESTConfig{Enable: true, BaseURL: "https://kucoin.example", WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"}},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://kucoin.example", WebSocket: WebSocketConfig{PublicURL: "wss://kucoin.example", PrivateURL: "wss://kucoin.example"}},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
@@ -138,7 +138,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "okx missing passphrase",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"okx": APIConfig{
-				Future:    &RESTConfig{Enable: true, BaseURL: "https://okx.example", WebSocket: WebSocketConfig{WSURL: "wss://okx.example"}},
+				Future:    &RESTConfig{Enable: true, BaseURL: "https://okx.example", WebSocket: WebSocketConfig{PublicURL: "wss://okx.example", PrivateURL: "wss://okx.example"}},
 				APIKey:    "key",
 				APISecret: "secret",
 			}}},
@@ -147,7 +147,7 @@ func TestInternalValidateCredentialsAndEndpoints(t *testing.T) {
 		{
 			name: "kucoin missing key",
 			cfg: &SystemConfig{ExchangeConfig: ExchangeConfig{"kucoin": APIConfig{
-				Future:        &RESTConfig{Enable: true, BaseURL: "https://kucoin.example", WebSocket: WebSocketConfig{WSURL: "wss://kucoin.example"}},
+				Future:        &RESTConfig{Enable: true, BaseURL: "https://kucoin.example", WebSocket: WebSocketConfig{PublicURL: "wss://kucoin.example", PrivateURL: "wss://kucoin.example"}},
 				APISecret:     "secret",
 				APIPassphrase: "pass",
 			}}},
@@ -217,7 +217,7 @@ func TestValidateExchangeConfig_AccountTypeOnlyAppliesToBybit(t *testing.T) {
 
 	cfg := ExchangeConfig{
 		"mexc": APIConfig{
-			Future:      &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
+			Future:      &RESTConfig{Enable: true, BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{PublicURL: "wss://mexc.example", PrivateURL: "wss://mexc.example"}},
 			APIKey:      "key",
 			APISecret:   "secret",
 			AccountType: "ignored",
@@ -236,7 +236,8 @@ func TestValidateExchangeConfig_DisabledFutureEndpointNotValidatedWhenSpotEnable
 				Enable:  true,
 				BaseURL: "https://api.mexc.com",
 				WebSocket: WebSocketConfig{
-					WSURL: "wss://wbs.mexc.com/ws",
+					PublicURL:  "wss://wbs-api.mexc.com/ws",
+					PrivateURL: "wss://wbs-api.mexc.com/ws",
 				},
 			},
 			Future: &RESTConfig{
@@ -257,10 +258,10 @@ func TestInternalApplySystemDefaultsForBothExchanges(t *testing.T) {
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
 			"mexc": APIConfig{
-				Future: &RESTConfig{BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{WSURL: "wss://mexc.example"}},
+				Future: &RESTConfig{BaseURL: "https://mexc.example", WebSocket: WebSocketConfig{PublicURL: "wss://mexc.example", PrivateURL: "wss://mexc.example"}},
 			},
 			"gate": APIConfig{
-				Future: &RESTConfig{BaseURL: "https://gate.example", WebSocket: WebSocketConfig{WSURL: "wss://gate.example"}},
+				Future: &RESTConfig{BaseURL: "https://gate.example", WebSocket: WebSocketConfig{PublicURL: "wss://gate.example", PrivateURL: "wss://gate.example"}},
 			},
 		},
 	}
@@ -447,7 +448,8 @@ func TestInitializeBase_TelegramCriticalChatID(t *testing.T) {
 					Enable:  true,
 					BaseURL: "https://api.mexc.com",
 					WebSocket: WebSocketConfig{
-						WSURL: "wss://wbs.mexc.com/ws",
+						PublicURL:  "wss://wbs-api.mexc.com/ws",
+						PrivateURL: "wss://wbs-api.mexc.com/ws",
 					},
 				},
 			},

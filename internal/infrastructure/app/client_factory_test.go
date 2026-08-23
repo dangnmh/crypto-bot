@@ -241,7 +241,8 @@ func TestDefaultProviderFactories_BothSpotAndFuturesEnabled(t *testing.T) {
 					Enable:  true,
 					BaseURL: "https://api.mexc.com",
 					WebSocket: config.WebSocketConfig{
-						WSURL:             "wss://wbs.mexc.com/ws",
+						PublicURL:         "wss://wbs-api.mexc.com/ws",
+						PrivateURL:        "wss://wbs-api.mexc.com/ws",
 						MaxPairsPerWSConn: 30,
 					},
 				},
@@ -249,7 +250,8 @@ func TestDefaultProviderFactories_BothSpotAndFuturesEnabled(t *testing.T) {
 					Enable:  true,
 					BaseURL: "https://contract.mexc.com",
 					WebSocket: config.WebSocketConfig{
-						WSURL:             "wss://contract.mexc.com/edge",
+						PublicURL:         "wss://contract.mexc.com/edge",
+						PrivateURL:        "wss://contract.mexc.com/edge",
 						MaxPairsPerWSConn: 30,
 					},
 				},

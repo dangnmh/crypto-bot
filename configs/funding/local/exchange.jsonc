@@ -5,7 +5,8 @@
         "enable": true,
         "baseURL": "https://api.mexc.com",
         "websocket": {
-          "wsURL": "wss://contract.mexc.com/edge",
+          "publicURL": "wss://contract.mexc.com/edge",
+          "privateURL": "wss://contract.mexc.com/edge",
           "maxPairsPerWSConn": 30
         }
       }
@@ -27,7 +28,6 @@
         "enable": false,
         "baseURL": "https://fapi.binance.com",
         "websocket": {
-          "wsURL": "wss://fstream.binance.com/ws",
           "publicURL": "wss://fstream.binance.com/public/ws",
           "marketURL": "wss://fstream.binance.com/market/ws",
           "privateURL": "wss://fstream.binance.com/private/ws",
@@ -62,7 +62,8 @@
         "enable": false,
         "baseURL": "https://api.gateio.ws/api/v4",
         "websocket": {
-          "wsURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
+          "publicURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
+          "privateURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
           "maxPairsPerWSConn": 30
         }
       }
@@ -83,7 +84,8 @@
         "enable": false,
         "baseURL": "https://api.hyperliquid.xyz",
         "websocket": {
-          "wsURL": "wss://api.hyperliquid.xyz/ws",
+          "publicURL": "wss://api.hyperliquid.xyz/ws",
+          "privateURL": "wss://api.hyperliquid.xyz/ws",
           "maxPairsPerWSConn": 30
         }
       }
@@ -104,7 +106,8 @@
         "enable": false,
         "baseURL": "https://open-api.bingx.com",
         "websocket": {
-          "wsURL": "wss://open-api-ws.bingx.com/market"
+          "publicURL": "wss://open-api-ws.bingx.com/market",
+          "privateURL": "wss://open-api-ws.bingx.com/market"
         }
       }
     },

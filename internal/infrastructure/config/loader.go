@@ -242,7 +242,10 @@ func validateEndpoint(name string, ep EndpointConfig) error {
 	if !isValidURL(ep.BaseURL) {
 		return fmt.Errorf("%s: invalid base URL: %s", name, ep.BaseURL)
 	}
-	if !isValidURL(ep.WebSocket.PublicEndpoint()) || !isValidURL(ep.WebSocket.PrivateEndpoint()) {
+	if !isValidURL(ep.WebSocket.PublicEndpoint()) {
+		return fmt.Errorf("%s: invalid websocket endpoint URL", name)
+	}
+	if ep.WebSocket.PrivateEndpoint() != "" && !isValidURL(ep.WebSocket.PrivateEndpoint()) {
 		return fmt.Errorf("%s: invalid websocket endpoint URL", name)
 	}
 	return nil

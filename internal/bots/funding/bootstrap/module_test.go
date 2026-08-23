@@ -51,7 +51,7 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 				"future": {
 					"enable": true,
 					"baseURL": "https://example.test",
-					"websocket": {"wsURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
+					"websocket": {"publicURL": "wss://example.test/ws", "privateURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
 				}
 			}
 		}

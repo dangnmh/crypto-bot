@@ -18,7 +18,8 @@ func TestAPIConfigSpotFutureToggle(t *testing.T) {
 			"enable": true,
 			"baseURL": "https://api.mexc.com",
 			"websocket": {
-				"wsURL": "wss://wbs.mexc.com/ws",
+				"publicURL": "wss://wbs-api.mexc.com/ws",
+				"privateURL": "wss://wbs-api.mexc.com/ws",
 				"maxPairsPerWSConn": 30
 			}
 		},
@@ -26,7 +27,8 @@ func TestAPIConfigSpotFutureToggle(t *testing.T) {
 			"enable": false,
 			"baseURL": "https://contract.mexc.com",
 			"websocket": {
-				"wsURL": "wss://contract.mexc.com/edge",
+				"publicURL": "wss://contract.mexc.com/edge",
+				"privateURL": "wss://contract.mexc.com/edge",
 				"maxPairsPerWSConn": 30
 			}
 		}
@@ -41,8 +43,10 @@ func TestAPIConfigSpotFutureToggle(t *testing.T) {
 	assert.Equal(t, "https://api.mexc.com", apiCfg.Spot.BaseURL)
 	assert.False(t, apiCfg.Future.Enable)
 	assert.Equal(t, "https://contract.mexc.com", apiCfg.Future.BaseURL)
-	assert.Equal(t, "wss://wbs.mexc.com/ws", apiCfg.Spot.WebSocket.WSURL)
-	assert.Equal(t, "wss://contract.mexc.com/edge", apiCfg.Future.WebSocket.WSURL)
+	assert.Equal(t, "wss://wbs-api.mexc.com/ws", apiCfg.Spot.WebSocket.PublicURL)
+	assert.Equal(t, "wss://wbs-api.mexc.com/ws", apiCfg.Spot.WebSocket.PrivateURL)
+	assert.Equal(t, "wss://contract.mexc.com/edge", apiCfg.Future.WebSocket.PublicURL)
+	assert.Equal(t, "wss://contract.mexc.com/edge", apiCfg.Future.WebSocket.PrivateURL)
 }
 
 func TestAPIConfig_GetSpotAndFutureEndpoints(t *testing.T) {
@@ -53,7 +57,8 @@ func TestAPIConfig_GetSpotAndFutureEndpoints(t *testing.T) {
 			"enable": true,
 			"baseURL": "https://api.mexc.com",
 			"websocket": {
-				"wsURL": "wss://wbs.mexc.com/ws",
+				"publicURL": "wss://wbs-api.mexc.com/ws",
+				"privateURL": "wss://wbs-api.mexc.com/ws",
 				"maxPairsPerWSConn": 30
 			}
 		},
@@ -61,7 +66,8 @@ func TestAPIConfig_GetSpotAndFutureEndpoints(t *testing.T) {
 			"enable": false,
 			"baseURL": "https://contract.mexc.com",
 			"websocket": {
-				"wsURL": "wss://contract.mexc.com/edge",
+				"publicURL": "wss://contract.mexc.com/edge",
+				"privateURL": "wss://contract.mexc.com/edge",
 				"maxPairsPerWSConn": 30
 			}
 		}
@@ -74,10 +80,12 @@ func TestAPIConfig_GetSpotAndFutureEndpoints(t *testing.T) {
 	spotEP := apiCfg.GetSpotEndpoint()
 	assert.True(t, spotEP.Enable)
 	assert.Equal(t, "https://api.mexc.com", spotEP.BaseURL)
-	assert.Equal(t, "wss://wbs.mexc.com/ws", spotEP.WebSocket.WSURL)
+	assert.Equal(t, "wss://wbs-api.mexc.com/ws", spotEP.WebSocket.PublicURL)
+	assert.Equal(t, "wss://wbs-api.mexc.com/ws", spotEP.WebSocket.PrivateURL)
 
 	futEP := apiCfg.GetFutureEndpoint()
 	assert.False(t, futEP.Enable)
 	assert.Equal(t, "https://contract.mexc.com", futEP.BaseURL)
-	assert.Equal(t, "wss://contract.mexc.com/edge", futEP.WebSocket.WSURL)
+	assert.Equal(t, "wss://contract.mexc.com/edge", futEP.WebSocket.PublicURL)
+	assert.Equal(t, "wss://contract.mexc.com/edge", futEP.WebSocket.PrivateURL)
 }

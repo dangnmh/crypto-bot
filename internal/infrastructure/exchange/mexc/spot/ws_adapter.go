@@ -9,11 +9,14 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	mexcproto "crypto-bot/internal/infrastructure/exchange/mexc/spot/proto"
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/buger/jsonparser"
+	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -22,6 +25,9 @@ const (
 	paramsKey        = "params"
 	methodKey        = "method"
 	depthStream100ms = "spot@public.aggre.depth.v3.api.pb@100ms@"
+	bookTickerStream = "spot@public.bookTicker.v3.api.pb@"
+	channelDepth     = "depth"
+	channelTicker    = "ticker"
 )
 
 var (
@@ -60,7 +66,7 @@ func (a *WsAdapter) UnsubscribePublic(ctx context.Context, topic string, msg any
 
 // SubscribeTicker subscribes to spot bookTicker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	stream := "spot@public.bookTicker.v3.api@" + symbol
+	stream := bookTickerStream + symbol
 	msg := map[string]any{
 		methodKey: opSubscription,
 		paramsKey: []string{stream},
@@ -71,7 +77,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from spot bookTicker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	stream := "spot@public.bookTicker.v3.api@" + symbol
+	stream := bookTickerStream + symbol
 	msg := map[string]any{
 		methodKey: opUnsubscription,
 		paramsKey: []string{stream},
@@ -113,7 +119,23 @@ func (a *WsAdapter) UnsubscribePersonal(ctx context.Context) error {
 
 // GetPingConfig returns the ping payload and interval for MEXC Spot WS.
 func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
-	return map[string]string{"method": "PING"}, 15 * time.Second
+	return map[string]string{methodKey: "PING"}, 15 * time.Second
+}
+
+// GetCustomPingHandler returns a custom handler for MEXC Spot WS PING/PONG frames.
+func (a *WsAdapter) GetCustomPingHandler() func(*websocket.Conn, []byte) bool {
+	return func(conn *websocket.Conn, data []byte) bool {
+		msgStr, err := jsonparser.GetString(data, "msg")
+		if err == nil && strings.EqualFold(msgStr, "PONG") {
+			return true
+		}
+		method, err := jsonparser.GetString(data, methodKey)
+		if err == nil && strings.EqualFold(method, "PING") {
+			_ = conn.WriteJSON(map[string]string{methodKey: "PONG"})
+			return true
+		}
+		return false
+	}
 }
 
 // GetAuthHook returns nil for public spot streams.
@@ -121,27 +143,69 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	return nil
 }
 
+func extractProtoChannel(message []byte) string {
+	var wrapper mexcproto.PushDataV3ApiWrapper
+	if err := proto.Unmarshal(message, &wrapper); err != nil || (wrapper.GetChannel() == "" && wrapper.GetBody() == nil) {
+		return ""
+	}
+	channel := wrapper.GetChannel()
+	if strings.Contains(channel, channelDepth) || wrapper.GetPublicAggreDepths() != nil || wrapper.GetPublicIncreaseDepths() != nil || wrapper.GetPublicLimitDepths() != nil {
+		return channelDepth
+	}
+	if strings.Contains(channel, "bookTicker") || strings.Contains(channel, channelTicker) || wrapper.GetPublicBookTicker() != nil {
+		return channelTicker
+	}
+	return channel
+}
+
+func extractJSONChannel(message []byte) string {
+	channel, err := jsonparser.GetString(message, "channel")
+	if err != nil {
+		channel, _ = jsonparser.GetString(message, "c")
+	}
+	if channel != "" {
+		if strings.Contains(channel, channelDepth) {
+			return channelDepth
+		}
+		if strings.Contains(channel, "bookTicker") || strings.Contains(channel, channelTicker) {
+			return channelTicker
+		}
+	}
+	return ""
+}
+
 // GetChannelExtractor extracts routing information for incoming spot messages.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(message []byte) string {
-		channel, err := jsonparser.GetString(message, "channel")
-		if err != nil {
-			channel, _ = jsonparser.GetString(message, "c")
+		if ch := extractProtoChannel(message); ch != "" {
+			return ch
 		}
-		if channel != "" {
-			if strings.Contains(channel, "depth") {
-				return "depth"
-			}
-			if strings.Contains(channel, "bookTicker") || strings.Contains(channel, "ticker") {
-				return "ticker"
-			}
-		}
-		return ""
+		return extractJSONChannel(message)
 	}
 }
 
 // ParseTicker parses a spot bookTicker message.
 func (a *WsAdapter) ParseTicker(message []byte) (string, *store.PriceData, error) {
+	// 1. Try Protobuf decoding
+	var wrapper mexcproto.PushDataV3ApiWrapper
+	if err := proto.Unmarshal(message, &wrapper); err == nil && wrapper.GetPublicBookTicker() != nil {
+		ticker := wrapper.GetPublicBookTicker()
+		symbol := wrapper.GetSymbol()
+		if symbol == "" {
+			symbol = extractSymbolFromChannel(wrapper.GetChannel())
+		}
+		bid1 := decmath.ParseFloat(ticker.GetBidPrice())
+		ask1 := decmath.ParseFloat(ticker.GetAskPrice())
+		pd := &store.PriceData{
+			Symbol:    symbol,
+			BestBid:   bid1,
+			BestAsk:   ask1,
+			UpdatedAt: time.Now(),
+		}
+		return symbol, pd, nil
+	}
+
+	// 2. Fallback to JSON decoding
 	dataBytes, dataType, _, err := jsonparser.Get(message, "d")
 	if err != nil || dataType != jsonparser.Object {
 		return "", nil, fmt.Errorf("invalid spot ticker data format")
@@ -260,6 +324,10 @@ func extractSpotDepthSymbol(message []byte) string {
 	if err != nil {
 		channel, _ = jsonparser.GetString(message, "c")
 	}
+	return extractSymbolFromChannel(channel)
+}
+
+func extractSymbolFromChannel(channel string) string {
 	if idx := strings.LastIndex(channel, "@"); idx != -1 && idx < len(channel)-1 {
 		return channel[idx+1:]
 	}
@@ -286,8 +354,86 @@ func extractSpotDepthVersions(dataNode []byte) (int64, int64) {
 	return fromVersion, toVersion
 }
 
+func buildOrderBookEntries[T any](items []T, getPrice, getQty func(T) string) []domain.OrderBookEntry {
+	entries := make([]domain.OrderBookEntry, 0, len(items))
+	for _, item := range items {
+		p := decmath.ParseFloat(getPrice(item))
+		v := decmath.ParseFloat(getQty(item))
+		if p > 0 {
+			entries = append(entries, domain.OrderBookEntry{Price: p, Volume: v})
+		}
+	}
+	return entries
+}
+
+func parseProtoAggreDepth(symbol string, aggre *mexcproto.PublicAggreDepthsV3Api) *domain.OrderBook {
+	fromVer := decmath.ParseInt64(aggre.GetFromVersion())
+	toVer := decmath.ParseInt64(aggre.GetToVersion())
+	bids := buildOrderBookEntries(aggre.GetBids(), (*mexcproto.PublicAggreDepthV3ApiItem).GetPrice, (*mexcproto.PublicAggreDepthV3ApiItem).GetQuantity)
+	asks := buildOrderBookEntries(aggre.GetAsks(), (*mexcproto.PublicAggreDepthV3ApiItem).GetPrice, (*mexcproto.PublicAggreDepthV3ApiItem).GetQuantity)
+
+	return &domain.OrderBook{
+		Symbol:       symbol,
+		FirstVersion: fromVer,
+		Version:      toVer,
+		Bids:         bids,
+		Asks:         asks,
+	}
+}
+
+func parseProtoIncreaseDepth(symbol string, inc *mexcproto.PublicIncreaseDepthsV3Api) *domain.OrderBook {
+	ver := decmath.ParseInt64(inc.GetVersion())
+	bids := buildOrderBookEntries(inc.GetBids(), (*mexcproto.PublicIncreaseDepthV3ApiItem).GetPrice, (*mexcproto.PublicIncreaseDepthV3ApiItem).GetQuantity)
+	asks := buildOrderBookEntries(inc.GetAsks(), (*mexcproto.PublicIncreaseDepthV3ApiItem).GetPrice, (*mexcproto.PublicIncreaseDepthV3ApiItem).GetQuantity)
+
+	return &domain.OrderBook{
+		Symbol:  symbol,
+		Version: ver,
+		Bids:    bids,
+		Asks:    asks,
+	}
+}
+
+func parseProtoLimitDepth(symbol string, lim *mexcproto.PublicLimitDepthsV3Api) *domain.OrderBook {
+	ver := decmath.ParseInt64(lim.GetVersion())
+	bids := buildOrderBookEntries(lim.GetBids(), (*mexcproto.PublicLimitDepthV3ApiItem).GetPrice, (*mexcproto.PublicLimitDepthV3ApiItem).GetQuantity)
+	asks := buildOrderBookEntries(lim.GetAsks(), (*mexcproto.PublicLimitDepthV3ApiItem).GetPrice, (*mexcproto.PublicLimitDepthV3ApiItem).GetQuantity)
+
+	return &domain.OrderBook{
+		Symbol:  symbol,
+		Version: ver,
+		Bids:    bids,
+		Asks:    asks,
+	}
+}
+
+func parseProtoDepth(message []byte) (string, *domain.OrderBook, bool) {
+	var wrapper mexcproto.PushDataV3ApiWrapper
+	if err := proto.Unmarshal(message, &wrapper); err != nil {
+		return "", nil, false
+	}
+	symbol := wrapper.GetSymbol()
+	if symbol == "" {
+		symbol = extractSymbolFromChannel(wrapper.GetChannel())
+	}
+	if aggre := wrapper.GetPublicAggreDepths(); aggre != nil {
+		return symbol, parseProtoAggreDepth(symbol, aggre), true
+	}
+	if inc := wrapper.GetPublicIncreaseDepths(); inc != nil {
+		return symbol, parseProtoIncreaseDepth(symbol, inc), true
+	}
+	if lim := wrapper.GetPublicLimitDepths(); lim != nil {
+		return symbol, parseProtoLimitDepth(symbol, lim), true
+	}
+	return "", nil, false
+}
+
 // ParseDepth parses a spot incremental depth update message into domain.OrderBook.
 func (a *WsAdapter) ParseDepth(message []byte) (string, *domain.OrderBook, error) {
+	if sym, ob, ok := parseProtoDepth(message); ok {
+		return sym, ob, nil
+	}
+
 	dataBytes := extractSpotDepthDataNode(message)
 	symbol := extractSpotDepthSymbol(message)
 	fromVersion, toVersion := extractSpotDepthVersions(dataBytes)

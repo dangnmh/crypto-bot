@@ -18,9 +18,12 @@ func TestInitializeBase_Success(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+					Enable:  true,
+					BaseURL: "https://api.example.com",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "wss://ws.example.com",
+						PrivateURL: "wss://ws.example.com",
+					},
 				},
 			},
 		},
@@ -41,9 +44,12 @@ func TestInitializeBase_Defaults(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+					Enable:  true,
+					BaseURL: "https://api.example.com",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "wss://ws.example.com",
+						PrivateURL: "wss://ws.example.com",
+					},
 				},
 			},
 		},
@@ -65,9 +71,13 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 50},
+					Enable:  true,
+					BaseURL: "https://api.example.com",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:         "wss://ws.example.com",
+						PrivateURL:        "wss://ws.example.com",
+						MaxPairsPerWSConn: 50,
+					},
 				},
 			},
 		},
@@ -89,9 +99,12 @@ func TestInitializeBase_MissingAPIKey(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+					Enable:  true,
+					BaseURL: "https://api.example.com",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "wss://ws.example.com",
+						PrivateURL: "wss://ws.example.com",
+					},
 				},
 			},
 		},
@@ -109,9 +122,12 @@ func TestInitializeBase_MissingAPISecret(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+					Enable:  true,
+					BaseURL: "https://api.example.com",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "wss://ws.example.com",
+						PrivateURL: "wss://ws.example.com",
+					},
 				},
 			},
 		},
@@ -129,9 +145,12 @@ func TestInitializeBase_MissingBaseURL(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "",
-					WebSocket: config.WebSocketConfig{WSURL: "wss://ws.example.com"},
+					Enable:  true,
+					BaseURL: "",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "wss://ws.example.com",
+						PrivateURL: "wss://ws.example.com",
+					},
 				},
 			},
 		},
@@ -141,7 +160,7 @@ func TestInitializeBase_MissingBaseURL(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestInitializeBase_MissingWSURL(t *testing.T) {
+func TestInitializeBase_MissingPublicURL(t *testing.T) {
 	t.Setenv("MEXC_API_KEY", "key")
 	t.Setenv("MEXC_API_SECRET", "secret")
 
@@ -149,9 +168,12 @@ func TestInitializeBase_MissingWSURL(t *testing.T) {
 		ExchangeConfig: config.ExchangeConfig{
 			"mexc": config.APIConfig{
 				Future: &config.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: config.WebSocketConfig{WSURL: ""},
+					Enable:  true,
+					BaseURL: "https://api.example.com",
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "",
+						PrivateURL: "wss://ws.example.com",
+					},
 				},
 			},
 		},

@@ -110,7 +110,7 @@ func sysWithDefaults(defaults testDefaults) *config.SystemConfig {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://mexc.test",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://mexc.test"},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://mexc.test", PrivateURL: "wss://mexc.test"},
 				},
 				APIKey:    "mock-key",
 				APISecret: "mock-secret",

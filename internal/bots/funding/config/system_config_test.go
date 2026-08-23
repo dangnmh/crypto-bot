@@ -26,7 +26,8 @@ func TestLoadSystemConfig_Success(t *testing.T) {
 					"enable": true,
 					"baseURL": "https://test.api.com",
 					"websocket": {
-						"wsURL": "wss://test.example.com",
+						"publicURL": "wss://test.example.com",
+						"privateURL": "wss://test.example.com",
 						"maxPairsPerWSConn": 25
 					}
 				}
@@ -111,7 +112,8 @@ func TestLoadSystemConfig_DefaultsApplied(t *testing.T) {
 					"enable": true,
 					"baseURL": "https://test.api.com",
 					"websocket": {
-						"wsURL": "wss://test.example.com",
+						"publicURL": "wss://test.example.com",
+						"privateURL": "wss://test.example.com",
 						"maxPairsPerWSConn": 25
 					}
 				}
@@ -197,7 +199,7 @@ func TestLoadSystemConfig_MergesSiblingStrategyDefaults(t *testing.T) {
 				"future": {
 					"enable": true,
 					"baseURL": "https://test.api.com",
-					"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+					"websocket": {"publicURL": "wss://test.example.com", "privateURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
 				}
 			}
 		}
@@ -261,7 +263,7 @@ func TestLoadSystemConfig_InvalidSiblingStrategyDefaults(t *testing.T) {
 				"future": {
 					"enable": true,
 					"baseURL": "https://test.api.com",
-					"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+					"websocket": {"publicURL": "wss://test.example.com", "privateURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
 				}
 			}
 		}
@@ -306,7 +308,7 @@ func TestLoadSystemConfig_WithExplicitExchange(t *testing.T) {
 				"future": {
 					"enable": true,
 					"baseURL": "https://test.api.com",
-					"websocket": {"wsURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
+					"websocket": {"publicURL": "wss://test.example.com", "privateURL": "wss://test.example.com", "maxPairsPerWSConn": 25}
 				}
 			}
 		}
@@ -335,7 +337,8 @@ func TestLoadSystemConfig_InvalidTradeSide(t *testing.T) {
 					"enable": true,
 					"baseURL": "https://test.api.com",
 					"websocket": {
-						"wsURL": "wss://test.example.com",
+						"publicURL": "wss://test.example.com",
+						"privateURL": "wss://test.example.com",
 						"maxPairsPerWSConn": 25
 					}
 				}

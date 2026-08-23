@@ -102,7 +102,7 @@ func TestNewEngine_Success(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.mexc.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
 				},
 				APIKey:    "mexc-key",
 				APISecret: "mexc-secret",
@@ -111,7 +111,7 @@ func TestNewEngine_Success(t *testing.T) {
 				Future: &sysconfig.RESTConfig{
 					Enable:    true,
 					BaseURL:   "https://api.gate.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.gate.com", PrivateURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
 				},
 				APIKey:    "gate-key",
 				APISecret: "gate-secret",
@@ -258,7 +258,7 @@ func TestNewEngine_OnlyMexc(t *testing.T) {
 			Future: &sysconfig.RESTConfig{
 				Enable:    true,
 				BaseURL:   "https://api.example.com",
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 			},
 		},
 	})
@@ -272,7 +272,7 @@ func TestNewEngine_OnlyGate(t *testing.T) {
 			Future: &sysconfig.RESTConfig{
 				Enable:    true,
 				BaseURL:   "https://api.example.com",
-				WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 			},
 		},
 	})
@@ -283,18 +283,93 @@ func TestNewEngine_BybitAccountTypeNormalization(t *testing.T) {
 
 	assertSingleProviderEngine(t, exchange.ExchangeBybit, sysconfig.ExchangeConfig{
 		"bybit": sysconfig.APIConfig{
-			AccountType: " STANDARD ",
+			AccountType: "UNIFIED",
 			Future: &sysconfig.RESTConfig{
 				Enable:  true,
 				BaseURL: "https://api.bybit.com",
 				WebSocket: sysconfig.WebSocketConfig{
-					PublicURL:         "wss://stream.bybit.com/v5/public/linear",
-					PrivateURL:        "wss://stream.bybit.com/v5/private",
-					MaxPairsPerWSConn: 10,
+					PublicURL:  "wss://stream.bybit.com/v5/public/linear",
+					PrivateURL: "wss://stream.bybit.com/v5/private",
 				},
 			},
 		},
 	})
+}
+
+func TestNewEngine_GateAccountTypeNormalization(t *testing.T) {
+	t.Parallel()
+
+	assertSingleProviderEngine(t, exchange.ExchangeGate, sysconfig.ExchangeConfig{
+		"gate": sysconfig.APIConfig{
+			AccountType: "portfolio",
+			Future: &sysconfig.RESTConfig{
+				Enable:  true,
+				BaseURL: "https://api.gateio.ws",
+				WebSocket: sysconfig.WebSocketConfig{
+					PublicURL:  "wss://fx-ws.gateio.ws/v4/ws/usdt",
+					PrivateURL: "wss://fx-ws.gateio.ws/v4/ws/usdt",
+				},
+			},
+		},
+	})
+}
+
+func TestNewEngine_BitgetAccountTypeNormalization(t *testing.T) {
+	t.Parallel()
+
+	assertSingleProviderEngine(t, exchange.ExchangeBitget, sysconfig.ExchangeConfig{
+		"bitget": sysconfig.APIConfig{
+			AccountType: "UTA",
+			Future: &sysconfig.RESTConfig{
+				Enable:  true,
+				BaseURL: "https://api.bitget.com",
+				WebSocket: sysconfig.WebSocketConfig{
+					PublicURL:  "wss://ws.bitget.com/v2/ws/public",
+					PrivateURL: "wss://ws.bitget.com/v2/ws/private",
+				},
+			},
+		},
+	})
+}
+
+func TestNewEngine_UnconfiguredExchangeInActiveListIgnored(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			"mexc": sysconfig.APIConfig{
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.mexc.com",
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
+				},
+			},
+			"gate": sysconfig.APIConfig{
+				Future: &sysconfig.RESTConfig{
+					Enable:    true,
+					BaseURL:   "https://api.gate.com",
+					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.gate.com", PrivateURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
+				},
+			},
+		},
+	}
+
+	engineCfg := app.EngineConfig{
+		SystemConfig:    cfg,
+		Logger:          testLogger(),
+		ActiveExchanges: []string{"mexc_futures"}, // only mexc_futures is active in funding.jsonc
+	}
+
+	e, err := app.NewEngine(context.Background(), engineCfg)
+	require.NoError(t, err)
+	require.NotNil(t, e)
+
+	// Mexc provider should be loaded, but Gate should be skipped despite being enabled in system config!
+	assert.Len(t, e.Providers, 1)
+	assert.Contains(t, e.Providers, "mexc_futures")
+	assert.NotContains(t, e.Providers, "gate_futures")
+
+	_ = e.Shutdown(context.Background())
 }
 
 func assertSingleProviderEngine(t *testing.T, exchangeName string, exchangeCfg sysconfig.ExchangeConfig) {
@@ -321,44 +396,4 @@ func TestEngine_Shutdown_NilWS(t *testing.T) {
 	assert.NotPanics(t, func() {
 		_ = e.Shutdown(context.Background())
 	})
-}
-
-func TestNewEngine_FilterByActiveExchanges(t *testing.T) {
-	t.Parallel()
-
-	cfg := &sysconfig.SystemConfig{
-		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.mexc.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
-				},
-			},
-			"gate": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.gate.com",
-					WebSocket: sysconfig.WebSocketConfig{WSURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
-				},
-			},
-		},
-	}
-
-	engineCfg := app.EngineConfig{
-		SystemConfig:    cfg,
-		Logger:          testLogger(),
-		ActiveExchanges: []string{"mexc_futures"}, // only mexc_futures is active in funding.jsonc
-	}
-
-	e, err := app.NewEngine(context.Background(), engineCfg)
-	require.NoError(t, err)
-	require.NotNil(t, e)
-
-	// Mexc provider should be loaded, but Gate should be skipped despite being enabled in system config!
-	assert.Len(t, e.Providers, 1)
-	assert.Contains(t, e.Providers, "mexc_futures")
-	assert.NotContains(t, e.Providers, "gate_futures")
-
-	_ = e.Shutdown(context.Background())
 }
