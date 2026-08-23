@@ -35,10 +35,10 @@
     "enable": true
   },
   "statsReporter": {
-    "enable": true
+    "enable": false
   },
   "priceTracker": {
-    "enable": true
+    "enable": false
   },
   "scanners": {
     "configured": false,
