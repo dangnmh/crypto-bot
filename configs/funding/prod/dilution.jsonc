@@ -3,7 +3,7 @@
   // Generates continuous, non-intrusive PostOnly Maker orders on high-liquidity pairs (BTC/ETH).
   // Dilutes funding volume ratio down to < 15-20%, protecting account from surveillance flags.
   "enabled": true,
-  "pollInterval": "30m",
+  "pollInterval": "40m",
   "jitter": "2m",
   "exchanges": {
     "toobit_futures": {
