@@ -28,7 +28,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 # ==========================================
 # Stage 2: Hardened Runtime Container
 # ==========================================
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Install security root CA-certificates, timezone database files, and libgcc (required for CGO-enabled binary)
 RUN apk add --no-cache ca-certificates tzdata libgcc

@@ -7,9 +7,9 @@
 
 # ── Configuration ────────────────────────────────────────────────────
 GO              := go
-GOLANGCI_LINT   := go tool -modfile=go.tool.mod golangci-lint
-MODERNIZE       := go tool -modfile=go.tool.mod modernize
-GOIMPORTS       := go tool -modfile=go.tool.mod goimports
+GOLANGCI_LINT   := go tool golangci-lint
+MODERNIZE       := go tool modernize
+GOIMPORTS       := go tool goimports
 COVERAGE_DIR    := .coverage
 COVERAGE_FILE   := $(COVERAGE_DIR)/coverage.out
 COVERAGE_HTML   := $(COVERAGE_DIR)/coverage.html
@@ -154,16 +154,13 @@ vet: ## Run go vet
 
 # ── Modules ──────────────────────────────────────────────────────────
 .PHONY: upgrade
-upgrade: ## Upgrade dependencies in go.mod and go.tool.mod
+upgrade: ## Upgrade dependencies in go.mod
 	$(GO) get -u ./...
-	$(GO) get -modfile=go.tool.mod -u ./...
 
 .PHONY: mod-tidy
 mod-tidy: ## Tidy go.mod and go.sum
 	$(GO) mod tidy
 	$(GO) mod verify
-	$(GO) mod tidy -modfile=go.tool.mod
-	$(GO) mod verify -modfile=go.tool.mod
 
 # ── Quality Gate ─────────────────────────────────────────────────────
 .PHONY: ci
