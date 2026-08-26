@@ -16,6 +16,7 @@ const (
 	topicRealtimes               = "realtimes"
 	topicDiffDepth               = "diffDepth"
 	topicDepth                   = "depth"
+	topicTrade                   = "trade"
 	channelPing                  = "ping"
 	channelPersonalPosition      = "personal.position"
 	outboundContractPositionInfo = "outboundContractPositionInfo"

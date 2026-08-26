@@ -35,6 +35,7 @@ func TestFuturesWsAdapter_ParseDepth(t *testing.T) {
 	assert.Equal(t, "BTC_USDT", sym)
 	require.NotNil(t, ob)
 	assert.Equal(t, int64(123456), ob.Version)
+	assert.Equal(t, time.UnixMilli(1600000000000).UTC(), ob.Timestamp)
 	require.Len(t, ob.Bids, 2)
 	assert.Equal(t, 60000.5, ob.Bids[0].Price)
 	assert.Equal(t, 1.2, ob.Bids[0].Volume) // Contract quantity at index 2
@@ -66,6 +67,7 @@ func TestFuturesWsAdapter_ParseDepth(t *testing.T) {
 	require.NotNil(t, ob4)
 	assert.Equal(t, int64(40949478001), ob4.FirstVersion)
 	assert.Equal(t, int64(40949478038), ob4.Version)
+	assert.Equal(t, time.UnixMilli(1787301607692).UTC(), ob4.Timestamp)
 	require.Len(t, ob4.Bids, 1)
 	assert.Equal(t, 77506.4, ob4.Bids[0].Price)
 	assert.Equal(t, 5.0, ob4.Bids[0].Volume)
@@ -218,6 +220,8 @@ func TestFuturesWsAdapter_Subscriptions(t *testing.T) {
 
 	assert.NoError(t, adapter.SubscribeDepth(ctx, "BTC_USDT"))
 	assert.NoError(t, adapter.UnsubscribeDepth(ctx, "BTC_USDT"))
+	assert.NoError(t, adapter.SubscribeTrade(ctx, "BTC_USDT"))
+	assert.NoError(t, adapter.UnsubscribeTrade(ctx, "BTC_USDT"))
 	assert.NoError(t, adapter.SubscribeTicker(ctx, "BTC_USDT"))
 	assert.NoError(t, adapter.UnsubscribeTicker(ctx, "BTC_USDT"))
 
@@ -226,4 +230,75 @@ func TestFuturesWsAdapter_Subscriptions(t *testing.T) {
 	assert.Greater(t, dur, int64(0))
 
 	assert.NoError(t, adapter.UnsubscribePersonal(ctx))
+
+	extractor := adapter.GetChannelExtractor()
+	assert.Equal(t, "depth", extractor([]byte(`{"channel":"push.depth"}`)))
+	assert.Equal(t, "trade", extractor([]byte(`{"channel":"push.deal"}`)))
+	assert.Equal(t, "ticker", extractor([]byte(`{"channel":"push.ticker"}`)))
+}
+
+func TestFuturesWsAdapter_ParseTrade(t *testing.T) {
+	t.Parallel()
+	adapter := futures.NewWsAdapter()
+
+	// Array format
+	raw := []byte(`{
+		"channel": "push.deal",
+		"symbol": "BTC_USDT",
+		"data": [
+			{
+				"p": 64410.3,
+				"v": 5,
+				"T": 2,
+				"O": 3,
+				"M": 1,
+				"t": 1781768636372,
+				"i": "15007546827",
+				"cts": "1781768636372"
+			},
+			{
+				"p": "64411.0",
+				"v": "2.5",
+				"T": 1,
+				"t": 1781768636380,
+				"cts": 1781768636380
+			}
+		],
+		"ts": 1781768636372
+	}`)
+
+	sym, trades, err := adapter.ParseTrade(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "BTC_USDT", sym)
+	require.Len(t, trades, 2)
+
+	assert.Equal(t, 64410.3, trades[0].Price)
+	assert.Equal(t, 5.0, trades[0].Volume)
+	assert.False(t, trades[0].Side.IsLong()) // T=2 => SideOpenShort
+	assert.Equal(t, time.UnixMilli(1781768636372).UTC(), trades[0].Timestamp)
+
+	assert.Equal(t, 64411.0, trades[1].Price)
+	assert.Equal(t, 2.5, trades[1].Volume)
+	assert.True(t, trades[1].Side.IsLong()) // T=1 => SideOpenLong
+	assert.Equal(t, time.UnixMilli(1781768636380).UTC(), trades[1].Timestamp)
+
+	// Single object format
+	singleRaw := []byte(`{
+		"channel": "push.deal",
+		"symbol": "ETH_USDT",
+		"data": {
+			"p": 3500.0,
+			"v": 10,
+			"T": 1,
+			"t": 1781768636390
+		}
+	}`)
+	symSingle, tradesSingle, errSingle := adapter.ParseTrade(singleRaw)
+	require.NoError(t, errSingle)
+	assert.Equal(t, "ETH_USDT", symSingle)
+	require.Len(t, tradesSingle, 1)
+	assert.Equal(t, 3500.0, tradesSingle[0].Price)
+	assert.Equal(t, 10.0, tradesSingle[0].Volume)
+	assert.True(t, tradesSingle[0].Side.IsLong())
+	assert.Equal(t, time.UnixMilli(1781768636390).UTC(), tradesSingle[0].Timestamp)
 }

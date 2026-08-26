@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -36,6 +37,7 @@ func TestFuturesWsAdapter_ParseDepth(t *testing.T) {
 	assert.Equal(t, "XBTUSDTM", sym)
 	require.NotNil(t, ob)
 	assert.Equal(t, int64(1709400450243), ob.Version)
+	assert.Equal(t, time.UnixMilli(1731897467182).UTC(), ob.Timestamp)
 	assert.Empty(t, ob.Bids)
 	require.Len(t, ob.Asks, 1)
 	assert.Equal(t, 90631.2, ob.Asks[0].Price)
@@ -188,6 +190,8 @@ func TestFuturesWsAdapter_Subscriptions(t *testing.T) {
 
 	assert.NoError(t, adapter.SubscribeDepth(ctx, "XBTUSDM"))
 	assert.NoError(t, adapter.UnsubscribeDepth(ctx, "XBTUSDM"))
+	assert.NoError(t, adapter.SubscribeTrade(ctx, "XBTUSDM"))
+	assert.NoError(t, adapter.UnsubscribeTrade(ctx, "XBTUSDM"))
 	assert.NoError(t, adapter.SubscribeTicker(ctx, "XBTUSDM"))
 	assert.NoError(t, adapter.UnsubscribeTicker(ctx, "XBTUSDM"))
 	assert.NoError(t, adapter.SubscribePersonal(ctx))
@@ -198,4 +202,64 @@ func TestFuturesWsAdapter_Subscriptions(t *testing.T) {
 	assert.Greater(t, dur, int64(0))
 
 	assert.Nil(t, adapter.GetAuthHook("key", "secret"))
+
+	extractor := adapter.GetChannelExtractor()
+	assert.Equal(t, "depth", extractor([]byte(`{"topic":"/contractMarket/level2:XBTUSDTM"}`)))
+	assert.Equal(t, "trade", extractor([]byte(`{"topic":"/contractMarket/execution:XBTUSDTM"}`)))
+	assert.Equal(t, "trade", extractor([]byte(`{"subject":"match"}`)))
+	assert.Equal(t, "ticker", extractor([]byte(`{"topic":"/contractMarket/tickerV2:XBTUSDTM"}`)))
+}
+
+func TestFuturesWsAdapter_ParseTrade(t *testing.T) {
+	t.Parallel()
+	adapter := futures.NewWsAdapter()
+
+	raw := []byte(`{
+		"topic": "/contractMarket/execution:XBTUSDTM",
+		"type": "message",
+		"subject": "match",
+		"sn": 1794100537695,
+		"data": {
+			"symbol": "XBTUSDTM",
+			"sequence": 1794100537695,
+			"side": "buy",
+			"size": 2,
+			"price": "90503.9",
+			"takerOrderId": "247822202957807616",
+			"makerOrderId": "247822167163555840",
+			"tradeId": "1794100537695",
+			"ts": 1731898619520000000
+		}
+	}`)
+
+	sym, trades, err := adapter.ParseTrade(raw)
+	require.NoError(t, err)
+	assert.Equal(t, "XBTUSDTM", sym)
+	require.Len(t, trades, 1)
+
+	assert.Equal(t, 90503.9, trades[0].Price)
+	assert.Equal(t, 2.0, trades[0].Volume)
+	assert.True(t, trades[0].Side.IsLong())
+	assert.Equal(t, time.Unix(0, 1731898619520000000).UTC(), trades[0].Timestamp)
+
+	// Sell trade
+	rawSell := []byte(`{
+		"topic": "/contractMarket/execution:XBTUSDTM",
+		"type": "message",
+		"subject": "match",
+		"data": {
+			"side": "sell",
+			"size": "5.5",
+			"price": "90500.0",
+			"ts": 1731898619520
+		}
+	}`)
+	symSell, tradesSell, errSell := adapter.ParseTrade(rawSell)
+	require.NoError(t, errSell)
+	assert.Equal(t, "XBTUSDTM", symSell)
+	require.Len(t, tradesSell, 1)
+	assert.Equal(t, 90500.0, tradesSell[0].Price)
+	assert.Equal(t, 5.5, tradesSell[0].Volume)
+	assert.False(t, tradesSell[0].Side.IsLong())
+	assert.Equal(t, time.UnixMilli(1731898619520).UTC(), tradesSell[0].Timestamp)
 }

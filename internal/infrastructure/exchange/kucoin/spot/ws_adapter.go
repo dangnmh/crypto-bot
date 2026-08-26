@@ -11,8 +11,8 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/kucoin"
 	"crypto-bot/internal/infrastructure/store"
-	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
+	"crypto-bot/pkg/xjson"
 
 	"github.com/buger/jsonparser"
 )
@@ -30,6 +30,8 @@ const (
 var (
 	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
 	_ exchange.DepthParser     = (*WsAdapter)(nil)
+	_ exchange.TradeSubscriber = (*WsAdapter)(nil)
+	_ exchange.TradeParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for KuCoin Spot.
@@ -142,6 +144,32 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
 	return a.UnsubscribePublic(ctx, symbol+":depth", msg)
 }
 
+// SubscribeTrade subscribes to Level 3 trade match execution stream for a spot symbol.
+func (a *WsAdapter) SubscribeTrade(ctx context.Context, symbol string) error {
+	topic := "/market/match:" + symbol
+	msg := map[string]any{
+		"id":                "sub-" + symbol + "-trade",
+		paramType:           opSubscribe,
+		paramTopic:          topic,
+		paramPrivateChannel: false,
+		paramResponse:       true,
+	}
+	return a.SubscribePublic(ctx, symbol+":trade", msg)
+}
+
+// UnsubscribeTrade unsubscribes from Level 3 trade match execution stream for a spot symbol.
+func (a *WsAdapter) UnsubscribeTrade(ctx context.Context, symbol string) error {
+	topic := "/market/match:" + symbol
+	msg := map[string]any{
+		"id":                "unsub-" + symbol + "-trade",
+		paramType:           opUnsubscribe,
+		paramTopic:          topic,
+		paramPrivateChannel: false,
+		paramResponse:       true,
+	}
+	return a.UnsubscribePublic(ctx, symbol+":trade", msg)
+}
+
 // SubscribePersonal is a no-op for spot in this phase.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	return nil
@@ -168,28 +196,67 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
 		topic, _ := jsonparser.GetString(data, "topic")
-		if strings.HasPrefix(topic, "/market/level2:") {
+		subject, _ := jsonparser.GetString(data, "subject")
+		if strings.HasPrefix(topic, "/market/level2:") || subject == "level2" || subject == "trade.l2update" {
 			return "depth"
+		}
+		if strings.HasPrefix(topic, "/market/match:") || subject == "trade.l3match" || subject == "match" {
+			return "trade"
 		}
 		return ""
 	}
 }
 
+type wsDepthMessage struct {
+	Topic string `json:"topic"`
+	Data  struct {
+		SequenceStart int64  `json:"sequenceStart"`
+		SequenceEnd   int64  `json:"sequenceEnd"`
+		Symbol        string `json:"symbol"`
+		Time          int64  `json:"time"`
+		Changes       struct {
+			Bids [][]xjson.Number `json:"bids"`
+			Asks [][]xjson.Number `json:"asks"`
+		} `json:"changes"`
+	} `json:"data"`
+}
+
 // ParseDepth parses spot Level 2 depth updates.
 func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
-	topic, _ := jsonparser.GetString(data, "topic")
-	symbol := strings.TrimPrefix(topic, "/market/level2:")
+	var msg wsDepthMessage
+	if err := xjson.Unmarshal(data, &msg); err != nil {
+		return "", nil, fmt.Errorf("unmarshal kucoin spot depth: %w", err)
+	}
+
+	symbol := strings.TrimPrefix(msg.Topic, "/market/level2:")
 	if symbol == "" {
-		symbol, _ = jsonparser.GetString(data, "data", "symbol")
+		symbol = msg.Data.Symbol
 	}
 
-	dataNode, _, _, err := jsonparser.Get(data, "data")
-	if err != nil {
-		return symbol, nil, err
+	bids := make([]domain.OrderBookEntry, 0, len(msg.Data.Changes.Bids))
+	for _, item := range msg.Data.Changes.Bids {
+		if len(item) >= 2 {
+			p := xjson.ToFloat64(item[0])
+			v := xjson.ToFloat64(item[1])
+			if p > 0 {
+				bids = append(bids, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
 	}
 
-	seqStart, _ := jsonparser.GetInt(dataNode, "sequenceStart")
-	seqEnd, _ := jsonparser.GetInt(dataNode, "sequenceEnd")
+	asks := make([]domain.OrderBookEntry, 0, len(msg.Data.Changes.Asks))
+	for _, item := range msg.Data.Changes.Asks {
+		if len(item) >= 2 {
+			p := xjson.ToFloat64(item[0])
+			v := xjson.ToFloat64(item[1])
+			if p > 0 {
+				asks = append(asks, domain.OrderBookEntry{Price: p, Volume: v})
+			}
+		}
+	}
+
+	seqStart := msg.Data.SequenceStart
+	seqEnd := msg.Data.SequenceEnd
 	if seqEnd == 0 {
 		seqEnd = seqStart
 	}
@@ -197,33 +264,84 @@ func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
 		seqStart = seqEnd
 	}
 
-	var bids []domain.OrderBookEntry
-	_, _ = jsonparser.ArrayEach(dataNode, func(val []byte, dataType jsonparser.ValueType, offset int, err error) {
-		pStr, _ := jsonparser.GetString(val, "[0]")
-		vStr, _ := jsonparser.GetString(val, "[1]")
-		p, v := decmath.ParseFloat(pStr), decmath.ParseFloat(vStr)
-		if p > 0 {
-			bids = append(bids, domain.OrderBookEntry{Price: p, Volume: v})
-		}
-	}, "changes", "bids")
-
-	var asks []domain.OrderBookEntry
-	_, _ = jsonparser.ArrayEach(dataNode, func(val []byte, dataType jsonparser.ValueType, offset int, err error) {
-		pStr, _ := jsonparser.GetString(val, "[0]")
-		vStr, _ := jsonparser.GetString(val, "[1]")
-		p, v := decmath.ParseFloat(pStr), decmath.ParseFloat(vStr)
-		if p > 0 {
-			asks = append(asks, domain.OrderBookEntry{Price: p, Volume: v})
-		}
-	}, "changes", "asks")
+	timeVal := msg.Data.Time
+	ts := time.Now().UTC()
+	if timeVal > 0 {
+		ts = time.UnixMilli(timeVal).UTC()
+	}
 
 	return symbol, &domain.OrderBook{
 		Symbol:       symbol,
 		FirstVersion: seqStart,
 		Version:      seqEnd,
+		Timestamp:    ts,
 		Bids:         bids,
 		Asks:         asks,
 	}, nil
+}
+
+type wsTradeMessage struct {
+	Topic   string `json:"topic"`
+	Type    string `json:"type"`
+	Subject string `json:"subject"`
+	Data    struct {
+		Symbol       string       `json:"symbol"`
+		Sequence     string       `json:"sequence"`
+		Side         string       `json:"side"`
+		Size         xjson.Number `json:"size"`
+		Price        xjson.Number `json:"price"`
+		MakerOrderID string       `json:"makerOrderId"`
+		TakerOrderID string       `json:"takerOrderId"`
+		TradeID      string       `json:"tradeId"`
+		Type         string       `json:"type"`
+		Time         xjson.Number `json:"time"`
+	} `json:"data"`
+}
+
+// ParseTrade parses Level 3 match execution trade messages into []domain.PublicTrade.
+func (a *WsAdapter) ParseTrade(data []byte) (string, []domain.PublicTrade, error) {
+	var msg wsTradeMessage
+	if err := xjson.Unmarshal(data, &msg); err != nil {
+		return "", nil, fmt.Errorf("unmarshal kucoin spot trade: %w", err)
+	}
+
+	symbol := msg.Data.Symbol
+	if symbol == "" {
+		if idx := strings.LastIndex(msg.Topic, ":"); idx != -1 && idx < len(msg.Topic)-1 {
+			symbol = msg.Topic[idx+1:]
+		}
+	}
+
+	p, _ := msg.Data.Price.Float64()
+	v, _ := msg.Data.Size.Float64()
+	if p <= 0 || v <= 0 {
+		return symbol, nil, nil
+	}
+
+	side := domain.SideOpenLong
+	if strings.EqualFold(msg.Data.Side, "sell") {
+		side = domain.SideOpenShort
+	}
+
+	ts := time.Now().UTC()
+	timeNum, _ := msg.Data.Time.Int64()
+	if timeNum > 0 {
+		if timeNum > 1e16 {
+			ts = time.Unix(0, timeNum).UTC()
+		} else {
+			ts = time.UnixMilli(timeNum).UTC()
+		}
+	}
+
+	trade := domain.PublicTrade{
+		Symbol:    symbol,
+		Price:     p,
+		Volume:    v,
+		Side:      side,
+		Timestamp: ts,
+	}
+
+	return symbol, []domain.PublicTrade{trade}, nil
 }
 
 // ParseTicker is a no-op for spot in this phase.

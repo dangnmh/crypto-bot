@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ──────────────────────────────────────────────────────────────────────
@@ -231,8 +232,22 @@ type OrderBook struct {
 	Symbol       string
 	FirstVersion int64            // Starting commit version for batched updates (e.g. MEXC data.begin)
 	Version      int64            // Ending commit version / sequence (e.g. MEXC data.end / KuCoin sequence)
+	Timestamp    time.Time        // Exchange matching engine server timestamp
 	Asks         []OrderBookEntry // Sorted by price ascending (lowest ask first)
 	Bids         []OrderBookEntry // Sorted by price descending (highest bid first)
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// PublicTrade — market execution data (tape)
+// ──────────────────────────────────────────────────────────────────────.
+
+// PublicTrade represents a single market trade execution on an exchange.
+type PublicTrade struct {
+	Symbol    string    `json:"symbol"`
+	Price     float64   `json:"price"`
+	Volume    float64   `json:"volume"`
+	Side      Side      `json:"side"` // SideOpenLong (Taker Buy) or SideOpenShort (Taker Sell)
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // ──────────────────────────────────────────────────────────────────────

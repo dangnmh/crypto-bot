@@ -83,6 +83,17 @@ type DepthParser interface {
 	ParseDepth(data []byte) (string, *domain.OrderBook, error)
 }
 
+// TradeSubscriber defines the interface for managing WebSocket trade subscriptions on exchange adapters.
+type TradeSubscriber interface {
+	SubscribeTrade(ctx context.Context, symbol string) error
+	UnsubscribeTrade(ctx context.Context, symbol string) error
+}
+
+// TradeParser defines the interface for parsing raw WebSocket trade messages into []domain.PublicTrade.
+type TradeParser interface {
+	ParseTrade(data []byte) (string, []domain.PublicTrade, error)
+}
+
 // DepthProvider is an optional interface that exchange REST clients can implement
 // to support retrieving orderbook depth snapshots on-demand via REST API.
 type DepthProvider interface {

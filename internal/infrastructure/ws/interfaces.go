@@ -28,6 +28,12 @@ type DepthSubscriber interface {
 	UnsubscribeDepth(ctx context.Context, symbol string) error
 }
 
+// TradeSubscriber handles trade streaming subscription/unsubscription.
+type TradeSubscriber interface {
+	SubscribeTrade(ctx context.Context, symbol string) error
+	UnsubscribeTrade(ctx context.Context, symbol string) error
+}
+
 // ExchangeAdapter encapsulates all exchange-specific WS logic.
 type ExchangeAdapter interface {
 	Subscriber // Inherit Subscribe, Unsubscribe methods

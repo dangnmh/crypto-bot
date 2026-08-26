@@ -73,3 +73,19 @@ func (s *ContractStore) GetContract(_ context.Context, symbol string) (*Contract
 	snapshot := *cd
 	return &snapshot, nil
 }
+
+// WaitReady blocks until the initial contract sync completes or ctx is cancelled.
+func (s *ContractStore) WaitReady(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.readyWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}

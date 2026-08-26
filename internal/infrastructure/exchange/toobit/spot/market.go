@@ -225,10 +225,18 @@ func (c *Client) GetTopGainer(ctx context.Context, req exchange.TopGainerRequest
 	return results, nil
 }
 
+func formatSpotSymbol(symbol string) string {
+	s := strings.ToUpper(symbol)
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "_", "")
+	return s
+}
+
 // GetDepth retrieves the current Level 2 orderbook for a spot symbol.
 func (c *Client) GetDepth(ctx context.Context, symbol string) (*domain.OrderBook, error) {
+	sym := formatSpotSymbol(symbol)
 	params := map[string]string{
-		symbolKey: symbol,
+		symbolKey: sym,
 		"limit":   "100",
 	}
 	body, err := c.base.Request(ctx, http.MethodGet, "/quote/v1/depth", params, false)

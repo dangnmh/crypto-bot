@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -32,6 +31,8 @@ const (
 var (
 	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
 	_ exchange.DepthParser     = (*WsAdapter)(nil)
+	_ exchange.TradeSubscriber = (*WsAdapter)(nil)
+	_ exchange.TradeParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for MEXC Futures.
@@ -111,6 +112,30 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
 	return a.UnsubscribePublic(ctx, topic, msg)
 }
 
+// SubscribeTrade subscribes to public trade deals.
+func (a *WsAdapter) SubscribeTrade(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		methodKey: "sub.deal",
+		paramKey: map[string]any{
+			symbolKey: symbol,
+		},
+	}
+	topic := symbol + ":deal"
+	return a.SubscribePublic(ctx, topic, msg)
+}
+
+// UnsubscribeTrade unsubscribes from public trade deals.
+func (a *WsAdapter) UnsubscribeTrade(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		methodKey: "unsub.deal",
+		paramKey: map[string]any{
+			symbolKey: symbol,
+		},
+	}
+	topic := symbol + ":deal"
+	return a.UnsubscribePublic(ctx, topic, msg)
+}
+
 // SubscribePersonal subscribes to all private futures channels used by funding flows.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	a.authMu.Lock()
@@ -186,6 +211,8 @@ func mapMexcChannel(channel string) string {
 	switch channel {
 	case "push.ticker":
 		return "ticker"
+	case "push.deal":
+		return "trade"
 	case "push.depth", "push.depth.full", "push.depth.step":
 		return "depth"
 	case "push.kline":
@@ -283,75 +310,79 @@ func (a *WsAdapter) ParseTicker(message []byte) (string, *store.PriceData, error
 	return symbol, pd, nil
 }
 
+type wsDepthMessage struct {
+	Channel string `json:"channel"`
+	Symbol  string `json:"symbol"`
+	Data    struct {
+		Begin   int64            `json:"begin"`
+		End     int64            `json:"end"`
+		CTS     int64            `json:"cts"`
+		Version int64            `json:"version"`
+		Asks    [][]xjson.Number `json:"asks"` // [price, orderCount, quantity]
+		Bids    [][]xjson.Number `json:"bids"` // [price, orderCount, quantity]
+	} `json:"data"`
+	TS int64 `json:"ts"`
+}
+
+func parseLevels(items [][]xjson.Number) []domain.OrderBookEntry {
+	res := make([]domain.OrderBookEntry, 0, len(items))
+	for _, item := range items {
+		if len(item) < 2 {
+			continue
+		}
+		p := xjson.ToFloat64(item[0])
+		v := xjson.ToFloat64(item[1])
+		if len(item) >= 3 {
+			v = xjson.ToFloat64(item[2]) // Index 2 is contract quantity
+		}
+		if p <= 0 {
+			continue
+		}
+		res = append(res, domain.OrderBookEntry{
+			Price:  p,
+			Volume: v,
+		})
+	}
+	return res
+}
+
 // ParseDepth parses a Level 2 depth push message into domain.OrderBook.
 func (a *WsAdapter) ParseDepth(message []byte) (string, *domain.OrderBook, error) {
-	symbol, err := jsonparser.GetString(message, "symbol")
-	if err != nil {
-		return "", nil, fmt.Errorf("missing symbol in depth payload: %w", err)
+	var msg wsDepthMessage
+	if err := xjson.Unmarshal(message, &msg); err != nil {
+		return "", nil, fmt.Errorf("unmarshal mexc futures depth: %w", err)
 	}
 
-	beginVer, _ := jsonparser.GetInt(message, "data", "begin")
-	endVer, _ := jsonparser.GetInt(message, "data", "end")
+	symbol := msg.Symbol
+	if symbol == "" {
+		return "", nil, fmt.Errorf("missing symbol in depth payload")
+	}
+
+	beginVer := msg.Data.Begin
+	endVer := msg.Data.End
 	if endVer == 0 {
-		endVer, _ = jsonparser.GetInt(message, "data", "version")
+		endVer = msg.Data.Version
 	}
 	if beginVer == 0 {
 		beginVer = endVer
 	}
 
-	parseLevels := func(key string) ([]domain.OrderBookEntry, error) {
-		rawLevels, dataType, _, getErr := jsonparser.Get(message, "data", key)
-		if getErr != nil {
-			if errors.Is(getErr, jsonparser.KeyPathNotFoundError) {
-				return nil, nil
-			}
-			return nil, fmt.Errorf("read %s in depth payload: %w", key, getErr)
-		}
-		if dataType != jsonparser.Array {
-			return nil, nil
-		}
-
-		var levels [][]xjson.Number
-		if unmarshalErr := xjson.Unmarshal(rawLevels, &levels); unmarshalErr != nil {
-			return nil, fmt.Errorf("failed to unmarshal %s: %w", key, unmarshalErr)
-		}
-
-		res := make([]domain.OrderBookEntry, 0, len(levels))
-		for _, item := range levels {
-			if len(item) < 2 {
-				continue
-			}
-			p := xjson.ToFloat64(item[0])
-			v := xjson.ToFloat64(item[1])
-			if len(item) >= 3 {
-				v = xjson.ToFloat64(item[2]) // Index 2 is contract quantity
-			}
-			if p <= 0 {
-				continue
-			}
-			res = append(res, domain.OrderBookEntry{
-				Price:  p,
-				Volume: v,
-			})
-		}
-		return res, nil
+	tsVal := msg.Data.CTS
+	if tsVal == 0 {
+		tsVal = msg.TS
 	}
-
-	bids, err := parseLevels("bids")
-	if err != nil {
-		return symbol, nil, err
-	}
-	asks, err := parseLevels("asks")
-	if err != nil {
-		return symbol, nil, err
+	ts := time.Now().UTC()
+	if tsVal > 0 {
+		ts = time.UnixMilli(tsVal).UTC()
 	}
 
 	return symbol, &domain.OrderBook{
 		Symbol:       symbol,
 		FirstVersion: beginVer,
 		Version:      endVer,
-		Bids:         bids,
-		Asks:         asks,
+		Timestamp:    ts,
+		Bids:         parseLevels(msg.Data.Bids),
+		Asks:         parseLevels(msg.Data.Asks),
 	}, nil
 }
 
@@ -379,4 +410,87 @@ func (a *WsAdapter) ParsePosition(message []byte) (*exchange.PersonalPositionUpd
 		LiquidatePrice:  raw.LiquidatePrice,
 		UpdateTime:      raw.UpdateTime,
 	}, nil
+}
+
+type wsDealItem struct {
+	Price     xjson.Number `json:"p"`
+	Volume    xjson.Number `json:"v"`
+	TradeSide int          `json:"T"` // 1: buy, 2: sell
+	OpenClose int          `json:"O"`
+	TradeID   xjson.Number `json:"i"`
+	TradeTime int64        `json:"t"`
+	CTS       xjson.Number `json:"cts"`
+}
+
+type wsDealMessage struct {
+	Channel string          `json:"channel"`
+	Symbol  string          `json:"symbol"`
+	Data    json.RawMessage `json:"data"`
+	TS      int64           `json:"ts"`
+}
+
+func parseDealItems(raw json.RawMessage) ([]wsDealItem, error) {
+	var items []wsDealItem
+	if err := xjson.Unmarshal(raw, &items); err == nil {
+		return items, nil
+	}
+	var single wsDealItem
+	if err := xjson.Unmarshal(raw, &single); err == nil {
+		return []wsDealItem{single}, nil
+	}
+	return nil, fmt.Errorf("unmarshal mexc futures deal items: invalid format")
+}
+
+// ParseTrade parses real-time deal messages into []domain.PublicTrade.
+func (a *WsAdapter) ParseTrade(message []byte) (string, []domain.PublicTrade, error) {
+	var msg wsDealMessage
+	if err := xjson.Unmarshal(message, &msg); err != nil {
+		return "", nil, fmt.Errorf("unmarshal mexc futures deal: %w", err)
+	}
+
+	symbol := msg.Symbol
+	if symbol == "" {
+		return "", nil, fmt.Errorf("missing symbol in deal payload")
+	}
+
+	items, err := parseDealItems(msg.Data)
+	if err != nil {
+		return symbol, nil, err
+	}
+
+	trades := make([]domain.PublicTrade, 0, len(items))
+	for _, item := range items {
+		p, _ := item.Price.Float64()
+		v, _ := item.Volume.Float64()
+		if p <= 0 || v <= 0 {
+			continue
+		}
+
+		side := domain.SideOpenLong
+		if item.TradeSide == 2 {
+			side = domain.SideOpenShort
+		}
+
+		tsVal, _ := item.CTS.Int64()
+		if tsVal == 0 {
+			tsVal = item.TradeTime
+		}
+		if tsVal == 0 {
+			tsVal = msg.TS
+		}
+		ts := time.Now().UTC()
+		if tsVal > 0 {
+			ts = time.UnixMilli(tsVal).UTC()
+		}
+
+		trades = append(trades, domain.PublicTrade{
+			Symbol:    symbol,
+			Price:     p,
+			Volume:    v,
+			Side:      side,
+			Timestamp: ts,
+		})
+	}
+
+	return symbol, trades, nil
 }

@@ -214,8 +214,20 @@ dev-up: ## Start the local development environment using Docker Compose (with re
 	docker compose up -d --build
 
 .PHONY: dev-infra
-dev-infra: ## Start only the local infrastructure (PostgreSQL & Grafana, excluding the bot)
-	docker compose up -d postgres grafana
+dev-infra: ## Start only the local infrastructure (PostgreSQL, Grafana & AI Proxy, excluding the bot)
+	docker compose up -d postgres grafana proxy
+
+.PHONY: proxy
+proxy: ## Start the dedicated AI proxy service (CLIProxyAPI)
+	docker compose up -d proxy
+
+.PHONY: proxy-logs
+proxy-logs: ## Watch logs from the AI proxy container
+	docker compose logs -f proxy
+
+.PHONY: proxy-down
+proxy-down: ## Stop the AI proxy container
+	docker compose stop proxy
 
 .PHONY: dev-down
 dev-down: ## Stop the local development environment
@@ -228,6 +240,7 @@ dev-logs: ## Watch logs from the local development containers
 .PHONY: dev-ps
 dev-ps: ## List running local development containers
 	docker compose ps
+
 
 # ── Terraform ────────────────────────────────────────────────────────
 .PHONY: tf-init

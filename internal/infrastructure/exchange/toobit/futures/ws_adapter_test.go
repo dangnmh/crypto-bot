@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -36,6 +37,7 @@ func TestFuturesWsAdapter_ParseDepth(t *testing.T) {
 	assert.Equal(t, "BTC-SWAP-USDT", sym)
 	assert.Equal(t, "BTC-SWAP-USDT", depth.Symbol)
 	assert.Equal(t, int64(100), depth.Version)
+	assert.Equal(t, time.UnixMilli(1670000000000).UTC(), depth.Timestamp)
 	require.Len(t, depth.Bids, 1)
 	require.Len(t, depth.Asks, 1)
 
@@ -187,6 +189,8 @@ func TestFuturesWsAdapter_Subscriptions(t *testing.T) {
 
 	assert.NoError(t, adapter.SubscribeDepth(ctx, "BTC-SWAP-USDT"))
 	assert.NoError(t, adapter.UnsubscribeDepth(ctx, "BTC-SWAP-USDT"))
+	assert.NoError(t, adapter.SubscribeTrade(ctx, "BTC-SWAP-USDT"))
+	assert.NoError(t, adapter.UnsubscribeTrade(ctx, "BTC-SWAP-USDT"))
 	assert.NoError(t, adapter.SubscribeTicker(ctx, "BTC-SWAP-USDT"))
 	assert.NoError(t, adapter.UnsubscribeTicker(ctx, "BTC-SWAP-USDT"))
 	assert.NoError(t, adapter.SubscribePersonal(ctx))
@@ -196,4 +200,74 @@ func TestFuturesWsAdapter_Subscriptions(t *testing.T) {
 	assert.Greater(t, dur, int64(0))
 
 	assert.Nil(t, adapter.GetAuthHook("key", "secret"))
+}
+
+func TestFuturesWsAdapter_ParseTrade(t *testing.T) {
+	t.Parallel()
+	adapter := futures.NewWsAdapter("wss://stream.toobit.com")
+
+	// Array format with isBuyerMaker (m=true => Taker Sell, m=false => Taker Buy)
+	msg := []byte(`{
+		"topic": "trade",
+		"symbol": "BTC-SWAP-USDT",
+		"data": [
+			{
+				"p": "50000.5",
+				"q": "2.0",
+				"v": "4900197869782446621",
+				"t": 1670000000000,
+				"m": true
+			},
+			{
+				"p": "50001.0",
+				"q": "1.5",
+				"v": "4900197869782446622",
+				"t": 1670000001000,
+				"m": false
+			}
+		]
+	}`)
+
+	sym, trades, err := adapter.ParseTrade(msg)
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-SWAP-USDT", sym)
+	require.Len(t, trades, 2)
+
+	assert.Equal(t, 50000.5, trades[0].Price)
+	assert.Equal(t, 2.0, trades[0].Volume)
+	assert.Equal(t, false, trades[0].Side.IsLong()) // m=true => Taker Sell => SideOpenShort
+
+	assert.Equal(t, 50001.0, trades[1].Price)
+	assert.Equal(t, 1.5, trades[1].Volume)
+	assert.Equal(t, true, trades[1].Side.IsLong()) // m=false => Taker Buy => SideOpenLong
+
+	// Single object format with Side string
+	singleMsg := []byte(`{
+		"topic": "trade",
+		"symbol": "ETH-SWAP-USDT",
+		"data": {
+			"p": "3000.0",
+			"q": "10.0",
+			"v": "4900197869782446623",
+			"m": true,
+			"t": 1670000002000
+		}
+	}`)
+	sym2, trades2, err := adapter.ParseTrade(singleMsg)
+	require.NoError(t, err)
+	assert.Equal(t, "ETH-SWAP-USDT", sym2)
+	require.Len(t, trades2, 1)
+	assert.Equal(t, 3000.0, trades2[0].Price)
+	assert.Equal(t, 10.0, trades2[0].Volume)
+	assert.Equal(t, false, trades2[0].Side.IsLong())
+
+	// Empty data
+	symEmpty, tradesEmpty, err := adapter.ParseTrade([]byte(`{"topic": "trade", "symbol": "BTC-SWAP-USDT", "data": []}`))
+	require.NoError(t, err)
+	assert.Equal(t, "BTC-SWAP-USDT", symEmpty)
+	assert.Nil(t, tradesEmpty)
+
+	// Invalid JSON
+	_, _, err = adapter.ParseTrade([]byte(`invalid`))
+	require.Error(t, err)
 }

@@ -18,6 +18,9 @@ type OrderBookEntry = domain.OrderBookEntry
 // Kline is an alias for the domain Kline type.
 type Kline = domain.Kline
 
+// PublicTrade is an alias for the domain PublicTrade type.
+type PublicTrade = domain.PublicTrade
+
 // DepthCommit represents one incremental depth update (exchange-agnostic).
 // Exchange adapters convert their raw commit format into this struct.
 type DepthCommit struct {

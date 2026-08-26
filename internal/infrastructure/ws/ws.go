@@ -2,7 +2,11 @@ package ws
 
 import (
 	"context"
+	"fmt"
 	"sync"
+
+	"crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/exchange"
 )
 
 type ExchangeManagerAdapterSubscriber interface {
@@ -15,6 +19,9 @@ type ExchangeManagerAdapterSubscriber interface {
 	SubscribeDepth(ctx context.Context, flowID, symbol string) error
 	UnsubscribeDepth(ctx context.Context, flowID, symbol string) error
 
+	SubscribeTrade(ctx context.Context, flowID, symbol string) error
+	UnsubscribeTrade(ctx context.Context, flowID, symbol string) error
+
 	SubscribePersonal(ctx context.Context, flowID string) error
 	UnsubscribePersonal(ctx context.Context, flowID string) error
 	SubscribePublic(ctx context.Context, topic string, subMsg any) error
@@ -24,6 +31,8 @@ type ExchangeManagerAdapterSubscriber interface {
 type ExchangeManagerAdapter interface {
 	ExchangeManagerAdapterSubscriber
 	ExchangeAdapterParser
+	exchange.TradeParser
+	Unwrap() ExchangeAdapter
 }
 
 type exchangeManagerAdapter struct {
@@ -37,6 +46,17 @@ func NewExchangeManagerAdapter(exchangeAdapter ExchangeAdapter) ExchangeManagerA
 		ExchangeAdapter: exchangeAdapter,
 		subscribers:     make(map[string]map[string]bool),
 	}
+}
+
+func (a *exchangeManagerAdapter) Unwrap() ExchangeAdapter {
+	return a.ExchangeAdapter
+}
+
+func (a *exchangeManagerAdapter) ParseTrade(data []byte) (string, []domain.PublicTrade, error) {
+	if tp, ok := a.ExchangeAdapter.(exchange.TradeParser); ok {
+		return tp.ParseTrade(data)
+	}
+	return "", nil, fmt.Errorf("underlying adapter does not implement TradeParser")
 }
 
 // subscribeInternal handles reference counting for subscription (0 -> 1 triggers physical subFn).
@@ -135,6 +155,24 @@ func (a *exchangeManagerAdapter) UnsubscribeDepth(ctx context.Context, flowID, s
 	return a.unsubscribeInternal(ctx, flowID, symbol, func(c context.Context) error {
 		if ds, ok := a.ExchangeAdapter.(DepthSubscriber); ok {
 			return ds.UnsubscribeDepth(c, symbol)
+		}
+		return nil
+	})
+}
+
+func (a *exchangeManagerAdapter) SubscribeTrade(ctx context.Context, flowID, symbol string) error {
+	return a.subscribeInternal(ctx, flowID, "trade:"+symbol, func(c context.Context) error {
+		if ts, ok := a.ExchangeAdapter.(TradeSubscriber); ok {
+			return ts.SubscribeTrade(c, symbol)
+		}
+		return nil
+	})
+}
+
+func (a *exchangeManagerAdapter) UnsubscribeTrade(ctx context.Context, flowID, symbol string) error {
+	return a.unsubscribeInternal(ctx, flowID, "trade:"+symbol, func(c context.Context) error {
+		if ts, ok := a.ExchangeAdapter.(TradeSubscriber); ok {
+			return ts.UnsubscribeTrade(c, symbol)
 		}
 		return nil
 	})

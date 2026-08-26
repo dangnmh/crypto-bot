@@ -2,7 +2,6 @@ package spot
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,14 +24,18 @@ const (
 	paramsKey        = "params"
 	methodKey        = "method"
 	depthStream100ms = "spot@public.aggre.depth.v3.api.pb@100ms@"
+	dealsStream100ms = "spot@public.aggre.deals.v3.api.pb@100ms@"
 	bookTickerStream = "spot@public.bookTicker.v3.api.pb@"
 	channelDepth     = "depth"
 	channelTicker    = "ticker"
+	channelTrade     = "trade"
 )
 
 var (
 	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
 	_ exchange.DepthParser     = (*WsAdapter)(nil)
+	_ exchange.TradeSubscriber = (*WsAdapter)(nil)
+	_ exchange.TradeParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for MEXC Spot WebSocket.
@@ -64,9 +67,13 @@ func (a *WsAdapter) UnsubscribePublic(ctx context.Context, topic string, msg any
 	return a.pool.UnsubscribePublic(ctx, topic, msg)
 }
 
+func cleanMexcSpotSymbol(s string) string {
+	return strings.ToUpper(strings.ReplaceAll(s, "_", ""))
+}
+
 // SubscribeTicker subscribes to spot bookTicker push.
 func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
-	stream := bookTickerStream + symbol
+	stream := bookTickerStream + cleanMexcSpotSymbol(symbol)
 	msg := map[string]any{
 		methodKey: opSubscription,
 		paramsKey: []string{stream},
@@ -77,7 +84,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 
 // UnsubscribeTicker unsubscribes from spot bookTicker push.
 func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error {
-	stream := bookTickerStream + symbol
+	stream := bookTickerStream + cleanMexcSpotSymbol(symbol)
 	msg := map[string]any{
 		methodKey: opUnsubscription,
 		paramsKey: []string{stream},
@@ -88,7 +95,7 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeDepth subscribes to spot aggregated/diff depth updates (100ms).
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
-	stream := depthStream100ms + symbol
+	stream := depthStream100ms + cleanMexcSpotSymbol(symbol)
 	msg := map[string]any{
 		methodKey: opSubscription,
 		paramsKey: []string{stream},
@@ -99,12 +106,34 @@ func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
 
 // UnsubscribeDepth unsubscribes from spot aggregated/diff depth updates.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
-	stream := depthStream100ms + symbol
+	stream := depthStream100ms + cleanMexcSpotSymbol(symbol)
 	msg := map[string]any{
 		methodKey: opUnsubscription,
 		paramsKey: []string{stream},
 	}
 	topic := symbol + ":depth"
+	return a.UnsubscribePublic(ctx, topic, msg)
+}
+
+// SubscribeTrade subscribes to spot aggregated public trade deals (100ms).
+func (a *WsAdapter) SubscribeTrade(ctx context.Context, symbol string) error {
+	stream := dealsStream100ms + cleanMexcSpotSymbol(symbol)
+	msg := map[string]any{
+		methodKey: opSubscription,
+		paramsKey: []string{stream},
+	}
+	topic := symbol + ":trade"
+	return a.SubscribePublic(ctx, topic, msg)
+}
+
+// UnsubscribeTrade unsubscribes from spot aggregated public trade deals.
+func (a *WsAdapter) UnsubscribeTrade(ctx context.Context, symbol string) error {
+	stream := dealsStream100ms + cleanMexcSpotSymbol(symbol)
+	msg := map[string]any{
+		methodKey: opUnsubscription,
+		paramsKey: []string{stream},
+	}
+	topic := symbol + ":trade"
 	return a.UnsubscribePublic(ctx, topic, msg)
 }
 
@@ -152,6 +181,9 @@ func extractProtoChannel(message []byte) string {
 	if strings.Contains(channel, channelDepth) || wrapper.GetPublicAggreDepths() != nil || wrapper.GetPublicIncreaseDepths() != nil || wrapper.GetPublicLimitDepths() != nil {
 		return channelDepth
 	}
+	if strings.Contains(channel, "deals") || strings.Contains(channel, "deal") || wrapper.GetPublicAggreDeals() != nil || wrapper.GetPublicDeals() != nil {
+		return channelTrade
+	}
 	if strings.Contains(channel, "bookTicker") || strings.Contains(channel, channelTicker) || wrapper.GetPublicBookTicker() != nil {
 		return channelTicker
 	}
@@ -166,6 +198,9 @@ func extractJSONChannel(message []byte) string {
 	if channel != "" {
 		if strings.Contains(channel, channelDepth) {
 			return channelDepth
+		}
+		if strings.Contains(channel, "deals") || strings.Contains(channel, "deal") {
+			return channelTrade
 		}
 		if strings.Contains(channel, "bookTicker") || strings.Contains(channel, channelTicker) {
 			return channelTicker
@@ -233,125 +268,11 @@ func (a *WsAdapter) ParsePosition(data []byte) (*exchange.PersonalPositionUpdate
 	return nil, nil
 }
 
-func parseObjectLevel(value []byte) (domain.OrderBookEntry, bool) {
-	pStr, err := jsonparser.GetString(value, "price")
-	if err != nil {
-		pStr, _ = jsonparser.GetString(value, "p")
-	}
-	vStr, err := jsonparser.GetString(value, "quantity")
-	if err != nil {
-		vStr, _ = jsonparser.GetString(value, "v")
-	}
-	p := decmath.ParseFloat(pStr)
-	v := decmath.ParseFloat(vStr)
-	if p > 0 {
-		return domain.OrderBookEntry{Price: p, Volume: v}, true
-	}
-	return domain.OrderBookEntry{}, false
-}
-
-func parseArrayLevel(value []byte) (domain.OrderBookEntry, bool) {
-	var p, v float64
-	idx := 0
-	_, _ = jsonparser.ArrayEach(value, func(val []byte, _ jsonparser.ValueType, _ int, _ error) {
-		switch idx {
-		case 0:
-			p = decmath.ParseFloat(string(val))
-		case 1:
-			v = decmath.ParseFloat(string(val))
-		}
-		idx++
-	})
-	if p > 0 {
-		return domain.OrderBookEntry{Price: p, Volume: v}, true
-	}
-	return domain.OrderBookEntry{}, false
-}
-
-func parseLevels(dataNode []byte, key string) ([]domain.OrderBookEntry, error) {
-	rawLevels, dt, _, err := jsonparser.Get(dataNode, key)
-	if err != nil {
-		if errors.Is(err, jsonparser.KeyPathNotFoundError) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("read spot %s: %w", key, err)
-	}
-	if dt != jsonparser.Array {
-		return nil, nil
-	}
-
-	var entries []domain.OrderBookEntry
-	var parseErr error
-
-	_, _ = jsonparser.ArrayEach(rawLevels, func(value []byte, dataType jsonparser.ValueType, _ int, _ error) {
-		if parseErr != nil {
-			return
-		}
-		switch dataType {
-		case jsonparser.Object:
-			if entry, ok := parseObjectLevel(value); ok {
-				entries = append(entries, entry)
-			}
-		case jsonparser.Array:
-			if entry, ok := parseArrayLevel(value); ok {
-				entries = append(entries, entry)
-			}
-		default:
-		}
-	})
-
-	return entries, parseErr
-}
-
-func extractSpotDepthDataNode(message []byte) []byte {
-	if dataBytes, dataType, _, err := jsonparser.Get(message, "publicAggreDepths"); err == nil && dataType == jsonparser.Object {
-		return dataBytes
-	}
-	if dataBytes, dataType, _, err := jsonparser.Get(message, "d"); err == nil && dataType == jsonparser.Object {
-		return dataBytes
-	}
-	return message
-}
-
-func extractSpotDepthSymbol(message []byte) string {
-	if sym, err := jsonparser.GetString(message, "symbol"); err == nil && sym != "" {
-		return sym
-	}
-	if sym, err := jsonparser.GetString(message, "s"); err == nil && sym != "" {
-		return sym
-	}
-	channel, err := jsonparser.GetString(message, "channel")
-	if err != nil {
-		channel, _ = jsonparser.GetString(message, "c")
-	}
-	return extractSymbolFromChannel(channel)
-}
-
 func extractSymbolFromChannel(channel string) string {
 	if idx := strings.LastIndex(channel, "@"); idx != -1 && idx < len(channel)-1 {
 		return channel[idx+1:]
 	}
 	return ""
-}
-
-func extractSpotDepthVersions(dataNode []byte) (int64, int64) {
-	var fromVersion, toVersion int64
-	if v, err := jsonparser.GetInt(dataNode, "fromVersion"); err == nil {
-		fromVersion = v
-	} else if vStr, err := jsonparser.GetString(dataNode, "fromVersion"); err == nil {
-		fromVersion = decmath.ParseInt64(vStr)
-	}
-
-	for _, key := range []string{"toVersion", "v", "version"} {
-		if v, err := jsonparser.GetInt(dataNode, key); err == nil {
-			toVersion = v
-			break
-		} else if vStr, err := jsonparser.GetString(dataNode, key); err == nil && vStr != "" {
-			toVersion = decmath.ParseInt64(vStr)
-			break
-		}
-	}
-	return fromVersion, toVersion
 }
 
 func buildOrderBookEntries[T any](items []T, getPrice, getQty func(T) string) []domain.OrderBookEntry {
@@ -366,7 +287,7 @@ func buildOrderBookEntries[T any](items []T, getPrice, getQty func(T) string) []
 	return entries
 }
 
-func parseProtoAggreDepth(symbol string, aggre *mexcproto.PublicAggreDepthsV3Api) *domain.OrderBook {
+func parseProtoAggreDepth(symbol string, aggre *mexcproto.PublicAggreDepthsV3Api, ts time.Time) *domain.OrderBook {
 	fromVer := decmath.ParseInt64(aggre.GetFromVersion())
 	toVer := decmath.ParseInt64(aggre.GetToVersion())
 	bids := buildOrderBookEntries(aggre.GetBids(), (*mexcproto.PublicAggreDepthV3ApiItem).GetPrice, (*mexcproto.PublicAggreDepthV3ApiItem).GetQuantity)
@@ -376,34 +297,37 @@ func parseProtoAggreDepth(symbol string, aggre *mexcproto.PublicAggreDepthsV3Api
 		Symbol:       symbol,
 		FirstVersion: fromVer,
 		Version:      toVer,
+		Timestamp:    ts,
 		Bids:         bids,
 		Asks:         asks,
 	}
 }
 
-func parseProtoIncreaseDepth(symbol string, inc *mexcproto.PublicIncreaseDepthsV3Api) *domain.OrderBook {
+func parseProtoIncreaseDepth(symbol string, inc *mexcproto.PublicIncreaseDepthsV3Api, ts time.Time) *domain.OrderBook {
 	ver := decmath.ParseInt64(inc.GetVersion())
 	bids := buildOrderBookEntries(inc.GetBids(), (*mexcproto.PublicIncreaseDepthV3ApiItem).GetPrice, (*mexcproto.PublicIncreaseDepthV3ApiItem).GetQuantity)
 	asks := buildOrderBookEntries(inc.GetAsks(), (*mexcproto.PublicIncreaseDepthV3ApiItem).GetPrice, (*mexcproto.PublicIncreaseDepthV3ApiItem).GetQuantity)
 
 	return &domain.OrderBook{
-		Symbol:  symbol,
-		Version: ver,
-		Bids:    bids,
-		Asks:    asks,
+		Symbol:    symbol,
+		Version:   ver,
+		Timestamp: ts,
+		Bids:      bids,
+		Asks:      asks,
 	}
 }
 
-func parseProtoLimitDepth(symbol string, lim *mexcproto.PublicLimitDepthsV3Api) *domain.OrderBook {
+func parseProtoLimitDepth(symbol string, lim *mexcproto.PublicLimitDepthsV3Api, ts time.Time) *domain.OrderBook {
 	ver := decmath.ParseInt64(lim.GetVersion())
 	bids := buildOrderBookEntries(lim.GetBids(), (*mexcproto.PublicLimitDepthV3ApiItem).GetPrice, (*mexcproto.PublicLimitDepthV3ApiItem).GetQuantity)
 	asks := buildOrderBookEntries(lim.GetAsks(), (*mexcproto.PublicLimitDepthV3ApiItem).GetPrice, (*mexcproto.PublicLimitDepthV3ApiItem).GetQuantity)
 
 	return &domain.OrderBook{
-		Symbol:  symbol,
-		Version: ver,
-		Bids:    bids,
-		Asks:    asks,
+		Symbol:    symbol,
+		Version:   ver,
+		Timestamp: ts,
+		Bids:      bids,
+		Asks:      asks,
 	}
 }
 
@@ -416,14 +340,20 @@ func parseProtoDepth(message []byte) (string, *domain.OrderBook, bool) {
 	if symbol == "" {
 		symbol = extractSymbolFromChannel(wrapper.GetChannel())
 	}
+
+	ts := time.Now().UTC()
+	if wrapper.GetSendTime() > 0 {
+		ts = time.UnixMilli(wrapper.GetSendTime()).UTC()
+	}
+
 	if aggre := wrapper.GetPublicAggreDepths(); aggre != nil {
-		return symbol, parseProtoAggreDepth(symbol, aggre), true
+		return symbol, parseProtoAggreDepth(symbol, aggre, ts), true
 	}
 	if inc := wrapper.GetPublicIncreaseDepths(); inc != nil {
-		return symbol, parseProtoIncreaseDepth(symbol, inc), true
+		return symbol, parseProtoIncreaseDepth(symbol, inc, ts), true
 	}
 	if lim := wrapper.GetPublicLimitDepths(); lim != nil {
-		return symbol, parseProtoLimitDepth(symbol, lim), true
+		return symbol, parseProtoLimitDepth(symbol, lim, ts), true
 	}
 	return "", nil, false
 }
@@ -433,25 +363,92 @@ func (a *WsAdapter) ParseDepth(message []byte) (string, *domain.OrderBook, error
 	if sym, ob, ok := parseProtoDepth(message); ok {
 		return sym, ob, nil
 	}
+	return "", nil, fmt.Errorf("failed to parse mexc spot protobuf depth message")
+}
 
-	dataBytes := extractSpotDepthDataNode(message)
-	symbol := extractSpotDepthSymbol(message)
-	fromVersion, toVersion := extractSpotDepthVersions(dataBytes)
-
-	bids, err := parseLevels(dataBytes, "bids")
-	if err != nil {
-		return symbol, nil, err
+func buildProtoTrades[T any](
+	symbol string,
+	items []T,
+	msgTs time.Time,
+	getPrice func(T) string,
+	getQty func(T) string,
+	getTradeType func(T) int32,
+	getTime func(T) int64,
+) []domain.PublicTrade {
+	trades := make([]domain.PublicTrade, 0, len(items))
+	for _, item := range items {
+		p := decmath.ParseFloat(getPrice(item))
+		v := decmath.ParseFloat(getQty(item))
+		if p <= 0 || v <= 0 {
+			continue
+		}
+		side := domain.SideOpenLong
+		if getTradeType(item) == 2 {
+			side = domain.SideOpenShort
+		}
+		ts := msgTs
+		if itemTime := getTime(item); itemTime > 0 {
+			ts = time.UnixMilli(itemTime).UTC()
+		}
+		trades = append(trades, domain.PublicTrade{
+			Symbol:    symbol,
+			Price:     p,
+			Volume:    v,
+			Side:      side,
+			Timestamp: ts,
+		})
 	}
-	asks, err := parseLevels(dataBytes, "asks")
-	if err != nil {
-		return symbol, nil, err
+	return trades
+}
+
+func parseProtoTrade(message []byte) (string, []domain.PublicTrade, bool) {
+	var wrapper mexcproto.PushDataV3ApiWrapper
+	if err := proto.Unmarshal(message, &wrapper); err != nil {
+		return "", nil, false
+	}
+	symbol := wrapper.GetSymbol()
+	if symbol == "" {
+		symbol = extractSymbolFromChannel(wrapper.GetChannel())
 	}
 
-	return symbol, &domain.OrderBook{
-		Symbol:       symbol,
-		FirstVersion: fromVersion,
-		Version:      toVersion,
-		Bids:         bids,
-		Asks:         asks,
-	}, nil
+	msgTs := time.Now().UTC()
+	if wrapper.GetSendTime() > 0 {
+		msgTs = time.UnixMilli(wrapper.GetSendTime()).UTC()
+	}
+
+	if aggre := wrapper.GetPublicAggreDeals(); aggre != nil {
+		trades := buildProtoTrades(
+			symbol,
+			aggre.GetDeals(),
+			msgTs,
+			(*mexcproto.PublicAggreDealsV3ApiItem).GetPrice,
+			(*mexcproto.PublicAggreDealsV3ApiItem).GetQuantity,
+			(*mexcproto.PublicAggreDealsV3ApiItem).GetTradeType,
+			(*mexcproto.PublicAggreDealsV3ApiItem).GetTime,
+		)
+		return symbol, trades, true
+	}
+
+	if deals := wrapper.GetPublicDeals(); deals != nil {
+		trades := buildProtoTrades(
+			symbol,
+			deals.GetDeals(),
+			msgTs,
+			(*mexcproto.PublicDealsV3ApiItem).GetPrice,
+			(*mexcproto.PublicDealsV3ApiItem).GetQuantity,
+			(*mexcproto.PublicDealsV3ApiItem).GetTradeType,
+			(*mexcproto.PublicDealsV3ApiItem).GetTime,
+		)
+		return symbol, trades, true
+	}
+
+	return "", nil, false
+}
+
+// ParseTrade parses public spot deals stream messages into []domain.PublicTrade.
+func (a *WsAdapter) ParseTrade(message []byte) (string, []domain.PublicTrade, error) {
+	if sym, trades, ok := parseProtoTrade(message); ok {
+		return sym, trades, nil
+	}
+	return "", nil, fmt.Errorf("failed to parse mexc spot protobuf trade message")
 }

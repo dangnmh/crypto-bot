@@ -23,6 +23,8 @@ import (
 var (
 	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
 	_ exchange.DepthParser     = (*WsAdapter)(nil)
+	_ exchange.TradeSubscriber = (*WsAdapter)(nil)
+	_ exchange.TradeParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Toobit Futures.
@@ -151,6 +153,32 @@ func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
 	return a.UnsubscribePublic(ctx, symbol+":"+topicDiffDepth, msg)
 }
 
+// SubscribeTrade streams real-time trade executions.
+func (a *WsAdapter) SubscribeTrade(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		eventKey:  eventSub,
+		topicKey:  topicTrade,
+		symbolKey: symbol,
+		paramsKey: map[string]any{
+			binaryKey: false,
+		},
+	}
+	return a.SubscribePublic(ctx, symbol+":"+topicTrade, msg)
+}
+
+// UnsubscribeTrade stops streaming real-time trade executions.
+func (a *WsAdapter) UnsubscribeTrade(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		eventKey:  eventCancel,
+		topicKey:  topicTrade,
+		symbolKey: symbol,
+		paramsKey: map[string]any{
+			binaryKey: false,
+		},
+	}
+	return a.UnsubscribePublic(ctx, symbol+":"+topicTrade, msg)
+}
+
 // SubscribePersonal is a no-op for Toobit futures.
 func (a *WsAdapter) SubscribePersonal(ctx context.Context) error {
 	return nil
@@ -215,6 +243,20 @@ func extractArrayChannel(data []byte) string {
 	return ""
 }
 
+func logWsError(code any, desc, msg string) {
+	if code == nil {
+		return
+	}
+	codeStr := fmt.Sprintf("%v", code)
+	if codeStr != "" && codeStr != "0" && codeStr != "200" {
+		d := desc
+		if d == "" {
+			d = msg
+		}
+		slog.Warn("🟡 Toobit WS error received", slog.String("code", codeStr), slog.String("desc", d))
+	}
+}
+
 func extractObjectChannel(data []byte) string {
 	var msg struct {
 		Topic string `json:"topic"`
@@ -223,28 +265,22 @@ func extractObjectChannel(data []byte) string {
 		Desc  string `json:"desc"`
 		Msg   string `json:"msg"`
 	}
-	if err := xjson.Unmarshal(data, &msg); err == nil {
-		if msg.Topic == topicBookTicker || msg.Topic == topicRealtimes {
-			return "ticker"
-		}
-		if msg.Topic == topicDepth || msg.Topic == topicDiffDepth || msg.Event == topicDepth {
-			return topicDepth
-		}
-		if msg.Event == outboundContractPositionInfo || msg.Topic == outboundContractPositionInfo {
-			return channelPersonalPosition
-		}
-		if msg.Code != nil {
-			codeStr := fmt.Sprintf("%v", msg.Code)
-			if codeStr != "" && codeStr != "0" && codeStr != "200" {
-				desc := msg.Desc
-				if desc == "" {
-					desc = msg.Msg
-				}
-				slog.Warn("🟡 Toobit WS error received", slog.String("code", codeStr), slog.String("desc", desc))
-			}
-		}
+	if err := xjson.Unmarshal(data, &msg); err != nil {
+		return ""
 	}
-	return ""
+	logWsError(msg.Code, msg.Desc, msg.Msg)
+	switch {
+	case msg.Topic == topicBookTicker || msg.Topic == topicRealtimes:
+		return "ticker"
+	case msg.Topic == topicDepth || msg.Topic == topicDiffDepth || msg.Event == topicDepth:
+		return topicDepth
+	case msg.Topic == topicTrade || msg.Event == topicTrade:
+		return topicTrade
+	case msg.Event == outboundContractPositionInfo || msg.Topic == outboundContractPositionInfo:
+		return channelPersonalPosition
+	default:
+		return ""
+	}
 }
 
 type wsBookTickerData struct {
@@ -388,12 +424,91 @@ func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
 		}
 	}
 
+	ts := time.Now().UTC()
+	if latest.T > 0 {
+		ts = time.UnixMilli(latest.T).UTC()
+	}
+
 	return sym, &domain.OrderBook{
-		Symbol:  sym,
-		Version: parseToobitDepthVersion(latest.V),
-		Bids:    bids,
-		Asks:    asks,
+		Symbol:    sym,
+		Version:   parseToobitDepthVersion(latest.V),
+		Timestamp: ts,
+		Bids:      bids,
+		Asks:      asks,
 	}, nil
+}
+
+type wsTradeEntry struct {
+	Price        xjson.Number `json:"p"`
+	Quantity     xjson.Number `json:"q"`
+	TradeID      string       `json:"v"`
+	IsBuyerMaker bool         `json:"m"`
+	Time         int64        `json:"t"`
+}
+
+func parseTradeEntries(raw json.RawMessage) ([]wsTradeEntry, error) {
+	var entries []wsTradeEntry
+	if err := xjson.Unmarshal(raw, &entries); err == nil {
+		return entries, nil
+	}
+	var single wsTradeEntry
+	if err := xjson.Unmarshal(raw, &single); err == nil {
+		return []wsTradeEntry{single}, nil
+	}
+	return nil, fmt.Errorf("unmarshal trade data failed")
+}
+
+func parseTakerSide(e wsTradeEntry) domain.Side {
+	if e.IsBuyerMaker {
+		return domain.SideOpenShort
+	}
+	return domain.SideOpenLong
+}
+
+// ParseTrade parses public trade messages into []domain.PublicTrade.
+func (a *WsAdapter) ParseTrade(data []byte) (string, []domain.PublicTrade, error) {
+	var basic struct {
+		Topic  string          `json:"topic"`
+		Symbol string          `json:"symbol"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if err := xjson.Unmarshal(data, &basic); err != nil {
+		return "", nil, fmt.Errorf("unmarshal trade basic: %w", err)
+	}
+
+	sym := basic.Symbol
+	entries, err := parseTradeEntries(basic.Data)
+	if err != nil {
+		return "", nil, fmt.Errorf("unmarshal trade data: %w", err)
+	}
+
+	if len(entries) == 0 {
+		return sym, nil, nil
+	}
+
+	trades := make([]domain.PublicTrade, 0, len(entries))
+	for _, e := range entries {
+		p, _ := e.Price.Float64()
+		v, _ := e.Quantity.Float64()
+		if p <= 0 || v <= 0 {
+			continue
+		}
+
+		ts := time.Now().UTC()
+		if e.Time > 0 {
+			ts = time.UnixMilli(e.Time).UTC()
+		}
+
+		trades = append(trades, domain.PublicTrade{
+			Symbol:    sym,
+			Price:     p,
+			Volume:    v,
+			Side:      parseTakerSide(e),
+			Timestamp: ts,
+		})
+	}
+
+	return sym, trades, nil
 }
 
 type wsPositionData struct {

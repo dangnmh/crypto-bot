@@ -233,6 +233,29 @@ func TestExchangeManagerAdapter_SubscribeErrorRollback(t *testing.T) {
 	assert.Equal(t, 1, adapter.subCount)
 }
 
+func (f *fakeAdapter) SubscribeTrade(ctx context.Context, sym string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failSubscribe != nil {
+		return f.failSubscribe
+	}
+	f.subCount++
+	f.subTopics = append(f.subTopics, "trade:"+sym)
+	return nil
+}
+
+func (f *fakeAdapter) UnsubscribeTrade(ctx context.Context, sym string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unsubCount++
+	f.unsubTopics = append(f.unsubTopics, "trade:"+sym)
+	return nil
+}
+
+func (f *fakeAdapter) ParseTrade([]byte) (string, []domain.PublicTrade, error) {
+	return "BTCUSDT", []domain.PublicTrade{{Symbol: "BTCUSDT", Price: 60000.0, Volume: 1.5}}, nil
+}
+
 func TestExchangeManagerAdapter_ParseDepth(t *testing.T) {
 	t.Parallel()
 
@@ -244,4 +267,32 @@ func TestExchangeManagerAdapter_ParseDepth(t *testing.T) {
 	assert.Equal(t, "BTCUSDT", sym)
 	require.NotNil(t, ob)
 	assert.Equal(t, "BTCUSDT", ob.Symbol)
+}
+
+func TestExchangeManagerAdapter_ParseTrade(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakeAdapter{}
+	mgr := ws.NewExchangeManagerAdapter(adapter)
+
+	sym, trades, err := mgr.ParseTrade([]byte(`{}`))
+	require.NoError(t, err)
+	assert.Equal(t, "BTCUSDT", sym)
+	require.Len(t, trades, 1)
+	assert.Equal(t, 60000.0, trades[0].Price)
+}
+
+func TestExchangeManagerAdapter_SubscribeTrade(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakeAdapter{}
+	mgr := ws.NewExchangeManagerAdapter(adapter)
+
+	ctx := context.Background()
+	verifyDualSubscriptionLifecycle(
+		t,
+		func(flow string) error { return mgr.SubscribeTrade(ctx, flow, "BTCUSDT") },
+		func(flow string) error { return mgr.UnsubscribeTrade(ctx, flow, "BTCUSDT") },
+		adapter,
+	)
 }

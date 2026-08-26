@@ -16,17 +16,22 @@ import (
 )
 
 const (
-	binaryKey = "binary"
-	depthKey  = "depth"
-	eventKey  = "event"
-	paramsKey = "params"
-	symbolKey = "symbol"
-	topicKey  = "topic"
+	binaryKey   = "binary"
+	depthKey    = "depth"
+	tradeKey    = "trade"
+	eventKey    = "event"
+	eventSub    = "sub"
+	eventCancel = "cancel"
+	paramsKey   = "params"
+	symbolKey   = "symbol"
+	topicKey    = "topic"
 )
 
 var (
 	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
 	_ exchange.DepthParser     = (*WsAdapter)(nil)
+	_ exchange.TradeSubscriber = (*WsAdapter)(nil)
+	_ exchange.TradeParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Toobit Spot.
@@ -75,28 +80,58 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 
 // SubscribeDepth streams spot orderbook depth.
 func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
+	sym := formatSpotSymbol(symbol)
 	msg := map[string]any{
-		eventKey:  "sub",
+		eventKey:  eventSub,
 		topicKey:  depthKey,
-		symbolKey: symbol,
+		symbolKey: sym,
 		paramsKey: map[string]any{
 			binaryKey: false,
 		},
 	}
-	return a.SubscribePublic(ctx, symbol+":depth", msg)
+	return a.SubscribePublic(ctx, sym+":depth", msg)
 }
 
 // UnsubscribeDepth stops streaming spot orderbook depth.
 func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
+	sym := formatSpotSymbol(symbol)
 	msg := map[string]any{
-		eventKey:  "cancel",
+		eventKey:  eventCancel,
 		topicKey:  depthKey,
-		symbolKey: symbol,
+		symbolKey: sym,
 		paramsKey: map[string]any{
 			binaryKey: false,
 		},
 	}
-	return a.UnsubscribePublic(ctx, symbol+":depth", msg)
+	return a.UnsubscribePublic(ctx, sym+":depth", msg)
+}
+
+// SubscribeTrade streams spot public trades.
+func (a *WsAdapter) SubscribeTrade(ctx context.Context, symbol string) error {
+	sym := formatSpotSymbol(symbol)
+	msg := map[string]any{
+		eventKey:  eventSub,
+		topicKey:  tradeKey,
+		symbolKey: sym,
+		paramsKey: map[string]any{
+			binaryKey: false,
+		},
+	}
+	return a.SubscribePublic(ctx, sym+":trade", msg)
+}
+
+// UnsubscribeTrade stops streaming spot public trades.
+func (a *WsAdapter) UnsubscribeTrade(ctx context.Context, symbol string) error {
+	sym := formatSpotSymbol(symbol)
+	msg := map[string]any{
+		eventKey:  eventCancel,
+		topicKey:  tradeKey,
+		symbolKey: sym,
+		paramsKey: map[string]any{
+			binaryKey: false,
+		},
+	}
+	return a.UnsubscribePublic(ctx, sym+":trade", msg)
 }
 
 // SubscribePersonal is a no-op for spot in this phase.
@@ -125,9 +160,13 @@ func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 			Topic string `json:"topic"`
 			Event string `json:"event"`
 		}
+
 		if err := xjson.Unmarshal(data, &msg); err == nil {
 			if msg.Topic == depthKey || msg.Event == depthKey {
 				return depthKey
+			}
+			if msg.Topic == tradeKey || msg.Event == tradeKey {
+				return tradeKey
 			}
 		}
 		return ""
@@ -161,7 +200,7 @@ func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
 		Data   json.RawMessage `json:"data"`
 	}
 	if err := xjson.Unmarshal(data, &basic); err != nil {
-		return "", nil, fmt.Errorf("unmarshal spot depth basic: %w", err)
+		return "", nil, fmt.Errorf("unmarshal depth basic: %w", err)
 	}
 
 	sym := basic.Symbol
@@ -170,7 +209,7 @@ func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
 	if err := xjson.Unmarshal(basic.Data, &entries); err != nil {
 		var single wsDepthEntry
 		if err2 := xjson.Unmarshal(basic.Data, &single); err2 != nil {
-			return "", nil, fmt.Errorf("unmarshal spot depth data: %w", err)
+			return "", nil, fmt.Errorf("unmarshal depth data: %w", err)
 		}
 		entries = []wsDepthEntry{single}
 	}
@@ -202,12 +241,91 @@ func (a *WsAdapter) ParseDepth(data []byte) (string, *domain.OrderBook, error) {
 		}
 	}
 
+	ts := time.Now().UTC()
+	if latest.T > 0 {
+		ts = time.UnixMilli(latest.T).UTC()
+	}
+
 	return sym, &domain.OrderBook{
-		Symbol:  sym,
-		Version: parseToobitDepthVersion(latest.V),
-		Bids:    bids,
-		Asks:    asks,
+		Symbol:    sym,
+		Version:   parseToobitDepthVersion(latest.V),
+		Timestamp: ts,
+		Bids:      bids,
+		Asks:      asks,
 	}, nil
+}
+
+type wsTradeEntry struct {
+	Price        xjson.Number `json:"p"`
+	Quantity     xjson.Number `json:"q"`
+	TradeID      string       `json:"v"`
+	IsBuyerMaker bool         `json:"m"`
+	Time         int64        `json:"t"`
+}
+
+func parseTradeEntries(raw json.RawMessage) ([]wsTradeEntry, error) {
+	var entries []wsTradeEntry
+	if err := xjson.Unmarshal(raw, &entries); err == nil {
+		return entries, nil
+	}
+	var single wsTradeEntry
+	if err := xjson.Unmarshal(raw, &single); err == nil {
+		return []wsTradeEntry{single}, nil
+	}
+	return nil, fmt.Errorf("unmarshal trade data failed")
+}
+
+func parseTakerSide(e wsTradeEntry) domain.Side {
+	if e.IsBuyerMaker {
+		return domain.SideOpenShort
+	}
+	return domain.SideOpenLong
+}
+
+// ParseTrade parses public trade messages into []domain.PublicTrade.
+func (a *WsAdapter) ParseTrade(data []byte) (string, []domain.PublicTrade, error) {
+	var basic struct {
+		Topic  string          `json:"topic"`
+		Symbol string          `json:"symbol"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if err := xjson.Unmarshal(data, &basic); err != nil {
+		return "", nil, fmt.Errorf("unmarshal trade basic: %w", err)
+	}
+
+	sym := basic.Symbol
+	entries, err := parseTradeEntries(basic.Data)
+	if err != nil {
+		return "", nil, fmt.Errorf("unmarshal trade data: %w", err)
+	}
+
+	if len(entries) == 0 {
+		return sym, nil, nil
+	}
+
+	trades := make([]domain.PublicTrade, 0, len(entries))
+	for _, e := range entries {
+		p, _ := e.Price.Float64()
+		v, _ := e.Quantity.Float64()
+		if p <= 0 || v <= 0 {
+			continue
+		}
+
+		ts := time.Now().UTC()
+		if e.Time > 0 {
+			ts = time.UnixMilli(e.Time).UTC()
+		}
+
+		trades = append(trades, domain.PublicTrade{
+			Symbol:    sym,
+			Price:     p,
+			Volume:    v,
+			Side:      parseTakerSide(e),
+			Timestamp: ts,
+		})
+	}
+
+	return sym, trades, nil
 }
 
 // ParseTicker is a no-op for spot in this phase.
