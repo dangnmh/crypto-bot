@@ -20,10 +20,12 @@ ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILD_TIME=unknown
 
-# Build the executable targeting cmd/funding/main.go
+# Build the executables targeting cmd/funding and cmd/penny_jumper
 # Bitwarden SDK requires CGO to be enabled (CGO_ENABLED=1) to link its C-bindings
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/funding-bot ./cmd/funding
+    go build -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/funding-bot ./cmd/funding && \
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/penny-jumper-bot ./cmd/penny_jumper
 
 # ==========================================
 # Stage 2: Hardened Runtime Container
@@ -37,8 +39,9 @@ RUN apk add --no-cache ca-certificates tzdata libgcc
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 
-# Copy the compiled binary from the builder environment
+# Copy the compiled binaries from the builder environment
 COPY --from=builder /app/bin/funding-bot /usr/local/bin/funding-bot
+COPY --from=builder /app/bin/penny-jumper-bot /usr/local/bin/penny-jumper-bot
 
 # Set correct read/write permissions
 RUN chown -R appuser:appgroup /app
@@ -46,5 +49,5 @@ RUN chown -R appuser:appgroup /app
 # Execute as non-root user
 USER appuser
 
-# Define startup entrypoint
-ENTRYPOINT ["/usr/local/bin/funding-bot"]
+# Define default startup command (can be overridden by K8s command/args)
+CMD ["/usr/local/bin/funding-bot"]

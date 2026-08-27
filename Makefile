@@ -252,19 +252,33 @@ tf-apply: ## Apply Terraform configurations
 tf-destroy: ## Destroy Terraform configurations (keeping PVC data due to resource policy)
 	terraform -chdir=deploy/terraform destroy
 
-.PHONY: tf-apply-bot
-tf-apply-bot: ## Apply changes only to the Go bot deployment
+.PHONY: tf-apply-bots
+tf-apply-bots: ## Apply changes only to all trading bot deployments
 	terraform -chdir=deploy/terraform apply \
-		-target=kubernetes_deployment_v1.crypto_bot \
-		-target=kubernetes_config_map_v1.crypto_bot_configs \
-		-target=kubernetes_service_v1.crypto_bot
+		-target=kubernetes_deployment_v1.bot \
+		-target=kubernetes_config_map_v1.bot_configs \
+		-target=kubernetes_service_v1.bot
 
-.PHONY: tf-destroy-bot
-tf-destroy-bot: ## Destroy only the Go bot deployment, preserving the monitoring stack
+.PHONY: tf-destroy-bots
+tf-destroy-bots: ## Destroy only trading bot deployments, preserving infrastructure & monitoring
 	terraform -chdir=deploy/terraform destroy \
-		-target=kubernetes_deployment_v1.crypto_bot \
-		-target=kubernetes_config_map_v1.crypto_bot_configs \
-		-target=kubernetes_service_v1.crypto_bot
+		-target=kubernetes_deployment_v1.bot \
+		-target=kubernetes_config_map_v1.bot_configs \
+		-target=kubernetes_service_v1.bot
+
+.PHONY: tf-apply-proxy
+tf-apply-proxy: ## Apply changes only to the AI proxy deployment
+	terraform -chdir=deploy/terraform apply \
+		-target=kubernetes_deployment_v1.ai_proxy \
+		-target=kubernetes_config_map_v1.ai_proxy_config \
+		-target=kubernetes_service_v1.ai_proxy
+
+.PHONY: tf-destroy-proxy
+tf-destroy-proxy: ## Destroy only the AI proxy deployment
+	terraform -chdir=deploy/terraform destroy \
+		-target=kubernetes_deployment_v1.ai_proxy \
+		-target=kubernetes_config_map_v1.ai_proxy_config \
+		-target=kubernetes_service_v1.ai_proxy
 
 .PHONY: tf-apply-infra
 tf-apply-infra: ## Apply only infrastructure configurations (DB, Vault, Loki Stack, Prometheus, and ConfigMaps)
@@ -301,9 +315,9 @@ tf-destroy-infra: ## Destroy only infrastructure configurations (DB, Vault, Loki
 		-target=kubernetes_secret_v1.registry_pull_secret
 
 .PHONY: destroy-bot
-destroy-bot: ## Destroy only the Go bot deployment and secrets, keeping Loki/Grafana and data
+destroy-bot: ## Destroy trading bot deployments (Usage: make destroy-bot [bot=NAME] [fast=true])
 	@chmod +x scripts/destroy-bot.sh
-	./scripts/destroy-bot.sh
+	./scripts/destroy-bot.sh $(bot) $(if $(filter true 1 yes,$(fast)),--fast,)
 
 .PHONY: destroy-all
 destroy-all: ## Destroy everything, including Go bot, Loki/Grafana, and all historical data
@@ -316,9 +330,9 @@ destroy-pgsql: ## Destroy all PostgreSQL deployment resources, configurations, a
 	./scripts/destroy-pgsql.sh
 
 
-.PHONY: apply-configs
-apply-configs: ## Hot-reload configurations to the running cluster without rebuilding docker image
-	kubectl create configmap crypto-bot-configs \
+.PHONY: apply-fd-configs
+apply-fd-configs: ## Hot-reload Funding Bot configurations to running K8s cluster
+	kubectl create configmap funding-configs \
 		--from-file=configs/funding/prod/system.jsonc \
 		--from-file=configs/funding/prod/exchange.jsonc \
 		--from-file=configs/funding/prod/funding.jsonc \
@@ -327,16 +341,37 @@ apply-configs: ## Hot-reload configurations to the running cluster without rebui
 		--from-file=configs/funding/prod/obfuscator.jsonc \
 		--from-file=configs/funding/prod/dilution.jsonc \
 		-n default -o yaml --dry-run=client | kubectl apply -f -
-	kubectl rollout restart deployment/crypto-bot -n default
+	kubectl rollout restart deployment/funding -n default
 
-.PHONY: restart-bot
-restart-bot: ## Restart the Go bot deployment to apply updated configurations or secrets
-	kubectl rollout restart deployment/crypto-bot -n default
+.PHONY: apply-pj-configs
+apply-pj-configs: ## Hot-reload Penny Jumper configurations to running K8s cluster
+	kubectl create configmap penny-jumper-configs \
+		--from-file=configs/penny_jumper/prod/system.jsonc \
+		--from-file=configs/penny_jumper/prod/exchange.jsonc \
+		--from-file=configs/penny_jumper/prod/penny_jumper.jsonc \
+		--from-file=configs/penny_jumper/prod/blacklist.jsonc \
+		-n default -o yaml --dry-run=client | kubectl apply -f -
+	kubectl rollout restart deployment/penny-jumper -n default
 
-.PHONY: logs
-logs: ## Watch the live container logs of the Go bot
-	@chmod +x scripts/watch-logs.sh
-	./scripts/watch-logs.sh
+.PHONY: restart-fd
+restart-fd: ## Restart the Funding Bot deployment
+	kubectl rollout restart deployment/funding -n default
+
+.PHONY: restart-pj
+restart-pj: ## Restart the Penny Jumper deployment
+	kubectl rollout restart deployment/penny-jumper -n default
+
+.PHONY: logs/fd
+logs/fd: ## Tail live logs for Funding Bot pod
+	kubectl logs -f -l bot_type=funding --tail=100 -n default
+
+.PHONY: logs/pj
+logs/pj: ## Tail live logs for Penny Jumper pod
+	kubectl logs -f -l bot_type=penny_jumper --tail=100 -n default
+
+.PHONY: logs/proxy
+logs/proxy: ## Tail live logs for AI Proxy pod
+	kubectl logs -f -l app=ai-proxy --tail=100 -n default
 
 # ── Clean ────────────────────────────────────────────────────────────
 .PHONY: clean

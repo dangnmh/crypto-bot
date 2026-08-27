@@ -1,10 +1,38 @@
-# Wall Trust Score
+# Wall Trust Score & Local Model Judgment
 
-> Status: heuristic seed. This document is the source of truth for wall scoring. The score is a probabilistic filter, not proof that a wall is real. Runtime lifecycle is in [flow.md](flow.md).
+> Status: Canonical specification for wall trust scoring and local model evaluation (`WallJudge`). Runtime lifecycle is documented in [09_wall_event_sourcing_and_storage_flow.md](09_wall_event_sourcing_and_storage_flow.md) and [03_wall_trust_scoring_flow.md](03_wall_trust_scoring_flow.md).
 
 ## Goal
 
-Score each detected orderbook wall from `0` to `100` and only allow Penny Jumper workflows when the wall is likely enough to be real.
+Evaluate each detected orderbook wall dynamically from its point-in-time event stream (`[]WallEvent`) to determine whether it represents genuine structural liquidity (`IsTrusted = true`, `TrustScore >= 0.75`) or predatory spoofing.
+
+---
+
+## 1. Local Model & Scorer Architecture (`WallJudge`)
+
+The evaluation engine decouples scoring logic from the orderbook ingestion pipeline:
+
+```go
+type WallJudgeResult struct {
+    WallID     string  `json:"wall_id"`
+    TrustScore float64 `json:"trust_score"`
+    IsTrusted  bool    `json:"is_trusted"`
+    Reason     string  `json:"reason"`
+}
+
+type WallJudge interface {
+    JudgeWall(ctx context.Context, wall *Wall, events []WallEvent) (WallJudgeResult, error)
+}
+```
+
+The `WallJudge` can be implemented via:
+1. **Deterministic Rule-Based Evaluator**: Fast, zero-allocation heuristic using the weighted factors below.
+2. **Local XGBoost / Classifier**: Tree-based model trained on labeled historical event sequences.
+3. **Local Small Language Model (SLM)**: Quantitative reasoning model evaluating inter-arrival times and size patterns.
+
+---
+
+## 2. Factor Weights for Rule-Based Scoring
 
 ```text
 trust_score = w1 * age_score
@@ -16,185 +44,62 @@ trust_score = w1 * age_score
             + penalty
 ```
 
-Recommended threshold: `trust_score >= 65`.
-
-## Factor Weights
-
-| Factor | Weight | Why |
+| Factor | Weight | Microstructure Rationale |
 |---|---:|---|
-| `age_score` | 20% | Spoof walls often vanish within a few seconds |
-| `size_score` | 15% | Wall must be materially larger than nearby liquidity |
-| `absorption_score` | 25% | A wall that survives opposing flow is more credible |
-| `stability_score` | 15% | Frequent resize/cancel behavior is suspicious |
-| `context_score` | 15% | Wall location must make market-structure sense |
-| `historical_score` | 10% | Repeated spoof behavior at same level should penalize |
+| `age_score` | 20% | Spoof walls typically flash and vanish in $< 2\text{s}$ |
+| `size_score` | 15% | Wall must stand out relative to nearby average depth |
+| `absorption_score` | 25% | A wall that fills incoming taker flow (`WALL_ABSORBED`) proves real liquidity |
+| `stability_score` | 15% | Frequent maker size modifications (`WALL_RESIZED`) indicate algorithmic bot flickering |
+| `context_score` | 15% | Proximity to support/resistance, round numbers, and tight spread |
+| `historical_score` | 10% | Serial pull history at the same price level in `DepthStore` |
 
-## Age Score
+---
 
-Wall age is measured from first continuous detection at the same price level.
+## 3. Factor Breakdown
 
-| Age | Score |
-|---|---:|
-| `< 1s` | 0 |
-| `< 3s` | 20 |
-| `< 10s` | 50 |
-| `< 30s` | 75 |
-| `< 60s` | 90 |
-| `>= 60s` | 100 |
+### 1. Age Score ($20\%$)
+Measured from `WallEventBorn` or `wall.GetAgeAt(now)`:
+* $< 1\text{s}$: **0**
+* $1\text{s} - 3\text{s}$: **20**
+* $3\text{s} - 10\text{s}$: **50**
+* $10\text{s} - 30\text{s}$: **75**
+* $30\text{s} - 60\text{s}$: **90**
+* $\ge 60\text{s}$: **100**
 
-Cold start naturally scores low. Do not add a separate grace period unless paper-trading data proves it improves decisions.
+### 2. Relative Size Score ($15\%$)
+$$\text{RelativeRatio} = \frac{\text{WallVolume}}{\text{AvgNearbyVolume}}$$
+* $< 5\times$: **0**
+* $5\times - 10\times$: **30**
+* $10\times - 20\times$: **60**
+* $20\times - 50\times$: **85** (Optimal)
+* $50\times - 100\times$: **100** (Prime structural wall)
+* $\ge 100\times$: **70** (Penalized for oversized spoof risk)
 
-## Size Score
+### 3. Absorption Score ($25\%$)
+Derived dynamically via trade tape reconciliation (`domain.ReconcileWallData`):
+$$\text{Metrics} = \text{domain.ReconcileWallData(wall, events, trades)}$$
+$$\text{AbsorptionRatio} = \frac{\text{Metrics.AbsorbedVolume}}{\text{InitialVolume}}$$
+* $< 1\%$: **10** (Untested)
+* $1\% - 5\%$: **40** (Initial fills confirmed)
+* $5\% - 15\%$: **70** (Active absorption)
+* $15\% - 30\%$: **90** (Heavy genuine absorption)
+* $\ge 30\%$: **100** (Rock-solid institutional fill)
 
-Compare wall volume to average volume across nearby same-side orderbook levels.
+### 4. Stability Score ($15\%$)
+Derived dynamically from the event stream:
+$$\text{ResizeCount} = \text{domain.CalculateResizeCount(events)}$$
+* $0$ resizes: **100**
+* $1$ resize: **70**
+* $2$ resizes: **40**
+* $\ge 3$ resizes: **10** (High-frequency spoof flickering)
 
-```text
-ratio = wall_volume / avg_volume_per_level
-```
+---
 
-| Ratio | Score |
-|---|---:|
-| `< 5x` | 0 |
-| `< 10x` | 30 |
-| `< 20x` | 60 |
-| `< 50x` | 85 |
-| `< 100x` | 100 |
-| `>= 100x` | 70 |
+## 4. Real-Time Reactive Evaluation Triggers
 
-Very large walls are penalized because low-cap spoof walls can be deliberately oversized to attract retail flow.
-
-## Absorption Score
-
-Absorption estimates how much opposing pressure the wall has survived.
-
-```text
-absorption_ratio = absorbed_volume / original_wall_volume
-```
-
-| Absorption ratio | Score |
-|---|---:|
-| `< 0.01` | 10 |
-| `< 0.05` | 40 |
-| `< 0.15` | 70 |
-| `< 0.30` | 90 |
-| `>= 0.30` | 100 |
-
-### MEXC Depth Limitation
-
-`sub.depth.step0` is an aggregated depth snapshot stream. It does not prove individual market orders hit the wall. Absorption is inferred from wall volume changes across snapshots.
-
-Only count inferred absorption when:
-
-1. Wall volume declines gradually across at least three consecutive snapshots.
-2. The wall remains at the same price level.
-3. The decline is not an abrupt disappearance.
-4. Stability score does not indicate aggressive owner-side resizing.
-
-If these conditions are not met, keep absorption conservative.
-
-## Stability Score
-
-Count meaningful wall-volume resizes within the scoring window. A resize is meaningful when volume changes by more than 5%.
-
-| Resize count in 30s | Score |
-|---|---:|
-| `0` | 100 |
-| `1` | 70 |
-| `2` | 40 |
-| `>= 3` | 10 |
-
-## Context Score
-
-Context score can be negative. Clamp the final trust score to `[0, 100]`.
-
-| Condition | Delta |
-|---|---:|
-| Wall sits at round number | `+30` |
-| Wall near recent support/resistance | `+30` |
-| Spread `< 0.3%` | `+20` |
-| Wall is in the middle of no clear structure | `-20` |
-| Bid and ask walls appear simultaneously around price | `-30` |
-| 24h volume below configured soft floor | `-20` |
-
-## Historical Score
-
-Track wall events by `symbol + side + price_level` over a rolling 1-4 hour window.
-
-| History | Score |
-|---|---:|
-| Same level had wall pulled at least 2 times in 1h | 0 |
-| Same level had wall consumed/filled and price respected it | 80 |
-| First observation | 50 |
-
-Historical memory is local strategy state. It should be persisted only if restart behavior requires continuity.
-
-## Penalties
-
-| Situation | Penalty |
-|---|---:|
-| Large opposing trade burst appears with wall | `-20` |
-| Wall volume exceeds 30% of same-side orderbook volume | `-15` |
-| Symbol pumped more than 10% in 1h | `-25` |
-| Wall distance from best bid/ask exceeds 1% | `-30` |
-| Queue competition detected ahead of wall | configurable, seed `-20` |
-
-## Example: Qualified Wall
-
-```text
-age_score        = 75
-size_score       = 85
-absorption_score = 70
-stability_score  = 100
-context_score    = 60
-historical_score = 50
-penalty          = 0
-
-trust_score = 0.20*75 + 0.15*85 + 0.25*70 + 0.15*100 + 0.15*60 + 0.10*50
-            = 74.25
-```
-
-Result: qualified when threshold is `65`.
-
-## Example: Spoof-Like Wall
-
-```text
-age_score        = 20
-size_score       = 70
-absorption_score = 10
-stability_score  = 40
-context_score    = -20
-historical_score = 0
-penalty          = -15
-
-trust_score = 0.20*20 + 0.15*70 + 0.25*10 + 0.15*40 + 0.15*(-20) + 0.10*0 - 15
-            = 5.0
-```
-
-Result: skipped.
-
-## Implementation Notes
-
-| Requirement | Reason |
-|---|---|
-| Use realtime WebSocket data | REST polling is too slow for score freshness |
-| Keep ring buffer of depth snapshots | Needed for age, absorption and stability |
-| Keep rolling wall event history | Needed for historical spoof/consume behavior |
-| Emit score breakdown | Required for tuning and audit |
-| Clamp final score to `[0, 100]` | Prevent negative context/penalties from leaking odd values |
-
-## Open Questions
-
-| Question | Current stance |
-|---|---|
-| Should absorption require trade stream confirmation? | Prefer depth-only heuristic first; add trade stream only if false positives are high |
-| Should weights be per-symbol liquidity bucket? | Likely yes after paper-trading data exists |
-| Should score threshold be side-specific? | Keep one threshold until enough short/long samples exist |
-
-## Backlog
-
-| Priority | Item |
-|---|---|
-| P1 | Unit-test canonical true-wall and spoof-wall examples |
-| P1 | Add score breakdown to workflow journal |
-| P2 | Add queue-competition score factor |
-| P2 | Add symbol/liquidity bucket calibration report |
+The local model is invoked on specific lifecycle event stream transitions:
+1. **On Maturation (`WALL_MATURED`)**: Initial entry evaluation.
+2. **On Taker Absorption (`WALL_ABSORBED`)**: Boosts trust score when taker volume fills into the wall.
+3. **On Maker Resize (`WALL_RESIZED`)**: Re-evaluates spoof probability when maker adds/modifies size.
+4. **On Price Approach (`PRICE_APPROACHED`)**: Verifies the wall does not pull when price is 1 tick away.
+5. **On Disappearance / Consumption (`WALL_DISAPPEARED` / `WALL_CONSUMED`)**: Produces ground-truth labels for offline ML model training.

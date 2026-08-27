@@ -142,18 +142,53 @@ This uninstalls the Loki/Grafana stack, the bot, and permanently deletes all per
 make destroy-all
 ```
 
+```bash
+make destroy-all
 ```
-ssh -v -p 2222 -N -L 39373:127.0.0.1:39373 dangnmh@26.128.244.94
 
-sudo ip link set dev zttqh5ck5q mtu 1200
-ssh -v -N -L 39373:127.0.0.1:39373 dangnmh@10.67.135.194
+---
 
+## Dedicated Services Architecture (Penny Jumper & AI Proxy)
+
+### 1. Services Topology
+In Kubernetes, Terraform deploys the following dedicated services in the `default` namespace:
+- **`penny-jumper`**: Go bot binary with hardened non-root security context running `cmd/penny_jumper`.
+- **`ai-proxy`**: Dedicated AI Proxy container (`eceasy/cli-proxy-api:latest`) listening on port `8317`, proxying LLM requests for wall trust evaluation.
+- **`postgresql`**: PostgreSQL database storing trade tapes and event-sourced wall journal records.
+- **`loki-stack` / `prometheus`**: Metrics and logging stack.
+
+### 2. Port-Forwarding & Local Access
+To interact with the running Kubernetes services locally:
+
+```bash
 export KUBECONFIG=./deploy/k8s/k3d-kubeconfig.yaml
 
+# Access Grafana Dashboard
 kubectl port-forward svc/loki-stack-grafana 3000:80
-kubectl port-forward svc/crypto-bot 3100:3100
+
+# Access Penny Jumper Bot Metrics
+kubectl port-forward svc/penny-jumper 3100:3100
+
+# Access AI Proxy Service WebUI / API
+kubectl port-forward svc/ai-proxy 8317:8317
+
+# Access PostgreSQL
 kubectl port-forward svc/postgresql 5432:5432
+
+# Access HashiCorp Vault UI
 kubectl port-forward svc/vault-ui 8200:8200
+```
 
+### 3. Hot-Reloading Penny Jumper Configurations
+To update `penny_jumper.jsonc`, `blacklist.jsonc`, `system.jsonc`, or `exchange.jsonc` without rebuilding the container:
 
+```bash
+kubectl create configmap penny-jumper-configs \
+  --from-file=configs/penny_jumper/prod/system.jsonc \
+  --from-file=configs/penny_jumper/prod/exchange.jsonc \
+  --from-file=configs/penny_jumper/prod/penny_jumper.jsonc \
+  --from-file=configs/penny_jumper/prod/blacklist.jsonc \
+  -n default -o yaml --dry-run=client | kubectl apply -f -
+
+kubectl rollout restart deployment/penny-jumper -n default
 ```

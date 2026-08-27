@@ -1,0 +1,79 @@
+# Host binding: 0.0.0.0 allows container network & host port-forwarding
+host: "0.0.0.0"
+
+# Port number, CLIProxyAPI runs an HTTP server and needs a port number for access
+port: 8317
+
+# Remote management configuration, used with EasyCLI or WebUI
+remote-management:
+  # Switch to enable remote management. Required for Docker container access.
+  allow-remote: true
+
+  # Secret key for WebUI / management panel authentication
+  secret-key: "management_admin"
+
+  # Switch to integrate WebUI.
+  # Set to false to enable WebUI at http://localhost:8317/management.html
+  disable-control-panel: false
+
+# Directory for storing authentication files inside container
+auth-dir: "/root/.cli-proxy-api"
+
+
+# Whether to enable Debug information in the log
+debug: true
+
+# Hidden configuration, records every request/response into logs directory
+request-log: false
+
+# When running in Docker, set to false to output logs directly to stdout/docker logs
+logging-to-file: false
+
+# Switch for usage statistics, enabled by default
+usage-statistics-enabled: true
+
+# Proxy URL (socks5/http/https) if needed: "socks5://user:pass@192.168.1.1:1080/"
+proxy-url: ""
+
+# Automatic retry attempts on error codes 403, 408, 500, 502, 503, 504
+request-retry: 3
+
+# Processing behavior after model rate limits/restrictions
+quota-exceeded:
+  # Multi-account automatic failover polling
+  switch-project: true
+
+# Set true to bypass model deactivation cooldown periods
+disable-cooling: false
+
+# Local proxy access keys (Bearer token for client apps)
+api-keys:
+  - "sk-local-proxy-secret"
+
+# AIStudio authentication switch
+ws-auth: false
+
+plugins:
+  enabled: true
+  dir: "plugins"
+  configs: {}
+
+# Optional Gemini API keys
+# gemini-api-key:
+#   - api-key: "AIzaSy..."
+#     base-url: "https://generativelanguage.googleapis.com"
+
+# Optional Codex API keys
+# codex-api-key:
+#   - api-key: "sk-atSM..."
+
+# Optional Claude API keys
+# claude-api-key:
+#   - api-key: "sk-atSM..."
+
+# Optional OpenAI compatible providers
+# openai-compatibility:
+#   - name: "openrouter"
+#     base-url: "https://openrouter.ai/api/v1"
+#     api-key-entries:
+#       - api-key: "sk-or-v1-..."

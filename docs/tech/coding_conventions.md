@@ -37,6 +37,18 @@ For third-party library conventions, please refer to [Community Libraries](commu
 - **Dependency Injection:** Components must receive their dependencies via constructors rather than relying on global variables.
 - **Isolated Goroutines:** Each trading symbol must run in its own fully isolated Goroutine. Data sharing between workers is prohibited unless mediated by thread-safe shared stores with `sync.RWMutex`.
 
+### 1.4 Multi-Exchange Partitioning: Exchange Unit Isolation Pattern (Instance-Per-Exchange)
+
+When designing stores, synchronizers, detectors, or execution units that handle multiple exchanges:
+
+- **Strict Unit Isolation:** Every exchange operates on its own dedicated instance (e.g., `*DepthStore`, `*CandidateStore`, `*WallDetector`, `orderbook.Synchronizer`).
+- **Clean Symbol-Only Signatures:** Store and processor methods take only `symbol` (e.g., `GetDepth(symbol)`, `HasActiveTrade(symbol)`, `ProcessOrderBook(ctx, ob, now)`), avoiding composite keys like `GetDepth(exchange, symbol)`.
+- **Top-Level Orchestration via Maps:** Orchestrators and runners hold instances partitioned by exchange (e.g., `map[string]*DepthStore`, `map[string]orderbook.Synchronizer`), routing events directly to the target exchange unit.
+- **Key Benefits:**
+  - **Zero Cross-Contention:** Independent mutexes eliminate lock contention across exchanges.
+  - **Fault Domain Isolation:** Issues, reconnects, or flushes on one exchange do not impact state on another.
+  - **Simplified Testing:** Unit tests test single-exchange domain logic directly without composite keys or multi-tenant mock plumbing.
+
 ---
 
 ## 2. Interface Design

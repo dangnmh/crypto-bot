@@ -62,47 +62,79 @@ variable "vault_password" {
 }
 
 # ==============================================================================
-# Configuration File Paths
+# Dynamic Multi-Bot Scaling Variables
 # ==============================================================================
 
-variable "config_path_system" {
-  type        = string
-  description = "Path to the system.jsonc configuration file"
-  default     = "../../configs/funding/prod/system.jsonc"
+variable "bots" {
+  type = map(object({
+    enabled        = optional(bool, true)
+    bot_type       = string                       # "penny_jumper", "funding", or custom
+    binary_path    = optional(string, null)       # Default: /usr/local/bin/{bot_type}-bot
+    config_dir     = string                       # Path to directory containing the bot's .jsonc files
+    command_args   = optional(list(string), null) # Custom CLI arguments override
+    env_vars       = optional(map(string), {})    # Extra environment variables
+    cpu_limit      = optional(string, "4000m")
+    memory_limit   = optional(string, "2Gi")
+    cpu_request    = optional(string, "2000m")
+    memory_request = optional(string, "1Gi")
+    metrics_port   = optional(number, 3100)
+  }))
+  description = "Dynamic catalog of trading bot instances to deploy"
+  default = {
+    penny-jumper = {
+      enabled    = true
+      bot_type   = "penny_jumper"
+      config_dir = "../../configs/penny_jumper/prod"
+      env_vars   = { "AI_PROXY_URL" = "http://ai-proxy:8317" }
+    }
+  }
 }
 
-variable "config_path_exchange" {
-  type        = string
-  description = "Path to the exchange.jsonc configuration file"
-  default     = "../../configs/funding/prod/exchange.jsonc"
+# ==============================================================================
+# AI Proxy Configuration
+# ==============================================================================
+
+variable "enable_ai_proxy" {
+  type        = bool
+  description = "Set to true to deploy the dedicated AI Proxy service (cli-proxy-api)"
+  default     = true
 }
 
-variable "config_path_funding" {
+variable "config_path_proxy" {
   type        = string
-  description = "Path to the funding.jsonc configuration file"
-  default     = "../../configs/funding/prod/funding.jsonc"
+  description = "Optional static path to config.proxy.yaml. If empty or default template exists, Terraform renders from template."
+  default     = ""
 }
 
-variable "config_path_blacklist" {
+variable "proxy_management_secret" {
   type        = string
-  description = "Path to the blacklist.jsonc configuration file"
-  default     = "../../configs/funding/prod/blacklist.jsonc"
+  description = "Optional override for AI proxy WebUI management secret. If empty, Terraform generates a random 32-char secret."
+  default     = ""
+  sensitive   = true
 }
 
-variable "config_path_reversion" {
+variable "proxy_api_key" {
   type        = string
-  description = "Path to the reversion.jsonc configuration file"
-  default     = "../../configs/funding/prod/reversion.jsonc"
+  description = "Optional override for AI proxy client API key (Bearer token). If empty, Terraform generates a random 32-char secret."
+  default     = ""
+  sensitive   = true
 }
 
-variable "config_path_obfuscator" {
-  type        = string
-  description = "Path to the obfuscator.jsonc configuration file"
-  default     = "../../configs/funding/prod/obfuscator.jsonc"
+variable "proxy_debug" {
+  type        = bool
+  description = "Set to true to enable debug logs in AI proxy"
+  default     = false
 }
 
-variable "config_path_dilution" {
-  type        = string
-  description = "Path to the dilution.jsonc configuration file"
-  default     = "../../configs/funding/prod/dilution.jsonc"
+variable "proxy_disable_control_panel" {
+  type        = bool
+  description = "Set to true to disable WebUI control panel in production"
+  default     = false
 }
+
+variable "proxy_egress_url" {
+  type        = string
+  description = "Optional outbound proxy URL (e.g. socks5:// or http://) for AI Proxy"
+  default     = ""
+}
+

@@ -160,6 +160,9 @@ vault kv put secret/crypto-bot \
   HOTCOIN_API_KEY="hotcoin_api_key_from_vault" \
   HOTCOIN_API_SECRET="hotcoin_api_secret_from_vault" \
   DATABASE_URL="postgres://postgres:postgres@postgresql:5432/postgres?sslmode=disable" \
+  AI_PROXY_URL="http://ai-proxy:8317" \
+  AI_PROXY_API_KEY="sk-local-proxy-secret" \
+  AI_PROXY_MODEL="gemini-3.7-flash-high" \
   TELEGRAM_CHAT_ID="telegram_chat_id_from_vault" \
   TELEGRAM_BOT_TOKEN="telegram_bot_token_from_vault"
 

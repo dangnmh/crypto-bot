@@ -14,12 +14,53 @@ docker_image = "ghcr.io/dangnmh/crypto-bot:latest"
 # vault_password   = "root"
 # postgres_password = "postgres"
 
-# Optional: Specific paths for each of the 6 bot configuration files
-# config_path_system     = "../../configs/funding/prod/system.jsonc"
-# config_path_exchange   = "../../configs/funding/prod/exchange.jsonc"
-# config_path_funding    = "../../configs/funding/prod/funding.jsonc"
-# config_path_blacklist  = "../../configs/funding/prod/blacklist.jsonc"
-# config_path_reversion  = "../../configs/funding/prod/reversion.jsonc"
-# config_path_obfuscator = "../../configs/funding/prod/obfuscator.jsonc"
+# ==============================================================================
+# Dynamic Multi-Bot Scaling Catalog
+# Define any number of bot instances (penny_jumper, funding, or custom)
+# ==============================================================================
+bots = {
+  # Instance 1: Penny Jumper on Spot
+  "penny-jumper-prod" = {
+    enabled    = true
+    bot_type   = "penny_jumper"
+    config_dir = "../../configs/penny_jumper/prod"
+    env_vars = {
+      "AI_PROXY_URL" = "http://ai-proxy:8317"
+    }
+    cpu_limit    = "1000m"
+    memory_limit = "512Mi"
+  }
+
+  # Instance 2: Funding Arbitrage Bot (optional)
+  # "funding-prod" = {
+  #   enabled    = true
+  #   bot_type   = "funding"
+  #   config_dir = "../../configs/funding/prod"
+  #   cpu_limit    = "1000m"
+  #   memory_limit = "512Mi"
+  # }
+
+  # Instance 3: Additional Penny Jumper instance for another account / exchange partition
+  # "penny-jumper-mexc" = {
+  #   enabled    = true
+  #   bot_type   = "penny_jumper"
+  #   config_dir = "../../configs/penny_jumper/local"
+  #   env_vars = {
+  #     "AI_PROXY_URL" = "http://ai-proxy:8317"
+  #   }
+  # }
+}
+
+# ==============================================================================
+# Dedicated AI Proxy
+# ==============================================================================
+enable_ai_proxy = true
+# config_path_proxy           = "" # Optional: static yaml path. If empty, Terraform renders template with auto-generated secrets
+# proxy_management_secret     = "" # Optional: override WebUI secret. If empty, auto-generated
+# proxy_api_key               = "" # Optional: override client API key. If empty, auto-generated
+# proxy_debug                 = false
+# proxy_disable_control_panel = false
+# proxy_egress_url            = ""
+
 
 

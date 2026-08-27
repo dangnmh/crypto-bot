@@ -1,6 +1,6 @@
 # Penny Jumper Flow Overview
 
-> Status: design contract. This document defines lifecycle, topics, state transitions and terminal outcomes. Strategy thesis is in [analyze.md](analyze.md); scoring is in [wall_trust_score.md](wall_trust_score.md); implementation boundaries are in [architecture.md](architecture.md).
+> Status: design contract. This document defines lifecycle, topics, state transitions and terminal outcomes. Strategy thesis is in [analyze.md](analyze.md); scoring and local model judgment is in [wall_trust_score.md](wall_trust_score.md); event sourcing is in [09_wall_event_sourcing_and_storage_flow.md](09_wall_event_sourcing_and_storage_flow.md); implementation boundaries are in [architecture.md](architecture.md).
 
 ## Target Flow
 
@@ -8,19 +8,20 @@
 flowchart TD
     INIT["bot init<br/>config + stores + ws + bus"] --> JOBS["ticker + contract jobs"]
     JOBS --> FILTER["pre-filter symbols<br/>volume + contract + blacklist"]
-    FILTER --> SUB["dynamic subscribe<br/>depth.step0"]
-    SUB --> DEPTH["depth update"]
-    DEPTH --> DETECT["wall detector<br/>size >= 20x + distance <= 1%"]
-    DETECT -->|no wall| DEPTH
-    DETECT -->|wall found| SCORE["wall trust score"]
-    SCORE -->|score < threshold| DEPTH
-    SCORE -->|score >= threshold| ROUTER["workflow manager"]
+    FILTER --> SUB["dynamic subscribe<br/>depth stream"]
+    SUB --> DEPTH["depth update (TopicDepthUpdated)"]
+    DEPTH --> DETECT["wall detector (Event Generator)"]
+    DETECT -->|discrete event stream| STREAM["TopicWallEventStream\n(DepthStore Journal)"]
+    STREAM --> JUDGE["Local Model / WallJudge\n(Evaluates []WallEvent)"]
+    JUDGE -->|TrustScore < 0.75 / Spoof| SUPPRESS["Suppress / Defensively Cancel"]
+    JUDGE -->|TrustScore >= 0.75 (Genuine)| QUALIFIED["TopicWallQualified"]
+    QUALIFIED --> ROUTER["workflow manager"]
     ROUTER --> FSM["per-symbol FSM<br/>post-only jump"]
-    FSM --> MONITOR["monitor order + wall"]
+    FSM --> MONITOR["monitor order + event stream"]
     MONITOR -->|filled| EXIT["TP / trailing / wall monitor"]
-    MONITOR -->|wall gone / weak / timeout| CANCEL["cancel pending order"]
+    MONITOR -->|wall gone / weak / spoof / timeout| CANCEL["cancel pending order"]
     EXIT -->|TP / trailing / timeout| CLOSED["position closed"]
-    EXIT -->|wall gone| BAILOUT["market bailout"]
+    EXIT -->|wall gone / consumed| BAILOUT["market bailout"]
     CANCEL --> DONE["terminal journal"]
     CLOSED --> DONE
     BAILOUT --> DONE
@@ -35,9 +36,9 @@ flowchart TD
 | Load config | thresholds, max positions, symbol filters, exchange settings |
 | Load contract metadata | price unit, volume unit, contract size |
 | Load ticker snapshot | 24h volume, last price |
-| Initialize stores | ticker, contract, depth, wall history |
+| Initialize stores | ticker, contract, depth (in-memory event journal) |
 | Initialize bus | in-memory pub/sub topics |
-| Initialize execution layer | order manager, order watcher, risk manager |
+| Initialize execution layer | order manager, order watcher, risk manager, wall judge |
 
 Bot must not subscribe or trade until required stores are ready.
 
@@ -48,40 +49,39 @@ Bot must not subscribe or trade until required stores are ready.
 | Filter ticker universe | symbols with enough volume and valid contracts |
 | Apply blacklist | remove halted/delist/warning symbols |
 | Diff current vs previous universe | `new_pairs`, `removed_pairs` |
-| Subscribe new pairs | `sub.depth.step0` per symbol |
+| Subscribe new pairs | depth stream per symbol across configured exchanges |
 | Remove stale pairs | only if no active workflow |
 
 If a symbol has an active workflow, removal is delayed with `pendingRemoval`. Depth data must remain available until the workflow reaches a terminal state.
 
-### 3. Wall Detection
+### 3. Wall Detection (Pure Event Generator)
 
-The detector receives depth updates and emits wall lifecycle events:
+The detector receives depth updates and emits discrete, immutable micro-events onto `TopicWallEventStream`:
 
-| Condition | Event |
+| Micro-Event | Trigger Condition |
 |---|---|
-| No previous wall, new wall detected | `penny_jumper.wall.detected` |
-| Existing wall volume/price changed | `penny_jumper.wall.changed` |
-| Existing wall no longer valid | `penny_jumper.wall.disappeared` |
+| `WALL_BORN` | Initial detection of large orderbook wall (`>= $20k`, `<= 1%` distance) |
+| `WALL_MATURED` | Wall survived $\ge \text{MinLifespan}$ (e.g. 2s-5s) |
+| `WALL_ABSORBED` | Taker orders executed at wall price (volume decreased) |
+| `WALL_RESIZED` | Maker modified/added resting volume |
+| `WALL_FLAPPED` | Wall returned at same price within grace period |
+| `PRICE_APPROACHED` | Top-of-book moved closer to wall price |
+| `WALL_WEAKENED` | Volume dropped below $50\%$ of initial size |
+| `WALL_DISAPPEARED` | Wall cancelled or removed from orderbook |
+| `WALL_CONSUMED` | Wall volume fully filled to 0 |
 
-Initial wall eligibility:
+### 4. Wall Scoring & Local Model Judgment
 
-| Filter | Seed |
-|---|---:|
-| Relative wall size | `>= 20x` average volume of nearby same-side levels |
-| Distance from best bid/ask | `<= 1%` |
-| Spread | Prefer `< 0.3%`, skip above configured hard max |
-
-### 4. Wall Scoring
-
-`penny_jumper.wall.detected` and follow-up wall updates feed the scorer. When score is high enough:
+The local model (`WallJudge`) subscribes to `TopicWallEventStream` and evaluates the stream `[]WallEvent`:
 
 ```text
-penny_jumper.wall.detected
-  -> penny_jumper.wall.scored
-  -> penny_jumper.wall.qualified
+TopicWallEventStream (WALL_MATURED, WALL_ABSORBED, WALL_RESIZED)
+  -> WallJudge.JudgeWall(ctx, wall, []WallEvent)
+  -> WallJudgeResult (TrustScore, IsTrusted, Reason)
+  -> TopicWallQualified (if IsTrusted == true)
 ```
 
-`penny_jumper.wall.qualified` must include:
+`TopicWallQualified` includes:
 
 | Field | Reason |
 |---|---|
@@ -89,9 +89,9 @@ penny_jumper.wall.detected
 | `side` | bid wall = long, ask wall = short |
 | `wall_price` | entry anchor |
 | `wall_volume` | bailout/weakness baseline |
-| `score` | sizing and audit |
-| `score_breakdown` | tuning and spoof analysis |
-| `best_bid`, `best_ask`, `spread_pct` | execution safety |
+| `trust_score` | model evaluation score ($0.0 - 1.0$) |
+| `is_trusted` | binary qualification gate |
+| `best_bid`, `best_ask`, `spread_pct` | execution safety and anti-crossing verification |
 | `timestamp` | latency and staleness guard |
 
 ### 5. Workflow Spawn
@@ -103,7 +103,7 @@ Workflow Manager may spawn a per-symbol FSM only when:
 | Duplicate workflow | no active workflow for symbol |
 | Concurrent risk | active workflows below configured max |
 | Daily loss | bot not stopped by loss guard |
-| Score | `score >= threshold` |
+| Model qualification | `IsTrusted == true` (`TrustScore >= 0.75`) |
 | Market data freshness | latest depth/ticker not stale |
 
 ### 6. Entry
@@ -112,20 +112,20 @@ The FSM places a post-only maker order:
 
 | Wall side | Position | Order side | Entry price |
 |---|---|---|---|
-| Bid wall | Long | Buy | `wall_price + 1 tick` |
-| Ask wall | Short | Sell | `wall_price - 1 tick` |
+| Bid wall | Long | Buy | `min(wall_price + 1 tick, best_ask - 1 tick)` |
+| Ask wall | Short | Sell | `max(wall_price - 1 tick, best_bid + 1 tick)` |
 
-If post-only placement fails, the workflow ends as `entry_rejected` or `entry_error`. It must not retry blindly because price/wall conditions may already be stale.
+Strict bounds prevent crossing rejections (`PostOnlyCrossing`). If post-only placement fails, the workflow ends as `entry_rejected`.
 
 ### 7. Pending Order Monitoring
 
-While the maker order is pending, the FSM listens to wall and order events:
+While the maker order is pending, the FSM listens to wall event stream updates:
 
 | Event | Action |
 |---|---|
-| Wall disappeared | cancel order immediately |
-| Wall volume drops below threshold | cancel order |
-| Price moves away from wall beyond threshold | cancel order |
+| `WALL_DISAPPEARED` | cancel order immediately |
+| `WALL_WEAKENED` / Vol $< 50\%$ | cancel order |
+| Model flags spoofing on `WALL_RESIZED` | cancel order |
 | Pending timeout | cancel order |
 | Order filled | transition to post-fill exit |
 | Partial fill below minimum | market exit or cancel remainder, then terminal |
@@ -138,92 +138,23 @@ After fill:
 |---|---|---|
 | Maker TP | TP order fills | close as `tp` |
 | Trailing | profit exceeds activation and trailing stop hits | close as `trailing` |
-| Bailout | original wall disappears | market exit |
+| Bailout | original wall disappears / consumed | market exit |
 | Time stop | TP not filled before timeout | market exit |
 | Critical error | close/cancel fails after bounded retries | alert + journal critical state |
 
-Original wall monitoring remains active after fill. The wall is part of the trade thesis; if it disappears, the position should not wait for TP.
-
-## FSM States
-
-```mermaid
-stateDiagram-v2
-    [*] --> JUMP_PLACED : workflow spawned
-    JUMP_PLACED --> MONITORING : maker order submitted
-    JUMP_PLACED --> DONE : submit rejected/error
-
-    MONITORING --> CANCELLED : wall gone/weak, price away, timeout
-    MONITORING --> FILLED : order filled
-    MONITORING --> EXITING_PARTIAL : partial fill below threshold
-
-    FILLED --> EXIT_STRATEGY : place TP + monitor wall
-
-    EXIT_STRATEGY --> BAILOUT : wall disappeared
-    EXIT_STRATEGY --> TRAILING : profit >= activation
-    EXIT_STRATEGY --> DONE : TP filled or timeout exit
-
-    TRAILING --> DONE : trailing stop hit
-    BAILOUT --> DONE : market close confirmed
-    EXITING_PARTIAL --> DONE : cleanup complete
-    CANCELLED --> DONE : cancel confirmed
-
-    DONE --> [*] : unsubscribe topics + release workflow
-```
+---
 
 ## Event Topic Convention
 
-Topic names use a `penny_jumper.<scope>.<event>` namespace. `symbol` is event payload data, not a required topic suffix for the canonical contract. Implementations may add symbol-scoped internal topics if the bus requires it.
+Topic names use a `penny_jumper.<scope>.<event>` namespace:
 
-| Scope | Topic pattern |
-|---|---|
-| Scan | `penny_jumper.scan.*` |
-| Depth | `penny_jumper.depth.*` |
-| Wall | `penny_jumper.wall.*` |
-| Workflow | `penny_jumper.workflow.*` |
-| Order | `penny_jumper.order.*` |
-| Position | `penny_jumper.position.*` |
-| Risk | `penny_jumper.risk.*` |
-| Journal | `penny_jumper.journal.*` |
-
-Minimal chain:
-
-```text
-penny_jumper.depth.updated
-  -> penny_jumper.wall.detected
-  -> penny_jumper.wall.scored
-  -> penny_jumper.wall.qualified
-  -> penny_jumper.workflow.spawned
-```
-
-## Terminal Journal Rule
-
-Every spawned workflow must leave one terminal result:
-
-| Category | Examples |
-|---|---|
-| skipped | duplicate workflow, max positions, stale data, risk blocked |
-| entry terminal | entry rejected, post-only failed, placement error |
-| pending terminal | canceled wall gone, canceled weak wall, canceled timeout, canceled price away |
-| fill terminal | TP, trailing, timeout exit, bailout |
-| partial terminal | partial fill exited, partial cleanup failed |
-| critical terminal | cancel failed, market close failed, unknown exchange state |
-
-Cycle-level success is not enough. Reports must keep wall score, order decision, fill state, exit reason and latency so threshold tuning is possible.
-
-## Shared Watchlist
-
-| Concern | Current stance |
-|---|---|
-| Depth snapshot staleness | Block entry if latest depth exceeds configured age |
-| Wall migration ambiguity | Only bounded same-size migration can adjust; otherwise cancel/bailout |
-| Wildcard topics | Treat as implementation detail; canonical topics remain explicit |
-| Close/cancel failure | Must use bounded retry/backoff and journal retry counts |
-
-## Backlog
-
-| Priority | Item |
-|---|---|
-| P1 | Define exact workflow journal schema |
-| P1 | Define critical close/cancel runbook |
-| P2 | Add wall migration state and tests |
-| P2 | Add queue competition event and skip reason |
+| Scope | Topic | Description |
+|---|---|---|
+| Depth | `penny_jumper.depth.updated` | Raw orderbook updates |
+| Wall Stream | `penny_jumper.wall.event.stream` | Discrete event sourcing stream (`[]WallEvent`) |
+| Wall Legacy | `penny_jumper.wall.detected` | Newly matured active wall |
+| Wall Legacy | `penny_jumper.wall.changed` | Active wall volume/level updated |
+| Wall Legacy | `penny_jumper.wall.disappeared` | Active wall cancelled/pulled |
+| Qualification | `penny_jumper.wall.qualified` | Qualified by local model (`WallJudge`) |
+| Workflow | `penny_jumper.workflow.*` | Per-symbol FSM transitions |
+| Order | `penny_jumper.order.*` | Order execution and fill updates |

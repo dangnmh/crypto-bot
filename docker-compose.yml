@@ -50,12 +50,26 @@ services:
       - BITWARDEN_ACCESS_TOKEN=${BITWARDEN_ACCESS_TOKEN}
       - BITWARDEN_ORGANIZATION_ID=${BITWARDEN_ORGANIZATION_ID}
       - BITWARDEN_PROJECT_NAME=${BITWARDEN_PROJECT_NAME}
+      - AI_PROXY_URL=${AI_PROXY_URL:-http://proxy:8317}
     volumes:
       - ./configs:/app/configs
     command: ["-sys", "/app/configs/funding/local/system.jsonc", "-exch", "/app/configs/funding/local/exchange.jsonc", "-bot", "/app/configs/funding/local/funding.jsonc"]
     depends_on:
       postgres:
         condition: service_healthy
+      proxy:
+        condition: service_started
+    restart: unless-stopped
+
+  proxy:
+    image: eceasy/cli-proxy-api:latest
+    container_name: cryptobot-proxy
+    ports:
+      - "8317:8317"
+    volumes:
+      - ./config.proxy.yaml:/CLIProxyAPI/config.yaml:ro
+      - proxy_auth_data:/root/.cli-proxy-api
+      - proxy_plugins_data:/CLIProxyAPI/plugins
     restart: unless-stopped
 
   prometheus:
@@ -72,3 +86,7 @@ services:
 volumes:
   postgres_data:
   grafana_data:
+  proxy_auth_data:
+  proxy_plugins_data:
+
+
