@@ -91,7 +91,7 @@ func provideLogger(lc fx.Lifecycle, cfg *pjconfig.SystemConfig) *slog.Logger {
 			return nil
 		},
 	})
-	return slog.Default()
+	return slog.Default().With("service", "penny_jumper")
 }
 
 type PJConfigResult struct {

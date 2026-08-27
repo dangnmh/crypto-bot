@@ -89,7 +89,7 @@ func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logge
 			return nil
 		},
 	})
-	return slog.Default()
+	return slog.Default().With("service", "funding")
 }
 
 func provideFundingConfig(paths ConfigPaths, cfg *fundingconfig.SystemConfig) (*fundingconfig.Config, error) {
