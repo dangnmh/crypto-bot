@@ -14,7 +14,7 @@
       // Enable obfuscation for this specific exchange
       "enabled": true,
       // Minimum Net Funding Profit (USDT) of a symbol required to activate loss budget obfuscation
-      "netPnLThresholdUSDT": 40.0,
+      "netPnLThresholdUSDT": 20.0,
       // Minimum notional order size in USD (floor)
       "minNotionalUSD": 100.0,
       // Maximum notional order size in USD (ceiling)
