@@ -1,0 +1,58 @@
+{
+  "exchange": {
+    "mexc": {
+      "spot": {
+        "enable": true,
+        "baseURL": "https://api.mexc.com",
+        "websocket": {
+          "publicURL": "wss://wbs-api.mexc.com/ws",
+          "maxPairsPerWSConn": 25
+        }
+      },
+      "future": {
+        "enable": true,
+        "baseURL": "https://api.mexc.com",
+        "websocket": {
+          "publicURL": "wss://contract.mexc.com/edge",
+          "maxPairsPerWSConn": 25
+        }
+      }
+    },
+    "kucoin": {
+      "spot": {
+        "enable": true,
+        "baseURL": "https://api.kucoin.com",
+        "websocket": {
+          "publicURL": "wss://ws-api-spot.kucoin.com",
+          "maxPairsPerWSConn": 30
+        }
+      },
+      "future": {
+        "enable": true,
+        "baseURL": "https://api-futures.kucoin.com",
+        "websocket": {
+          "publicURL": "wss://ws-api-futures.kucoin.com",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "toobit": {
+      "spot": {
+        "enable": true,
+        "baseURL": "https://api.toobit.com",
+        "websocket": {
+          "publicURL": "wss://stream.toobit.com/quote/ws/v1",
+          "maxPairsPerWSConn": 20
+        }
+      },
+      "future": {
+        "enable": true,
+        "baseURL": "https://api.toobit.com",
+        "websocket": {
+          "publicURL": "wss://stream.toobit.com/quote/ws/v1",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    }
+  }
+}

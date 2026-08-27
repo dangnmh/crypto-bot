@@ -1,0 +1,60 @@
+{
+  "exchanges": [
+    "mexc_spot",
+    "kucoin_spot",
+    "toobit_spot",
+    // "mexc_futures",
+    // "kucoin_futures",
+    // "toobit_futures",
+  ],
+  "executionMode": "paper", // "paper" or "live"
+  "universe": {
+    "topGainerLimit": 25,
+    "minVolume24hUSDT": 1000000.0,
+    "maxCoinPrice": 10.0,
+    "tickerInterval": "15m"
+  },
+  "orderBookSync": {
+    "maxBufferCapacity": 2000,
+    "snapshotTimeout": "15s",
+    "commitRecoverySize": 1000,
+    "exchanges": {
+      "mexc_futures": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "mexc_spot": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "kucoin_futures": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "kucoin_spot": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "toobit_futures": {
+        "mode": "SNAPSHOT",
+        "strictSequence": false
+      },
+      "toobit_spot": {
+        "mode": "SNAPSHOT",
+        "strictSequence": false
+      }
+    }
+  },
+  "wallDetector": {
+    "minVolumeUSDT": 20000.0, // Minimum notional wall size in USDT (e.g. $20k)
+    "minLifespan": "2s", // Minimum survival duration to qualify wall (anti-spoofing)
+    "maxWallDistancePct": 10.0, // <= 1.0% distance from best bid/ask
+    "maxSpreadPct": 6.0 // <= 1.0% max spread
+  },
+  "wallJudge": {
+    "mode": "dual", // "local", "model", or "dual"
+    "minTrustScore": 0.70,
+    "timeout": "10s",
+    "evalCooldown": "5s" // Minimum cooldown before re-evaluating the same wall
+  }
+}

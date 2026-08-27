@@ -125,7 +125,7 @@ func applyBitwardenFallback(c *SystemConfig) error {
 		return nil
 	}
 
-	if !hasBitwardenConfig() {
+	if !HasBitwardenConfig() {
 		return nil
 	}
 
@@ -179,8 +179,8 @@ func notificationCredentialsComplete(c NotiConfig) bool {
 	return c.TelegramChatID != "" && c.TelegramBotToken != ""
 }
 
-// hasBitwardenConfig checks if Bitwarden environment variables are set.
-func hasBitwardenConfig() bool {
+// HasBitwardenConfig checks if Bitwarden environment variables are set.
+func HasBitwardenConfig() bool {
 	return os.Getenv("BITWARDEN_ACCESS_TOKEN") != "" &&
 		os.Getenv("BITWARDEN_ORGANIZATION_ID") != "" &&
 		os.Getenv("BITWARDEN_PROJECT_NAME") != ""

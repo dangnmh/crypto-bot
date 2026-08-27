@@ -1,0 +1,55 @@
+{
+  "exchanges": [
+    "mexc_spot",
+    "kucoin_spot",
+  ],
+  "executionMode": "live",
+  "universe": {
+    "minVolume24hUSDT": 1000000.0,
+    "maxCoinPrice": 10.0,
+    "tickerInterval": "15m"
+  },
+  "orderBookSync": {
+    "maxBufferCapacity": 2000,
+    "snapshotTimeout": "15s",
+    "commitRecoverySize": 1000,
+    "exchanges": {
+      "toobit_futures": {
+        "mode": "SNAPSHOT",
+        "strictSequence": false
+      },
+      "toobit_spot": {
+        "mode": "SNAPSHOT",
+        "strictSequence": false
+      },
+      "mexc_futures": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "mexc_spot": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "kucoin_futures": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      },
+      "kucoin_spot": {
+        "mode": "INCREMENTAL",
+        "strictSequence": true
+      }
+    }
+  },
+  "wallDetector": {
+    "minVolumeUSDT": 20000.0,
+    "minLifespan": "5s",
+    "maxWallDistancePct": 1.0,
+    "maxSpreadPct": 5.0
+  },
+  "wallJudge": {
+    "mode": "dual", // "local", "model", or "dual"
+    "minTrustScore": 0.70,
+    "timeout": "10s",
+    "evalCooldown": "5s" // Minimum cooldown before re-evaluating the same wall
+  }
+}

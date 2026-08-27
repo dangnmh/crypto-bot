@@ -39,6 +39,7 @@ vault-init-prod.sh
 k3d-kubeconfig.yaml
 vpn.md
 deploy/k8s/vault-keys.json
+local.md
 
 
 

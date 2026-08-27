@@ -278,7 +278,7 @@ func TestInternalApplyBitwardenFallbackRequiresConfig(t *testing.T) {
 	t.Setenv("BITWARDEN_ORGANIZATION_ID", "")
 	t.Setenv("BITWARDEN_PROJECT_NAME", "")
 
-	assert.False(t, hasBitwardenConfig())
+	assert.False(t, HasBitwardenConfig())
 	cfg := &SystemConfig{
 		ExchangeConfig: ExchangeConfig{
 			"mexc": APIConfig{Future: &RESTConfig{Enable: true, BaseURL: "https://mexc.example"}},
