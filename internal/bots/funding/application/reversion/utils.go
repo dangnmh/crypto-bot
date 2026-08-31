@@ -245,7 +245,7 @@ func formatFR(rate float64) string {
 
 func formatCandidateNotification(
 	header, symbol string, side shared.Side, cfg domain.TradeConfig,
-	price, volume, fundingRate, vol24h float64,
+	price, volume, contractSize, fundingRate, vol24h float64,
 	orderID, extID, reqID, note string,
 ) string {
 	var lines []string
@@ -263,6 +263,9 @@ func formatCandidateNotification(
 	}
 
 	sizeUSDT := price * volume
+	if contractSize > 0 {
+		sizeUSDT *= contractSize
+	}
 	if sizeUSDT > 0 {
 		lines = append(lines, fmt.Sprintf("• Price: %s | Size: %.2f USDT", formatPrice(price), sizeUSDT))
 	} else if price > 0 {
@@ -339,7 +342,7 @@ func formatReversionNotification(topic string, revEvt ReversionEvent) string {
 		}
 		return formatCandidateNotification(
 			header, e.Symbol, side, e.Candidate.Config,
-			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
+			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.ContractSize, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
 			e.OrderID, e.ExternalID, e.ReqID, "",
 		)
 
@@ -350,7 +353,7 @@ func formatReversionNotification(topic string, revEvt ReversionEvent) string {
 		}
 		return formatCandidateNotification(
 			header, e.Symbol, side, e.Candidate.Config,
-			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
+			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.ContractSize, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
 			e.OrderID, e.ExternalID, e.ReqID, "",
 		)
 
@@ -361,7 +364,7 @@ func formatReversionNotification(topic string, revEvt ReversionEvent) string {
 		}
 		return formatCandidateNotification(
 			header, e.Symbol, side, e.Candidate.Config,
-			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
+			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.ContractSize, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
 			e.OrderID, e.ExternalID, e.ReqID, "",
 		)
 

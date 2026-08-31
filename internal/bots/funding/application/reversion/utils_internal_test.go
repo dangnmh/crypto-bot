@@ -672,4 +672,39 @@ func TestFormatReversionNotification_FormatMatch(t *testing.T) {
 • Reason: FR below threshold
 • Req ID: req_abort_123`
 	assert.Equal(t, expectedAbort, formattedAbort)
+
+	// Test with ContractSize > 1 (e.g. MEXC ZORA_USDT where ContractSize = 10)
+	candidateFoundEvt := CandidateFoundEvent{
+		Symbol:     "ZORA_USDT",
+		Exchange:   "mexc_futures",
+		ExternalID: "31082026230000ZORAMEXCFUTURES",
+		ReqID:      "31082026230000ZORAMEXCFUTURESFUNDING_REVERSION",
+		Candidate: fundingdomain.Candidate{
+			TradeIntent: fundingdomain.TradeIntent{
+				Symbol:      "ZORA_USDT",
+				Side:        shared.SideOpenShort,
+				FundingRate: -0.008,
+			},
+			ContractSpec: fundingdomain.ContractSpec{
+				ContractSize: 10.0,
+			},
+			LastPrice: 0.009793,
+			Vol24USDT: 18_220_000,
+			Volume:    40857.0, // contracts
+			Config: fundingdomain.TradeConfig{
+				MarginUSDT: 400.0,
+				Leverage:   10,
+			},
+		},
+	}
+
+	formattedCand := formatReversionNotification(TopicReversionCandidate, candidateFoundEvt)
+	expectedCand := `🟡 [FUNDING_REVERSION] [mexc_futures] [CANDIDATE]
+• Symbol: ZORA_USDT | Side: Short
+• Margin: 400.00 USDT | Leverage: 10x
+• Price: 0.009793 | Size: 4001.13 USDT
+• FR: -0.8% | Vol24h: $18.22m
+• Client ID: 31082026230000ZORAMEXCFUTURES
+• Req ID: 31082026230000ZORAMEXCFUTURESFUNDING_REVERSION`
+	assert.Equal(t, expectedCand, formattedCand)
 }
