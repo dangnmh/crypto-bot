@@ -1,7 +1,7 @@
 {
   // Order Obfuscator Configuration (Production Environment)
   // Master toggle to enable or disable background obfuscation
-  "enabled": true,
+  "enabled": false,
   // Interval between database scans for profitable trades
   "pollInterval": "15m",
   // Jitter duration added/subtracted randomly to pollInterval (e.g. 2m -> [13m, 17m])
@@ -12,7 +12,7 @@
   "exchanges": {
     "toobit_futures": {
       // Enable obfuscation for this specific exchange
-      "enabled": true,
+      "enabled": false,
       // Minimum Net Funding Profit (USDT) of a symbol required to activate loss budget obfuscation
       "netPnLThresholdUSDT": 20.0,
       // Minimum notional order size in USD (floor)

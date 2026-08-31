@@ -43,7 +43,7 @@
   "scanners": {
     "configured": false,
     "schedule": {
-      "toobit_futures": true,
+      "toobit_futures": false,
       "mexc_futures": true,
       "bitget_futures": false, // negative pnl
       "deepcoin_futures": false, // exchange restricted
