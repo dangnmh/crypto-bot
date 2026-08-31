@@ -62,6 +62,18 @@
     }
   },
   "exchanges": {
+    "mexc_futures": {
+      "takeProfitPct": 1.5,
+      "stopLossPct": 2,
+      "bufferTime": "-55ms", // -70ms.-60ms dont paid funding fee, -50 paid funding fee
+      "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
+      "minVol24USD": 6000000,
+      "minFundingRate": 0.6,
+      "leverage": 10,
+      "marginUSD": 800,
+      "maxCandidateTrade": 2,
+      "maxMarginUSDOfCandidate": 400
+    },
     "toobit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
@@ -74,18 +86,6 @@
       "marginUSD": 1400,
       "maxCandidateTrade": 3,
       "maxMarginUSDOfCandidate": 1000
-    },
-    "mexc_futures": {
-      "takeProfitPct": 1.5,
-      "stopLossPct": 2,
-      "bufferTime": "-55ms", // -70ms.-60ms dont paid funding fee, -50 paid funding fee
-      "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
-      "minVol24USD": 7000000,
-      "minFundingRate": 0.6,
-      "leverage": 10,
-      "marginUSD": 800,
-      "maxCandidateTrade": 2,
-      "maxMarginUSDOfCandidate": 400
     },
     "bitget_futures": {
       "takeProfitPct": 1,
