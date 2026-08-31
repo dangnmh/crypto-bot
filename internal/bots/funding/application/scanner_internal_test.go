@@ -1139,3 +1139,55 @@ func TestScheduleScanner_Scan_PreFilterInvalidSettleTime(t *testing.T) {
 	require.Len(t, opportunities, 1)
 	assert.Equal(t, "VALID_USDT", opportunities[0].Candidate.Symbol)
 }
+
+func TestScheduleScanner_Scan_ZeroSettleTime(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+	client.EXPECT().SupportLeverageOnOrder().Return(false).AnyTimes()
+
+	tickers := []exchange.Ticker{
+		{Symbol: "ZERO_SETTLE_USDT", LastPrice: 10.0, Volume24: 100000, AmountUSDT24: 1000000, Bid1: 9.9, Ask1: 10.1},
+	}
+
+	potentialResults := []exchange.PotentialFundingResult{
+		{Symbol: "ZERO_SETTLE_USDT", Rate: 0.010, SettleTime: 0, Volume24h: 1000000},
+	}
+
+	client.EXPECT().GetPotentialFundingSymbols(gomock.Any(), 100000.0, 0.0, nil, gomock.Any()).Return(potentialResults, nil)
+	client.EXPECT().GetTickers(gomock.Any(), "").Return(tickers, nil)
+	client.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "ZERO_SETTLE_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
+	}, nil)
+
+	cfg := &config.Config{
+		Reversion: &config.ReversionConfig{
+			Safety: config.SafetyConfig{
+				MaxImpactRatio: 1.0,
+			},
+			Default: config.ExchangeReversionConfig{
+				Leverage:          10,
+				MinVol24USD:       100000,
+				MarginUSD:         5.0,
+				MaxCandidateTrade: 1,
+			},
+		},
+	}
+
+	scanner, err := NewScheduleScanner(
+		"mexc",
+		cfg,
+		client,
+		sniperTestLogger(),
+		func(string) (string, bool) { return "", false },
+	)
+	require.NoError(t, err)
+
+	opportunities, err := scanner.Scan(context.Background())
+	require.NoError(t, err)
+
+	require.Len(t, opportunities, 1)
+	assert.Equal(t, "ZERO_SETTLE_USDT", opportunities[0].Candidate.Symbol)
+	assert.True(t, opportunities[0].Candidate.SettleTime.IsZero())
+}

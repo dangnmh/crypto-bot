@@ -765,7 +765,10 @@ func (s *ScheduleScanner) processResult(
 		return ScanOpportunity{}, false, nil
 	}
 
-	settleTime := time.UnixMilli(r.SettleTime)
+	var settleTime time.Time
+	if r.SettleTime > 0 {
+		settleTime = time.UnixMilli(r.SettleTime)
+	}
 	candidate.SettleTime = settleTime
 	candidate.ContractSpec = domain.ContractSpec{
 		PriceUnit:    cd.PriceUnit,

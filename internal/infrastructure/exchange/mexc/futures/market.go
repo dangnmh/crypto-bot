@@ -89,10 +89,6 @@ type mexcTicker struct {
 	Timestamp     int64   `json:"timestamp"`
 }
 
-type mexcFundingRateRequest struct {
-	Symbol string `json:"symbol,omitempty"`
-}
-
 type mexcFundingRate struct {
 	Symbol         string  `json:"symbol"`
 	FundingRate    float64 `json:"fundingRate"`
@@ -153,12 +149,8 @@ func (c *Client) getRawTickers(ctx context.Context, req mexcTickersRequest) ([]m
 	return []mexcTicker{single}, nil
 }
 
-func (c *Client) getRawFundingRate(ctx context.Context, req mexcFundingRateRequest) (*mexcFundingRate, error) {
-	params := map[string]any{}
-	if req.Symbol != "" {
-		params["symbol"] = req.Symbol
-	}
-	body, err := c.base.Request(ctx, http.MethodGet, "/api/v1/contract/funding_rate", params, nil, false)
+func (c *Client) getRawFundingRates(ctx context.Context) ([]mexcFundingRate, error) {
+	body, err := c.base.Request(ctx, http.MethodGet, "/api/v1/contract/funding_rate", nil, nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -166,12 +158,7 @@ func (c *Client) getRawFundingRate(ctx context.Context, req mexcFundingRateReque
 	if err != nil {
 		return nil, err
 	}
-	for i := range rawRates.Data {
-		if rawRates.Data[i].Symbol == req.Symbol {
-			return &rawRates.Data[i], nil
-		}
-	}
-	return nil, fmt.Errorf("mexc funding rate not found for symbol: %s", req.Symbol)
+	return rawRates.Data, nil
 }
 
 // GetContractDetails returns all contract specifications.
@@ -246,17 +233,25 @@ func (c *Client) GetFundingRates(ctx context.Context, symbols []string) ([]excha
 		return nil, nil
 	}
 
+	rawRates, err := c.getRawFundingRates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ratesMap := make(map[string]mexcFundingRate, len(rawRates))
+	for i := range rawRates {
+		ratesMap[rawRates[i].Symbol] = rawRates[i]
+	}
+
 	rates := make([]exchange.FundingRateResult, 0, len(symbols))
 	for _, sym := range symbols {
-		raw, err := c.getRawFundingRate(ctx, mexcFundingRateRequest{Symbol: sym})
-		if err != nil {
-			return nil, err
+		if raw, ok := ratesMap[sym]; ok {
+			rates = append(rates, exchange.FundingRateResult{
+				Symbol:     raw.Symbol,
+				Rate:       raw.FundingRate,
+				SettleTime: raw.NextSettleTime,
+			})
 		}
-		rates = append(rates, exchange.FundingRateResult{
-			Symbol:     raw.Symbol,
-			Rate:       raw.FundingRate,
-			SettleTime: raw.NextSettleTime,
-		})
 	}
 	return rates, nil
 }
@@ -363,6 +358,16 @@ func (c *Client) GetPotentialFundingSymbols(
 		return nil, fmt.Errorf("mexc list tickers: %w", err)
 	}
 
+	rawRates, err := c.getRawFundingRates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("mexc list funding rates: %w", err)
+	}
+
+	rateMap := make(map[string]mexcFundingRate, len(rawRates))
+	for i := range rawRates {
+		rateMap[rawRates[i].Symbol] = rawRates[i]
+	}
+
 	whiteMap := make(map[string]bool, len(whitelist))
 	for _, s := range whitelist {
 		whiteMap[s] = true
@@ -383,10 +388,19 @@ func (c *Client) GetPotentialFundingSymbols(
 			continue
 		}
 
+		settleTime := int64(0)
+		fundingRate := t.FundingRate
+		if fr, ok := rateMap[t.Symbol]; ok {
+			settleTime = fr.NextSettleTime
+			if fr.FundingRate != 0 {
+				fundingRate = fr.FundingRate
+			}
+		}
+
 		results = append(results, exchange.PotentialFundingResult{
 			Symbol:     t.Symbol,
-			Rate:       t.FundingRate,
-			SettleTime: 0,
+			Rate:       fundingRate,
+			SettleTime: settleTime,
 			Volume24h:  amtUSDT,
 			Price:      t.LastPrice,
 		})

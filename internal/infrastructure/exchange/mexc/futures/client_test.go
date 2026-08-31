@@ -132,3 +132,104 @@ func TestFuturesClient_OrderAndPosition(t *testing.T) {
 	defer cancel()
 	client.WarmUp(warmCtx, 10*time.Millisecond)
 }
+
+func TestFuturesClient_GetFundingRates(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/contract/funding_rate", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"success": true,
+			"code": 0,
+			"data": [
+				{
+					"symbol": "BTC_USDT",
+					"fundingRate": 0.0001,
+					"nextSettleTime": 1788192000000
+				},
+				{
+					"symbol": "ETH_USDT",
+					"fundingRate": -0.0005,
+					"nextSettleTime": 1788192000000
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	rates, err := client.GetFundingRates(context.Background(), []string{"BTC_USDT", "ETH_USDT"})
+	require.NoError(t, err)
+	require.Len(t, rates, 2)
+	assert.Equal(t, "BTC_USDT", rates[0].Symbol)
+	assert.Equal(t, 0.0001, rates[0].Rate)
+	assert.Equal(t, int64(1788192000000), rates[0].SettleTime)
+	assert.Equal(t, "ETH_USDT", rates[1].Symbol)
+	assert.Equal(t, -0.0005, rates[1].Rate)
+	assert.Equal(t, int64(1788192000000), rates[1].SettleTime)
+}
+
+func TestFuturesClient_GetPotentialFundingSymbols(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/contract/ticker" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"success": true,
+				"code": 0,
+				"data": [
+					{
+						"symbol": "BTC_USDT",
+						"lastPrice": 50000.0,
+						"amount24": 5000000.0,
+						"fundingRate": 0.0001
+					},
+					{
+						"symbol": "ZORA_USDT",
+						"lastPrice": 0.01,
+						"amount24": 2000000.0,
+						"fundingRate": -0.006
+					}
+				]
+			}`))
+			return
+		}
+		if r.URL.Path == "/api/v1/contract/funding_rate" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"success": true,
+				"code": 0,
+				"data": [
+					{
+						"symbol": "BTC_USDT",
+						"fundingRate": 0.0001,
+						"nextSettleTime": 1788192000000
+					},
+					{
+						"symbol": "ZORA_USDT",
+						"fundingRate": -0.0061,
+						"nextSettleTime": 1788192000000
+					}
+				]
+			}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	res, err := client.GetPotentialFundingSymbols(context.Background(), 1000000.0, 0, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+
+	assert.Equal(t, "BTC_USDT", res[0].Symbol)
+	assert.Equal(t, 0.0001, res[0].Rate)
+	assert.Equal(t, int64(1788192000000), res[0].SettleTime)
+
+	assert.Equal(t, "ZORA_USDT", res[1].Symbol)
+	assert.Equal(t, -0.0061, res[1].Rate)
+	assert.Equal(t, int64(1788192000000), res[1].SettleTime)
+}

@@ -30,7 +30,7 @@ run/penny_jumper: run/penny-jumper ## Alias for run/penny-jumper
 
 .PHONY: scan/funding
 scan/funding: ## Scan funding rates across supported futures exchanges. Usage: make scan/funding [exchanges=binance,bybit] [minFundingRate=0.1] [minVol=1000000]
-	$(GO) run ./tools/scanner $(if $(exchanges),-exchanges $(exchanges),-exchanges toobit,mexc) $(if $(minFundingRate),-minFundingRate $(minFundingRate),) $(if $(minVol),-minVol $(minVol),)
+	$(GO) run ./tools/scanner $(if $(exchanges),-exchanges $(exchanges),-exchanges mexc) $(if $(minFundingRate),-minFundingRate $(minFundingRate),) $(if $(minVol),-minVol $(minVol),)
 
 # ── Local Docker Compose Environment ──────────────────────────────────
 .PHONY: dev-up
