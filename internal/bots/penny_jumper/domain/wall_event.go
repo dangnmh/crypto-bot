@@ -11,7 +11,7 @@ const (
 	WallEventBorn            WallEventType = "WALL_BORN"
 	WallEventMatured         WallEventType = "WALL_MATURED"
 	WallEventResized         WallEventType = "WALL_RESIZED"
-	WallEventFlapped         WallEventType = "WALL_FLAPPED"
+	WallEventAbsorbed        WallEventType = "WALL_ABSORBED"
 	WallEventPriceApproached WallEventType = "WALL_PRICE_APPROACHED"
 	WallEventWeakened        WallEventType = "WALL_WEAKENED"
 	WallEventDisappeared     WallEventType = "WALL_DISAPPEARED"

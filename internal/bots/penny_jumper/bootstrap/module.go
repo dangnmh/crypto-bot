@@ -327,6 +327,7 @@ func provideSubscribeManager(
 	cfg *pjdomain.PennyJumperConfig,
 	engine *infraapp.Engine,
 	syncs map[string]orderbook.Synchronizer,
+	depthStores map[string]*pjstore.DepthStore,
 	blacklist []string,
 	logger *slog.Logger,
 ) (*application.SubscribeManager, error) {
@@ -345,6 +346,7 @@ func provideSubscribeManager(
 			Fetcher:      prov.Client,
 			Subscriber:   subscriber,
 			Synchronizer: syncs[exch],
+			DepthStore:   depthStores[exch],
 		})
 	}
 

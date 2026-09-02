@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	pjdomain "crypto-bot/internal/bots/penny_jumper/domain"
+	pjstore "crypto-bot/internal/bots/penny_jumper/infrastructure/store"
+	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store/orderbook"
 )
@@ -37,6 +39,7 @@ type ExchangeClient struct {
 	Fetcher      TopGainerFetcher
 	Subscriber   DepthSubscriber
 	Synchronizer orderbook.Synchronizer
+	DepthStore   *pjstore.DepthStore
 }
 
 // SubscribeManager manages dynamic symbol discovery (top 30 gainers) and depth subscriptions across multiple exchanges.
@@ -70,6 +73,9 @@ func NewSubscribeManager(
 		if c.Synchronizer == nil {
 			return nil, fmt.Errorf("synchronizer is required for exchange: %s", c.Exchange)
 		}
+		if c.DepthStore == nil {
+			return nil, fmt.Errorf("depthStore is required for exchange: %s", c.Exchange)
+		}
 	}
 
 	blMap := make(map[string]bool, len(blacklist))
@@ -99,6 +105,12 @@ func (sm *SubscribeManager) RefreshUniverse(ctx context.Context) ([]string, erro
 		if err != nil {
 			sm.logger.ErrorContext(ctx, "Failed to fetch top gainers for exchange", slog.String("exchange", client.Exchange), slog.Any("error", err))
 			continue
+		}
+
+		for _, g := range gainers {
+			if g.Volume24hUSDT > 0 {
+				client.DepthStore.SaveVolume24h(g.Symbol, g.Volume24hUSDT)
+			}
 		}
 
 		qualified := sm.filterGainers(gainers)
@@ -207,7 +219,11 @@ func (sm *SubscribeManager) unsubscribePairsForClient(ctx context.Context, clien
 			slog.String("exchange", client.Exchange),
 			slog.String("symbol", sym),
 		)
+
 		client.Synchronizer.RemoveSymbol(sym)
+		client.DepthStore.DeleteActiveWall(sym, shared.SideOpenLong)
+		client.DepthStore.DeleteActiveWall(sym, shared.SideOpenShort)
+
 		if err := client.Subscriber.UnsubscribeDepth(ctx, FlowIDPennyJumper, sym); err != nil {
 			sm.logger.ErrorContext(ctx, "Failed to unsubscribe depth",
 				slog.String("exchange", client.Exchange),
@@ -242,7 +258,11 @@ func (sm *SubscribeManager) UnsubscribeAll(ctx context.Context) {
 				slog.String("exchange", client.Exchange),
 				slog.String("symbol", sym),
 			)
+
 			client.Synchronizer.RemoveSymbol(sym)
+			client.DepthStore.DeleteActiveWall(sym, shared.SideOpenLong)
+			client.DepthStore.DeleteActiveWall(sym, shared.SideOpenShort)
+
 			_ = client.Subscriber.UnsubscribeDepth(ctx, FlowIDPennyJumper, sym)
 			if ts, ok := client.Subscriber.(TradeSubscriber); ok {
 				_ = ts.UnsubscribeTrade(ctx, FlowIDPennyJumper, sym)

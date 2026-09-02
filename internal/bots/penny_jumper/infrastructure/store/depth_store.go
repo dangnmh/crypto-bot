@@ -8,6 +8,7 @@ import (
 
 	pjdomain "crypto-bot/internal/bots/penny_jumper/domain"
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/pkg/decmath"
 
 	"github.com/patrickmn/go-cache"
 )
@@ -49,6 +50,25 @@ func activeWallKey(symbol string, side shared.Side) string {
 
 func historyKey(symbol string, price float64) string {
 	return fmt.Sprintf("wall:hist:%s:%s", symbol, strconv.FormatFloat(price, 'f', -1, 64))
+}
+
+func volume24hKey(symbol string) string {
+	return "vol24h:" + symbol
+}
+
+// SaveVolume24h caches the 24h volume in USDT for a symbol.
+func (s *DepthStore) SaveVolume24h(symbol string, volumeUSDT float64) {
+	s.cache.Set(volume24hKey(symbol), volumeUSDT, 2*time.Hour)
+}
+
+// GetVolume24h retrieves the cached 24h volume in USDT for a symbol.
+func (s *DepthStore) GetVolume24h(symbol string) (float64, bool) {
+	val, found := s.cache.Get(volume24hKey(symbol))
+	if !found {
+		return 0, false
+	}
+	vol, ok := val.(float64)
+	return vol, ok
 }
 
 // SaveDepthSnapshot stores the latest orderbook depth snapshot for a symbol.
@@ -266,7 +286,7 @@ func (s *DepthStore) ConsumeTradedVolume(symbol string, price float64, takerSide
 	consumedVol := 0.0
 
 	for _, t := range trades {
-		matchesPrice := t.Price == price
+		matchesPrice := decmath.Equal(t.Price, price)
 		matchesSide := (takerSide == 0) || (t.Side == takerSide)
 
 		if matchesPrice && matchesSide {
@@ -303,13 +323,14 @@ func (s *DepthStore) GetTradesForWall(symbol string, price float64, takerSide sh
 
 	var matching []shared.PublicTrade
 	for _, t := range trades {
-		matchesPrice := t.Price == price
+		matchesPrice := decmath.Equal(t.Price, price)
 		matchesSide := (takerSide == 0) || (t.Side == takerSide)
 		matchesTime := true
-		if !from.IsZero() && t.Timestamp.Before(from) {
+		// Allow 1 second tolerance for exchange clock skew / network transmission jitter
+		if !from.IsZero() && t.Timestamp.Before(from.Add(-1*time.Second)) {
 			matchesTime = false
 		}
-		if !to.IsZero() && t.Timestamp.After(to) {
+		if !to.IsZero() && t.Timestamp.After(to.Add(1*time.Second)) {
 			matchesTime = false
 		}
 
@@ -338,7 +359,7 @@ func (s *DepthStore) GetTradedVolume(symbol string, price float64, takerSide sha
 
 	totalVol := 0.0
 	for _, t := range trades {
-		matchesPrice := t.Price == price
+		matchesPrice := decmath.Equal(t.Price, price)
 		matchesSide := (takerSide == 0) || (t.Side == takerSide)
 		if matchesPrice && matchesSide {
 			totalVol += t.Volume

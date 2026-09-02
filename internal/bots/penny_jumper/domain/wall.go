@@ -27,8 +27,14 @@ type Wall struct {
 	Volume          float64     `json:"volume"`
 	InitialVolume   float64     `json:"initial_volume"`
 	AvgNearbyVolume float64     `json:"avg_nearby_volume"`
-	RelativeRatio   float64     `json:"relative_ratio"` // volume / avg_nearby_volume
-	DistancePct     float64     `json:"distance_pct"`   // Distance from best bid/ask
+	RelativeRatio   float64     `json:"relative_ratio"`  // volume / avg_nearby_volume
+	DistancePct     float64     `json:"distance_pct"`    // Distance from best bid/ask
+	DepthImbalance  float64     `json:"depth_imbalance"` // Favorable side vs opposing side depth within 1% BBO
+	BackingRatio    float64     `json:"backing_ratio"`   // Depth support behind wall vs average nearby volume
+	Vol24h          float64     `json:"vol_24h,omitempty"`
+	WallTo1mRatio   float64     `json:"wall_to_1m_ratio,omitempty"`
+	PullCount1h     int         `json:"pull_count_1h,omitempty"`
+	FillCount1h     int         `json:"fill_count_1h,omitempty"`
 	FirstDetectedAt time.Time   `json:"first_detected_at"`
 	LastUpdatedAt   time.Time   `json:"last_updated_at"`
 	DisappearedAt   *time.Time  `json:"disappeared_at,omitempty"`
@@ -74,13 +80,10 @@ func (w *Wall) ApplyEvent(evt WallEvent) {
 	case WallEventMatured:
 		w.Matured = true
 
-	case WallEventResized:
+	case WallEventResized, WallEventAbsorbed:
 		w.Volume = evt.Volume
 		w.DistancePct = evt.DistancePct
 		w.RelativeRatio = evt.RelativeRatio
-
-	case WallEventFlapped:
-		// Wall reappeared within grace window
 
 	case WallEventPriceApproached:
 		w.DistancePct = evt.DistancePct

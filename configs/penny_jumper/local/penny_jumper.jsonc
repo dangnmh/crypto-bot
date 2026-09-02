@@ -1,16 +1,16 @@
 {
   "exchanges": [
     "mexc_spot",
+    "mexc_futures",
     "kucoin_spot",
+    "kucoin_futures",
     "toobit_spot",
-    // "mexc_futures",
-    // "kucoin_futures",
-    // "toobit_futures",
+    "toobit_futures"
   ],
   "executionMode": "paper", // "paper" or "live"
   "universe": {
     "topGainerLimit": 25,
-    "minVolume24hUSDT": 1000000.0,
+    "minVolume24hUSDT": 5000000.0,
     "maxCoinPrice": 10.0,
     "tickerInterval": "15m"
   },
@@ -47,9 +47,14 @@
   },
   "wallDetector": {
     "minVolumeUSDT": 20000.0, // Minimum notional wall size in USDT (e.g. $20k)
-    "minLifespan": "2s", // Minimum survival duration to qualify wall (anti-spoofing)
+    "minWallTo1mVolRatio": 2.0, // Minimum ratio of wall volume vs 1-minute turnover (vol24h / 1440)
+    "minRelativeRatio": 15.0, // Minimum ratio of wall volume vs nearby depth average (e.g. >= 15x)
+    "neighborhoodLevels": 5, // Number of adjacent levels around wall to compute average (default: 5)
+    "minLifespan": "10s", // Minimum survival duration to qualify wall (anti-spoofing)
     "maxWallDistancePct": 10.0, // <= 1.0% distance from best bid/ask
-    "maxSpreadPct": 6.0 // <= 1.0% max spread
+    "maxSpreadPct": 6.0, // <= 1.0% max spread
+    "weakenedThresholdPct": 50.0, // Threshold % of initial volume below which wall is flagged weakened
+    "priceApproachedDistancePct": 0.1 // Max distance % to trigger price approached event
   },
   "wallJudge": {
     "mode": "dual", // "local", "model", or "dual"

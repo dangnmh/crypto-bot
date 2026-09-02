@@ -59,10 +59,15 @@ type OrderBookSyncConfig struct {
 
 // WallDetectorConfig configures orderbook depth analysis and wall identification.
 type WallDetectorConfig struct {
-	MinVolumeUSDT      float64        `json:"minVolumeUSDT" validate:"gte=0"`     // Minimum wall notional in USDT (e.g. >= 20000)
-	MinLifespan        types.Duration `json:"minLifespan" validate:"gte=0"`       // Minimum age before wall is qualified (e.g. 5s)
-	MaxWallDistancePct float64        `json:"maxWallDistancePct" validate:"gt=0"` // Max % away from best bid/ask (e.g. <= 1.0%)
-	MaxSpreadPct       float64        `json:"maxSpreadPct" validate:"gte=0"`      // Skip if spread > maxSpreadPct (e.g. <= 1.0%)
+	MinVolumeUSDT              float64        `json:"minVolumeUSDT" validate:"gte=0"`
+	MinWallTo1mVolRatio        float64        `json:"minWallTo1mVolRatio" validate:"gte=0"` // Minimum ratio of wall volume vs 1-minute turnover (vol24h/1440, 0 = disabled)
+	MinRelativeRatio           float64        `json:"minRelativeRatio" validate:"gte=0"`
+	NeighborhoodLevels         int            `json:"neighborhoodLevels" validate:"gte=0"` // Number of adjacent levels around wall to compute average (default: 5, 0 = all)
+	MinLifespan                types.Duration `json:"minLifespan" validate:"gte=0"`        // Minimum age before wall is qualified (e.g. 5s)
+	MaxWallDistancePct         float64        `json:"maxWallDistancePct" validate:"gt=0"`  // Max % away from best bid/ask (e.g. <= 1.0%)
+	MaxSpreadPct               float64        `json:"maxSpreadPct" validate:"gte=0"`       // Skip if spread > maxSpreadPct (e.g. <= 1.0%)
+	WeakenedThresholdPct       float64        `json:"weakenedThresholdPct" validate:"gte=0,lte=100"`
+	PriceApproachedDistancePct float64        `json:"priceApproachedDistancePct" validate:"gte=0"`
 }
 
 // Judge mode constants.
@@ -124,6 +129,18 @@ func (c *PennyJumperConfig) applyDetectorDefaults() {
 	}
 	if c.WallDetector.MaxSpreadPct <= 0 {
 		c.WallDetector.MaxSpreadPct = 1.0
+	}
+	if c.WallDetector.MinRelativeRatio <= 0 {
+		c.WallDetector.MinRelativeRatio = 15.0
+	}
+	if c.WallDetector.NeighborhoodLevels <= 0 {
+		c.WallDetector.NeighborhoodLevels = 5
+	}
+	if c.WallDetector.WeakenedThresholdPct <= 0 {
+		c.WallDetector.WeakenedThresholdPct = 50.0
+	}
+	if c.WallDetector.PriceApproachedDistancePct <= 0 {
+		c.WallDetector.PriceApproachedDistancePct = 0.1
 	}
 }
 

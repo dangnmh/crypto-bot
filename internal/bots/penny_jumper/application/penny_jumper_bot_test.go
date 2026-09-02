@@ -70,6 +70,7 @@ func TestPennyJumperBot_LifecycleAndDepthProcessing(t *testing.T) {
 			Fetcher:      mockFetcher,
 			Subscriber:   subMock,
 			Synchronizer: syncMgr,
+			DepthStore:   depthStore,
 		},
 	}
 	subMgr, err := application.NewSubscribeManager(cfg, clients, nil, logger)

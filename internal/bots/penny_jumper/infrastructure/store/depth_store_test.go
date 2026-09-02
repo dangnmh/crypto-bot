@@ -172,3 +172,18 @@ func TestDepthStore_PublicTrades(t *testing.T) {
 	consumedAsk := ds.ConsumeTradedVolume(symbol, 60001.0, shared.SideOpenLong)
 	assert.Equal(t, 5.0, consumedAsk)
 }
+
+func TestDepthStore_Volume24h(t *testing.T) {
+	t.Parallel()
+
+	ds := store.NewDepthStore(10*time.Minute, 1*time.Minute)
+
+	_, found := ds.GetVolume24h("BTCUSDT")
+	assert.False(t, found)
+
+	ds.SaveVolume24h("BTCUSDT", 5000000.0)
+
+	vol, found := ds.GetVolume24h("BTCUSDT")
+	assert.True(t, found)
+	assert.Equal(t, 5000000.0, vol)
+}

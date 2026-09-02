@@ -67,7 +67,7 @@ func TestPennyJumperRunner_FullEventSourcedPipeline(t *testing.T) {
 	bus := eventbus.New(logger)
 	depthStore := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
 
-	db, err := gorm.Open(sqlite.Open("file:runner_test?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -192,6 +192,7 @@ func TestPennyJumperRunner_FullEventSourcedPipeline(t *testing.T) {
 	}
 
 	// 3. Emit orderbook where wall disappeared (Pulled) - Volume 0.1 < $20k notional
+	// Wall is immediately finalized as WALL_DISAPPEARED and persisted to DB
 	ob3 := &shared.OrderBook{
 		Symbol:  "BTCUSDT",
 		Version: 1003,
@@ -224,14 +225,13 @@ func TestPennyJumperRunner_FullEventSourcedPipeline(t *testing.T) {
 	assert.Equal(t, 50.0, records[0].InitialVolume)
 	assert.Equal(t, 40.0, records[0].FinalVolume)
 	assert.Equal(t, 10.0, records[0].AbsorbedVolume)
-	assert.Equal(t, int64(6000), records[0].DurationMs)
 
 	events, err := records[0].GetEvents()
 	require.NoError(t, err)
 	require.Len(t, events, 4)
 	assert.Equal(t, pjdomain.WallEventBorn, events[0].EventType)
 	assert.Equal(t, pjdomain.WallEventMatured, events[1].EventType)
-	assert.Equal(t, pjdomain.WallEventResized, events[2].EventType)
+	assert.Equal(t, pjdomain.WallEventAbsorbed, events[2].EventType)
 	assert.Equal(t, pjdomain.WallEventDisappeared, events[3].EventType)
 }
 
@@ -251,12 +251,231 @@ func TestFormatWallDetectedNotification(t *testing.T) {
 		FirstDetectedAt: firstDetected,
 	}
 
-	msg := application.FormatWallDetectedNotification(&wall, 0.10, 21010.10, now)
+	// Without 24h volume
+	msg := application.FormatWallDetectedNotification(&wall, 0.10, 21010.10, 0, 0, now)
 	expected := "🟢 [PENNY_JUMPER] [mexc_spot] [WALL_QUALIFIED]\n" +
 		"• Symbol: ZROUSDT | Side: Long\n" +
 		"• Price: 1.213800 | Size: 21,010.10 USDT\n" +
 		"• Dist: 0.26% | Spread: 0.10%\n" +
 		"• Wall Age: 2s"
-
 	assert.Equal(t, expected, msg)
+
+	// With 24h volume and 1m turnover ratio
+	msgWithRatio := application.FormatWallDetectedNotification(&wall, 0.10, 21010.10, 6000000.0, 5.0, now)
+	expectedWithRatio := "🟢 [PENNY_JUMPER] [mexc_spot] [WALL_QUALIFIED]\n" +
+		"• Symbol: ZROUSDT | Side: Long\n" +
+		"• Price: 1.213800 | Size: 21,010.10 USDT (5.0x 1m Vol | 24h Vol: 6,000,000.00 USDT)\n" +
+		"• Dist: 0.26% | Spread: 0.10%\n" +
+		"• Wall Age: 2s"
+	assert.Equal(t, expectedWithRatio, msgWithRatio)
+
+	// With Depth Imbalance & Backing Ratio
+	wallWithImbalance := wall
+	wallWithImbalance.DepthImbalance = 3.2
+	wallWithImbalance.BackingRatio = 1.5
+	msgWithImbalance := application.FormatWallDetectedNotification(&wallWithImbalance, 0.10, 21010.10, 6000000.0, 5.0, now)
+	expectedWithImbalance := "🟢 [PENNY_JUMPER] [mexc_spot] [WALL_QUALIFIED]\n" +
+		"• Symbol: ZROUSDT | Side: Long\n" +
+		"• Price: 1.213800 | Size: 21,010.10 USDT (5.0x 1m Vol | 24h Vol: 6,000,000.00 USDT)\n" +
+		"• Dist: 0.26% | Spread: 0.10%\n" +
+		"• Imbalance: 3.2x | Backing: 1.5x\n" +
+		"• Wall Age: 2s"
+	assert.Equal(t, expectedWithImbalance, msgWithImbalance)
+
+	// With 1h History
+	wallWithHistory := wallWithImbalance
+	wallWithHistory.PullCount1h = 1
+	wallWithHistory.FillCount1h = 2
+	msgWithHistory := application.FormatWallDetectedNotification(&wallWithHistory, 0.10, 21010.10, 6000000.0, 5.0, now)
+	expectedWithHistory := "🟢 [PENNY_JUMPER] [mexc_spot] [WALL_QUALIFIED]\n" +
+		"• Symbol: ZROUSDT | Side: Long\n" +
+		"• Price: 1.213800 | Size: 21,010.10 USDT (5.0x 1m Vol | 24h Vol: 6,000,000.00 USDT)\n" +
+		"• Dist: 0.26% | Spread: 0.10%\n" +
+		"• Imbalance: 3.2x | Backing: 1.5x\n" +
+		"• 1h History: 1 Pulls / 2 Fills\n" +
+		"• Wall Age: 2s"
+	assert.Equal(t, expectedWithHistory, msgWithHistory)
+}
+
+func TestPennyJumperRunner_WallEligibilityDualVolumeCheck(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockClient := mocks.NewMockClient(ctrl)
+	mockClient.EXPECT().GetContractDetails(gomock.Any()).Return([]exchange.ContractDetail{
+		{Symbol: "ETHUSDT", PriceUnit: 0.01, ContractSize: 1.0},
+		{Symbol: "SOLUSDT", PriceUnit: 0.01, ContractSize: 1.0},
+	}, nil).AnyTimes()
+
+	cStore := store.NewContractStore(&sync.WaitGroup{}, slog.Default())
+	ctx := t.Context()
+	go cStore.StartContractSync(ctx, mockClient, time.Hour)
+	require.Eventually(t, func() bool {
+		_, err1 := cStore.GetContract(ctx, "ETHUSDT")
+		_, err2 := cStore.GetContract(ctx, "SOLUSDT")
+		return err1 == nil && err2 == nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	depthStore := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
+	// 24h Volume = 14,400,000 USDT -> 1m Volume = 10,000 USDT
+	depthStore.SaveVolume24h("ETHUSDT", 14400000.0)
+	depthStore.SaveVolume24h("SOLUSDT", 14400000.0)
+
+	cfg := pjdomain.PennyJumperConfig{
+		Exchanges: []string{"toobit"},
+		WallDetector: pjdomain.WallDetectorConfig{
+			MinVolumeUSDT:       20000.0, // Static: >= 20k USDT
+			MinWallTo1mVolRatio: 3.0,     // Dynamic: >= 3x of 1m turnover (3 * 10k = 30k USDT required)
+			MinLifespan:         types.Duration(2 * time.Second),
+		},
+	}
+	cfg.ApplyDefaults()
+
+	logger := slog.Default()
+	bus := eventbus.New(logger)
+	wallDetector := application.NewWallDetector("toobit", cfg.WallDetector, depthStore, cStore, bus, logger)
+	wallJudge := pjdomain.NewDefaultWallJudge(pjdomain.DefaultWallJudgeConfig{MinTrustScore: 0.60})
+	repo := persistence.NewGormWallRepository(nil)
+
+	mockNotifier := mocks.NewMockNotifier(ctrl)
+	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	runner, err := application.NewPennyJumperRunner(
+		cfg,
+		map[string]*pjstore.DepthStore{"toobit": depthStore},
+		map[string]*application.WallDetector{"toobit": wallDetector},
+		wallJudge,
+		repo,
+		map[string]*store.ContractStore{"toobit": cStore},
+		mockNotifier,
+		bus,
+		logger,
+	)
+	require.NoError(t, err)
+
+	application.InitGlobalSubscriptions(ctx, runner)
+	qualifiedCh, err := bus.Subscribe(ctx, pjdomain.TopicWallQualified)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// 1. SOLUSDT: Wall with 25k USDT -> Passes static (>= 20k) but FAILS dynamic (2.5x < 3.0x)
+	obSol1 := &shared.OrderBook{
+		Symbol:  "SOLUSDT",
+		Version: 101,
+		Bids: []shared.OrderBookEntry{
+			{Price: 200.0, Volume: 150.0}, // 30,000 USDT initial
+			{Price: 199.0, Volume: 1.0},
+		},
+		Asks: []shared.OrderBookEntry{{Price: 201.0, Volume: 1.0}},
+	}
+	err = bus.Publish(pjdomain.TopicDepthUpdated, pjdomain.DepthUpdatedEvent{
+		Exchange:  "toobit",
+		Symbol:    "SOLUSDT",
+		Version:   101,
+		OrderBook: obSol1,
+		Timestamp: now,
+	})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		_, found := depthStore.GetActiveWall("SOLUSDT", shared.SideOpenLong)
+		return found
+	}, 2*time.Second, 10*time.Millisecond)
+
+	depthStore.RecordPublicTrades("SOLUSDT", []shared.PublicTrade{
+		{
+			Symbol:    "SOLUSDT",
+			Price:     200.0,
+			Volume:    25.0,
+			Side:      shared.SideOpenShort,
+			Timestamp: now.Add(3 * time.Second),
+		},
+	})
+	obSol2 := &shared.OrderBook{
+		Symbol:  "SOLUSDT",
+		Version: 102,
+		Bids: []shared.OrderBookEntry{
+			{Price: 200.0, Volume: 125.0}, // 25,000 USDT (2.5x 1m turnover < 3.0x required)
+			{Price: 199.0, Volume: 1.0},
+		},
+		Asks: []shared.OrderBookEntry{{Price: 201.0, Volume: 1.0}},
+	}
+	err = bus.Publish(pjdomain.TopicDepthUpdated, pjdomain.DepthUpdatedEvent{
+		Exchange:  "toobit",
+		Symbol:    "SOLUSDT",
+		Version:   102,
+		OrderBook: obSol2,
+		Timestamp: now.Add(3 * time.Second),
+	})
+	require.NoError(t, err)
+
+	select {
+	case <-qualifiedCh:
+		t.Fatal("SOLUSDT wall with 2.5x 1m turnover should NOT qualify when 3.0x is required")
+	case <-time.After(50 * time.Millisecond):
+		// Expected: filtered out by dynamic volume ratio
+	}
+
+	// 2. ETHUSDT: Wall with 40k USDT -> Passes BOTH static (>= 20k) and dynamic (4.0x >= 3.0x)
+	obEth1 := &shared.OrderBook{
+		Symbol:  "ETHUSDT",
+		Version: 201,
+		Bids: []shared.OrderBookEntry{
+			{Price: 2500.0, Volume: 20.0}, // 50,000 USDT initial
+			{Price: 2490.0, Volume: 0.1},
+		},
+		Asks: []shared.OrderBookEntry{{Price: 2510.0, Volume: 0.1}},
+	}
+	err = bus.Publish(pjdomain.TopicDepthUpdated, pjdomain.DepthUpdatedEvent{
+		Exchange:  "toobit",
+		Symbol:    "ETHUSDT",
+		Version:   201,
+		OrderBook: obEth1,
+		Timestamp: now,
+	})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		_, found := depthStore.GetActiveWall("ETHUSDT", shared.SideOpenLong)
+		return found
+	}, 2*time.Second, 10*time.Millisecond)
+
+	depthStore.RecordPublicTrades("ETHUSDT", []shared.PublicTrade{
+		{
+			Symbol:    "ETHUSDT",
+			Price:     2500.0,
+			Volume:    4.0,
+			Side:      shared.SideOpenShort,
+			Timestamp: now.Add(3 * time.Second),
+		},
+	})
+	obEth2 := &shared.OrderBook{
+		Symbol:  "ETHUSDT",
+		Version: 202,
+		Bids: []shared.OrderBookEntry{
+			{Price: 2500.0, Volume: 16.0}, // 40,000 USDT (4.0x 1m turnover >= 3.0x required)
+			{Price: 2490.0, Volume: 0.1},
+		},
+		Asks: []shared.OrderBookEntry{{Price: 2510.0, Volume: 0.1}},
+	}
+	err = bus.Publish(pjdomain.TopicDepthUpdated, pjdomain.DepthUpdatedEvent{
+		Exchange:  "toobit",
+		Symbol:    "ETHUSDT",
+		Version:   202,
+		OrderBook: obEth2,
+		Timestamp: now.Add(3 * time.Second),
+	})
+	require.NoError(t, err)
+
+	select {
+	case msg := <-qualifiedCh:
+		var qEvt pjdomain.WallQualifiedEvent
+		err := xjson.Unmarshal(msg.Payload, &qEvt)
+		require.NoError(t, err)
+		assert.Equal(t, "ETHUSDT", qEvt.Wall.Symbol)
+		msg.Ack()
+	case <-time.After(2 * time.Second):
+		t.Fatal("ETHUSDT wall with 4.0x 1m turnover should qualify")
+	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"crypto-bot/internal/bots/penny_jumper/application"
 	pjdomain "crypto-bot/internal/bots/penny_jumper/domain"
+	pjstore "crypto-bot/internal/bots/penny_jumper/infrastructure/store"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store/orderbook"
 
@@ -47,12 +48,14 @@ func TestSubscribeManager_DynamicUniverse(t *testing.T) {
 		CommitRecoverySize: 1000,
 	}, mockSnap, nil, logger)
 
+	depthStore := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
 	clients := []application.ExchangeClient{
 		{
 			Exchange:     "toobit",
 			Fetcher:      mockFetcher,
 			Subscriber:   sub,
 			Synchronizer: syncMgr,
+			DepthStore:   depthStore,
 		},
 	}
 
@@ -129,18 +132,22 @@ func TestSubscribeManager_MultiExchangeUniverse(t *testing.T) {
 		CommitRecoverySize: 1000,
 	}, mockSnap, nil, logger)
 
+	depthToobit := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
+	depthMEXC := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
 	clients := []application.ExchangeClient{
 		{
 			Exchange:     "toobit",
 			Fetcher:      fetcherToobit,
 			Subscriber:   subToobit,
 			Synchronizer: syncToobit,
+			DepthStore:   depthToobit,
 		},
 		{
 			Exchange:     "mexc",
 			Fetcher:      fetcherMEXC,
 			Subscriber:   subMEXC,
 			Synchronizer: syncMEXC,
+			DepthStore:   depthMEXC,
 		},
 	}
 
@@ -200,12 +207,14 @@ func TestSubscribeManager_MaxCoinPriceFilter(t *testing.T) {
 		CommitRecoverySize: 1000,
 	}, mockSnap, nil, logger)
 
+	depthStore := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
 	clients := []application.ExchangeClient{
 		{
 			Exchange:     "toobit",
 			Fetcher:      mockFetcher,
 			Subscriber:   sub,
 			Synchronizer: syncMgr,
+			DepthStore:   depthStore,
 		},
 	}
 

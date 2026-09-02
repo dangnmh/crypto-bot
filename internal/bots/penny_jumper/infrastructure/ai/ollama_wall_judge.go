@@ -344,6 +344,10 @@ Wall Summary:
 - Pulled Volume: %f (canceled without fills)
 - Relative Size vs Nearby Depth: %.2fx
 - Distance from BBO: %.2f%%%%
+- OrderBook Depth Imbalance (1%% BBO): %.2fx
+- Backing Support Depth Behind Wall: %.2fx
+- 1h History at Price Level: %d Pulls / %d Fills
+- Volume 24h: %.2f USDT | 1m Turnover Multiple: %.1fx
 
 Recent Event Journal:
 %s
@@ -352,7 +356,11 @@ Analysis Rules:
 1. Genuine walls accept taker fills (Verified Absorbed Volume > 0).
 2. Walls surviving > 3s without pulling have passed flash-spoof filters.
 3. Walls that constantly flicker/resize without taker fills or pull when price approaches are predatory spoofs.
-4. Output a trust score between 0.00 and 1.00. Score >= %.2f is trusted.
+4. Favorable orderbook depth imbalance (> 1.5x) and multi-level backing (> 0.8x) provide strong structural support.
+5. Unfavorable depth imbalance (< 0.8x) or air-pocket backing (< 0.3x) carry high breakdown risk.
+6. Price levels with recurring pulls (>= 3 Pulls and 0 Fills in 1h) are algorithmic spoof traps.
+7. Price levels with verified executions (> 0 Fills) indicate genuine market maker limit liquidity.
+8. Output a trust score between 0.00 and 1.00. Score >= %.2f is trusted.
 
 Return ONLY a valid JSON object in this exact schema:
 {
@@ -371,6 +379,12 @@ Return ONLY a valid JSON object in this exact schema:
 		metrics.PulledVolume,
 		wall.RelativeRatio,
 		wall.DistancePct,
+		wall.DepthImbalance,
+		wall.BackingRatio,
+		wall.PullCount1h,
+		wall.FillCount1h,
+		wall.Vol24h,
+		wall.WallTo1mRatio,
 		string(eventsJSON),
 		j.cfg.MinTrustScore,
 	)

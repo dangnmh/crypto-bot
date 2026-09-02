@@ -14,9 +14,12 @@ import (
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/store"
+	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/formatutil"
 	"crypto-bot/pkg/xjson"
+
+	"github.com/patrickmn/go-cache"
 )
 
 // PennyJumperRunner is the pure event-sourced execution engine for Penny Jumper.
@@ -33,11 +36,8 @@ type PennyJumperRunner struct {
 
 	subOnce       sync.Once
 	subWg         sync.WaitGroup
-	notifiedWalls map[string]time.Time
-	notifiedMu    sync.Mutex
-
-	lastEvaluatedAt map[string]time.Time
-	evalMu          sync.Mutex
+	notifiedCache *cache.Cache
+	evalCache     *cache.Cache
 }
 
 // NewPennyJumperRunner creates a new PennyJumperRunner and strictly validates all required dependencies.
@@ -79,18 +79,20 @@ func NewPennyJumperRunner(
 		}
 	}
 
+	evalCooldown := cfg.WallJudge.EvalCooldown.Duration()
+
 	return &PennyJumperRunner{
-		cfg:             cfg,
-		depthStores:     depthStores,
-		wallDetectors:   wallDetectors,
-		wallJudge:       wallJudge,
-		wallRepo:        wallRepo,
-		contractStores:  contractStores,
-		notifier:        notif,
-		bus:             bus,
-		logger:          logger.With("component", "PennyJumperRunner"),
-		notifiedWalls:   make(map[string]time.Time),
-		lastEvaluatedAt: make(map[string]time.Time),
+		cfg:            cfg,
+		depthStores:    depthStores,
+		wallDetectors:  wallDetectors,
+		wallJudge:      wallJudge,
+		wallRepo:       wallRepo,
+		contractStores: contractStores,
+		notifier:       notif,
+		bus:            bus,
+		logger:         logger.With("component", "PennyJumperRunner"),
+		notifiedCache:  cache.New(15*time.Minute, 5*time.Minute),
+		evalCache:      cache.New(evalCooldown, 1*time.Minute),
 	}, nil
 }
 
@@ -146,6 +148,9 @@ func (r *PennyJumperRunner) HandleDepthUpdated(ctx context.Context, evt pjdomain
 	if evt.OrderBook == nil {
 		return nil
 	}
+	if depthStore, ok := r.depthStores[evt.Exchange]; ok && depthStore != nil {
+		depthStore.SaveDepthSnapshot(evt.Symbol, evt.OrderBook)
+	}
 	detector, ok := r.wallDetectors[evt.Exchange]
 	if !ok || detector == nil {
 		return nil
@@ -170,7 +175,7 @@ func (r *PennyJumperRunner) HandleWallEventStream(ctx context.Context, payload p
 	side := parseWallSide(payload.Side)
 
 	switch evt.EventType {
-	case pjdomain.WallEventMatured, pjdomain.WallEventPriceApproached:
+	case pjdomain.WallEventMatured, pjdomain.WallEventPriceApproached, pjdomain.WallEventAbsorbed:
 		// In-memory model evaluation and qualification
 		r.evaluateAndQualifyWall(ctx, exchange, payload.Symbol, side, evt, events)
 		return nil
@@ -179,7 +184,7 @@ func (r *PennyJumperRunner) HandleWallEventStream(ctx context.Context, payload p
 		// Save complete event stream to DB once wall lifecycle ends
 		return r.handleWallLifecycleEnded(ctx, exchange, payload.Symbol, side, evt, depthStore, events)
 
-	case pjdomain.WallEventBorn, pjdomain.WallEventResized, pjdomain.WallEventWeakened, pjdomain.WallEventFlapped:
+	case pjdomain.WallEventBorn, pjdomain.WallEventResized, pjdomain.WallEventWeakened:
 		return nil
 	}
 
@@ -194,9 +199,7 @@ func (r *PennyJumperRunner) handleWallLifecycleEnded(
 	depthStore *pjstore.DepthStore,
 	events []pjdomain.WallEvent,
 ) error {
-	r.evalMu.Lock()
-	delete(r.lastEvaluatedAt, evt.WallID)
-	r.evalMu.Unlock()
+	r.evalCache.Delete(evt.WallID)
 
 	initialVol := evt.Volume
 	createdAt := evt.Timestamp
@@ -273,7 +276,7 @@ func (r *PennyJumperRunner) evaluateAndQualifyWall(
 		return
 	}
 
-	sizeUSD, _, priceUnit, ok := r.isEligibleWall(ctx, wall, contractStore)
+	eligibility, ok := r.isEligibleWall(ctx, wall, contractStore, depthStore, evt.Timestamp)
 	if !ok {
 		return
 	}
@@ -283,14 +286,17 @@ func (r *PennyJumperRunner) evaluateAndQualifyWall(
 		takerSide = shared.SideOpenLong
 	}
 	trades := depthStore.GetTradesForWall(wall.Symbol, wall.Price, takerSide, wall.FirstDetectedAt, evt.Timestamp)
-	if len(trades) == 0 {
-		return
-	}
 
 	cooldown := time.Duration(r.cfg.WallJudge.EvalCooldown)
 	if !r.canEvaluateWall(wall.ID, cooldown) {
 		return
 	}
+
+	wall.Vol24h = eligibility.Vol24h
+	wall.WallTo1mRatio = eligibility.Ratio1m
+	history := depthStore.GetWallHistory(wall.Symbol, wall.Price, 1*time.Hour, evt.Timestamp)
+	wall.PullCount1h = history.PullCountIn1h
+	wall.FillCount1h = history.FillCountIn1h
 
 	judgeRes, err := r.wallJudge.JudgeWall(ctx, wall, events, trades)
 	if err != nil || !judgeRes.IsTrusted {
@@ -298,7 +304,7 @@ func (r *PennyJumperRunner) evaluateAndQualifyWall(
 	}
 
 	bestBid, bestAsk := extractBBO(depthStore, symbol)
-	targetEntryPrice := r.calculateFrontRunPrice(wall.Side, wall.Price, bestBid, bestAsk, priceUnit)
+	targetEntryPrice := r.calculateFrontRunPrice(wall.Side, wall.Price, bestBid, bestAsk, eligibility.PriceUnit)
 
 	_ = r.bus.Publish(pjdomain.TopicWallQualified, pjdomain.WallQualifiedEvent{
 		Wall:             *wall,
@@ -317,29 +323,63 @@ func (r *PennyJumperRunner) evaluateAndQualifyWall(
 		slog.Float64("target_entry", targetEntryPrice),
 	)
 
-	r.dispatchWallNotification(ctx, wall, evt.SpreadPct, sizeUSD, evt.Timestamp)
+	r.dispatchWallNotification(ctx, wall, evt.SpreadPct, eligibility.SizeUSD, eligibility.Vol24h, eligibility.Ratio1m, evt.Timestamp)
+}
+
+type wallEligibility struct {
+	SizeUSD   float64
+	PriceUnit float64
+	Vol24h    float64
+	Ratio1m   float64
 }
 
 func (r *PennyJumperRunner) isEligibleWall(
 	ctx context.Context,
 	wall *pjdomain.Wall,
 	contractStore *store.ContractStore,
-) (sizeUSD, contractSize, priceUnit float64, ok bool) {
-	contractSize, priceUnit = r.getContractMetrics(ctx, contractStore, wall.Symbol)
-	sizeUSD = wall.Volume * wall.Price * contractSize
-	if r.cfg.WallDetector.MinVolumeUSDT > 0 && sizeUSD < r.cfg.WallDetector.MinVolumeUSDT {
-		return 0, 0, 0, false
+	depthStore *pjstore.DepthStore,
+	now time.Time,
+) (wallEligibility, bool) {
+	minLifespan := r.cfg.WallDetector.MinLifespan.Duration()
+	if minLifespan > 0 && !wall.Matured && wall.GetAgeAt(now) < minLifespan {
+		return wallEligibility{}, false
 	}
-	return sizeUSD, contractSize, priceUnit, true
+
+	contractSize, priceUnit := r.getContractMetrics(ctx, contractStore, wall.Symbol)
+	sizeUSD := wall.Volume * wall.Price * contractSize
+
+	// 1. Static check: minVolumeUSDT
+	if r.cfg.WallDetector.MinVolumeUSDT > 0 && sizeUSD < r.cfg.WallDetector.MinVolumeUSDT {
+		return wallEligibility{}, false
+	}
+
+	// 2. Dynamic check: minWallTo1mVolRatio (ratio of wall size vs 1-minute turnover estimated from 24h volume)
+	vol24h := 0.0
+	ratio1m := 0.0
+	if v24h, found := depthStore.GetVolume24h(wall.Symbol); found && v24h > 0 {
+		vol24h = v24h
+		vol1m := v24h / 1440.0
+		if vol1m > 0 {
+			ratio1m = sizeUSD / vol1m
+		}
+	}
+	if r.cfg.WallDetector.MinWallTo1mVolRatio > 0 && vol24h > 0 && ratio1m < r.cfg.WallDetector.MinWallTo1mVolRatio {
+		return wallEligibility{}, false
+	}
+
+	return wallEligibility{
+		SizeUSD:   sizeUSD,
+		PriceUnit: priceUnit,
+		Vol24h:    vol24h,
+		Ratio1m:   ratio1m,
+	}, true
 }
 
 func (r *PennyJumperRunner) canEvaluateWall(wallID string, cooldown time.Duration) bool {
-	r.evalMu.Lock()
-	defer r.evalMu.Unlock()
-	if lastEval, ok := r.lastEvaluatedAt[wallID]; ok && time.Since(lastEval) < cooldown {
+	if _, found := r.evalCache.Get(wallID); found {
 		return false
 	}
-	r.lastEvaluatedAt[wallID] = time.Now()
+	r.evalCache.Set(wallID, true, cooldown)
 	return true
 }
 
@@ -393,17 +433,17 @@ func (r *PennyJumperRunner) calculateFrontRunPrice(
 
 	if side == shared.SideOpenLong {
 		// Jump 1 tick in front of bid wall: min(wallPrice + tickSize, bestAsk - tickSize)
-		target := wallPrice + tickSize
+		target := decmath.SnapToTickFloor(wallPrice+tickSize, tickSize)
 		if bestAsk > 0 && target >= bestAsk {
-			target = math.Max(bestBid, bestAsk-tickSize)
+			target = math.Max(bestBid, decmath.SnapToTickFloor(bestAsk-tickSize, tickSize))
 		}
 		return target
 	}
 
 	// Jump 1 tick in front of ask wall: max(wallPrice - tickSize, bestBid + tickSize)
-	target := wallPrice - tickSize
+	target := decmath.SnapToTickCeil(wallPrice-tickSize, tickSize)
 	if bestBid > 0 && target <= bestBid {
-		target = math.Min(bestAsk, bestBid+tickSize)
+		target = math.Min(bestAsk, decmath.SnapToTickCeil(bestBid+tickSize, tickSize))
 	}
 	return target
 }
@@ -411,7 +451,7 @@ func (r *PennyJumperRunner) calculateFrontRunPrice(
 func (r *PennyJumperRunner) dispatchWallNotification(
 	ctx context.Context,
 	wall *pjdomain.Wall,
-	spreadPct, sizeUSD float64,
+	spreadPct, sizeUSD, vol24h, ratio1m float64,
 	now time.Time,
 ) {
 	if r.notifier == nil {
@@ -419,19 +459,13 @@ func (r *PennyJumperRunner) dispatchWallNotification(
 	}
 
 	wallKey := fmt.Sprintf("%s:%s:%s:%.6f", wall.Exchange, wall.Symbol, wall.Side.String(), wall.Price)
-	r.notifiedMu.Lock()
-	lastNotified, exists := r.notifiedWalls[wallKey]
-	alreadyNotified := exists && now.Sub(lastNotified) < 15*time.Minute
-	if !alreadyNotified {
-		r.notifiedWalls[wallKey] = now
-	}
-	r.notifiedMu.Unlock()
-
-	if alreadyNotified {
+	// Suppress duplicate notifications within 15 minutes for the same price level
+	if _, found := r.notifiedCache.Get(wallKey); found {
 		return
 	}
+	r.notifiedCache.Set(wallKey, true, cache.DefaultExpiration)
 
-	msg := FormatWallDetectedNotification(wall, spreadPct, sizeUSD, now)
+	msg := FormatWallDetectedNotification(wall, spreadPct, sizeUSD, vol24h, ratio1m, now)
 	if err := r.notifier.Send(ctx, notifier.Event{
 		Level:     notifier.LevelNormal,
 		Message:   msg,
@@ -464,7 +498,7 @@ func formatSideString(side shared.Side) string {
 func FormatWallDetectedNotification(
 	wall *pjdomain.Wall,
 	spreadPct float64,
-	sizeUSD float64,
+	sizeUSD, vol24h, ratio1m float64,
 	now time.Time,
 ) string {
 	sideStr := formatSideString(wall.Side)
@@ -475,18 +509,37 @@ func FormatWallDetectedNotification(
 		ageStr = "<1s"
 	}
 
+	volRatioStr := ""
+	if vol24h > 0 && ratio1m > 0 {
+		vol24hStr := formatutil.FormatUSDWithCommas(vol24h)
+		volRatioStr = fmt.Sprintf(" (%.1fx 1m Vol | 24h Vol: %s USDT)", ratio1m, vol24hStr)
+	}
+
+	imbalanceStr := ""
+	if wall.DepthImbalance > 0 {
+		imbalanceStr = fmt.Sprintf("\n• Imbalance: %.1fx | Backing: %.1fx", wall.DepthImbalance, wall.BackingRatio)
+	}
+
+	historyStr := ""
+	if wall.PullCount1h > 0 || wall.FillCount1h > 0 {
+		historyStr = fmt.Sprintf("\n• 1h History: %d Pulls / %d Fills", wall.PullCount1h, wall.FillCount1h)
+	}
+
 	return fmt.Sprintf("🟢 [PENNY_JUMPER] [%s] [WALL_QUALIFIED]\n"+
 		"• Symbol: %s | Side: %s\n"+
-		"• Price: %s | Size: %s USDT\n"+
-		"• Dist: %.2f%% | Spread: %.2f%%\n"+
+		"• Price: %s | Size: %s USDT%s\n"+
+		"• Dist: %.2f%% | Spread: %.2f%%%s%s\n"+
 		"• Wall Age: %s",
 		wall.Exchange,
 		wall.Symbol,
 		sideStr,
 		wallPriceStr,
 		sizeUSDStr,
+		volRatioStr,
 		wall.DistancePct,
 		spreadPct,
+		imbalanceStr,
+		historyStr,
 		ageStr,
 	)
 }

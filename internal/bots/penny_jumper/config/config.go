@@ -46,6 +46,21 @@ func LoadSystemConfig(systemPath, exchangePath string) (*SystemConfig, error) {
 	}
 	sysRaw.ExchangeConfig = exchRaw.ExchangeConfig
 
+	// Penny Jumper operates on public data streams and does not require private API credentials.
+	// Populate placeholder credentials for any enabled exchanges where credentials were not supplied.
+	for exch, apiCfg := range sysRaw.ExchangeConfig {
+		if apiCfg.APIKey == "" {
+			apiCfg.APIKey = "public_key"
+		}
+		if apiCfg.APISecret == "" {
+			apiCfg.APISecret = "public_secret"
+		}
+		if spec := sysconfig.ExchangeSpecs[exch]; spec.RequiresPassphrase && apiCfg.APIPassphrase == "" {
+			apiCfg.APIPassphrase = "public_passphrase"
+		}
+		sysRaw.ExchangeConfig[exch] = apiCfg
+	}
+
 	if err := sysconfig.InitializeBase(sysRaw); err != nil {
 		return nil, fmt.Errorf("initialize base config: %w", err)
 	}

@@ -1,11 +1,11 @@
 {
   "exchanges": [
     "mexc_spot",
-    "kucoin_spot",
+    "mexc_futures"
   ],
   "executionMode": "live",
   "universe": {
-    "minVolume24hUSDT": 1000000.0,
+    "minVolume24hUSDT": 3000000.0,
     "maxCoinPrice": 10.0,
     "tickerInterval": "15m"
   },
@@ -42,9 +42,14 @@
   },
   "wallDetector": {
     "minVolumeUSDT": 20000.0,
+    "minWallTo1mVolRatio": 2.0,
+    "minRelativeRatio": 15.0,
+    "neighborhoodLevels": 5,
     "minLifespan": "5s",
     "maxWallDistancePct": 1.0,
-    "maxSpreadPct": 5.0
+    "maxSpreadPct": 5.0,
+    "weakenedThresholdPct": 50.0,
+    "priceApproachedDistancePct": 0.1
   },
   "wallJudge": {
     "mode": "dual", // "local", "model", or "dual"
