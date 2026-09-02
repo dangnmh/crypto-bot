@@ -66,7 +66,7 @@
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
       "bufferTime": "-55ms", // -70ms.-60ms dont paid funding fee, -50 paid funding fee
-      "postSettleTimeout": "0.5s", // Force close if reversion lifecycle does not terminally close
+      "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 6000000,
       "minFundingRate": 0.6,
       "leverage": 10,
