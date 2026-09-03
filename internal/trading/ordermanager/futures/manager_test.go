@@ -986,3 +986,265 @@ func TestOrderManager_SkipPreFlight(t *testing.T) {
 	assert.False(t, client.positionModeSwitched, "expected position mode switch to be skipped")
 	assert.False(t, client.leverageChanged, "expected leverage change to be skipped")
 }
+
+func TestIsConsecutiveDrop(t *testing.T) {
+	t.Parallel()
+
+	// Not enough elements
+	assert.False(t, futures.IsConsecutiveDrop([]float64{10.0}, 2))
+	assert.False(t, futures.IsConsecutiveDrop([]float64{10.0, 9.0}, 2))
+
+	// 2 consecutive drops
+	assert.True(t, futures.IsConsecutiveDrop([]float64{10.0, 9.0, 8.0}, 2))
+	assert.True(t, futures.IsConsecutiveDrop([]float64{5.0, 10.0, 9.0, 8.0}, 2))
+
+	// Only 1 drop followed by a bounce
+	assert.False(t, futures.IsConsecutiveDrop([]float64{10.0, 9.0, 9.5}, 2))
+	// Flat tick
+	assert.False(t, futures.IsConsecutiveDrop([]float64{10.0, 9.0, 9.0}, 2))
+	// Up tick
+	assert.False(t, futures.IsConsecutiveDrop([]float64{10.0, 11.0, 12.0}, 2))
+}
+
+func TestHandlePositionUpdate_PnLTrailingStop_ImmediateExit(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-pnl-trailing-001"
+
+	agg := mgr.GetAggregate(reqID)
+	assert.NoError(t, agg.Record(futures.OrderIntentEvent{
+		ReqID:                   reqID,
+		Symbol:                  "BTCUSDT",
+		Exchange:                "mexc",
+		StrategyType:            futures.StrategyFundingReversion,
+		Side:                    shared.SideOpenLong,
+		OrderType:               futures.OrderTypeIOC,
+		Price:                   50000.0,
+		Volume:                  1.0,
+		EnablePnLTrailing:       true,
+		PnLTrailingDropPct:      10.0, // 10% pullback from peak
+		PnLTrailingConfirmTicks: 2,
+	}))
+
+	// Step 1: Initial fill
+	mgr.HandlePositionUpdate(ctx, reqID, exchange.PersonalPositionUpdate{
+		Symbol:          "BTCUSDT",
+		HoldVolContract: 1.0,
+		OpenAvgPrice:    50000.0,
+	})
+
+	assert.True(t, agg.HasFilled())
+
+	// Step 1b: Trade price 50010.0 -> PnL = 10.0
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 50010.0},
+	})
+	tracker := mgr.GetPnLTracker(reqID)
+	assert.NotNil(t, tracker)
+	assert.Equal(t, 10.0, tracker.MaxPnL)
+	assert.Equal(t, []float64{10.0}, tracker.History)
+	assert.False(t, client.allClosed)
+
+	// Step 2: Growth to Price 50015.0 -> PnL = 15.0
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 50015.0},
+	})
+	tracker = mgr.GetPnLTracker(reqID)
+	assert.Equal(t, 15.0, tracker.MaxPnL)
+	assert.Equal(t, []float64{10.0, 15.0}, tracker.History)
+	assert.False(t, client.allClosed)
+
+	// Step 3: 1st tick down to Price 50014.5 -> PnL = 14.5 (drop is 0.5, 3.3% < 10% threshold; only 1 down-tick)
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 50014.5},
+	})
+	tracker = mgr.GetPnLTracker(reqID)
+	assert.Equal(t, 15.0, tracker.MaxPnL)
+	assert.Equal(t, []float64{10.0, 15.0, 14.5}, tracker.History)
+	assert.False(t, client.allClosed, "should not exit on 3.3% drop and only 1 down-tick")
+
+	// Step 4: 2nd tick down to Price 50013.5 -> PnL = 13.5 (drop is 1.5, exactly 10% pullback from 15.0 peak and 2 consecutive drops) -> triggers immediate bailout exit!
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 50013.5},
+	})
+	assert.True(t, client.allClosed, "expected CloseAllPositions to be called immediately on 10% pullback with 2 down-ticks")
+	assert.Equal(t, futures.StateBailout, agg.State())
+
+	// Step 5: Position closed confirmation (holdVol = 0)
+	mgr.HandlePositionUpdate(ctx, reqID, exchange.PersonalPositionUpdate{
+		Symbol:          "BTCUSDT",
+		HoldVolContract: 0.0,
+		HoldVolCoin:     0.0,
+		CloseProfitLoss: 14.0,
+	})
+	assert.Nil(t, mgr.GetPnLTracker(reqID), "tracker should be cleaned up on close")
+	assert.Equal(t, futures.StatePositionClosed, agg.State())
+}
+
+func TestHandlePositionUpdate_PnLTrailing_DisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-pnl-disabled-001"
+
+	agg := mgr.GetAggregate(reqID)
+	// EnablePnLTrailing is false by default
+	assert.NoError(t, agg.Record(futures.OrderIntentEvent{
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "mexc",
+		StrategyType: futures.StrategyFundingReversion,
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+	}))
+
+	mgr.HandlePositionUpdate(ctx, reqID, exchange.PersonalPositionUpdate{
+		Symbol:          "BTCUSDT",
+		HoldVolContract: 1.0,
+		OpenAvgPrice:    50000.0,
+	})
+	// Drop
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{{Symbol: "BTCUSDT", Price: 50005.0}})
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{{Symbol: "BTCUSDT", Price: 50002.0}})
+
+	assert.False(t, client.allClosed, "should not trigger close when trailing is disabled")
+	assert.Nil(t, mgr.GetPnLTracker(reqID))
+}
+
+func TestHandleTradeUpdate_PnLTrailingStop_ViaDealStream(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	bus := eventbus.New(logger)
+	defer func() { _ = bus.Close() }()
+	repo := &mockTradeRepo{}
+	client := &mockExchangeClient{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-deal-stream-001"
+
+	agg := mgr.GetAggregate(reqID)
+	assert.NoError(t, agg.Record(futures.OrderIntentEvent{
+		ReqID:                   reqID,
+		Symbol:                  "BTCUSDT",
+		Exchange:                "mexc",
+		StrategyType:            futures.StrategyFundingReversion,
+		Side:                    shared.SideOpenShort, // Short position
+		OrderType:               futures.OrderTypeIOC,
+		Price:                   50000.0,
+		Volume:                  1.0,
+		ContractSize:            1.0,
+		EnablePnLTrailing:       true,
+		PnLTrailingDropPct:      10.0, // 10% pullback
+		PnLTrailingConfirmTicks: 2,
+	}))
+
+	// Mark order as filled at 50,000.0
+	assert.NoError(t, agg.Record(futures.OrderFilledEvent{
+		ReqID:           reqID,
+		Symbol:          "BTCUSDT",
+		Exchange:        "mexc",
+		Side:            shared.SideOpenShort,
+		FillPrice:       50000.0,
+		FillVolCoin:     1.0,
+		FillVolContract: 1.0,
+	}))
+	assert.True(t, agg.HasFilled())
+
+	// Deal 1: Market trade at 49,990.0 (profit +10 for short)
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 49990.0, Volume: 0.5},
+	})
+	tracker := mgr.GetPnLTracker(reqID)
+	assert.NotNil(t, tracker)
+	assert.Equal(t, 10.0, tracker.MaxPnL)
+	assert.Equal(t, []float64{10.0}, tracker.History)
+	assert.False(t, client.allClosed)
+
+	// Deal 2: Market trade drops to 49,980.0 (profit increases to +20)
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 49980.0, Volume: 1.0},
+	})
+	tracker = mgr.GetPnLTracker(reqID)
+	assert.Equal(t, 20.0, tracker.MaxPnL)
+	assert.Equal(t, []float64{10.0, 20.0}, tracker.History)
+	assert.False(t, client.allClosed)
+
+	// Deal 3: Price bounces to 49,981.0 (PnL drops to 19.0; 5% drop < 10% threshold; 1 down-tick)
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 49981.0, Volume: 0.2},
+	})
+	tracker = mgr.GetPnLTracker(reqID)
+	assert.Equal(t, 20.0, tracker.MaxPnL)
+	assert.Equal(t, []float64{10.0, 20.0, 19.0}, tracker.History)
+	assert.False(t, client.allClosed, "should not exit on 5% drop with only 1 down-tick")
+
+	// Deal 4: Price bounces further to 49,983.0 (PnL drops to 17.0; 15% drop >= 10% threshold AND 2 consecutive down-ticks)
+	mgr.HandleTradeUpdate(ctx, reqID, "BTCUSDT", []shared.PublicTrade{
+		{Symbol: "BTCUSDT", Price: 49983.0, Volume: 0.3},
+	})
+	assert.True(t, client.allClosed, "expected immediate bailout exit via deal stream trailing stop")
+	assert.Equal(t, futures.StateBailout, agg.State())
+
+	// Deal 5: Position closed confirmation
+	mgr.HandlePositionUpdate(ctx, reqID, exchange.PersonalPositionUpdate{
+		Symbol:          "BTCUSDT",
+		HoldVolContract: 0,
+		HoldVolCoin:     0,
+		CloseProfitLoss: 17.0,
+	})
+	assert.Nil(t, mgr.GetPnLTracker(reqID), "tracker should be cleaned up on position close")
+}

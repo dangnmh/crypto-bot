@@ -177,6 +177,9 @@ type ExchangeReversionConfig struct {
 	ScoringRateWeight       float64        `json:"scoringRateWeight,omitempty" validate:"omitempty,gt=0"`
 	ScoringVolumeWeight     float64        `json:"scoringVolumeWeight,omitempty" validate:"omitempty,gt=0"`
 	MaxVolumeScore          float64        `json:"maxVolumeScore,omitempty" validate:"omitempty,gt=0"`
+	EnablePnLTrailing       bool           `json:"enablePnLTrailing,omitempty"`
+	PnLTrailingDropPct      float64        `json:"pnlTrailingDropPct,omitempty" validate:"omitempty,gte=0,lte=100"`
+	PnLTrailingConfirmTicks int            `json:"pnlTrailingConfirmTicks,omitempty" validate:"omitempty,gte=1"`
 }
 
 type BlacklistConfig map[string][]string

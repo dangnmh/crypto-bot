@@ -80,7 +80,8 @@ type TPSLProvider interface {
 // ClosedPnLProvider enriches actual trade fill prices and net profit metrics.
 type ClosedPnLProvider = common.ClosedPnLProvider
 
-// PositionWatcher is the interface for subscribing to real-time personal position updates.
+// PositionWatcher is the interface for subscribing to real-time personal position and trade updates.
 type PositionWatcher interface {
 	OnPositionUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func(pos exchange.PersonalPositionUpdate))
+	OnTradeUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func(trades []shared.PublicTrade))
 }

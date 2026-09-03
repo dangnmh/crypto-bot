@@ -86,11 +86,14 @@ type OrderIntentEvent struct {
 	FundingRate  float64             `json:"funding_rate,omitempty"`
 	Vol24hUSDT   float64             `json:"vol_24h_usdt,omitempty"`
 
-	TakeProfitPrice       float64       `json:"take_profit_price,omitempty"`
-	StopLossPrice         float64       `json:"stop_loss_price,omitempty"`
-	PositionCloseTimeout  time.Duration `json:"position_close_timeout,omitempty"`
-	UnfilledCancelTimeout time.Duration `json:"unfilled_cancel_timeout,omitempty"`
-	SkipPreFlight         bool          `json:"skip_pre_flight,omitempty"`
+	TakeProfitPrice         float64       `json:"take_profit_price,omitempty"`
+	StopLossPrice           float64       `json:"stop_loss_price,omitempty"`
+	PositionCloseTimeout    time.Duration `json:"position_close_timeout,omitempty"`
+	UnfilledCancelTimeout   time.Duration `json:"unfilled_cancel_timeout,omitempty"`
+	SkipPreFlight           bool          `json:"skip_pre_flight,omitempty"`
+	EnablePnLTrailing       bool          `json:"enable_pnl_trailing,omitempty"`
+	PnLTrailingDropPct      float64       `json:"pnl_trailing_drop_pct,omitempty"`
+	PnLTrailingConfirmTicks int           `json:"pnl_trailing_confirm_ticks,omitempty"`
 
 	FireTime   time.Time     `json:"fire_time"`
 	MaxLatency time.Duration `json:"max_latency,omitempty"`

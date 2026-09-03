@@ -113,7 +113,7 @@
     },
     "toobit": {
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.toobit.com",
         "websocket": {
           "publicURL": "wss://stream.toobit.com/quote/ws/v1",

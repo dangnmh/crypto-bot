@@ -78,6 +78,44 @@ func (c *MockSubscriberSubscribePersonalCall) DoAndReturn(f func(context.Context
 	return c
 }
 
+// SubscribePublic mocks base method.
+func (m *MockSubscriber) SubscribePublic(ctx context.Context, topic string, subMsg any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubscribePublic", ctx, topic, subMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SubscribePublic indicates an expected call of SubscribePublic.
+func (mr *MockSubscriberMockRecorder) SubscribePublic(ctx, topic, subMsg any) *MockSubscriberSubscribePublicCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribePublic", reflect.TypeOf((*MockSubscriber)(nil).SubscribePublic), ctx, topic, subMsg)
+	return &MockSubscriberSubscribePublicCall{Call: call}
+}
+
+// MockSubscriberSubscribePublicCall wrap *gomock.Call
+type MockSubscriberSubscribePublicCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSubscriberSubscribePublicCall) Return(arg0 error) *MockSubscriberSubscribePublicCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSubscriberSubscribePublicCall) Do(f func(context.Context, string, any) error) *MockSubscriberSubscribePublicCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSubscriberSubscribePublicCall) DoAndReturn(f func(context.Context, string, any) error) *MockSubscriberSubscribePublicCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // SubscribeTicker mocks base method.
 func (m *MockSubscriber) SubscribeTicker(ctx context.Context, symbol string) error {
 	m.ctrl.T.Helper()
@@ -112,6 +150,82 @@ func (c *MockSubscriberSubscribeTickerCall) Do(f func(context.Context, string) e
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockSubscriberSubscribeTickerCall) DoAndReturn(f func(context.Context, string) error) *MockSubscriberSubscribeTickerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// UnsubscribePersonal mocks base method.
+func (m *MockSubscriber) UnsubscribePersonal(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnsubscribePersonal", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnsubscribePersonal indicates an expected call of UnsubscribePersonal.
+func (mr *MockSubscriberMockRecorder) UnsubscribePersonal(ctx any) *MockSubscriberUnsubscribePersonalCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribePersonal", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribePersonal), ctx)
+	return &MockSubscriberUnsubscribePersonalCall{Call: call}
+}
+
+// MockSubscriberUnsubscribePersonalCall wrap *gomock.Call
+type MockSubscriberUnsubscribePersonalCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSubscriberUnsubscribePersonalCall) Return(arg0 error) *MockSubscriberUnsubscribePersonalCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSubscriberUnsubscribePersonalCall) Do(f func(context.Context) error) *MockSubscriberUnsubscribePersonalCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSubscriberUnsubscribePersonalCall) DoAndReturn(f func(context.Context) error) *MockSubscriberUnsubscribePersonalCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// UnsubscribePublic mocks base method.
+func (m *MockSubscriber) UnsubscribePublic(ctx context.Context, topic string, unsubMsg any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UnsubscribePublic", ctx, topic, unsubMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UnsubscribePublic indicates an expected call of UnsubscribePublic.
+func (mr *MockSubscriberMockRecorder) UnsubscribePublic(ctx, topic, unsubMsg any) *MockSubscriberUnsubscribePublicCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnsubscribePublic", reflect.TypeOf((*MockSubscriber)(nil).UnsubscribePublic), ctx, topic, unsubMsg)
+	return &MockSubscriberUnsubscribePublicCall{Call: call}
+}
+
+// MockSubscriberUnsubscribePublicCall wrap *gomock.Call
+type MockSubscriberUnsubscribePublicCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockSubscriberUnsubscribePublicCall) Return(arg0 error) *MockSubscriberUnsubscribePublicCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockSubscriberUnsubscribePublicCall) Do(f func(context.Context, string, any) error) *MockSubscriberUnsubscribePublicCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockSubscriberUnsubscribePublicCall) DoAndReturn(f func(context.Context, string, any) error) *MockSubscriberUnsubscribePublicCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -152,28 +266,4 @@ func (c *MockSubscriberUnsubscribeTickerCall) Do(f func(context.Context, string)
 func (c *MockSubscriberUnsubscribeTickerCall) DoAndReturn(f func(context.Context, string) error) *MockSubscriberUnsubscribeTickerCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
-}
-
-// SubscribePublic mocks base method.
-func (m *MockSubscriber) SubscribePublic(ctx context.Context, topic string, subMsg any) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SubscribePublic", ctx, topic, subMsg)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UnsubscribePublic mocks base method.
-func (m *MockSubscriber) UnsubscribePublic(ctx context.Context, topic string, unsubMsg any) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnsubscribePublic", ctx, topic, unsubMsg)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UnsubscribePersonal mocks base method.
-func (m *MockSubscriber) UnsubscribePersonal(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnsubscribePersonal", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
 }

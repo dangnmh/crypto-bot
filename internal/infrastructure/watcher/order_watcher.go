@@ -7,16 +7,18 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/eventbus"
 )
 
-// OrderNotifier handles position lifecycle callbacks.
+// OrderNotifier handles position and trade lifecycle callbacks.
 type OrderNotifier interface {
 	OnPositionUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func(exchange.PersonalPositionUpdate))
+	OnTradeUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func([]domain.PublicTrade))
 }
 
-// OrderWatcher provides a thread-safe publish-subscribe mechanism for personal position updates.
+// OrderWatcher provides a thread-safe publish-subscribe mechanism for personal position and trade updates.
 type OrderWatcher struct {
 	mu           sync.RWMutex
 	broker       *eventbus.Bus
@@ -46,6 +48,19 @@ func (w *OrderWatcher) PublishPosition(update exchange.PersonalPositionUpdate) {
 	}
 }
 
+// PublishTrades broadcasts public trades by symbol.
+func (w *OrderWatcher) PublishTrades(symbol string, trades []domain.PublicTrade) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	if symbol == "" || len(trades) == 0 {
+		return
+	}
+	if err := w.broker.Publish(w.tradeTopic(symbol), trades); err != nil {
+		w.logger.Error("Failed to publish trade update", slog.String("symbol", symbol), slog.Any("error", err))
+	}
+}
+
 func (w *OrderWatcher) OnPositionUpdate(
 	parent context.Context,
 	symbol string,
@@ -53,6 +68,15 @@ func (w *OrderWatcher) OnPositionUpdate(
 	callback func(exchange.PersonalPositionUpdate),
 ) {
 	subscribe(parent, w, w.positionTopic(symbol), timeout, "position", callback)
+}
+
+func (w *OrderWatcher) OnTradeUpdate(
+	parent context.Context,
+	symbol string,
+	timeout time.Duration,
+	callback func([]domain.PublicTrade),
+) {
+	subscribe(parent, w, w.tradeTopic(symbol), timeout, "trade", callback)
 }
 
 func subscribe[T any](
@@ -107,4 +131,11 @@ func (w *OrderWatcher) positionTopic(symbol string) string {
 		return "position:" + w.exchangeName + ":" + symbol
 	}
 	return "position:" + symbol
+}
+
+func (w *OrderWatcher) tradeTopic(symbol string) string {
+	if w.exchangeName != "" {
+		return "trade:" + w.exchangeName + ":" + symbol
+	}
+	return "trade:" + symbol
 }

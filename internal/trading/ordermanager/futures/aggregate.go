@@ -234,6 +234,28 @@ func (a *OrderExecutionAggregate) FillVolCoin() float64 {
 	return 0
 }
 
+func (a *OrderExecutionAggregate) EntryPrice() float64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		switch e := evt.(type) {
+		case OrderFilledEvent:
+			if e.FillPrice > 0 {
+				return e.FillPrice
+			}
+		case OrderPositionClosedEvent:
+			if e.EntryPrice > 0 {
+				return e.EntryPrice
+			}
+		case OrderOutcomeResolvedEvent:
+			if e.AvgPrice > 0 {
+				return e.AvgPrice
+			}
+		}
+	}
+	return 0
+}
+
 func (a *OrderExecutionAggregate) State() OrderLifecycleState {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -485,6 +507,39 @@ func (a *OrderExecutionAggregate) UnfilledCancelTimeout() time.Duration {
 		}
 	}
 	return 0
+}
+
+func (a *OrderExecutionAggregate) EnablePnLTrailing() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		if e, ok := evt.(OrderIntentEvent); ok && e.EnablePnLTrailing {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *OrderExecutionAggregate) PnLTrailingDropPct() float64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		if e, ok := evt.(OrderIntentEvent); ok && e.PnLTrailingDropPct > 0 {
+			return e.PnLTrailingDropPct
+		}
+	}
+	return 0.0
+}
+
+func (a *OrderExecutionAggregate) PnLTrailingConfirmTicks() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, evt := range a.uncommittedEvents {
+		if e, ok := evt.(OrderIntentEvent); ok && e.PnLTrailingConfirmTicks > 0 {
+			return e.PnLTrailingConfirmTicks
+		}
+	}
+	return 2
 }
 
 func (a *OrderExecutionAggregate) Apply(evt common.OrderEvent) error {

@@ -86,6 +86,7 @@ func registerNotificationHandler[T common.OrderEvent](ctx context.Context, mgr *
 func (om *OrderManager) abortOrder(ctx context.Context, evt common.OrderEvent, preTopic, reason string, err error) error {
 	om.CancelTimeoutGuard(evt.GetReqID())
 	om.UnsubscribePositionWatch(ctx, evt.GetExchange(), string(evt.GetStrategyType()), evt.GetReqID())
+	om.UnsubscribeTradeWatch(ctx, evt.GetExchange(), string(evt.GetStrategyType()), evt.GetReqID(), evt.GetSymbol())
 	agg := om.GetAggregate(evt.GetReqID())
 	errStr := ""
 	if err != nil {
@@ -297,6 +298,7 @@ func registerOrderCompletedSubscription(ctx context.Context, mgr *OrderManager) 
 		om.invokeOnCompletedCallbacks(ctx, evt)
 		om.CancelTimeoutGuard(evt.GetReqID())
 		om.UnsubscribePositionWatch(ctx, evt.GetExchange(), string(evt.GetStrategyType()), evt.GetReqID())
+		om.UnsubscribeTradeWatch(ctx, evt.GetExchange(), string(evt.GetStrategyType()), evt.GetReqID(), evt.GetSymbol())
 		agg := om.GetAggregate(evt.GetReqID())
 		record := agg.BuildTradeRecord()
 		if record.ExchangeOrderID == "" {

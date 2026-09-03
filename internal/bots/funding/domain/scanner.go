@@ -59,12 +59,15 @@ type TradeConfig struct {
 
 // FundingReversionConfig holds configuration specific to the reversion strategy.
 type FundingReversionConfig struct {
-	Enabled           bool           `json:"enabled"`
-	TakeProfitPct     float64        `json:"takeProfitPct"`
-	StopLossPct       float64        `json:"stopLossPct"`
-	MaxLatency        types.Duration `json:"maxLatency"`
-	BufferTime        types.Duration `json:"bufferTime"`
-	PostSettleTimeout types.Duration `json:"postSettleTimeout"`
+	Enabled                 bool           `json:"enabled"`
+	TakeProfitPct           float64        `json:"takeProfitPct"`
+	StopLossPct             float64        `json:"stopLossPct"`
+	MaxLatency              types.Duration `json:"maxLatency"`
+	BufferTime              types.Duration `json:"bufferTime"`
+	PostSettleTimeout       types.Duration `json:"postSettleTimeout"`
+	EnablePnLTrailing       bool           `json:"enablePnLTrailing"`
+	PnLTrailingDropPct      float64        `json:"pnlTrailingDropPct"`
+	PnLTrailingConfirmTicks int            `json:"pnlTrailingConfirmTicks"`
 }
 
 // TradeIntent captures the directional decision from funding rate analysis.

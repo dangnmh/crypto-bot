@@ -102,7 +102,8 @@ func applyReversionDefaults(r *ReversionConfig) {
 	if r.Default.MaxCandidateTrade <= 0 {
 		r.Default.MaxCandidateTrade = 1
 	}
-	for name, exch := range r.Exchanges {
+	for name := range r.Exchanges {
+		exch := r.Exchanges[name]
 		if exch.MaxCandidateTrade <= 0 {
 			exch.MaxCandidateTrade = r.Default.MaxCandidateTrade
 			r.Exchanges[name] = exch
@@ -296,6 +297,9 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
 		sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
+		sc.FundingReversion.EnablePnLTrailing = exchConfig.EnablePnLTrailing
+		sc.FundingReversion.PnLTrailingDropPct = exchConfig.PnLTrailingDropPct
+		sc.FundingReversion.PnLTrailingConfirmTicks = exchConfig.PnLTrailingConfirmTicks
 	} else if sc.FundingReversion.Enabled {
 		if sc.FundingReversion.MaxLatency == 0 {
 			sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
@@ -308,6 +312,11 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		}
 		if sc.FundingReversion.BufferTime == 0 {
 			sc.FundingReversion.BufferTime = exchConfig.BufferTime
+		}
+		if !sc.FundingReversion.EnablePnLTrailing && exchConfig.EnablePnLTrailing {
+			sc.FundingReversion.EnablePnLTrailing = exchConfig.EnablePnLTrailing
+			sc.FundingReversion.PnLTrailingDropPct = exchConfig.PnLTrailingDropPct
+			sc.FundingReversion.PnLTrailingConfirmTicks = exchConfig.PnLTrailingConfirmTicks
 		}
 	}
 }

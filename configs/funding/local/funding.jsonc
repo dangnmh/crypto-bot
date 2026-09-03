@@ -2,18 +2,18 @@
   // ── Per-Symbol configs ──
   // Only symbol + marginUSDT required. Everything else inherits from system.jsonc tradingDefaults.
   // Add any field here to override the default for this specific symbol.
-  // {
-  //   "symbol": "HOME_USDT",
-  //   "marginUSDT": 5,
-  //   "exchange": "mexc_futures",
-  //   "simulateSettle": "2026-08-14T18:30:00.000+07:00"
-  // },
   {
-    "symbol": "COTI-SWAP-USDT",
-    "marginUSDT": 5,
-    "exchange": "toobit_futures",
-    "simulateSettle": "2026-08-23T16:30:00.000+07:00"
+    "symbol": "CAP_USDT",
+    "marginUSDT": 10,
+    "exchange": "mexc_futures",
+    "simulateSettle": "2026-09-03T21:20:00.000+07:00"
   },
+  // {
+  //   "symbol": "COTI-SWAP-USDT",
+  //   "marginUSDT": 5,
+  //   "exchange": "toobit_futures",
+  //   "simulateSettle": "2026-08-23T16:30:00.000+07:00"
+  // },
   // {
   //   "symbol": "PRLUSDT",
   //   "marginUSDT": 3,

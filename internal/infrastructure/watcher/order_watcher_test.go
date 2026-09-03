@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/pkg/eventbus"
@@ -92,5 +93,35 @@ func TestOrderWatcher_PositionRoutingBySymbol(t *testing.T) {
 		assert.Equal(t, 1.0, update.HoldVolContract)
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "timeout waiting for position callback")
+	}
+}
+
+func TestOrderWatcher_OnTradeUpdate_Callback(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	bus := eventbus.New(logger)
+	defer func() { _ = bus.Close() }()
+
+	w := watcher.NewOrderWatcher(bus, exchange.ExchangeMexc, logger)
+
+	called := make(chan []domain.PublicTrade, 1)
+	w.OnTradeUpdate(context.Background(), "BTC_USDT", 2*time.Second, func(trades []domain.PublicTrade) {
+		called <- trades
+	})
+
+	time.Sleep(50 * time.Millisecond)
+
+	w.PublishTrades("BTC_USDT", []domain.PublicTrade{
+		{Symbol: "BTC_USDT", Price: 65000.5, Volume: 2.0},
+	})
+
+	select {
+	case trades := <-called:
+		assert.Len(t, trades, 1)
+		assert.Equal(t, 65000.5, trades[0].Price)
+		assert.Equal(t, 2.0, trades[0].Volume)
+	case <-time.After(3 * time.Second):
+		assert.Fail(t, "timeout waiting for trade callback")
 	}
 }

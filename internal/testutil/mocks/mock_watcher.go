@@ -11,6 +11,7 @@ package mocks
 
 import (
 	context "context"
+	domain "crypto-bot/internal/domain"
 	exchange "crypto-bot/internal/infrastructure/exchange"
 	reflect "reflect"
 	time "time"
@@ -74,6 +75,42 @@ func (c *MockOrderNotifierOnPositionUpdateCall) Do(f func(context.Context, strin
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockOrderNotifierOnPositionUpdateCall) DoAndReturn(f func(context.Context, string, time.Duration, func(exchange.PersonalPositionUpdate))) *MockOrderNotifierOnPositionUpdateCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// OnTradeUpdate mocks base method.
+func (m *MockOrderNotifier) OnTradeUpdate(ctx context.Context, symbol string, timeout time.Duration, callback func([]domain.PublicTrade)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "OnTradeUpdate", ctx, symbol, timeout, callback)
+}
+
+// OnTradeUpdate indicates an expected call of OnTradeUpdate.
+func (mr *MockOrderNotifierMockRecorder) OnTradeUpdate(ctx, symbol, timeout, callback any) *MockOrderNotifierOnTradeUpdateCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTradeUpdate", reflect.TypeOf((*MockOrderNotifier)(nil).OnTradeUpdate), ctx, symbol, timeout, callback)
+	return &MockOrderNotifierOnTradeUpdateCall{Call: call}
+}
+
+// MockOrderNotifierOnTradeUpdateCall wrap *gomock.Call
+type MockOrderNotifierOnTradeUpdateCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockOrderNotifierOnTradeUpdateCall) Return() *MockOrderNotifierOnTradeUpdateCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockOrderNotifierOnTradeUpdateCall) Do(f func(context.Context, string, time.Duration, func([]domain.PublicTrade))) *MockOrderNotifierOnTradeUpdateCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockOrderNotifierOnTradeUpdateCall) DoAndReturn(f func(context.Context, string, time.Duration, func([]domain.PublicTrade))) *MockOrderNotifierOnTradeUpdateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

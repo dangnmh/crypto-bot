@@ -29,6 +29,13 @@ const (
 // OrderCompletedCallback is invoked when an OrderCompletedEvent occurs.
 type OrderCompletedCallback func(ctx context.Context, evt OrderCompletedEvent)
 
+// PositionPnLTracker tracks peak PnL and rolling PnL history for trailing stop evaluations.
+type PositionPnLTracker struct {
+	ReqID   string
+	MaxPnL  float64
+	History []float64
+}
+
 // OrderManager is a business-agnostic reactive order execution engine using Micro-Events.
 type OrderManager struct {
 	engine               *infraapp.Engine
@@ -39,6 +46,7 @@ type OrderManager struct {
 	timers               sync.Map
 	aggregates           *cache.Cache
 	orderIDMapCache      *cache.Cache
+	pnlTrackers          *cache.Cache
 	onCompletedCallbacks []OrderCompletedCallback
 	mu                   sync.RWMutex
 }
@@ -108,6 +116,7 @@ func NewOrderManager(
 		log:             log.With("component", "GenericOrderManager"),
 		aggregates:      cache.New(defaultCacheTTL, defaultCleanupInterval),
 		orderIDMapCache: cache.New(defaultCacheTTL, defaultCleanupInterval),
+		pnlTrackers:     cache.New(defaultCacheTTL, defaultCleanupInterval),
 	}
 
 	if err := m.Init(ctx); err != nil {
@@ -209,6 +218,32 @@ func (m *OrderManager) UnsubscribePositionWatch(ctx context.Context, exchangeNam
 	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
 	if err := adapter.UnsubscribePersonal(ctx, flowID); err != nil {
 		m.log.WarnContext(ctx, "Failed to unsubscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.Any("error", err))
+	}
+}
+
+// SubscribeTradeWatch subscribes to public trade deal stream via Adapter with reference counting.
+func (m *OrderManager) SubscribeTradeWatch(ctx context.Context, exchangeName, strategyType, reqID, symbol string) {
+	prov, err := m.engine.GetProvider(exchangeName)
+	if err != nil || prov == nil {
+		return
+	}
+	prov.EnsurePersonalWS(ctx, m.log)
+
+	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
+	if err := prov.Adapter.SubscribeTrade(ctx, flowID, symbol); err != nil {
+		m.log.WarnContext(ctx, "Failed to subscribe trade deal WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
+	}
+}
+
+// UnsubscribeTradeWatch unsubscribes from public trade deal stream via Adapter when order completes or closes.
+func (m *OrderManager) UnsubscribeTradeWatch(ctx context.Context, exchangeName, strategyType, reqID, symbol string) {
+	adapter, err := m.resolveAdapter(exchangeName)
+	if err != nil || adapter == nil {
+		return
+	}
+	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
+	if err := adapter.UnsubscribeTrade(ctx, flowID, symbol); err != nil {
+		m.log.WarnContext(ctx, "Failed to unsubscribe trade deal WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
 	}
 }
 
@@ -514,6 +549,12 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFi
 				m.log.Debug("[Micro-Step 3] HandlePositionUpdate OnPositionUpdate", slog.Any("pos", pos))
 				m.HandlePositionUpdate(ctx, evt.GetReqID(), pos)
 			})
+			if evt.EnablePnLTrailing {
+				m.SubscribeTradeWatch(ctx, evt.Exchange, string(evt.GetStrategyType()), evt.GetReqID(), evt.Symbol)
+				posWatcher.OnTradeUpdate(ctx, evt.Symbol, timeout, func(trades []shared.PublicTrade) {
+					m.HandleTradeUpdate(ctx, evt.GetReqID(), evt.Symbol, trades)
+				})
+			}
 		}
 	}
 
@@ -544,10 +585,59 @@ func (m *OrderManager) HandlePositionUpdate(ctx context.Context, reqID string, p
 
 	ctx = tracectx.WithRequestIDValue(ctx, reqID)
 	if holdVolContract > 0 || holdVolCoin > 0 {
-		m.handlePositionFilled(ctx, reqID, agg, clock, pos, contractSize, holdVolContract, holdVolCoin)
+		if !agg.HasFilled() {
+			m.handlePositionFilled(ctx, reqID, agg, clock, pos, contractSize, holdVolContract, holdVolCoin)
+		}
 	} else {
+		m.pnlTrackers.Delete(reqID)
 		m.handlePositionClosed(ctx, reqID, agg, clock, pos, contractSize)
 	}
+}
+
+// HandleTradeUpdate processes public trade executions and evaluates real-time trailing PnL drawdown.
+func (m *OrderManager) HandleTradeUpdate(ctx context.Context, reqID, symbol string, trades []shared.PublicTrade) {
+	if len(trades) == 0 {
+		return
+	}
+	agg := m.GetAggregate(reqID)
+	if agg == nil || !agg.HasFilled() || !agg.EnablePnLTrailing() {
+		return
+	}
+	if agg.State() == StateCompleted || agg.State() == StateAborted || agg.State() == StateCanceled || agg.State() == StateBailout || agg.State() == StatePositionClosed {
+		return
+	}
+
+	tradePrice := trades[len(trades)-1].Price
+	entryPrice := agg.EntryPrice()
+	if tradePrice <= 0 || entryPrice <= 0 {
+		return
+	}
+
+	volCoin := agg.FillVolCoin()
+	volContract := agg.FillVolContract()
+	contractSize := agg.ContractSize()
+	if contractSize <= 0 {
+		contractSize = 1.0
+	}
+
+	pnl := calculateFloatingPnL(agg.Side(), entryPrice, tradePrice, volCoin, volContract, contractSize)
+
+	ctx = tracectx.WithRequestIDValue(ctx, reqID)
+	m.trackPositionPnL(ctx, reqID, symbol, agg, pnl, volCoin, volContract)
+}
+
+func calculateFloatingPnL(side shared.Side, entryPrice, tradePrice, volCoin, volContract, contractSize float64) float64 {
+	var priceDiff float64
+	if side.IsLong() {
+		priceDiff = decmath.Sub(tradePrice, entryPrice)
+	} else {
+		priceDiff = decmath.Sub(entryPrice, tradePrice)
+	}
+
+	if volCoin > 0 {
+		return decmath.Mul(priceDiff, volCoin)
+	}
+	return decmath.Mul(decmath.Mul(priceDiff, volContract), contractSize)
 }
 
 func (m *OrderManager) handlePositionFilled(
@@ -641,6 +731,11 @@ func (m *OrderManager) handlePositionClosed(
 		m.log.ErrorContext(ctx, "Failed to record OrderPositionClosedEvent to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
 	}
 	_ = m.publishEvent(ctx, TopicOrderPositionClosed, evt)
+	sym := pos.Symbol
+	if sym == "" {
+		sym = agg.Symbol()
+	}
+	m.UnsubscribeTradeWatch(ctx, agg.Exchange(), string(agg.StrategyType()), reqID, sym)
 }
 
 func shouldIgnoreZeroVolumeUpdate(
@@ -669,6 +764,160 @@ func calculateVolumeUSDT(volCoin, volContract, price, contractSize float64) floa
 		volUSDT = decmath.Mul(decmath.Mul(volContract, price), cs)
 	}
 	return volUSDT
+}
+
+const maxPnLHistory = 20
+
+// IsConsecutiveDrop returns true if the last k elements in history are strictly decreasing.
+func IsConsecutiveDrop(history []float64, k int) bool {
+	if len(history) < k+1 {
+		return false
+	}
+	for i := len(history) - 1; i >= len(history)-k; i-- {
+		if history[i] >= history[i-1] {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *PositionPnLTracker) update(log *slog.Logger, pnl float64) bool {
+	t.History = append(t.History, pnl)
+	if len(t.History) > maxPnLHistory {
+		t.History = t.History[len(t.History)-maxPnLHistory:]
+	}
+
+	if pnl > t.MaxPnL {
+		log.Debug("Position PnL increased",
+			slog.String("req_id", t.ReqID),
+			slog.Float64("prev_max", t.MaxPnL),
+			slog.Float64("new_max", pnl),
+		)
+		t.MaxPnL = pnl
+		return true
+	}
+	return false
+}
+
+func (m *OrderManager) getOrInitPnLTracker(ctx context.Context, reqID, symbol string, pnl float64) *PositionPnLTracker {
+	val, found := m.pnlTrackers.Get(reqID)
+	if !found {
+		tracker := &PositionPnLTracker{
+			ReqID:   reqID,
+			MaxPnL:  pnl,
+			History: []float64{pnl},
+		}
+		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
+		m.log.InfoContext(ctx, "Started tracking position PnL",
+			slog.String("req_id", reqID),
+			slog.String("symbol", symbol),
+			slog.Float64("initial_pnl", pnl),
+		)
+		return nil
+	}
+
+	tracker, ok := val.(*PositionPnLTracker)
+	if !ok || tracker == nil {
+		tracker = &PositionPnLTracker{
+			ReqID:   reqID,
+			MaxPnL:  pnl,
+			History: []float64{pnl},
+		}
+		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
+		return nil
+	}
+	return tracker
+}
+
+func (m *OrderManager) executePnLBailout(
+	ctx context.Context,
+	reqID, symbol string,
+	agg *OrderExecutionAggregate,
+	currentPnL float64,
+	holdVolCoin, holdVolContract float64,
+	maxPnL float64,
+	confirmTicks int,
+	dropPctThreshold float64,
+) {
+	m.log.WarnContext(ctx, "Position PnL reduced from peak with confirmed downward momentum, sending immediate close signal",
+		slog.String("req_id", reqID),
+		slog.String("symbol", symbol),
+		slog.Float64("max_pnl", maxPnL),
+		slog.Float64("current_pnl", currentPnL),
+		slog.Int("confirm_ticks", confirmTicks),
+		slog.Float64("drop_pct_threshold", dropPctThreshold),
+	)
+
+	volume := holdVolCoin
+	if volume <= 0 {
+		volume = holdVolContract
+	}
+
+	res, err := m.HandleExecuteBailout(ctx, reqID, agg.Exchange(), symbol, agg.Side(), volume, "pnl_reduction")
+	if err != nil {
+		m.log.ErrorContext(ctx, "Failed to execute bailout on PnL reduction",
+			slog.String("req_id", reqID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if err := agg.Record(res); err != nil {
+		m.log.ErrorContext(ctx, "Failed to record bailout event",
+			slog.String("req_id", reqID),
+			slog.Any("error", err),
+		)
+	}
+	_ = m.publishEvent(ctx, TopicOrderBailoutExecuted, res)
+}
+
+func (m *OrderManager) trackPositionPnL(
+	ctx context.Context,
+	reqID, symbol string,
+	agg *OrderExecutionAggregate,
+	currentPnL float64,
+	holdVolCoin, holdVolContract float64,
+) {
+	if agg == nil || agg.State() == StateCompleted || agg.State() == StateAborted || agg.State() == StateCanceled || agg.State() == StateBailout {
+		return
+	}
+	if !agg.EnablePnLTrailing() {
+		return
+	}
+
+	tracker := m.getOrInitPnLTracker(ctx, reqID, symbol, currentPnL)
+	if tracker == nil {
+		return
+	}
+
+	if tracker.update(m.log, currentPnL) {
+		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
+		return
+	}
+
+	confirmTicks := agg.PnLTrailingConfirmTicks()
+	dropPctThreshold := agg.PnLTrailingDropPct()
+
+	var dropExceeded bool
+	if tracker.MaxPnL > 0 {
+		dropPct := ((tracker.MaxPnL - currentPnL) / tracker.MaxPnL) * 100
+		dropExceeded = dropPct >= dropPctThreshold
+	}
+
+	if dropExceeded && IsConsecutiveDrop(tracker.History, confirmTicks) {
+		m.executePnLBailout(ctx, reqID, symbol, agg, currentPnL, holdVolCoin, holdVolContract, tracker.MaxPnL, confirmTicks, dropPctThreshold)
+	}
+
+	m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
+}
+
+// GetPnLTracker returns the active PositionPnLTracker for a reqID, if any.
+func (m *OrderManager) GetPnLTracker(reqID string) *PositionPnLTracker {
+	val, found := m.pnlTrackers.Get(reqID)
+	if !found {
+		return nil
+	}
+	tracker, _ := val.(*PositionPnLTracker)
+	return tracker
 }
 
 // HandleExecuteOrder executes order submission REST API.

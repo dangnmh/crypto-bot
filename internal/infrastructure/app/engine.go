@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto-bot/internal/domain"
 	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/timesync"
@@ -60,6 +61,20 @@ func (p *ExchangeProvider) WirePersonalWS(ctx context.Context, logger *slog.Logg
 					PublishPosition(exchange.PersonalPositionUpdate)
 				}); ok {
 					publisher.PublishPosition(*update)
+				}
+			}
+		})
+		p.WSPool.On("trade", func(data []byte) {
+			sym, trades, err := p.Adapter.ParseTrade(data)
+			if err != nil {
+				log.ErrorContext(ctx, "🟡 Failed to parse trade WS", slog.Any("error", err))
+				return
+			}
+			if len(trades) > 0 {
+				if publisher, ok := p.Watcher.(interface {
+					PublishTrades(string, []domain.PublicTrade)
+				}); ok {
+					publisher.PublishTrades(sym, trades)
 				}
 			}
 		})
