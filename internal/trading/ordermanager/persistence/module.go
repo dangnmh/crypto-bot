@@ -1,7 +1,7 @@
 package persistence
 
 import (
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/common"
 
 	"go.uber.org/fx"
 	"gorm.io/gorm"
@@ -15,6 +15,6 @@ var Module = fx.Options(
 )
 
 // ProvideTradeRepository provides the GORM-backed TradeRepository.
-func ProvideTradeRepository(db *gorm.DB) ordermanager.TradeRepository {
+func ProvideTradeRepository(db *gorm.DB) common.TradeRepository {
 	return NewGormTradeRepository(db)
 }

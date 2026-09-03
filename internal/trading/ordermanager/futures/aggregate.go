@@ -1,4 +1,4 @@
-package ordermanager
+package futures
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	shared "crypto-bot/internal/domain"
+	"crypto-bot/internal/trading/ordermanager/common"
 	"crypto-bot/pkg/formatutil"
 )
 
@@ -32,13 +33,13 @@ const (
 	StateCompleted          OrderLifecycleState = "COMPLETED"
 )
 
-// OrderExecutionAggregate is the pure Event-Sourced aggregate managing order lifecycle states.
+// OrderExecutionAggregate is the pure Event-Sourced aggregate managing futures order lifecycle states.
 type OrderExecutionAggregate struct {
 	mu                sync.RWMutex
 	reqID             string
 	state             OrderLifecycleState
 	version           int64
-	uncommittedEvents []OrderEvent
+	uncommittedEvents []common.OrderEvent
 }
 
 // NewOrderExecutionAggregate creates an uninitialized aggregate.
@@ -138,7 +139,7 @@ func (a *OrderExecutionAggregate) Exchange() string {
 	return ""
 }
 
-func (a *OrderExecutionAggregate) MarketType() MarketType {
+func (a *OrderExecutionAggregate) MarketType() common.MarketType {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	for _, e := range a.uncommittedEvents {
@@ -146,10 +147,10 @@ func (a *OrderExecutionAggregate) MarketType() MarketType {
 			return e.GetMarketType()
 		}
 	}
-	return MarketTypeFuture
+	return common.MarketTypeFutures
 }
 
-func (a *OrderExecutionAggregate) StrategyType() StrategyType {
+func (a *OrderExecutionAggregate) StrategyType() common.StrategyType {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	for _, e := range a.uncommittedEvents {
@@ -245,10 +246,10 @@ func (a *OrderExecutionAggregate) Version() int64 {
 	return a.version
 }
 
-func (a *OrderExecutionAggregate) UncommittedEvents() []OrderEvent {
+func (a *OrderExecutionAggregate) UncommittedEvents() []common.OrderEvent {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	events := make([]OrderEvent, len(a.uncommittedEvents))
+	events := make([]common.OrderEvent, len(a.uncommittedEvents))
 	copy(events, a.uncommittedEvents)
 	return events
 }
@@ -259,7 +260,6 @@ func (a *OrderExecutionAggregate) ClearUncommittedEvents() {
 	a.uncommittedEvents = nil
 }
 
-// HasSubmitted returns true if OrderSubmittedEvent has been recorded for this aggregate or state is StateSubmitted or higher.
 func (a *OrderExecutionAggregate) HasSubmitted() bool {
 	if a == nil {
 		return false
@@ -277,7 +277,6 @@ func (a *OrderExecutionAggregate) HasSubmitted() bool {
 	return false
 }
 
-// HasFilled returns true if OrderFilledEvent has been recorded for this aggregate or state is StateFilled or higher.
 func (a *OrderExecutionAggregate) HasFilled() bool {
 	if a == nil {
 		return false
@@ -324,9 +323,18 @@ func stateRank(s OrderLifecycleState) int {
 	}
 }
 
-//nolint:cyclop // FSM event state resolution switch handles all micro-event types
-func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
-	switch e := evt.(type) {
+func resolveEventNextState(evt common.OrderEvent) OrderLifecycleState {
+	if s := resolvePreExecutionNextState(evt); s != "" {
+		return s
+	}
+	if s := resolveExecutionNextState(evt); s != "" {
+		return s
+	}
+	return resolveTerminalNextState(evt)
+}
+
+func resolvePreExecutionNextState(evt common.OrderEvent) OrderLifecycleState {
+	switch evt.(type) {
 	case OrderIntentEvent:
 		return StateInit
 	case OrderPreFlightCompletedEvent:
@@ -335,6 +343,13 @@ func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
 		return StateFireWindow
 	case OrderPositionWatchReadyEvent:
 		return StatePositionWatchReady
+	default:
+		return ""
+	}
+}
+
+func resolveExecutionNextState(evt common.OrderEvent) OrderLifecycleState {
+	switch e := evt.(type) {
 	case OrderSubmittedEvent:
 		return StateSubmitted
 	case OrderRestingEvent:
@@ -348,12 +363,19 @@ func resolveEventNextState(evt OrderEvent) OrderLifecycleState {
 	case OrderPositionClosedEvent:
 		return StatePositionClosed
 	case OrderOutcomeResolvedEvent:
-		if e.Outcome == OutcomeResting {
+		if e.Outcome == common.OutcomeResting {
 			return StateResting
 		}
 		return StateOutcomeResolved
 	case OrderTimeoutPositionCheckedEvent:
 		return StateTimeoutChecked
+	default:
+		return ""
+	}
+}
+
+func resolveTerminalNextState(evt common.OrderEvent) OrderLifecycleState {
+	switch evt.(type) {
 	case OrderBailoutExecutedEvent:
 		return StateBailout
 	case OrderCompletedEvent:
@@ -407,7 +429,7 @@ func (a *OrderExecutionAggregate) Leverage() int {
 	return 1
 }
 
-func (a *OrderExecutionAggregate) OrderType() OrderType {
+func (a *OrderExecutionAggregate) OrderType() common.OrderType {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	for _, evt := range a.uncommittedEvents {
@@ -465,8 +487,7 @@ func (a *OrderExecutionAggregate) UnfilledCancelTimeout() time.Duration {
 	return 0
 }
 
-// Apply performs pure state transitions based on incoming micro-events.
-func (a *OrderExecutionAggregate) Apply(evt OrderEvent) error {
+func (a *OrderExecutionAggregate) Apply(evt common.OrderEvent) error {
 	if evt == nil {
 		return fmt.Errorf("cannot apply nil event")
 	}
@@ -475,18 +496,16 @@ func (a *OrderExecutionAggregate) Apply(evt OrderEvent) error {
 	return a.applyLocked(evt)
 }
 
-func (a *OrderExecutionAggregate) applyLocked(evt OrderEvent) error {
+func (a *OrderExecutionAggregate) applyLocked(evt common.OrderEvent) error {
 	nextState := resolveEventNextState(evt)
 	if stateRank(nextState) >= stateRank(a.state) {
 		a.state = nextState
 	}
-
 	a.version++
 	return nil
 }
 
-// Record appends an uncommitted event after applying state transition.
-func (a *OrderExecutionAggregate) Record(evt OrderEvent) error {
+func (a *OrderExecutionAggregate) Record(evt common.OrderEvent) error {
 	if evt == nil {
 		return fmt.Errorf("cannot record nil event")
 	}
@@ -499,33 +518,32 @@ func (a *OrderExecutionAggregate) Record(evt OrderEvent) error {
 	return nil
 }
 
-// BuildTradeRecord loops through recorded events array to get final trade record data to save to DB.
-func (a *OrderExecutionAggregate) BuildTradeRecord() OrderTradeRecordEvent {
+func (a *OrderExecutionAggregate) BuildTradeRecord() common.OrderTradeRecordEvent {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	var record OrderTradeRecordEvent
+	var record common.OrderTradeRecordEvent
 
 	for _, evt := range a.uncommittedEvents {
 		if evt == nil {
 			continue
 		}
-		record.applyEventBase(evt)
-		record.applyEventPayload(evt)
+		applyEventBase(&record, evt)
+		applyEventPayload(&record, evt)
 	}
 
 	record.PreTopic = TopicOrderCompleted
-	record.NextTopic = TopicOrderTradeRecord
+	record.NextTopic = common.TopicOrderTradeRecord
 
 	return record
 }
 
-func (r *OrderTradeRecordEvent) applyEventBase(evt OrderEvent) {
+func applyEventBase(r *common.OrderTradeRecordEvent, evt common.OrderEvent) {
 	if reqID := evt.GetReqID(); reqID != "" {
 		r.ReqID = reqID
 	}
 	if clientOID := evt.GetClientOrderID(); clientOID != "" {
 		r.ClientOrderID = clientOID
-		r.BaseExecutionEvent.ClientOrderID = clientOID
+		r.BaseOrderEvent.ClientOrderID = clientOID
 	}
 	if sym := evt.GetSymbol(); sym != "" {
 		r.Symbol = sym
@@ -536,12 +554,11 @@ func (r *OrderTradeRecordEvent) applyEventBase(evt OrderEvent) {
 	}
 	if mt := evt.GetMarketType(); mt != "" {
 		r.MarketType = string(mt)
-		r.BaseExecutionEvent.MarketType = mt
+		r.BaseOrderEvent.MarketType = mt
 	}
 	if st := evt.GetStrategyType(); st != "" {
 		r.StrategyType = st
 	}
-
 	if pre := evt.GetPreTopic(); pre != "" {
 		r.PreTopic = pre
 	}
@@ -550,10 +567,10 @@ func (r *OrderTradeRecordEvent) applyEventBase(evt OrderEvent) {
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyEventPayload(evt OrderEvent) {
+func applyEventPayload(r *common.OrderTradeRecordEvent, evt common.OrderEvent) {
 	switch e := evt.(type) {
 	case OrderIntentEvent:
-		r.applyIntentPayload(e)
+		applyIntentPayload(r, e)
 	case OrderPreFlightCompletedEvent:
 		if e.AdjustedLeverage > 0 {
 			r.Leverage = e.AdjustedLeverage
@@ -568,21 +585,21 @@ func (r *OrderTradeRecordEvent) applyEventPayload(evt OrderEvent) {
 			r.ExchangeOrderID = e.OrderID
 		}
 	case OrderFilledEvent:
-		r.applyFilledPayload(e)
+		applyFilledPayload(r, e)
 	case OrderPositionClosedEvent:
-		r.applyClosedPayload(e)
+		applyClosedPayload(r, e)
 	case OrderOutcomeResolvedEvent:
-		r.applyOutcomePayload(e)
+		applyOutcomePayload(r, e)
 	case OrderBailoutExecutedEvent:
-		r.applyBailoutPayload(e)
+		applyBailoutPayload(r, e)
 	case OrderCompletedEvent:
-		r.applyCompletedPayload(e)
+		applyCompletedPayload(r, e)
 	case OrderAbortedEvent:
-		r.applyAbortedPayload(e)
+		applyAbortedPayload(r, e)
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyFilledPayload(e OrderFilledEvent) {
+func applyFilledPayload(r *common.OrderTradeRecordEvent, e OrderFilledEvent) {
 	if e.FillPrice > 0 {
 		r.EntryPrice = e.FillPrice
 	}
@@ -603,7 +620,7 @@ func (r *OrderTradeRecordEvent) applyFilledPayload(e OrderFilledEvent) {
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyClosedPayload(e OrderPositionClosedEvent) {
+func applyClosedPayload(r *common.OrderTradeRecordEvent, e OrderPositionClosedEvent) {
 	r.EntryPrice = e.EntryPrice
 	r.ExitPrice = e.ClosePrice
 	if e.CloseVolContract > 0 {
@@ -624,7 +641,7 @@ func (r *OrderTradeRecordEvent) applyClosedPayload(e OrderPositionClosedEvent) {
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyOutcomePayload(e OrderOutcomeResolvedEvent) {
+func applyOutcomePayload(r *common.OrderTradeRecordEvent, e OrderOutcomeResolvedEvent) {
 	if r.Outcome == "" {
 		r.Outcome = string(e.Outcome)
 	}
@@ -636,7 +653,7 @@ func (r *OrderTradeRecordEvent) applyOutcomePayload(e OrderOutcomeResolvedEvent)
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyIntentPayload(e OrderIntentEvent) {
+func applyIntentPayload(r *common.OrderTradeRecordEvent, e OrderIntentEvent) {
 	r.Side = e.Side.String()
 	r.OrderType = string(e.OrderType)
 	r.OrderVol = e.Volume
@@ -674,7 +691,7 @@ func (r *OrderTradeRecordEvent) applyIntentPayload(e OrderIntentEvent) {
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyBailoutPayload(e OrderBailoutExecutedEvent) {
+func applyBailoutPayload(r *common.OrderTradeRecordEvent, e OrderBailoutExecutedEvent) {
 	r.ForceCloseAttempted = true
 	if e.ExitPrice > 0 || e.CloseRetryCount < 3 {
 		r.ForceCloseSucceeded = true
@@ -682,13 +699,13 @@ func (r *OrderTradeRecordEvent) applyBailoutPayload(e OrderBailoutExecutedEvent)
 	r.ExitPrice = e.ExitPrice
 	r.CloseRetryCount = e.CloseRetryCount
 	r.Reason = e.Reason
-	r.Outcome = "bailout"
+	r.Outcome = string(common.OutcomeBailout)
 	r.Status = StatusAborted
 }
 
-func (r *OrderTradeRecordEvent) applyAbortedPayload(e OrderAbortedEvent) {
+func applyAbortedPayload(r *common.OrderTradeRecordEvent, e OrderAbortedEvent) {
 	if r.Outcome == "" {
-		r.Outcome = string(OutcomeAborted)
+		r.Outcome = string(common.OutcomeRejected)
 	}
 	r.Status = StatusAborted
 	if e.Reason != "" {
@@ -703,7 +720,7 @@ func (r *OrderTradeRecordEvent) applyAbortedPayload(e OrderAbortedEvent) {
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyCompletedPricingAndVolume(e OrderCompletedEvent) {
+func applyCompletedPricingAndVolume(r *common.OrderTradeRecordEvent, e OrderCompletedEvent) {
 	if e.OrderID != "" {
 		r.ExchangeOrderID = e.OrderID
 	}
@@ -741,7 +758,7 @@ func (r *OrderTradeRecordEvent) applyCompletedPricingAndVolume(e OrderCompletedE
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyCompletedPnLAndFees(e OrderCompletedEvent) {
+func applyCompletedPnLAndFees(r *common.OrderTradeRecordEvent, e OrderCompletedEvent) {
 	if e.GrossProfit != 0 {
 		r.GrossPnL = e.GrossProfit
 	}
@@ -771,14 +788,14 @@ func (r *OrderTradeRecordEvent) applyCompletedPnLAndFees(e OrderCompletedEvent) 
 	}
 }
 
-func (r *OrderTradeRecordEvent) applyCompletedPayload(e OrderCompletedEvent) {
-	r.applyCompletedPricingAndVolume(e)
-	r.applyCompletedPnLAndFees(e)
+func applyCompletedPayload(r *common.OrderTradeRecordEvent, e OrderCompletedEvent) {
+	applyCompletedPricingAndVolume(r, e)
+	applyCompletedPnLAndFees(r, e)
 
 	switch e.Outcome {
-	case OutcomeFilled, OutcomePartialFilled, OrderOutcome("bailout"), OrderOutcome("completed"):
+	case common.OutcomeFilled, common.OutcomePartiallyFilled, common.OutcomeBailout, "completed":
 		r.Status = StatusCompleted
-	case OutcomeAborted, OutcomeCanceledNoFill:
+	case common.OutcomeAborted, common.OutcomeCanceledNoFill, common.OutcomeCanceled:
 		r.Status = StatusAborted
 	default:
 		if r.Status == "" {
@@ -793,8 +810,7 @@ func (r *OrderTradeRecordEvent) applyCompletedPayload(e OrderCompletedEvent) {
 	}
 }
 
-// Replay reconstructs aggregate state deterministically by replaying historical event stream.
-func (a *OrderExecutionAggregate) Replay(events []OrderEvent) error {
+func (a *OrderExecutionAggregate) Replay(events []common.OrderEvent) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.state = StateInit
@@ -813,10 +829,9 @@ func (a *OrderExecutionAggregate) Replay(events []OrderEvent) error {
 	return nil
 }
 
-// Handle executes domain context validation and returns proposed downstream events.
-func (a *OrderExecutionAggregate) Handle(ctx context.Context, evt OrderEvent) ([]OrderEvent, error) {
+func (a *OrderExecutionAggregate) Handle(ctx context.Context, evt common.OrderEvent) ([]common.OrderEvent, error) {
 	if err := a.Record(evt); err != nil {
 		return nil, err
 	}
-	return []OrderEvent{evt}, nil
+	return []common.OrderEvent{evt}, nil
 }

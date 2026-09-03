@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/common"
 	"crypto-bot/internal/trading/ordermanager/persistence"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +20,7 @@ func TestGormTradeRepository_NilDBHandling(t *testing.T) {
 
 	ctx := context.Background()
 
-	record := ordermanager.OrderTradeRecordEvent{
+	record := common.OrderTradeRecordEvent{
 		ReqID:        "req-100",
 		Symbol:       "BTCUSDT",
 		Exchange:     "MEXC",
@@ -70,40 +70,40 @@ func TestGormTradeRepository_GetSymbolPnLSummaries_SQLite(t *testing.T) {
 	now := time.Now()
 
 	// 1. Insert funding profit trades for COW (+200 USD) and LPT (+50 USD)
-	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+	require.NoError(t, repo.Save(ctx, common.OrderTradeRecordEvent{
 		ReqID:        "f-cow-1",
 		Symbol:       "COW-SWAP-USDT",
 		Exchange:     "toobit_futures",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: common.StrategyFundingReversion,
 		Side:         "LONG",
 		NetPnL:       150.0,
 		RecordedAt:   now.Add(-1 * time.Hour),
 	}))
-	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+	require.NoError(t, repo.Save(ctx, common.OrderTradeRecordEvent{
 		ReqID:        "f-cow-2",
 		Symbol:       "COW-SWAP-USDT",
 		Exchange:     "toobit_futures",
-		StrategyType: ordermanager.StrategyFundingArbitrage,
+		StrategyType: common.StrategyFundingArbitrage,
 		Side:         "SHORT",
 		NetPnL:       50.0,
 		RecordedAt:   now.Add(-30 * time.Minute),
 	}))
-	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+	require.NoError(t, repo.Save(ctx, common.OrderTradeRecordEvent{
 		ReqID:        "f-lpt-1",
 		Symbol:       "LPT-SWAP-USDT",
 		Exchange:     "toobit_futures",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: common.StrategyFundingReversion,
 		Side:         "LONG",
 		NetPnL:       50.0,
 		RecordedAt:   now.Add(-20 * time.Minute),
 	}))
 
 	// 2. Insert Obfuscator trade for COW (-30 USD)
-	require.NoError(t, repo.Save(ctx, ordermanager.OrderTradeRecordEvent{
+	require.NoError(t, repo.Save(ctx, common.OrderTradeRecordEvent{
 		ReqID:        "obf-cow-1",
 		Symbol:       "COW-SWAP-USDT",
 		Exchange:     "toobit_futures",
-		StrategyType: ordermanager.StrategyObfuscator,
+		StrategyType: common.StrategyObfuscator,
 		Side:         "LONG",
 		NetPnL:       -30.0,
 		RecordedAt:   now.Add(-10 * time.Minute),

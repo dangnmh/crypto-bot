@@ -1,4 +1,4 @@
-package ordermanager
+package futures
 
 import (
 	"fmt"
@@ -8,109 +8,30 @@ import (
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/notifier"
+	"crypto-bot/internal/trading/ordermanager/common"
 	"crypto-bot/pkg/formatutil"
-
-	"gorm.io/datatypes"
 )
 
-// Event Topics for Generic Order Manager Micro-Event Execution Pipeline.
+// Event Topics for Futures Order Manager Micro-Event Execution Pipeline.
 const (
-	TopicOrderIntent                 = "ordermanager.micro.intent"
-	TopicOrderPreFlightDone          = "ordermanager.micro.preflight_done"
-	TopicOrderFireWindowReached      = "ordermanager.micro.fire_window_reached"
-	TopicOrderSubmitted              = "ordermanager.micro.submitted"
-	TopicOrderResting                = "ordermanager.micro.resting"
-	TopicOrderTPSLDispatched         = "ordermanager.micro.tpsl_dispatched"
-	TopicOrderPositionWatchReady     = "ordermanager.micro.position_watch_ready"
-	TopicOrderFilled                 = "ordermanager.micro.order_filled"
-	TopicOrderPositionClosed         = "ordermanager.micro.position_closed"
-	TopicOrderTimeoutScheduled       = "ordermanager.micro.timeout_scheduled"
-	TopicOrderTimeoutPositionChecked = "ordermanager.micro.timeout_position_checked"
-	TopicOrderOutcomeResolved        = "ordermanager.micro.outcome_resolved"
-	TopicOrderTimeoutExpired         = "ordermanager.micro.timeout_expired"
-	TopicOrderBailoutExecuted        = "ordermanager.micro.bailout_executed"
-	TopicOrderAborted                = "ordermanager.micro.aborted"
-	TopicOrderCanceled               = "ordermanager.micro.canceled"
-	TopicOrderCompleted              = "ordermanager.micro.completed"
-	TopicOrderTradeRecord            = "ordermanager.trade_record"
-)
-
-// OrderEvent interface defines standard getters for execution events.
-type OrderEvent interface {
-	GetReqID() string
-	GetClientOrderID() string
-	GetSymbol() string
-	GetExchange() string
-	GetMarketType() MarketType
-	GetStrategyType() StrategyType
-	GetPreTopic() string
-	GetNextTopic() string
-	GetTimestamp() time.Time
-	GetTopic() string
-	ShouldNotify() bool
-	GetNotifyMessage() string
-	DeduplicateKey() string
-}
-
-// MarketType identifies whether the target market is Spot or Future/Perpetual.
-type MarketType string
-
-const (
-	MarketTypeSpot   MarketType = "SPOT"
-	MarketTypeFuture MarketType = "FUTURE"
-)
-
-func (m MarketType) String() string {
-	if m == "" {
-		return string(MarketTypeFuture)
-	}
-	return string(m)
-}
-
-// StrategyType identifies the trading strategy originating the execution.
-type StrategyType string
-
-const (
-	StrategyFundingReversion StrategyType = "FUNDING_REVERSION"
-	StrategyFundingArbitrage StrategyType = "FUNDING_ARBITRAGE"
-	StrategyPennyJumper      StrategyType = "PENNY_JUMPER"
-	StrategyGrid             StrategyType = "GRID"
-	StrategyObfuscator       StrategyType = "OBFUSCATOR"
-	StrategyDilution         StrategyType = "DILUTION"
-	StrategyUnknown          StrategyType = "UNKNOWN"
-)
-
-// OrderType represents the exchange order type.
-type OrderType string
-
-const (
-	OrderTypeIOC      OrderType = "IOC"
-	OrderTypePostOnly OrderType = "POST_ONLY"
-	OrderTypeLimit    OrderType = "LIMIT"
-	OrderTypeMarket   OrderType = "MARKET"
-)
-
-// IsMaker returns true if the order type is a passive maker order (POST_ONLY or LIMIT).
-func (t OrderType) IsMaker() bool {
-	return t == OrderTypePostOnly || t == OrderTypeLimit
-}
-
-// IsTaker returns true if the order type is an aggressive taker order (IOC or MARKET).
-func (t OrderType) IsTaker() bool {
-	return t == OrderTypeIOC || t == OrderTypeMarket
-}
-
-// OrderOutcome represents the execution result.
-type OrderOutcome string
-
-const (
-	OutcomeFilled         OrderOutcome = "filled"
-	OutcomePartialFilled  OrderOutcome = "partial_filled"
-	OutcomeCanceledNoFill OrderOutcome = "canceled_no_fill"
-	OutcomeCanceled       OrderOutcome = "canceled"
-	OutcomeAborted        OrderOutcome = "aborted"
-	OutcomeResting        OrderOutcome = "resting"
-	OutcomeUnknown        OrderOutcome = "unknown"
+	TopicOrderIntent                 = "ordermanager.futures.micro.intent"
+	TopicOrderPreFlightDone          = "ordermanager.futures.micro.preflight_done"
+	TopicOrderFireWindowReached      = "ordermanager.futures.micro.fire_window_reached"
+	TopicOrderSubmitted              = "ordermanager.futures.micro.submitted"
+	TopicOrderResting                = "ordermanager.futures.micro.resting"
+	TopicOrderTPSLDispatched         = "ordermanager.futures.micro.tpsl_dispatched"
+	TopicOrderPositionWatchReady     = "ordermanager.futures.micro.position_watch_ready"
+	TopicOrderFilled                 = "ordermanager.futures.micro.order_filled"
+	TopicOrderPositionClosed         = "ordermanager.futures.micro.position_closed"
+	TopicOrderTimeoutScheduled       = "ordermanager.futures.micro.timeout_scheduled"
+	TopicOrderTimeoutPositionChecked = "ordermanager.futures.micro.timeout_position_checked"
+	TopicOrderOutcomeResolved        = "ordermanager.futures.micro.outcome_resolved"
+	TopicOrderTimeoutExpired         = "ordermanager.futures.micro.timeout_expired"
+	TopicOrderBailoutExecuted        = "ordermanager.futures.micro.bailout_executed"
+	TopicOrderAborted                = "ordermanager.futures.micro.aborted"
+	TopicOrderCanceled               = "ordermanager.futures.micro.canceled"
+	TopicOrderCompleted              = "ordermanager.futures.micro.completed"
+	TopicOrderTradeRecord            = common.TopicOrderTradeRecord
 )
 
 const (
@@ -120,59 +41,44 @@ const (
 
 // BaseExecutionEvent holds common identification and notification control fields for all events.
 type BaseExecutionEvent struct {
-	ReqID         string       `json:"req_id,omitempty"`
-	RefID         string       `json:"ref_id,omitempty"`
-	ClientOrderID string       `json:"client_order_id,omitempty"`
-	Symbol        string       `json:"symbol"`
-	Exchange      string       `json:"exchange,omitempty"`
-	MarketType    MarketType   `json:"market_type,omitempty"`
-	StrategyType  StrategyType `json:"strategy_type,omitempty"`
-	PreTopic      string       `json:"pre_topic,omitempty"`
-	NextTopic     string       `json:"next_topic,omitempty"`
-	Timestamp     time.Time    `json:"timestamp"`
+	ReqID         string              `json:"req_id,omitempty"`
+	RefID         string              `json:"ref_id,omitempty"`
+	ClientOrderID string              `json:"client_order_id,omitempty"`
+	Symbol        string              `json:"symbol"`
+	Exchange      string              `json:"exchange,omitempty"`
+	MarketType    common.MarketType   `json:"market_type,omitempty"`
+	StrategyType  common.StrategyType `json:"strategy_type,omitempty"`
+	PreTopic      string              `json:"pre_topic,omitempty"`
+	NextTopic     string              `json:"next_topic,omitempty"`
+	Timestamp     time.Time           `json:"timestamp"`
 }
 
-func (b BaseExecutionEvent) GetReqID() string { return b.ReqID }
-func (b BaseExecutionEvent) GetClientOrderID() string {
-	return b.ClientOrderID
-}
-func (b BaseExecutionEvent) GetSymbol() string   { return b.Symbol }
-func (b BaseExecutionEvent) GetExchange() string { return b.Exchange }
-func (b BaseExecutionEvent) GetMarketType() MarketType {
-	if b.MarketType == "" {
-		return MarketTypeFuture
-	}
-	return b.MarketType
-}
-func (b BaseExecutionEvent) GetStrategyType() StrategyType { return b.StrategyType }
-func (b BaseExecutionEvent) GetPreTopic() string           { return b.PreTopic }
-func (b BaseExecutionEvent) GetNextTopic() string          { return b.NextTopic }
-func (b BaseExecutionEvent) GetTimestamp() time.Time       { return b.Timestamp }
-func (b BaseExecutionEvent) GetTopic() string              { return TopicOrderCompleted }
-func (b BaseExecutionEvent) ShouldNotify() bool            { return false }
-
-func (b BaseExecutionEvent) GetNotifyMessage() string {
-	return ""
-}
-
-// DeduplicateKey returns unique key for Watermill EventBus deduplication middleware.
+func (b BaseExecutionEvent) GetReqID() string                     { return b.ReqID }
+func (b BaseExecutionEvent) GetClientOrderID() string             { return b.ClientOrderID }
+func (b BaseExecutionEvent) GetSymbol() string                    { return b.Symbol }
+func (b BaseExecutionEvent) GetExchange() string                  { return b.Exchange }
+func (b BaseExecutionEvent) GetMarketType() common.MarketType     { return b.MarketType }
+func (b BaseExecutionEvent) GetStrategyType() common.StrategyType { return b.StrategyType }
+func (b BaseExecutionEvent) GetPreTopic() string                  { return b.PreTopic }
+func (b BaseExecutionEvent) GetNextTopic() string                 { return b.NextTopic }
+func (b BaseExecutionEvent) GetTimestamp() time.Time              { return b.Timestamp }
+func (b BaseExecutionEvent) GetTopic() string                     { return TopicOrderCompleted }
+func (b BaseExecutionEvent) ShouldNotify() bool                   { return false }
+func (b BaseExecutionEvent) GetNotifyMessage() string             { return "" }
 func (b BaseExecutionEvent) DeduplicateKey() string {
 	return fmt.Sprintf("%s-%s", b.ReqID, b.NextTopic)
 }
 
 // OrderIntentEvent initiates execution workflow.
 type OrderIntentEvent struct {
-	// Event Identification
 	BaseExecutionEvent
 
-	// Order Parameters
-	Side         shared.Side `json:"side"`
-	OrderType    OrderType   `json:"order_type"`
-	Price        float64     `json:"price"`
-	Volume       float64     `json:"volume"`
-	ContractSize float64     `json:"contract_size"`
+	Side         shared.Side      `json:"side"`
+	OrderType    common.OrderType `json:"order_type"`
+	Price        float64          `json:"price"`
+	Volume       float64          `json:"volume"`
+	ContractSize float64          `json:"contract_size"`
 
-	// Exchange & Risk Configuration
 	MarginMode   shared.MarginMode   `json:"margin_mode"`
 	PositionMode shared.PositionMode `json:"position_mode"`
 	Leverage     int                 `json:"leverage"`
@@ -180,19 +86,16 @@ type OrderIntentEvent struct {
 	FundingRate  float64             `json:"funding_rate,omitempty"`
 	Vol24hUSDT   float64             `json:"vol_24h_usdt,omitempty"`
 
-	// Contingency & Risk Limits
 	TakeProfitPrice       float64       `json:"take_profit_price,omitempty"`
 	StopLossPrice         float64       `json:"stop_loss_price,omitempty"`
-	PositionCloseTimeout  time.Duration `json:"position_close_timeout,omitempty"`  // Post-fill timeout to close position (bailout on expiry)
-	UnfilledCancelTimeout time.Duration `json:"unfilled_cancel_timeout,omitempty"` // Pre-fill timeout to cancel order if no fill while resting on book
-	SkipPreFlight         bool          `json:"skip_pre_flight,omitempty"`         // Skip margin mode, position mode, and leverage configuration in PreFlight
+	PositionCloseTimeout  time.Duration `json:"position_close_timeout,omitempty"`
+	UnfilledCancelTimeout time.Duration `json:"unfilled_cancel_timeout,omitempty"`
+	SkipPreFlight         bool          `json:"skip_pre_flight,omitempty"`
 
-	// Execution & Timing Targets
 	FireTime   time.Time     `json:"fire_time"`
 	MaxLatency time.Duration `json:"max_latency,omitempty"`
 	SettleTime *time.Time    `json:"settle_time,omitempty"`
 
-	// Additional Metadata & Strategy Specific Info
 	Extra map[string]any `json:"extra,omitempty"`
 }
 
@@ -239,7 +142,6 @@ func (e OrderSubmittedEvent) ShouldNotify() bool { return true }
 
 func (e OrderSubmittedEvent) GetNotifyMessage() string {
 	stratName := strings.ToUpper(string(e.StrategyType))
-
 	sizeUSD := e.Price * e.Volume
 	if e.ContractSize > 0 {
 		sizeUSD *= e.ContractSize
@@ -247,10 +149,8 @@ func (e OrderSubmittedEvent) GetNotifyMessage() string {
 
 	leverage := e.Leverage
 	marginUSD := e.MarginUSDT
-
 	fundingRate := e.FundingRate
 	vol24h := e.Vol24hUSDT
-
 	orderID := e.OrderID
 	frSign := ""
 	if fundingRate > 0 {
@@ -355,16 +255,15 @@ func (e OrderTimeoutPositionCheckedEvent) GetTopic() string { return TopicOrderT
 // OrderOutcomeResolvedEvent indicates fill outcome confirmed via WS update + backoff REST poll.
 type OrderOutcomeResolvedEvent struct {
 	BaseExecutionEvent
-	Outcome    OrderOutcome `json:"outcome"`
-	FilledVol  float64      `json:"filled_vol"`
-	AvgPrice   float64      `json:"avg_price"`
-	Reason     string       `json:"reason,omitempty"`
-	ResolvedAt time.Time    `json:"resolved_at"`
+	Outcome    common.OrderOutcome `json:"outcome"`
+	FilledVol  float64             `json:"filled_vol"`
+	AvgPrice   float64             `json:"avg_price"`
+	Reason     string              `json:"reason,omitempty"`
+	ResolvedAt time.Time           `json:"resolved_at"`
 }
 
 func (e OrderOutcomeResolvedEvent) GetTopic() string { return TopicOrderOutcomeResolved }
 
-// DeduplicateKey returns unique key for Watermill EventBus deduplication middleware, discriminating by outcome.
 func (e OrderOutcomeResolvedEvent) DeduplicateKey() string {
 	return fmt.Sprintf("%s-%s-%s", e.ReqID, e.NextTopic, e.Outcome)
 }
@@ -453,32 +352,31 @@ func (e OrderCanceledEvent) ShouldNotify() bool { return false }
 // OrderCompletedEvent indicates execution workflow terminal state reached.
 type OrderCompletedEvent struct {
 	BaseExecutionEvent
-	Side             shared.Side    `json:"side,omitempty"`
-	OrderID          string         `json:"order_id,omitempty"`
-	Outcome          OrderOutcome   `json:"outcome"`
-	EntryPrice       float64        `json:"entry_price"`
-	ExitPrice        float64        `json:"exit_price"`
-	CloseVolContract float64        `json:"close_vol_contract,omitempty"`
-	CloseVolCoin     float64        `json:"close_vol_coin,omitempty"`
-	VolumeUSDT       float64        `json:"volume_usdt,omitempty"`
-	ContractSize     float64        `json:"contract_size,omitempty"`
-	GrossProfit      float64        `json:"gross_profit"`
-	NetProfit        float64        `json:"net_profit"`
-	PnLPct           float64        `json:"pnl_pct"`
-	Fee              float64        `json:"fee"`
-	FundingFee       float64        `json:"funding_fee,omitempty"`
-	FundingRate      float64        `json:"funding_rate,omitempty"`
-	Vol24hUSDT       float64        `json:"vol_24h_usdt,omitempty"`
-	HoldDurationMs   int64          `json:"hold_duration_ms,omitempty"`
-	CloseRetryCount  int            `json:"close_retry_count,omitempty"`
-	Reason           string         `json:"reason,omitempty"`
-	SettleTime       *time.Time     `json:"settle_time,omitempty"`
-	Extra            map[string]any `json:"extra,omitempty"`
-	CompletedAt      time.Time      `json:"completed_at"`
+	Side             shared.Side         `json:"side,omitempty"`
+	OrderID          string              `json:"order_id,omitempty"`
+	Outcome          common.OrderOutcome `json:"outcome"`
+	EntryPrice       float64             `json:"entry_price"`
+	ExitPrice        float64             `json:"exit_price"`
+	CloseVolContract float64             `json:"close_vol_contract,omitempty"`
+	CloseVolCoin     float64             `json:"close_vol_coin,omitempty"`
+	VolumeUSDT       float64             `json:"volume_usdt,omitempty"`
+	ContractSize     float64             `json:"contract_size,omitempty"`
+	GrossProfit      float64             `json:"gross_profit"`
+	NetProfit        float64             `json:"net_profit"`
+	PnLPct           float64             `json:"pnl_pct"`
+	Fee              float64             `json:"fee"`
+	FundingFee       float64             `json:"funding_fee,omitempty"`
+	FundingRate      float64             `json:"funding_rate,omitempty"`
+	Vol24hUSDT       float64             `json:"vol_24h_usdt,omitempty"`
+	HoldDurationMs   int64               `json:"hold_duration_ms,omitempty"`
+	CloseRetryCount  int                 `json:"close_retry_count,omitempty"`
+	Reason           string              `json:"reason,omitempty"`
+	SettleTime       *time.Time          `json:"settle_time,omitempty"`
+	Extra            map[string]any      `json:"extra,omitempty"`
+	CompletedAt      time.Time           `json:"completed_at"`
 }
 
-func (e OrderCompletedEvent) GetTopic() string { return TopicOrderCompleted }
-
+func (e OrderCompletedEvent) GetTopic() string   { return TopicOrderCompleted }
 func (e OrderCompletedEvent) ShouldNotify() bool { return true }
 
 const defaultNotAvailable = "N/A"
@@ -546,7 +444,7 @@ func (e OrderCompletedEvent) GetNotiLevel() notifier.Level { return notifier.Lev
 func (e OrderCompletedEvent) GetNotifyMessage() string {
 	stratName := strings.ToUpper(string(e.StrategyType))
 
-	if e.Outcome == (OutcomeCanceledNoFill) || e.Outcome == (OutcomeAborted) || e.Outcome == (OutcomeCanceled) {
+	if e.Outcome == common.OutcomeCanceledNoFill || e.Outcome == common.OutcomeAborted || e.Outcome == common.OutcomeCanceled {
 		orderID := e.OrderID
 		if orderID == "" {
 			orderID = defaultNotAvailable
@@ -630,54 +528,5 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 	)
 }
 
-// OrderTradeRecordEvent indicates full trade execution & PnL persistence event.
-type OrderTradeRecordEvent struct {
-	BaseExecutionEvent
-
-	ClientOrderID    string `json:"client_order_id,omitempty"`
-	ExchangeOrderID  string `json:"exchange_order_id,omitempty"`
-	NormalizedSymbol string `json:"normalized_symbol,omitempty"`
-	MarketType       string `json:"market_type,omitempty"`
-	Side             string `json:"side"`
-
-	// Configuration & Position
-	MarginUSDT float64 `json:"margin_usdt,omitempty"`
-	Leverage   int     `json:"leverage,omitempty"`
-
-	// Execution & Latency Metrics
-	LatencyRTTMs   int64   `json:"latency_rtt_ms,omitempty"`
-	ActualSlippage float64 `json:"actual_slippage,omitempty"`
-
-	// Performance & PnL
-	OrderType        string  `json:"order_type"`
-	EntryPrice       float64 `json:"entry_price"`
-	ExitPrice        float64 `json:"exit_price"`
-	OrderVol         float64 `json:"order_vol"`
-	FillVolContract  float64 `json:"fill_vol_contract,omitempty"`
-	FillVolCoin      float64 `json:"fill_vol_coin,omitempty"`
-	CloseVolContract float64 `json:"close_vol_contract,omitempty"`
-	CloseVolCoin     float64 `json:"close_vol_coin,omitempty"`
-	ContractSize     float64 `json:"contract_size,omitempty"`
-
-	NotionalUSD    float64 `json:"notional_usd"`
-	GrossPnL       float64 `json:"gross_pnl"`
-	NetPnL         float64 `json:"net_pnl"`
-	PnLPct         float64 `json:"pnl_pct"`
-	Fee            float64 `json:"fee"`
-	FundingFee     float64 `json:"funding_fee,omitempty"`
-	HoldDurationMs int64   `json:"hold_duration_ms"`
-
-	// Emergency Risk & Termination Status
-	CloseRetryCount     int               `json:"close_retry_count,omitempty"`
-	ForceCloseAttempted bool              `json:"force_close_attempted"`
-	ForceCloseSucceeded bool              `json:"force_close_succeeded"`
-	Outcome             string            `json:"outcome"`
-	Status              string            `json:"status"`
-	Reason              string            `json:"reason,omitempty"`
-	RecordedAt          time.Time         `json:"recorded_at"`
-	FireAt              *time.Time        `json:"fire_at,omitempty"`
-	SettleTime          *time.Time        `json:"settle_time,omitempty"`
-	Extra               datatypes.JSONMap `json:"extra,omitempty"`
-}
-
-func (e OrderTradeRecordEvent) GetTopic() string { return TopicOrderTradeRecord }
+// OrderTradeRecordEvent is aliased from common.
+type OrderTradeRecordEvent = common.OrderTradeRecordEvent

@@ -1,55 +1,55 @@
-package ordermanager_test
+package futures_test
 
 import (
 	"testing"
 	"time"
 
 	shared "crypto-bot/internal/domain"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 )
 
 func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 	t.Parallel()
-	agg := ordermanager.NewOrderExecutionAggregate("req-999")
+	agg := futures.NewOrderExecutionAggregate("req-999")
 
-	if agg.State() != ordermanager.StateInit {
+	if agg.State() != futures.StateInit {
 		t.Errorf("expected initial state StateInit, got %s", agg.State())
 	}
 
-	evt1 := ordermanager.OrderIntentEvent{
+	evt1 := futures.OrderIntentEvent{
 		ReqID:        "req-999",
 		Symbol:       "BTCUSDT",
 		Exchange:     "MEXC",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
 		Side:         shared.SideOpenLong,
-		OrderType:    ordermanager.OrderTypeIOC,
+		OrderType:    futures.OrderTypeIOC,
 		Price:        50000.0,
 		Volume:       1.0,
 		FireTime:     time.Unix(1700000000, 0),
 	}
 
-	evt2 := ordermanager.OrderPreFlightCompletedEvent{
+	evt2 := futures.OrderPreFlightCompletedEvent{
 		OrderIntentEvent: evt1,
 		AdjustedLeverage: 10,
 	}
 
-	evt3 := ordermanager.OrderSubmittedEvent{
+	evt3 := futures.OrderSubmittedEvent{
 		OrderPreFlightCompletedEvent: evt2,
 		Price:                        50000.0,
 		Volume:                       1.0,
 	}
 
-	evt4 := ordermanager.OrderOutcomeResolvedEvent{
+	evt4 := futures.OrderOutcomeResolvedEvent{
 		ReqID:     "req-999",
 		Symbol:    "BTCUSDT",
 		Timestamp: time.Now(),
-		Outcome:   ordermanager.OutcomeFilled,
+		Outcome:   futures.OutcomeFilled,
 		FilledVol: 1.0,
 		AvgPrice:  50000.0,
 	}
 
-	evt5 := ordermanager.OrderCompletedEvent{
+	evt5 := futures.OrderCompletedEvent{
 		ReqID:            "req-999",
 		Symbol:           "BTCUSDT",
 		Timestamp:        time.Now(),
@@ -60,7 +60,7 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 		NetProfit:        1000.0,
 	}
 
-	events := []ordermanager.OrderEvent{evt1, evt2, evt3, evt4, evt5}
+	events := []futures.OrderEvent{evt1, evt2, evt3, evt4, evt5}
 
 	for _, e := range events {
 		if err := agg.Record(e); err != nil {
@@ -68,7 +68,7 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 		}
 	}
 
-	if agg.State() != ordermanager.StateCompleted {
+	if agg.State() != futures.StateCompleted {
 		t.Errorf("expected final state StateCompleted, got %s", agg.State())
 	}
 
@@ -87,12 +87,12 @@ func TestOrderExecutionAggregate_ApplyAndReplay(t *testing.T) {
 	}
 
 	// Test Replay
-	replayed := ordermanager.NewOrderExecutionAggregate("req-999")
+	replayed := futures.NewOrderExecutionAggregate("req-999")
 	if err := replayed.Replay(events); err != nil {
 		t.Fatalf("Replay failed: %v", err)
 	}
 
-	if replayed.State() != ordermanager.StateCompleted {
+	if replayed.State() != futures.StateCompleted {
 		t.Errorf("expected replayed state StateCompleted, got %s", replayed.State())
 	}
 	if replayed.Version() != 5 {
@@ -105,12 +105,12 @@ func TestOrderExecutionAggregate_SettleTime(t *testing.T) {
 
 	settleTime := time.Date(2026, 8, 13, 22, 0, 0, 0, time.UTC)
 
-	agg := ordermanager.NewOrderExecutionAggregate("req-settle-1")
-	evt1 := ordermanager.OrderIntentEvent{
+	agg := futures.NewOrderExecutionAggregate("req-settle-1")
+	evt1 := futures.OrderIntentEvent{
 		ReqID:        "req-settle-1",
 		Symbol:       "BTCUSDT",
 		Exchange:     "MEXC",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
 		Side:         shared.SideOpenLong,
 		SettleTime:   &settleTime,
@@ -127,12 +127,12 @@ func TestOrderExecutionAggregate_SettleTime(t *testing.T) {
 	}
 
 	// Test nil SettleTime
-	aggNil := ordermanager.NewOrderExecutionAggregate("req-settle-nil")
-	evtNil := ordermanager.OrderIntentEvent{
+	aggNil := futures.NewOrderExecutionAggregate("req-settle-nil")
+	evtNil := futures.OrderIntentEvent{
 		ReqID:        "req-settle-nil",
 		Symbol:       "BTCUSDT",
 		Exchange:     "MEXC",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
 		Side:         shared.SideOpenLong,
 	}
@@ -147,7 +147,7 @@ func TestOrderExecutionAggregate_SettleTime(t *testing.T) {
 func TestOrderExecutionAggregate_Concurrency(t *testing.T) {
 	t.Parallel()
 
-	agg := ordermanager.NewOrderExecutionAggregate("req-concurrent-test")
+	agg := futures.NewOrderExecutionAggregate("req-concurrent-test")
 	const numGoroutines = 50
 
 	done := make(chan struct{})
@@ -155,14 +155,14 @@ func TestOrderExecutionAggregate_Concurrency(t *testing.T) {
 		go func(idx int) {
 			defer func() { done <- struct{}{} }()
 
-			evt := ordermanager.OrderIntentEvent{
+			evt := futures.OrderIntentEvent{
 				ReqID:        "req-concurrent-test",
 				Symbol:       "BTCUSDT",
 				Exchange:     "bybit",
-				StrategyType: ordermanager.StrategyFundingReversion,
+				StrategyType: futures.StrategyFundingReversion,
 				Timestamp:    time.Now(),
 				Side:         shared.SideOpenLong,
-				OrderType:    ordermanager.OrderTypeIOC,
+				OrderType:    futures.OrderTypeIOC,
 				Price:        50000.0,
 				Volume:       float64(idx + 1),
 			}

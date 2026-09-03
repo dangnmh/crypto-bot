@@ -19,7 +19,7 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/internal/testutil/mocks"
-	ordermanager "crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/eventbus"
 
 	cache "github.com/patrickmn/go-cache"
@@ -280,7 +280,7 @@ func TestFirePlanCheckedDispatchesOrderManagerIntent(t *testing.T) {
 	}
 
 	require.NoError(t, runner.handleFirePlanChecked(context.Background(), planEvt))
-	assert.Equal(t, []string{ordermanager.TopicOrderIntent}, timelineTopics(bus))
+	assert.Equal(t, []string{futures.TopicOrderIntent}, timelineTopics(bus))
 }
 
 func TestStatelessRunnerHandleWaitBranches(t *testing.T) {

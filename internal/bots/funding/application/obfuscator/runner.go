@@ -7,7 +7,7 @@ import (
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 )
 
 // ObfuscatorRunner manages the execution lifecycle of an obfuscation order via OrderManager.
@@ -40,7 +40,7 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 
 	now := r.clock.Now()
 
-	reqID := exchange.ExternalUniqueID(spec.Symbol, now, spec.Exchange) + string(ordermanager.StrategyObfuscator)
+	reqID := exchange.ExternalUniqueID(spec.Symbol, now, spec.Exchange) + string(futures.StrategyObfuscator)
 
 	r.logger.InfoContext(ctx, "🛡️ Executing obfuscation order via OrderManager",
 		slog.String("req_id", reqID),
@@ -60,18 +60,18 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 
 	orderType := spec.OrderType
 	if orderType == "" {
-		orderType = ordermanager.OrderTypeIOC
+		orderType = futures.OrderTypeIOC
 	}
 
-	intentEvt := ordermanager.OrderIntentEvent{
+	intentEvt := futures.OrderIntentEvent{
 		ReqID:                reqID,
 		RefID:                spec.OriginReqID,
 		Symbol:               spec.Symbol,
 		Exchange:             spec.Exchange,
-		MarketType:           ordermanager.MarketTypeFuture,
-		StrategyType:         ordermanager.StrategyObfuscator,
+		MarketType:           futures.MarketTypeFuture,
+		StrategyType:         futures.StrategyObfuscator,
 		PreTopic:             "",
-		NextTopic:            ordermanager.TopicOrderIntent,
+		NextTopic:            futures.TopicOrderIntent,
 		Timestamp:            now,
 		ClientOrderID:        exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
 		Side:                 spec.Side,

@@ -19,7 +19,7 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	infraws "crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/internal/testutil/mocks"
-	ordermanager "crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/types"
 	pkgws "crypto-bot/pkg/ws"
@@ -236,7 +236,7 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// Subscribe to OrderIntent to verify OrderManager dispatch
-	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
 	require.NoError(t, err)
 
 	c := cache.New(5*time.Minute, 10*time.Minute)
@@ -260,11 +260,11 @@ func TestStrategy_Execute_Success(t *testing.T) {
 	// Wait for OrderIntent to be dispatched
 	select {
 	case msg := <-intentSub:
-		var intent ordermanager.OrderIntentEvent
+		var intent futures.OrderIntentEvent
 		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
 		assert.Equal(t, "req_success_1", intent.ReqID)
 		assert.Equal(t, "BTC_USDT", intent.Symbol)
-		assert.Equal(t, ordermanager.StrategyFundingReversion, intent.StrategyType)
+		assert.Equal(t, futures.StrategyFundingReversion, intent.StrategyType)
 		assert.Greater(t, intent.Price, 0.0)
 		msg.Ack()
 	case <-time.After(5 * time.Second):
@@ -400,7 +400,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	candidateChan, err := bus.Subscribe(context.Background(), reversion.TopicReversionCandidate)
 	require.NoError(t, err)
 
-	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
 	require.NoError(t, err)
 
 	var candidateEvt reversion.CandidateFoundEvent
@@ -433,7 +433,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 
 	select {
 	case msg := <-intentSub:
-		var intent ordermanager.OrderIntentEvent
+		var intent futures.OrderIntentEvent
 		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
 		msg.Ack()
 		assert.Equal(t, candidateEvt.ExternalID, intent.ClientOrderID)
@@ -578,7 +578,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 	mockClient.EXPECT().SwitchMarginMode(gomock.Any(), "BTC_USDT", shared.MarginModeIsolated, 10, gomock.Any()).Return(nil)
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
 	require.NoError(t, err)
 
 	c := cache.New(5*time.Minute, 10*time.Minute)
@@ -615,7 +615,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 
 	select {
 	case msg := <-intentSub:
-		var intent ordermanager.OrderIntentEvent
+		var intent futures.OrderIntentEvent
 		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
 		msg.Ack()
 		assert.Equal(t, 10, intent.Leverage)
@@ -778,7 +778,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 
 	mockNotifier.EXPECT().Send(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
 	require.NoError(t, err)
 
 	c := cache.New(5*time.Minute, 10*time.Minute)
@@ -821,7 +821,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 
 	select {
 	case msg := <-intentSub:
-		var intent ordermanager.OrderIntentEvent
+		var intent futures.OrderIntentEvent
 		require.NoError(t, json.Unmarshal(msg.Payload, &intent))
 		msg.Ack()
 		assert.Equal(t, 5, intent.Leverage)
@@ -893,7 +893,7 @@ func TestReversion_OrderManager_DispatchesOrderIntent(t *testing.T) {
 	}
 	strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, slog.Default())
 
-	intentSub, err := bus.Subscribe(context.Background(), ordermanager.TopicOrderIntent)
+	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
 	require.NoError(t, err)
 
 	now := time.Now()
@@ -926,13 +926,13 @@ func TestReversion_OrderManager_DispatchesOrderIntent(t *testing.T) {
 
 	select {
 	case msg := <-intentSub:
-		var receivedIntent ordermanager.OrderIntentEvent
+		var receivedIntent futures.OrderIntentEvent
 		require.NoError(t, json.Unmarshal(msg.Payload, &receivedIntent))
 		assert.Equal(t, "req-om-true", receivedIntent.ReqID)
 		assert.Equal(t, "BTC_USDT", receivedIntent.Symbol)
-		assert.Equal(t, ordermanager.StrategyFundingReversion, receivedIntent.StrategyType)
+		assert.Equal(t, futures.StrategyFundingReversion, receivedIntent.StrategyType)
 		assert.Greater(t, receivedIntent.Price, 0.0)
 	case <-time.After(3 * time.Second):
-		t.Fatal("Timeout waiting for OrderIntentEvent on ordermanager.TopicOrderIntent")
+		t.Fatal("Timeout waiting for OrderIntentEvent on futures.TopicOrderIntent")
 	}
 }

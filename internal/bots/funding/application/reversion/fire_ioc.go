@@ -11,7 +11,7 @@ import (
 	fundingdomain "crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
-	ordermanager "crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/decmath"
 )
 
@@ -87,18 +87,18 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 		settleTimePtr = &evt.SettleTime
 	}
 
-	orderIntent := ordermanager.OrderIntentEvent{
+	orderIntent := futures.OrderIntentEvent{
 		ReqID:                evt.ReqID,
 		ClientOrderID:        evt.ExternalID,
 		Symbol:               evt.Symbol,
 		Exchange:             evt.Exchange,
-		MarketType:           ordermanager.MarketTypeFuture,
-		StrategyType:         ordermanager.StrategyFundingReversion,
+		MarketType:           futures.MarketTypeFuture,
+		StrategyType:         futures.StrategyFundingReversion,
 		PreTopic:             TopicReversionFirePlanChecked,
-		NextTopic:            ordermanager.TopicOrderIntent,
+		NextTopic:            futures.TopicOrderIntent,
 		Timestamp:            now,
 		Side:                 cand.Side,
-		OrderType:            ordermanager.OrderTypeIOC,
+		OrderType:            futures.OrderTypeIOC,
 		Price:                iocPrice,
 		Volume:               evt.AdjustedVolume,
 		ContractSize:         cand.ContractSize,
@@ -129,7 +129,7 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 		},
 	}
 
-	return r.publishEvent(ctx, ordermanager.TopicOrderIntent, orderIntent)
+	return r.publishEvent(ctx, futures.TopicOrderIntent, orderIntent)
 }
 
 func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginModeReadyEvent) error {

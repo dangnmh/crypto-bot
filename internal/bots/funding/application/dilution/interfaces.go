@@ -6,7 +6,7 @@ import (
 
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 )
 
 // EngineProviderGetter decouples exchange client resolution from the full engine.
@@ -16,7 +16,7 @@ type EngineProviderGetter interface {
 
 // OrderManagerDispatcher sends order events and cancellation requests to the trading OrderManager.
 type OrderManagerDispatcher interface {
-	Dispatch(ctx context.Context, event ordermanager.OrderEvent) error
+	Dispatch(ctx context.Context, event futures.OrderEvent) error
 	CancelOpenOrders(ctx context.Context, exchangeName, symbol string) error
 }
 
@@ -36,7 +36,7 @@ type DilutionSpec struct {
 	UnfilledCancelTimeout time.Duration
 	TakeProfitPrice       float64
 	StopLossPrice         float64
-	OrderType             ordermanager.OrderType
+	OrderType             futures.OrderType
 	Vol24hUSDT            float64
 }
 

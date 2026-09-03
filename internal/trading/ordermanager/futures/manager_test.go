@@ -1,4 +1,4 @@
-package ordermanager_test
+package futures_test
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/timesync"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/stretchr/testify/assert"
@@ -116,14 +116,14 @@ func TestNewOrderManager_NilValidation(t *testing.T) {
 
 	ctx := context.Background()
 
-	if _, err := ordermanager.NewOrderManager(ctx, nil, nil, nil, nil, nil); err == nil {
+	if _, err := futures.NewOrderManager(ctx, nil, nil, nil, nil, nil); err == nil {
 		t.Errorf("expected error when bus is nil")
 	}
 	bus := eventbus.New(slog.Default())
 	engine := &app.Engine{}
 	repo := &mockTradeRepo{}
 	noti := &mockNotifier{}
-	if mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, nil); err != nil || mgr == nil {
+	if mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil); err != nil || mgr == nil {
 		t.Errorf("expected successful creation with non-nil dependencies, got err: %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestOrderManager_MicroEventPipeline(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -180,16 +180,16 @@ func TestOrderManager_MicroEventPipeline(t *testing.T) {
 	runEnrichAndCompleteTest(t, ctx, mgr)
 }
 
-func createTestOrderIntent() ordermanager.OrderIntentEvent {
-	return ordermanager.OrderIntentEvent{
+func createTestOrderIntent() futures.OrderIntentEvent {
+	return futures.OrderIntentEvent{
 		ReqID:                "req-001",
 		ClientOrderID:        "client-oid-001",
 		Symbol:               "BTCUSDT",
 		Exchange:             "MEXC",
-		StrategyType:         ordermanager.StrategyFundingReversion,
+		StrategyType:         futures.StrategyFundingReversion,
 		Timestamp:            time.Now(),
 		Side:                 shared.SideOpenLong,
-		OrderType:            ordermanager.OrderTypePostOnly,
+		OrderType:            futures.OrderTypePostOnly,
 		Price:                50000.0,
 		Volume:               1.0,
 		MarginMode:           shared.MarginModeIsolated,
@@ -201,7 +201,7 @@ func createTestOrderIntent() ordermanager.OrderIntentEvent {
 	}
 }
 
-func runPreFlightToOrderExecution(t *testing.T, ctx context.Context, mgr *ordermanager.OrderManager, client *mockExchangeClient, intent ordermanager.OrderIntentEvent) ordermanager.OrderSubmittedEvent {
+func runPreFlightToOrderExecution(t *testing.T, ctx context.Context, mgr *futures.OrderManager, client *mockExchangeClient, intent futures.OrderIntentEvent) futures.OrderSubmittedEvent {
 	_ = mgr.GetAggregate(intent.GetReqID()).Record(intent)
 	preflight, err := mgr.HandlePreFlight(ctx, intent)
 	if err != nil {
@@ -242,7 +242,7 @@ func runPreFlightToOrderExecution(t *testing.T, ctx context.Context, mgr *orderm
 	return submitted
 }
 
-func runScheduleTimeoutTest(t *testing.T, mgr *ordermanager.OrderManager) ordermanager.OrderTimeoutScheduledEvent {
+func runScheduleTimeoutTest(t *testing.T, mgr *futures.OrderManager) futures.OrderTimeoutScheduledEvent {
 	timeoutEvt, err := mgr.ScheduleTimeoutTimer("req-001", "BTCUSDT", 200*time.Millisecond, nil)
 	if err != nil {
 		t.Fatalf("ScheduleTimeoutTimer failed: %v", err)
@@ -256,17 +256,17 @@ func runScheduleTimeoutTest(t *testing.T, mgr *ordermanager.OrderManager) orderm
 	return timeoutEvt
 }
 
-func runOutcomeWatcherTest(t *testing.T, ctx context.Context, mgr *ordermanager.OrderManager, submitted ordermanager.OrderSubmittedEvent) {
+func runOutcomeWatcherTest(t *testing.T, ctx context.Context, mgr *futures.OrderManager, submitted futures.OrderSubmittedEvent) {
 	resolved, err := mgr.HandleOutcomeWatcher(ctx, submitted)
 	if err != nil {
 		t.Fatalf("HandleOutcomeWatcher failed: %v", err)
 	}
-	if resolved.Outcome != ordermanager.OutcomeFilled || resolved.FilledVol != 1.0 {
+	if resolved.Outcome != futures.OutcomeFilled || resolved.FilledVol != 1.0 {
 		t.Errorf("expected OutcomeFilled with 1.0 vol, got %+v", resolved)
 	}
 }
 
-func runTimeoutCheckTest(t *testing.T, ctx context.Context, mgr *ordermanager.OrderManager, timeoutEvt ordermanager.OrderTimeoutScheduledEvent) {
+func runTimeoutCheckTest(t *testing.T, ctx context.Context, mgr *futures.OrderManager, timeoutEvt futures.OrderTimeoutScheduledEvent) {
 	timeoutExpired, err := mgr.HandleTimeoutCheck(ctx, timeoutEvt)
 	if err != nil {
 		t.Fatalf("HandleTimeoutCheck failed: %v", err)
@@ -276,7 +276,7 @@ func runTimeoutCheckTest(t *testing.T, ctx context.Context, mgr *ordermanager.Or
 	}
 }
 
-func runBailoutTest(t *testing.T, ctx context.Context, mgr *ordermanager.OrderManager, client *mockExchangeClient) {
+func runBailoutTest(t *testing.T, ctx context.Context, mgr *futures.OrderManager, client *mockExchangeClient) {
 	bailout, err := mgr.HandleExecuteBailout(ctx, "req-bailout-001", "mexc", "BTCUSDT", shared.SideCloseLong, 1.0, "timeout")
 	if err != nil {
 		t.Fatalf("HandleExecuteBailout failed: %v", err)
@@ -289,12 +289,12 @@ func runBailoutTest(t *testing.T, ctx context.Context, mgr *ordermanager.OrderMa
 	}
 }
 
-func runEnrichAndCompleteTest(t *testing.T, ctx context.Context, mgr *ordermanager.OrderManager) {
-	completed, err := mgr.HandleEnrichAndComplete(ctx, "mexc", "req-001", "client-oid-001", "BTCUSDT", ordermanager.StrategyFundingReversion, "filled", "normal")
+func runEnrichAndCompleteTest(t *testing.T, ctx context.Context, mgr *futures.OrderManager) {
+	completed, err := mgr.HandleEnrichAndComplete(ctx, "mexc", "req-001", "client-oid-001", "BTCUSDT", futures.StrategyFundingReversion, "filled", "normal")
 	if err != nil {
 		t.Fatalf("HandleEnrichAndComplete failed: %v", err)
 	}
-	if completed.GetReqID() != "req-001" || completed.Outcome != "filled" || completed.StrategyType != ordermanager.StrategyFundingReversion {
+	if completed.GetReqID() != "req-001" || completed.Outcome != "filled" || completed.StrategyType != futures.StrategyFundingReversion {
 		t.Errorf("unexpected completed event properties: %+v", completed)
 	}
 }
@@ -302,12 +302,12 @@ func runEnrichAndCompleteTest(t *testing.T, ctx context.Context, mgr *ordermanag
 func TestOrderSubmittedEvent_GetNotifyMessage(t *testing.T) {
 	t.Parallel()
 
-	evt := ordermanager.OrderSubmittedEvent{
+	evt := futures.OrderSubmittedEvent{
 		ReqID:         "12082026170000PROMTOOBITFUTURES",
 		ClientOrderID: "12082026170000PROMTOOBITFUTURES",
 		Symbol:        "PROM-SWAP-USDT",
 		Exchange:      "toobit_futures",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		Side:          shared.SideOpenLong,
 		Leverage:      20,
 		MarginUSDT:    30.0,
@@ -354,7 +354,7 @@ type mockTradeRepo struct {
 	saved bool
 }
 
-func (m *mockTradeRepo) Save(ctx context.Context, evt ordermanager.OrderTradeRecordEvent) error {
+func (m *mockTradeRepo) Save(ctx context.Context, evt futures.OrderTradeRecordEvent) error {
 	m.saved = true
 	return nil
 }
@@ -405,7 +405,7 @@ func TestOrderManager_Dispatch_EDD(t *testing.T) {
 					},
 				},
 			}
-			mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+			mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 			if err != nil {
 				t.Fatalf("failed to create order manager: %v", err)
 			}
@@ -414,14 +414,14 @@ func TestOrderManager_Dispatch_EDD(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			intent := ordermanager.OrderIntentEvent{
+			intent := futures.OrderIntentEvent{
 				ReqID:        tt.reqID,
 				Symbol:       tt.symbol,
 				Exchange:     "MEXC",
-				StrategyType: ordermanager.StrategyFundingReversion,
+				StrategyType: futures.StrategyFundingReversion,
 				Timestamp:    time.Now(),
 				Side:         tt.side,
-				OrderType:    ordermanager.OrderTypeIOC,
+				OrderType:    futures.OrderTypeIOC,
 				Price:        tt.price,
 				Volume:       tt.vol,
 			}
@@ -431,7 +431,7 @@ func TestOrderManager_Dispatch_EDD(t *testing.T) {
 			}
 
 			agg := mgr.GetAggregate(tt.reqID)
-			if agg.State() != ordermanager.StateInit {
+			if agg.State() != futures.StateInit {
 				t.Errorf("expected aggregate state StateInit, got %s", agg.State())
 			}
 		})
@@ -441,19 +441,19 @@ func TestOrderManager_Dispatch_EDD(t *testing.T) {
 func TestOrderAbortedEvent_Notification(t *testing.T) {
 	t.Parallel()
 
-	evt := ordermanager.OrderAbortedEvent{
+	evt := futures.OrderAbortedEvent{
 		ReqID:         "req-abort-123",
 		ClientOrderID: "client-abort-123",
 		Symbol:        "BTCUSDT",
 		Exchange:      "BINANCE",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		OrderID:       "ex-order-999",
 		Reason:        "submit_error",
 		Error:         "insufficient margin",
 		AbortedAt:     time.Now(),
 	}
 
-	assert.Equal(t, ordermanager.TopicOrderAborted, evt.GetTopic())
+	assert.Equal(t, futures.TopicOrderAborted, evt.GetTopic())
 	assert.True(t, evt.ShouldNotify())
 	assert.Equal(t, notifier.LevelCritical, evt.GetNotiLevel())
 
@@ -470,17 +470,17 @@ func TestOrderAbortedEvent_Notification(t *testing.T) {
 func TestOrderCompletedEvent_Notification_Canceled(t *testing.T) {
 	t.Parallel()
 
-	completedNormal := ordermanager.OrderCompletedEvent{Outcome: ordermanager.OutcomeFilled}
+	completedNormal := futures.OrderCompletedEvent{Outcome: futures.OutcomeFilled}
 	assert.True(t, completedNormal.ShouldNotify())
 
-	completedCanceled := ordermanager.OrderCompletedEvent{
+	completedCanceled := futures.OrderCompletedEvent{
 		ReqID:         "req-canceled-123",
 		ClientOrderID: "client-canceled-123",
 		Symbol:        "BTCUSDT",
 		Exchange:      "BINANCE",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		OrderID:       "ex-order-123",
-		Outcome:       ordermanager.OutcomeCanceledNoFill,
+		Outcome:       futures.OutcomeCanceledNoFill,
 		Reason:        "user canceled",
 	}
 	assert.True(t, completedCanceled.ShouldNotify())
@@ -494,14 +494,14 @@ func TestOrderCompletedEvent_Notification_Canceled(t *testing.T) {
 func TestOrderCompletedEvent_Notification_Filled(t *testing.T) {
 	t.Parallel()
 
-	completedFilled := ordermanager.OrderCompletedEvent{
+	completedFilled := futures.OrderCompletedEvent{
 		ReqID:          "req-filled-123",
 		ClientOrderID:  "client-filled-123",
 		Symbol:         "LAB-SWAP-USDT",
 		Exchange:       "toobit_futures",
-		StrategyType:   ordermanager.StrategyObfuscator,
+		StrategyType:   futures.StrategyObfuscator,
 		OrderID:        "2282128112719258880",
-		Outcome:        ordermanager.OutcomeFilled,
+		Outcome:        futures.OutcomeFilled,
 		Side:           shared.SideOpenLong,
 		EntryPrice:     0.013190,
 		ExitPrice:      0.013180,
@@ -549,20 +549,20 @@ func TestOrderManager_SubmitError_PublishesAbort(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	ctx := context.Background()
 	reqID := "req-submit-err-001"
-	watchReady := ordermanager.OrderPositionWatchReadyEvent{
+	watchReady := futures.OrderPositionWatchReadyEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
 		Exchange:     "mexc",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
 		Side:         shared.SideOpenLong,
-		OrderType:    ordermanager.OrderTypeIOC,
+		OrderType:    futures.OrderTypeIOC,
 		Price:        50000.0,
 		Volume:       1.0,
 	}
@@ -588,7 +588,7 @@ func TestHandlePositionUpdate_IgnoresZeroVolumeBeforeFill(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
@@ -596,11 +596,11 @@ func TestHandlePositionUpdate_IgnoresZeroVolumeBeforeFill(t *testing.T) {
 	reqID := "req-pos-zero-001"
 
 	agg := mgr.GetAggregate(reqID)
-	assert.NoError(t, agg.Record(ordermanager.OrderPositionWatchReadyEvent{
+	assert.NoError(t, agg.Record(futures.OrderPositionWatchReadyEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
 		Exchange:     "mexc",
-		StrategyType: ordermanager.StrategyFundingReversion,
+		StrategyType: futures.StrategyFundingReversion,
 		Side:         shared.SideOpenLong,
 		Price:        50000.0,
 		Volume:       1.0,
@@ -615,7 +615,7 @@ func TestHandlePositionUpdate_IgnoresZeroVolumeBeforeFill(t *testing.T) {
 	// Zero-volume position snapshot before fill should be ignored
 	mgr.HandlePositionUpdate(ctx, reqID, posZero)
 	assert.False(t, agg.HasFilled())
-	assert.NotEqual(t, ordermanager.StatePositionClosed, agg.State())
+	assert.NotEqual(t, futures.StatePositionClosed, agg.State())
 
 	// Position filled update
 	posFilled := exchange.PersonalPositionUpdate{
@@ -628,7 +628,7 @@ func TestHandlePositionUpdate_IgnoresZeroVolumeBeforeFill(t *testing.T) {
 
 	// Once filled, position update with 0 volume triggers closed state
 	mgr.HandlePositionUpdate(ctx, reqID, posZero)
-	assert.Equal(t, ordermanager.StatePositionClosed, agg.State())
+	assert.Equal(t, futures.StatePositionClosed, agg.State())
 }
 
 func TestOrderManager_HandleEnrichAndComplete_Sleep(t *testing.T) {
@@ -656,12 +656,12 @@ func TestOrderManager_HandleEnrichAndComplete_Sleep(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	ctx := context.Background()
-	completed, err := mgr.HandleEnrichAndComplete(ctx, "mexc", "req-sleep-001", "client-sleep-001", "BTCUSDT", ordermanager.StrategyFundingReversion, ordermanager.OutcomeFilled, "normal")
+	completed, err := mgr.HandleEnrichAndComplete(ctx, "mexc", "req-sleep-001", "client-sleep-001", "BTCUSDT", futures.StrategyFundingReversion, futures.OutcomeFilled, "normal")
 	assert.NoError(t, err)
 	assert.Equal(t, "req-sleep-001", completed.GetReqID())
 	assert.Len(t, sleepCalls, 1)
@@ -685,11 +685,11 @@ func TestOrderManager_HandleEnrichAndComplete_Sleep(t *testing.T) {
 			},
 		},
 	}
-	mgrErr, err := ordermanager.NewOrderManager(context.Background(), engineErr, bus, repo, noti, nil)
+	mgrErr, err := futures.NewOrderManager(context.Background(), engineErr, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgrErr.Init(context.Background()))
 
-	completedErr, err := mgrErr.HandleEnrichAndComplete(ctx, "mexc", "req-sleep-002", "client-sleep-002", "BTCUSDT", ordermanager.StrategyFundingReversion, ordermanager.OutcomeFilled, "normal")
+	completedErr, err := mgrErr.HandleEnrichAndComplete(ctx, "mexc", "req-sleep-002", "client-sleep-002", "BTCUSDT", futures.StrategyFundingReversion, futures.OutcomeFilled, "normal")
 	assert.NoError(t, err)
 	assert.Equal(t, "req-sleep-002", completedErr.GetReqID())
 	assert.Len(t, errSleepCalls, 1)
@@ -713,17 +713,17 @@ func TestOrderManager_RegisterOnCompletedCallback_MultipleCallbacks(t *testing.T
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	var cb1Called, cb2Called atomic.Bool
-	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt ordermanager.OrderCompletedEvent) {
+	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt futures.OrderCompletedEvent) {
 		if evt.GetReqID() == "req-multicb-001" {
 			cb1Called.Store(true)
 		}
 	})
-	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt ordermanager.OrderCompletedEvent) {
+	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt futures.OrderCompletedEvent) {
 		if evt.GetReqID() == "req-multicb-001" {
 			cb2Called.Store(true)
 		}
@@ -732,11 +732,11 @@ func TestOrderManager_RegisterOnCompletedCallback_MultipleCallbacks(t *testing.T
 	mgr.RegisterOnCompletedCallback(nil)
 
 	ctx := context.Background()
-	_, err = mgr.HandleEnrichAndComplete(ctx, "mexc", "req-multicb-001", "client-multicb-001", "BTCUSDT", ordermanager.StrategyFundingReversion, ordermanager.OutcomeFilled, "normal")
+	_, err = mgr.HandleEnrichAndComplete(ctx, "mexc", "req-multicb-001", "client-multicb-001", "BTCUSDT", futures.StrategyFundingReversion, futures.OutcomeFilled, "normal")
 	assert.NoError(t, err)
 
 	// Trigger completed event through eventbus
-	err = bus.Publish(ordermanager.TopicOrderCompleted, ordermanager.OrderCompletedEvent{
+	err = bus.Publish(futures.TopicOrderCompleted, futures.OrderCompletedEvent{
 		ReqID: "req-multicb-001",
 	})
 	assert.NoError(t, err)
@@ -763,11 +763,11 @@ func TestOrderCompletedEvent_PropagatesRefID(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID: "req-ref-001",
 		RefID: "orig-trade-999",
 	}
@@ -779,14 +779,14 @@ func TestOrderCompletedEvent_PropagatesRefID(t *testing.T) {
 		"req-ref-001",
 		"client-ref-001",
 		"BTCUSDT",
-		ordermanager.StrategyObfuscator,
-		ordermanager.OutcomeFilled,
+		futures.StrategyObfuscator,
+		futures.OutcomeFilled,
 		"normal",
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, "orig-trade-999", completed.RefID)
 	assert.Equal(t, "req-ref-001", completed.ReqID)
-	assert.Equal(t, ordermanager.StrategyObfuscator, completed.StrategyType)
+	assert.Equal(t, futures.StrategyObfuscator, completed.StrategyType)
 }
 
 func TestHandlePreFlight_CloseOrder_SkipsModeSwitches(t *testing.T) {
@@ -806,18 +806,18 @@ func TestHandlePreFlight_CloseOrder_SkipsModeSwitches(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:        "req-close-001",
 		Symbol:       "BTCUSDT",
 		Exchange:     "MEXC",
-		StrategyType: ordermanager.StrategyDilution,
+		StrategyType: futures.StrategyDilution,
 		Timestamp:    time.Now(),
 		Side:         shared.SideCloseLong,
-		OrderType:    ordermanager.OrderTypePostOnly,
+		OrderType:    futures.OrderTypePostOnly,
 		Price:        50000.0,
 		Volume:       1.0,
 		MarginMode:   shared.MarginModeIsolated,
@@ -849,17 +849,17 @@ func TestOrderManager_CancelOrder(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	agg := mgr.GetAggregate("req-cancel-001")
-	err = agg.Record(ordermanager.OrderSubmittedEvent{
+	err = agg.Record(futures.OrderSubmittedEvent{
 		ReqID:        "req-cancel-001",
 		Symbol:       "BTCUSDT",
 		Exchange:     "MEXC",
-		StrategyType: ordermanager.StrategyDilution,
-		OrderType:    ordermanager.OrderTypePostOnly,
+		StrategyType: futures.StrategyDilution,
+		OrderType:    futures.OrderTypePostOnly,
 		OrderID:      "order-to-cancel-999",
 	})
 	assert.NoError(t, err)
@@ -872,7 +872,7 @@ func TestOrderManager_CancelOrder(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, client.cancelOrderCalled)
 	assert.False(t, mgr.HasActiveOrder("req-cancel-001"))
-	assert.Equal(t, ordermanager.StateCanceled, agg.State())
+	assert.Equal(t, futures.StateCanceled, agg.State())
 }
 
 func TestOrderManager_CancelOpenOrders(t *testing.T) {
@@ -890,7 +890,7 @@ func TestOrderManager_CancelOpenOrders(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
@@ -914,16 +914,16 @@ func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
-	submittedEvt := ordermanager.OrderSubmittedEvent{
+	submittedEvt := futures.OrderSubmittedEvent{
 		ReqID:                 "req-resting-timeout-001",
 		Symbol:                "BTCUSDT",
 		Exchange:              "mexc",
-		StrategyType:          ordermanager.StrategyDilution,
-		OrderType:             ordermanager.OrderTypePostOnly,
+		StrategyType:          futures.StrategyDilution,
+		OrderType:             futures.OrderTypePostOnly,
 		UnfilledCancelTimeout: 20 * time.Millisecond,
 		OrderID:               "order-resting-123",
 	}
@@ -938,7 +938,7 @@ func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	assert.True(t, client.cancelOrderCalled, "Resting timeout expiration must call CancelOrder on exchange")
-	assert.Equal(t, ordermanager.StateCompleted, agg.State())
+	assert.Equal(t, futures.StateCompleted, agg.State())
 }
 
 func TestOrderManager_SkipPreFlight(t *testing.T) {
@@ -959,18 +959,18 @@ func TestOrderManager_SkipPreFlight(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(ctx))
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:         "req-skip-pf-001",
 		Symbol:        "BTCUSDT",
 		Exchange:      "mexc",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     time.Now(),
 		Side:          shared.SideOpenLong,
-		OrderType:     ordermanager.OrderTypeIOC,
+		OrderType:     futures.OrderTypeIOC,
 		Price:         50000.0,
 		Volume:        1.0,
 		MarginMode:    shared.MarginModeIsolated,

@@ -12,7 +12,7 @@ import (
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/testutil/mocks"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/types"
 
 	"github.com/stretchr/testify/assert"
@@ -29,10 +29,10 @@ func (m *mockEngineGetter) GetProvider(name string) (*infraapp.ExchangeProvider,
 }
 
 type mockDispatcher struct {
-	dispatched []ordermanager.OrderEvent
+	dispatched []futures.OrderEvent
 }
 
-func (m *mockDispatcher) Dispatch(ctx context.Context, intent ordermanager.OrderEvent) error {
+func (m *mockDispatcher) Dispatch(ctx context.Context, intent futures.OrderEvent) error {
 	m.dispatched = append(m.dispatched, intent)
 	return nil
 }
@@ -106,11 +106,11 @@ func TestDilutionMaker_GenerateQuotes_FlatPosition(t *testing.T) {
 
 	assert.Equal(t, shared.SideOpenLong, specs[0].Side)
 	assert.Equal(t, 50000.0, specs[0].Price)
-	assert.Equal(t, ordermanager.OrderTypePostOnly, specs[0].OrderType)
+	assert.Equal(t, futures.OrderTypePostOnly, specs[0].OrderType)
 
 	assert.Equal(t, shared.SideOpenShort, specs[1].Side)
 	assert.Equal(t, 50000.1, specs[1].Price)
-	assert.Equal(t, ordermanager.OrderTypePostOnly, specs[1].OrderType)
+	assert.Equal(t, futures.OrderTypePostOnly, specs[1].OrderType)
 }
 
 func TestDilutionMaker_GenerateQuotes_WithTPSL(t *testing.T) {
@@ -534,19 +534,19 @@ func TestDilutionRunner_Execute(t *testing.T) {
 		ContractSize:          1.0,
 		PositionCloseTimeout:  180 * time.Second,
 		UnfilledCancelTimeout: 60 * time.Second,
-		OrderType:             ordermanager.OrderTypePostOnly,
+		OrderType:             futures.OrderTypePostOnly,
 	}
 
 	err = runner.Execute(context.Background(), spec)
 	require.NoError(t, err)
 	require.Len(t, dispatcher.dispatched, 1)
 
-	evt, ok := dispatcher.dispatched[0].(ordermanager.OrderIntentEvent)
+	evt, ok := dispatcher.dispatched[0].(futures.OrderIntentEvent)
 	require.True(t, ok)
 	assert.Equal(t, "mexc_futures", evt.Exchange)
 	assert.Equal(t, "BTC_USDT", evt.Symbol)
-	assert.Equal(t, ordermanager.StrategyDilution, evt.StrategyType)
-	assert.Equal(t, ordermanager.OrderTypePostOnly, evt.OrderType)
+	assert.Equal(t, futures.StrategyDilution, evt.StrategyType)
+	assert.Equal(t, futures.OrderTypePostOnly, evt.OrderType)
 	assert.Equal(t, shared.SideCloseLong, evt.Side)
 	assert.Equal(t, 50000.0, evt.Price)
 }

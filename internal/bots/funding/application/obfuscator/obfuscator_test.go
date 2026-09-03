@@ -13,7 +13,7 @@ import (
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 	"crypto-bot/pkg/types"
 
@@ -22,11 +22,11 @@ import (
 )
 
 type mockDispatcher struct {
-	events []ordermanager.OrderEvent
+	events []futures.OrderEvent
 	err    error
 }
 
-func (m *mockDispatcher) Dispatch(ctx context.Context, evt ordermanager.OrderEvent) error {
+func (m *mockDispatcher) Dispatch(ctx context.Context, evt futures.OrderEvent) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -211,7 +211,7 @@ func TestOrderGenerator(t *testing.T) {
 	assert.Greater(t, spec.Price, 0.0)
 	assert.Greater(t, spec.TakeProfitPrice, 0.0)
 	assert.Greater(t, spec.StopLossPrice, 0.0)
-	assert.Equal(t, ordermanager.OrderTypeIOC, spec.OrderType)
+	assert.Equal(t, futures.OrderTypeIOC, spec.OrderType)
 
 	t.Run("uses configured leverage when specified", func(t *testing.T) {
 		t.Parallel()
@@ -612,7 +612,7 @@ func TestObfuscatorRunner(t *testing.T) {
 		TakeProfitPct:   2.0,
 		StopLossPct:     1.0,
 		HoldDuration:    15 * time.Second,
-		OrderType:       ordermanager.OrderTypeIOC,
+		OrderType:       futures.OrderTypeIOC,
 		Vol24hUSDT:      1500000.0,
 		FundingRate:     0.0001,
 	}
@@ -621,14 +621,14 @@ func TestObfuscatorRunner(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, disp.events, 1)
 
-	evt, ok := disp.events[0].(ordermanager.OrderIntentEvent)
+	evt, ok := disp.events[0].(futures.OrderIntentEvent)
 	require.True(t, ok)
 	assert.Equal(t, "orig-999", evt.RefID)
 	assert.Equal(t, "bybit", evt.Exchange)
 	assert.Equal(t, "SOLUSDT", evt.Symbol)
 	assert.Equal(t, shared.SideOpenShort, evt.Side)
-	assert.Equal(t, ordermanager.StrategyObfuscator, evt.StrategyType)
-	assert.Equal(t, ordermanager.OrderTypeIOC, evt.OrderType)
+	assert.Equal(t, futures.StrategyObfuscator, evt.StrategyType)
+	assert.Equal(t, futures.OrderTypeIOC, evt.OrderType)
 	assert.Equal(t, 0.166, evt.Volume)
 	assert.Equal(t, 150.0, evt.Price)
 	assert.Equal(t, 1.0, evt.ContractSize)
@@ -663,9 +663,9 @@ func TestObfuscatorRunner(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, emptyDisp.events, 1)
 
-		emptyEvt, ok := emptyDisp.events[0].(ordermanager.OrderIntentEvent)
+		emptyEvt, ok := emptyDisp.events[0].(futures.OrderIntentEvent)
 		require.True(t, ok)
-		assert.Equal(t, ordermanager.OrderTypeIOC, emptyEvt.OrderType)
+		assert.Equal(t, futures.OrderTypeIOC, emptyEvt.OrderType)
 	})
 
 	t.Run("returns error when nil spec", func(t *testing.T) {
@@ -704,12 +704,12 @@ func TestEventBusDispatcher(t *testing.T) {
 
 	t.Run("dispatch valid event publishes to eventbus", func(t *testing.T) {
 		t.Parallel()
-		evt := ordermanager.OrderIntentEvent{
+		evt := futures.OrderIntentEvent{
 			ReqID: "req-disp-001",
 		}
 		err := disp.Dispatch(context.Background(), evt)
 		require.NoError(t, err)
-		assert.Contains(t, pub.publishedTopics, ordermanager.TopicOrderIntent)
+		assert.Contains(t, pub.publishedTopics, futures.TopicOrderIntent)
 	})
 
 	t.Run("dispatch returns error when publisher fails", func(t *testing.T) {
@@ -717,7 +717,7 @@ func TestEventBusDispatcher(t *testing.T) {
 		errPub := &mockEventPublisher{err: errors.New("publish error")}
 		errDisp, err := obfuscator.NewEventBusDispatcher(errPub)
 		require.NoError(t, err)
-		err = errDisp.Dispatch(context.Background(), ordermanager.OrderIntentEvent{})
+		err = errDisp.Dispatch(context.Background(), futures.OrderIntentEvent{})
 		require.Error(t, err)
 	})
 }
@@ -985,11 +985,11 @@ func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Len(t, disp.events, 1)
-		evt, ok := disp.events[0].(ordermanager.OrderIntentEvent)
+		evt, ok := disp.events[0].(futures.OrderIntentEvent)
 		require.True(t, ok)
 		assert.Equal(t, "COW-SWAP-USDT", evt.Symbol)
 		assert.Equal(t, "toobit_futures", evt.Exchange)
-		assert.Equal(t, ordermanager.StrategyObfuscator, evt.StrategyType)
+		assert.Equal(t, futures.StrategyObfuscator, evt.StrategyType)
 	})
 
 	t.Run("skips symbol when loss budget is already satisfied", func(t *testing.T) {

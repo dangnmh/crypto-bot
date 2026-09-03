@@ -18,7 +18,7 @@ import (
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/observability"
 	"crypto-bot/internal/infrastructure/server"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 	applogger "crypto-bot/pkg/logger"
 
@@ -48,7 +48,7 @@ func Module(paths ConfigPaths) fx.Option {
 		observability.Module,
 		server.Module,
 		infraapp.Module,
-		ordermanager.Module,
+		futures.Module,
 		ordermanagerpersistence.Module,
 		persistence.Module,
 		application.Module,

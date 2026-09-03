@@ -1,4 +1,4 @@
-package ordermanager
+package futures
 
 import (
 	"context"
@@ -10,14 +10,14 @@ import (
 	"go.uber.org/fx"
 )
 
-// Module wires OrderManager lifecycle and dependencies.
+// Module wires Futures OrderManager lifecycle and dependencies.
 var Module = fx.Options(
 	fx.Provide(
 		ProvideOrderManager,
 	),
 )
 
-// ProvideOrderManager instantiates and manages the lifecycle of OrderManager.
+// ProvideOrderManager instantiates and manages the lifecycle of Futures OrderManager.
 func ProvideOrderManager(
 	lc fx.Lifecycle,
 	engine *infraapp.Engine,

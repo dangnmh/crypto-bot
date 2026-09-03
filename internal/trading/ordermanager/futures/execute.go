@@ -1,4 +1,4 @@
-package ordermanager
+package futures
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/notifier"
+	"crypto-bot/internal/trading/ordermanager/common"
 	"crypto-bot/pkg/eventbus"
 	"crypto-bot/pkg/tracectx"
 
@@ -17,7 +18,7 @@ import (
 
 var busRegistrations sync.Map
 
-// InitGlobalSubscriptions registers all ordermanager micro-step topic handlers on the event bus EXACTLY ONCE per Bus instance.
+// InitGlobalSubscriptions registers all futures ordermanager micro-step topic handlers on the event bus EXACTLY ONCE per Bus instance.
 func InitGlobalSubscriptions(ctx context.Context, mgr *OrderManager) {
 	if mgr == nil || mgr.bus == nil {
 		return
@@ -52,7 +53,7 @@ func registerNotificationSubscriptions(ctx context.Context, mgr *OrderManager) {
 	registerNotificationHandler[OrderCompletedEvent](ctx, mgr, TopicOrderCompleted)
 }
 
-func registerNotificationHandler[T OrderEvent](ctx context.Context, mgr *OrderManager, topic string) {
+func registerNotificationHandler[T common.OrderEvent](ctx context.Context, mgr *OrderManager, topic string) {
 	subscribeTopic(ctx, mgr.bus, mgr.log, topic, func(msgCtx context.Context, msg *message.Message) error {
 		var evt T
 		if err := json.Unmarshal(msg.Payload, &evt); err != nil {
@@ -63,7 +64,7 @@ func registerNotificationHandler[T OrderEvent](ctx context.Context, mgr *OrderMa
 			if notifMsg != "" {
 				orderCtx := tracectx.WithRequestIDValue(msgCtx, evt.GetReqID())
 				level := notifier.LevelNormal
-				if lvlProvider, ok := any(evt).(NotiLevelProvider); ok {
+				if lvlProvider, ok := any(evt).(common.NotiLevelProvider); ok {
 					level = lvlProvider.GetNotiLevel()
 				}
 				if err := mgr.notifier.Send(orderCtx, notifier.Event{
@@ -82,7 +83,7 @@ func registerNotificationHandler[T OrderEvent](ctx context.Context, mgr *OrderMa
 	})
 }
 
-func (om *OrderManager) abortOrder(ctx context.Context, evt OrderEvent, preTopic, reason string, err error) error {
+func (om *OrderManager) abortOrder(ctx context.Context, evt common.OrderEvent, preTopic, reason string, err error) error {
 	om.CancelTimeoutGuard(evt.GetReqID())
 	om.UnsubscribePositionWatch(ctx, evt.GetExchange(), string(evt.GetStrategyType()), evt.GetReqID())
 	agg := om.GetAggregate(evt.GetReqID())
@@ -245,14 +246,14 @@ func registerCompletionSubscriptions(ctx context.Context, mgr *OrderManager) {
 func registerOutcomeResolvedSubscription(ctx context.Context, mgr *OrderManager) {
 	// 8. OrderOutcomeResolvedEvent -> Only complete if canceled with no fill or if closing order filled; resting orders await fill; filled opening orders remain open awaiting position close or timeout.
 	registerEventSubscription(ctx, mgr, TopicOrderOutcomeResolved, func(ctx context.Context, om *OrderManager, evt OrderOutcomeResolvedEvent) error {
-		if evt.Outcome == OutcomeResting {
+		if evt.Outcome == common.OutcomeResting {
 			om.log.InfoContext(ctx, "Order resting on order book awaiting stream fill or cancel", slog.String("req_id", evt.GetReqID()))
 			return nil
 		}
 
 		agg := om.GetAggregate(evt.GetReqID())
 		isCloseOrder := agg.Side().IsClose()
-		if evt.Outcome == OutcomeCanceledNoFill || (evt.Outcome == OutcomeUnknown && evt.FilledVol == 0) || (isCloseOrder && evt.Outcome == OutcomeFilled) {
+		if evt.Outcome == common.OutcomeCanceledNoFill || (evt.Outcome == "unknown" && evt.FilledVol == 0) || (isCloseOrder && evt.Outcome == common.OutcomeFilled) {
 			om.CancelTimeoutGuard(evt.GetReqID())
 			strategy := agg.StrategyType()
 			reason := evt.Reason
@@ -279,7 +280,7 @@ func registerPositionClosedSubscription(ctx context.Context, mgr *OrderManager) 
 	registerEventSubscription(ctx, mgr, TopicOrderPositionClosed, func(ctx context.Context, om *OrderManager, evt OrderPositionClosedEvent) error {
 		om.CancelTimeoutGuard(evt.GetReqID())
 		agg := om.GetAggregate(evt.GetReqID())
-		completed, err := om.HandleEnrichAndComplete(ctx, evt.Exchange, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, agg.StrategyType(), (OutcomeFilled), evt.Reason)
+		completed, err := om.HandleEnrichAndComplete(ctx, evt.Exchange, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, agg.StrategyType(), common.OutcomeFilled, evt.Reason)
 		if err != nil {
 			return err
 		}
@@ -306,13 +307,13 @@ func registerOrderCompletedSubscription(ctx context.Context, mgr *OrderManager) 
 		if err := agg.Record(record); err != nil {
 			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.GetReqID()), slog.Any("error", err))
 		}
-		return om.publishEvent(ctx, TopicOrderTradeRecord, record)
+		return om.publishEvent(ctx, common.TopicOrderTradeRecord, record)
 	})
 }
 
 func registerTradeRecordSubscription(ctx context.Context, mgr *OrderManager) {
 	// 10. OrderTradeRecordEvent -> Persistence into DB Repository
-	registerEventSubscription(ctx, mgr, TopicOrderTradeRecord, func(ctx context.Context, om *OrderManager, evt OrderTradeRecordEvent) error {
+	registerEventSubscription(ctx, mgr, common.TopicOrderTradeRecord, func(ctx context.Context, om *OrderManager, evt common.OrderTradeRecordEvent) error {
 		if err := om.repo.Save(ctx, evt); err != nil {
 			om.log.ErrorContext(ctx, "Failed to persist trade record to DB trades table", slog.Any("error", err))
 			return err
@@ -322,7 +323,7 @@ func registerTradeRecordSubscription(ctx context.Context, mgr *OrderManager) {
 	})
 }
 
-func registerEventSubscription[T OrderEvent](
+func registerEventSubscription[T common.OrderEvent](
 	ctx context.Context,
 	mgr *OrderManager,
 	topic string,
@@ -335,7 +336,7 @@ func registerEventSubscription[T OrderEvent](
 		}
 		reqID := evt.GetReqID()
 		orderCtx := tracectx.WithRequestIDValue(msgCtx, reqID)
-		mgr.log.InfoContext(orderCtx, "OrderManager: Handled micro-event topic", slog.String("topic", topic), slog.String("req_id", reqID))
+		mgr.log.InfoContext(orderCtx, "Futures OrderManager: Handled micro-event topic", slog.String("topic", topic), slog.String("req_id", reqID))
 		agg := mgr.GetAggregate(reqID)
 		_ = agg.Record(evt)
 
@@ -374,12 +375,12 @@ func processTopicMessages(subCtx context.Context, ch <-chan *message.Message, to
 func dispatchMessage(msgCtx context.Context, m *message.Message, topic string, logger *slog.Logger, handler func(context.Context, *message.Message) error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.ErrorContext(msgCtx, "Panic recovered in OrderManager topic handler", slog.String("topic", topic), slog.Any("panic", r))
+			logger.ErrorContext(msgCtx, "Panic recovered in Futures OrderManager topic handler", slog.String("topic", topic), slog.Any("panic", r))
 		}
 		m.Ack()
 	}()
 
 	if err := handler(msgCtx, m); err != nil {
-		logger.ErrorContext(msgCtx, "OrderManager handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+		logger.ErrorContext(msgCtx, "Futures OrderManager handler execution failed", slog.String("topic", topic), slog.Any("error", err))
 	}
 }

@@ -2,7 +2,7 @@ package dilution
 
 import (
 	infraapp "crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 
 	"go.uber.org/fx"
 )
@@ -22,6 +22,6 @@ func provideEngineGetter(engine *infraapp.Engine) EngineProviderGetter {
 	return engine
 }
 
-func provideOrderDispatcher(om *ordermanager.OrderManager) OrderManagerDispatcher {
+func provideOrderDispatcher(om *futures.OrderManager) OrderManagerDispatcher {
 	return om
 }

@@ -9,7 +9,7 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 
 	"go.uber.org/fx"
@@ -59,7 +59,7 @@ func (noopPnLReader) GetSymbolPnLSummaries(ctx context.Context, exch string, sin
 // ProvideObfuscatorJob provides an ObfuscatorJob instance.
 func ProvideObfuscatorJob(
 	cfg *fundingconfig.Config,
-	repo ordermanager.TradeRepository,
+	repo futures.TradeRepository,
 	gen *OrderGenerator,
 	runner *ObfuscatorRunner,
 	clock shared.Clock,
@@ -84,8 +84,8 @@ func ProvideObfuscatorJob(
 type ObfuscatorCallbackParams struct {
 	fx.In
 
-	OrderManager *ordermanager.OrderManager `optional:"true"`
-	Repo         ordermanager.TradeRepository
+	OrderManager *futures.OrderManager `optional:"true"`
+	Repo         futures.TradeRepository
 	Logger       *slog.Logger
 }
 
@@ -106,8 +106,8 @@ func RegisterObfuscatorCompletionCallback(params ObfuscatorCallbackParams) {
 	if log == nil {
 		log = slog.Default()
 	}
-	params.OrderManager.RegisterOnCompletedCallback(func(ctx context.Context, evt ordermanager.OrderCompletedEvent) {
-		if evt.StrategyType == ordermanager.StrategyObfuscator && evt.RefID != "" {
+	params.OrderManager.RegisterOnCompletedCallback(func(ctx context.Context, evt futures.OrderCompletedEvent) {
+		if evt.StrategyType == futures.StrategyObfuscator && evt.RefID != "" {
 			if err := marker.MarkObfuscated(ctx, evt.RefID, evt.CompletedAt); err != nil {
 				log.ErrorContext(ctx, "Failed to mark trade report as obfuscated", slog.String("ref_id", evt.RefID), slog.Any("error", err))
 			} else {

@@ -10,7 +10,7 @@ import (
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/tradecalc"
 
 	cache "github.com/patrickmn/go-cache"
@@ -70,7 +70,7 @@ func (g *OrderGenerator) GenerateSpec(
 		TakeProfitPct:   cfg.TakeProfitPct,
 		StopLossPct:     cfg.StopLossPct,
 		HoldDuration:    holdDuration,
-		OrderType:       ordermanager.OrderTypeIOC,
+		OrderType:       futures.OrderTypeIOC,
 		Vol24hUSDT:      marketInfo.Vol24hUSDT,
 		FundingRate:     marketInfo.FundingRate,
 	}, nil

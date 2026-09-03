@@ -6,7 +6,7 @@ import (
 	"time"
 
 	shared "crypto-bot/internal/domain"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/common"
 	"crypto-bot/pkg/formatutil"
 
 	"gorm.io/datatypes"
@@ -85,7 +85,7 @@ type SymbolPnLSummary struct {
 
 // TradeRepository interface for trade persistence.
 type TradeRepository interface {
-	Save(ctx context.Context, evt ordermanager.OrderTradeRecordEvent) error
+	Save(ctx context.Context, evt common.OrderTradeRecordEvent) error
 }
 
 // GormTradeRepository implements TradeRepository using GORM.
@@ -107,8 +107,8 @@ func (r *GormTradeRepository) GetSymbolPnLSummaries(ctx context.Context, exchang
 	err := r.db.WithContext(ctx).
 		Table("trades").
 		Select("exchange, symbol, MAX(normalized_symbol) AS normalized_symbol, "+
-			"SUM(CASE WHEN strategy_type IN ('FUNDING_REVERSION', 'FUNDING_ARBITRAGE') AND net_pnl > 0 THEN net_pnl ELSE 0 END) AS funding_net_profit, "+
-			"SUM(CASE WHEN strategy_type = 'OBFUSCATOR' THEN net_pnl ELSE 0 END) AS obfuscator_net_pnl").
+			"SUM(CASE WHEN UPPER(strategy_type) IN ('FUNDING_REVERSION', 'FUNDING_ARBITRAGE') AND net_pnl > 0 THEN net_pnl ELSE 0 END) AS funding_net_profit, "+
+			"SUM(CASE WHEN UPPER(strategy_type) = 'OBFUSCATOR' THEN net_pnl ELSE 0 END) AS obfuscator_net_pnl").
 		Where("exchange = ? AND created_at >= ?", exchange, since).
 		Group("exchange, symbol").
 		Order("funding_net_profit DESC").
@@ -135,7 +135,7 @@ func (r *GormTradeRepository) MarkObfuscated(ctx context.Context, reqID string, 
 }
 
 // Save executes an idempotent upsert on the trades table.
-func (r *GormTradeRepository) Save(ctx context.Context, evt ordermanager.OrderTradeRecordEvent) error {
+func (r *GormTradeRepository) Save(ctx context.Context, evt common.OrderTradeRecordEvent) error {
 	if r.db == nil {
 		return nil
 	}

@@ -7,7 +7,7 @@ import (
 
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 )
 
 // DilutionRunner executes dilution specs via OrderManager.
@@ -39,7 +39,7 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 	}
 
 	now := r.clock.Now()
-	reqID := exchange.ExternalUniqueID(spec.Symbol, now, spec.Exchange) + string(ordermanager.StrategyDilution)
+	reqID := exchange.ExternalUniqueID(spec.Symbol, now, spec.Exchange) + string(futures.StrategyDilution)
 
 	r.logger.InfoContext(ctx, "💧 Executing PostOnly dilution maker quote",
 		slog.String("req_id", reqID),
@@ -57,18 +57,18 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 
 	orderType := spec.OrderType
 	if orderType == "" {
-		orderType = ordermanager.OrderTypePostOnly
+		orderType = futures.OrderTypePostOnly
 	}
 
-	intentEvt := ordermanager.OrderIntentEvent{
+	intentEvt := futures.OrderIntentEvent{
 		ReqID:                 reqID,
 		RefID:                 reqID,
 		Symbol:                spec.Symbol,
 		Exchange:              spec.Exchange,
-		MarketType:            ordermanager.MarketTypeFuture,
-		StrategyType:          ordermanager.StrategyDilution,
+		MarketType:            futures.MarketTypeFuture,
+		StrategyType:          futures.StrategyDilution,
 		PreTopic:              "",
-		NextTopic:             ordermanager.TopicOrderIntent,
+		NextTopic:             futures.TopicOrderIntent,
 		Timestamp:             now,
 		ClientOrderID:         exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
 		Side:                  spec.Side,

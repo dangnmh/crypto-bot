@@ -7,7 +7,7 @@ import (
 
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 )
 
@@ -23,7 +23,7 @@ type PnLReportReader interface {
 
 // OrderManagerDispatcher defines the order execution contract with OrderManager.
 type OrderManagerDispatcher interface {
-	Dispatch(ctx context.Context, evt ordermanager.OrderEvent) error
+	Dispatch(ctx context.Context, evt futures.OrderEvent) error
 }
 
 // MarketInfo contains pricing, depth micro-momentum, and contract specifications.
@@ -59,7 +59,7 @@ type ObfuscationSpec struct {
 	TakeProfitPct   float64
 	StopLossPct     float64
 	HoldDuration    time.Duration
-	OrderType       ordermanager.OrderType
+	OrderType       futures.OrderType
 	Vol24hUSDT      float64
 	FundingRate     float64
 }
@@ -85,7 +85,7 @@ func NewEventBusDispatcher(pub EventPublisher) (*EventBusDispatcher, error) {
 }
 
 // Dispatch publishes the order event to the event publisher.
-func (d *EventBusDispatcher) Dispatch(ctx context.Context, evt ordermanager.OrderEvent) error {
+func (d *EventBusDispatcher) Dispatch(ctx context.Context, evt futures.OrderEvent) error {
 	if evt == nil {
 		return nil
 	}

@@ -10,7 +10,7 @@ import (
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/tradecalc"
 
@@ -202,7 +202,7 @@ func (m *DilutionMaker) makeSpec(p quoteParams, side shared.Side, price, vol flo
 		UnfilledCancelTimeout: unfilledTimeout,
 		TakeProfitPrice:       tpPrice,
 		StopLossPrice:         slPrice,
-		OrderType:             ordermanager.OrderTypePostOnly,
+		OrderType:             futures.OrderTypePostOnly,
 		Vol24hUSDT:            p.marketInfo.Vol24hUSDT,
 	}
 }

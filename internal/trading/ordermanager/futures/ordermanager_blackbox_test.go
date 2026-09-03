@@ -1,4 +1,4 @@
-package ordermanager_test
+package futures_test
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	"crypto-bot/internal/infrastructure/timesync"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/eventbus"
 )
 
@@ -124,20 +124,20 @@ func (m *blackboxExchangeClient) GetOpenPositions(ctx context.Context, symbol st
 // Blackbox mock trade repository recording saved events.
 type blackboxTradeRepo struct {
 	mu          sync.Mutex
-	savedEvents []ordermanager.OrderTradeRecordEvent
+	savedEvents []futures.OrderTradeRecordEvent
 }
 
-func (r *blackboxTradeRepo) Save(ctx context.Context, evt ordermanager.OrderTradeRecordEvent) error {
+func (r *blackboxTradeRepo) Save(ctx context.Context, evt futures.OrderTradeRecordEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.savedEvents = append(r.savedEvents, evt)
 	return nil
 }
 
-func (r *blackboxTradeRepo) SavedEvents() []ordermanager.OrderTradeRecordEvent {
+func (r *blackboxTradeRepo) SavedEvents() []futures.OrderTradeRecordEvent {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	copied := make([]ordermanager.OrderTradeRecordEvent, len(r.savedEvents))
+	copied := make([]futures.OrderTradeRecordEvent, len(r.savedEvents))
 	copy(copied, r.savedEvents)
 	return copied
 }
@@ -209,7 +209,7 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -218,15 +218,15 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:         "req-bb-001",
 		ClientOrderID: "client-bb-001",
 		Symbol:        "BTCUSDT",
 		Exchange:      "bybit",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
 		Side:          shared.SideOpenLong,
-		OrderType:     ordermanager.OrderTypeIOC,
+		OrderType:     futures.OrderTypeIOC,
 		Price:         50000.0,
 		Volume:        1.0,
 		ContractSize:  1.0,
@@ -257,7 +257,7 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		agg := mgr.GetAggregate("req-bb-001")
-		if len(repo.SavedEvents()) > 0 && agg != nil && agg.State() == ordermanager.StateCompleted {
+		if len(repo.SavedEvents()) > 0 && agg != nil && agg.State() == futures.StateCompleted {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -266,7 +266,7 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 	assertCompleteOrderLifecycle(t, mgr, repo, noti)
 }
 
-func assertCompleteOrderLifecycle(t *testing.T, mgr *ordermanager.OrderManager, repo *blackboxTradeRepo, noti *blackboxNotifier) {
+func assertCompleteOrderLifecycle(t *testing.T, mgr *futures.OrderManager, repo *blackboxTradeRepo, noti *blackboxNotifier) {
 	t.Helper()
 	// Verify DB Trade Persistence
 	saved := repo.SavedEvents()
@@ -281,7 +281,7 @@ func assertCompleteOrderLifecycle(t *testing.T, mgr *ordermanager.OrderManager, 
 	if trade.ClientOrderID != "client-bb-001" {
 		t.Errorf("expected ClientOrderID client-bb-001, got %s", trade.ClientOrderID)
 	}
-	if trade.MarketType != string(ordermanager.MarketTypeFuture) {
+	if trade.MarketType != string(futures.MarketTypeFuture) {
 		t.Errorf("expected MarketType FUTURE, got %s", trade.MarketType)
 	}
 	exOrderID, found := mgr.GetExchangeOrderIDByReqID(trade.ReqID)
@@ -290,7 +290,7 @@ func assertCompleteOrderLifecycle(t *testing.T, mgr *ordermanager.OrderManager, 
 		t.Errorf("expected cached ExchangeOrderID ex-order-client-bb-001, got %s", exOrderID)
 	}
 
-	if trade.Outcome != string(ordermanager.OutcomeFilled) {
+	if trade.Outcome != string(futures.OutcomeFilled) {
 		t.Errorf("expected Outcome filled, got %s", trade.Outcome)
 	}
 	if trade.NetPnL != 980.0 {
@@ -305,7 +305,7 @@ func assertCompleteOrderLifecycle(t *testing.T, mgr *ordermanager.OrderManager, 
 
 	// Verify Aggregate State Invariants
 	agg := mgr.GetAggregate("req-bb-001")
-	if agg.State() != ordermanager.StateCompleted {
+	if agg.State() != futures.StateCompleted {
 		t.Errorf("expected aggregate state StateCompleted, got %s", agg.State())
 	}
 }
@@ -334,7 +334,7 @@ func TestBlackBox_OutcomeWatcherFill(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -342,12 +342,12 @@ func TestBlackBox_OutcomeWatcherFill(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	submittedEvt := ordermanager.OrderSubmittedEvent{
+	submittedEvt := futures.OrderSubmittedEvent{
 		ReqID:         "req-ws-001",
 		ClientOrderID: "client-ws-001",
 		Symbol:        "ETHUSDT",
 		Exchange:      "mexc",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
 		Price:         3000.0,
 		Volume:        2.0,
@@ -362,7 +362,7 @@ func TestBlackBox_OutcomeWatcherFill(t *testing.T) {
 		t.Fatalf("HandleOutcomeWatcher failed: %v", err)
 	}
 
-	if resolved.Outcome != ordermanager.OutcomeFilled {
+	if resolved.Outcome != futures.OutcomeFilled {
 		t.Errorf("expected OutcomeFilled, got %s", resolved.Outcome)
 	}
 	if resolved.FilledVol != 2.0 {
@@ -399,7 +399,7 @@ func TestBlackBox_EmergencyBailoutRetryLoop(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -424,24 +424,24 @@ func TestBlackBox_EmergencyBailoutRetryLoop(t *testing.T) {
 func TestBlackBox_ContractSizeNotionalUSD(t *testing.T) {
 	t.Parallel()
 
-	agg := ordermanager.NewOrderExecutionAggregate("req-cs-001")
+	agg := futures.NewOrderExecutionAggregate("req-cs-001")
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:        "req-cs-001",
 		Symbol:       "BTCUSDT",
-		StrategyType: ordermanager.StrategyFundingArbitrage,
+		StrategyType: futures.StrategyFundingArbitrage,
 		Side:         shared.SideOpenLong,
-		OrderType:    ordermanager.OrderTypeLimit,
+		OrderType:    futures.OrderTypeLimit,
 		Volume:       5.0,
 		ContractSize: 10.0, // 10x Contract Multiplier
 	}
 	_ = agg.Record(intent)
 
-	completed := ordermanager.OrderCompletedEvent{
+	completed := futures.OrderCompletedEvent{
 		ReqID:            "req-cs-001",
 		Symbol:           "BTCUSDT",
-		StrategyType:     ordermanager.StrategyFundingArbitrage,
-		Outcome:          ordermanager.OutcomeFilled,
+		StrategyType:     futures.StrategyFundingArbitrage,
+		Outcome:          futures.OutcomeFilled,
 		EntryPrice:       50000.0,
 		ExitPrice:        52000.0,
 		CloseVolContract: 5.0,
@@ -487,13 +487,13 @@ func TestBlackBox_TimeoutGuardCancellation(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
 
 	agg := mgr.GetAggregate("req-tg-001")
-	_ = agg.Record(ordermanager.OrderIntentEvent{
+	_ = agg.Record(futures.OrderIntentEvent{
 		ReqID:    "req-tg-001",
 		Exchange: "bybit",
 	})
@@ -547,7 +547,7 @@ func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -566,15 +566,15 @@ func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 			reqID := fmt.Sprintf("req-concurrent-%d", id)
 			clientOID := fmt.Sprintf("client-concurrent-%d", id)
 
-			intent := ordermanager.OrderIntentEvent{
+			intent := futures.OrderIntentEvent{
 				ReqID:         reqID,
 				ClientOrderID: clientOID,
 				Symbol:        "BTCUSDT",
 				Exchange:      "bybit",
-				StrategyType:  ordermanager.StrategyFundingArbitrage,
+				StrategyType:  futures.StrategyFundingArbitrage,
 				Timestamp:     clock.Now(),
 				Side:          shared.SideOpenLong,
-				OrderType:     ordermanager.OrderTypeIOC,
+				OrderType:     futures.OrderTypeIOC,
 				Price:         50000.0,
 				Volume:        1.0,
 				ContractSize:  1.0,
@@ -640,7 +640,7 @@ func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -648,15 +648,15 @@ func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:         "req-canceled-001",
 		ClientOrderID: "client-canceled-001",
 		Symbol:        "BTCUSDT",
 		Exchange:      "bybit",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
 		Side:          shared.SideOpenLong,
-		OrderType:     ordermanager.OrderTypeIOC,
+		OrderType:     futures.OrderTypeIOC,
 		Price:         50000.0,
 		Volume:        1.0,
 		ContractSize:  1.0,
@@ -670,7 +670,7 @@ func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
 	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		agg := mgr.GetAggregate("req-canceled-001")
-		if len(repo.SavedEvents()) > 0 && agg != nil && agg.State() == ordermanager.StateCompleted {
+		if len(repo.SavedEvents()) > 0 && agg != nil && agg.State() == futures.StateCompleted {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -680,7 +680,7 @@ func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
 	if len(saved) == 0 {
 		t.Fatalf("expected trade record for canceled order to be saved immediately")
 	}
-	if saved[0].Outcome != string(ordermanager.OutcomeCanceledNoFill) {
+	if saved[0].Outcome != string(futures.OutcomeCanceledNoFill) {
 		t.Errorf("expected outcome canceled_no_fill, got %s", saved[0].Outcome)
 	}
 }
@@ -710,7 +710,7 @@ func TestBlackBox_OrderFilled_WaitsForPositionClose(t *testing.T) {
 			},
 		},
 	}
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -718,15 +718,15 @@ func TestBlackBox_OrderFilled_WaitsForPositionClose(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:         "req-filled-wait-001",
 		ClientOrderID: "client-filled-wait-001",
 		Symbol:        "BTCUSDT",
 		Exchange:      "bybit",
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
 		Side:          shared.SideOpenLong,
-		OrderType:     ordermanager.OrderTypeIOC,
+		OrderType:     futures.OrderTypeIOC,
 		Price:         50000.0,
 		Volume:        1.0,
 		ContractSize:  1.0,
@@ -801,7 +801,7 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 		},
 	}
 
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -809,15 +809,15 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:                "req-maker-resting-001",
 		ClientOrderID:        "client-maker-resting-001",
 		Symbol:               "BTCUSDT",
 		Exchange:             "mexc",
-		StrategyType:         ordermanager.StrategyDilution,
+		StrategyType:         futures.StrategyDilution,
 		Timestamp:            clock.Now(),
 		Side:                 shared.SideOpenLong,
-		OrderType:            ordermanager.OrderTypePostOnly,
+		OrderType:            futures.OrderTypePostOnly,
 		Price:                50000.0,
 		Volume:               1.0,
 		ContractSize:         1.0,
@@ -872,7 +872,7 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 	if len(saved) == 0 {
 		t.Fatalf("expected trade record after position close update")
 	}
-	if saved[0].StrategyType != ordermanager.StrategyDilution {
+	if saved[0].StrategyType != futures.StrategyDilution {
 		t.Errorf("expected strategy Dilution, got %s", saved[0].StrategyType)
 	}
 	if saved[0].ExitPrice != 50100.0 {
@@ -904,7 +904,7 @@ func TestBlackBox_CloseOrderFilled_EmitsCompleted(t *testing.T) {
 		},
 	}
 
-	mgr, err := ordermanager.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -912,16 +912,16 @@ func TestBlackBox_CloseOrderFilled_EmitsCompleted(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:                "req-close-fill-001",
 		ClientOrderID:        "client-close-fill-001",
 		Symbol:               "BTC-SWAP-USDT",
 		Exchange:             "toobit",
-		MarketType:           ordermanager.MarketTypeFuture,
-		StrategyType:         ordermanager.StrategyDilution,
+		MarketType:           futures.MarketTypeFuture,
+		StrategyType:         futures.StrategyDilution,
 		Timestamp:            time.Now(),
 		Side:                 shared.SideCloseLong,
-		OrderType:            ordermanager.OrderTypePostOnly,
+		OrderType:            futures.OrderTypePostOnly,
 		Price:                63100.0,
 		Volume:               1.0,
 		MarginMode:           shared.MarginModeIsolated,
@@ -978,7 +978,7 @@ func TestBlackBox_Abort_EmitsCriticalNotification(t *testing.T) {
 	}
 	defer func() { _ = engine.Shutdown(ctx) }()
 
-	mgr, err := ordermanager.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
@@ -987,16 +987,16 @@ func TestBlackBox_Abort_EmitsCriticalNotification(t *testing.T) {
 		t.Fatalf("failed to init order manager: %v", err)
 	}
 
-	intent := ordermanager.OrderIntentEvent{
+	intent := futures.OrderIntentEvent{
 		ReqID:         "req-abort-test-001",
 		ClientOrderID: "client-abort-test-001",
 		Symbol:        "BTC-SWAP-USDT",
 		Exchange:      "toobit",
-		MarketType:    ordermanager.MarketTypeFuture,
-		StrategyType:  ordermanager.StrategyFundingReversion,
+		MarketType:    futures.MarketTypeFuture,
+		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
 		Side:          shared.SideOpenLong,
-		OrderType:     ordermanager.OrderTypeIOC,
+		OrderType:     futures.OrderTypeIOC,
 		Price:         60000.0,
 		Volume:        1.0,
 		MarginMode:    shared.MarginModeCross,

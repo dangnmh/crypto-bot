@@ -12,7 +12,7 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/notifier"
-	"crypto-bot/internal/trading/ordermanager"
+	"crypto-bot/internal/trading/ordermanager/futures"
 
 	"go.uber.org/fx"
 )
@@ -61,7 +61,7 @@ func ProvideFundingBot(
 	engine *infraapp.Engine,
 	n notifier.Notifier,
 	reversionStrategy *reversion.Strategy,
-	orderMgr *ordermanager.OrderManager,
+	orderMgr *futures.OrderManager,
 	statsReporter *StatsReportJob,
 	priceTracker *PriceTrackJob,
 	obfuscatorJob *obfuscator.ObfuscatorJob,
