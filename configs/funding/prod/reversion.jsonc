@@ -18,9 +18,17 @@
     "scoringRateWeight": 1.0, // Points per 0.1% (0.001) absolute funding rate
     "scoringVolumeWeight": 0.5, // Points per 1M USDT 24h volume
     "maxVolumeScore": 10.0, // Max volume score cap (10.0 pts = equivalent of 20M USDT volume cap)
-    "enablePnLTrailing": true,
-    "pnlTrailingDropPct": 10.0,
-    "pnlTrailingConfirmTicks": 2
+    "pnlTrailing": {
+      "enabled": true,
+      "dropPct": 10.0,
+      "confirmTicks": 2
+    },
+    "dynamicTP": {
+      "enabled": true,
+      "tpMultiplier": 2.5,
+      "minTakeProfitPct": 1.5,
+      "maxTakeProfitPct": 7.0
+    }
   },
   "sync": {
     "time": "60s",

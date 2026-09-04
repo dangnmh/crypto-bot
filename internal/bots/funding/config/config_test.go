@@ -303,6 +303,58 @@ func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
 	assert.InDelta(t, 0.01, sc.MinFundingRate, 1e-9, "per-symbol 1.0% -> 0.01")
 }
 
+func TestLoad_DynamicTPSettings(t *testing.T) {
+	t.Parallel()
+
+	sysCfg := sysWithDefaults(testDefaults{
+		Enabled: true,
+		Default: config.ExchangeReversionConfig{
+			Leverage:      10,
+			TakeProfitPct: 1,
+			StopLossPct:   2,
+			DynamicTP: config.DynamicTPConfig{
+				Enabled:          true,
+				TPMultiplier:     2.0,
+				MinTakeProfitPct: 1.0,
+				MaxTakeProfitPct: 7.0,
+			},
+		},
+	})
+
+	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100}]`)
+	sc := cfg.Symbols[0]
+
+	assert.True(t, sc.FundingReversion.DynamicTP.Enabled)
+	assert.InDelta(t, 2.0, sc.FundingReversion.DynamicTP.TPMultiplier, 1e-9)
+	assert.InDelta(t, 0.01, sc.FundingReversion.DynamicTP.MinTakeProfitPct, 1e-9, "1.0% -> 0.01")
+	assert.InDelta(t, 0.07, sc.FundingReversion.DynamicTP.MaxTakeProfitPct, 1e-9, "7.0% -> 0.07")
+}
+
+func TestLoad_PnLTrailingSettings(t *testing.T) {
+	t.Parallel()
+
+	sysCfg := sysWithDefaults(testDefaults{
+		Enabled: true,
+		Default: config.ExchangeReversionConfig{
+			Leverage:      10,
+			TakeProfitPct: 1,
+			StopLossPct:   2,
+			PnLTrailing: config.PnLTrailingConfig{
+				Enabled:      true,
+				DropPct:      10.0,
+				ConfirmTicks: 2,
+			},
+		},
+	})
+
+	cfg := loadWith(t, sysCfg, `[{"symbol": "BTC_USDT", "exchange": "mexc", "marginUSDT": 100}]`)
+	sc := cfg.Symbols[0]
+
+	assert.True(t, sc.FundingReversion.PnLTrailing.Enabled)
+	assert.InDelta(t, 10.0, sc.FundingReversion.PnLTrailing.DropPct, 1e-9)
+	assert.Equal(t, 2, sc.FundingReversion.PnLTrailing.ConfirmTicks)
+}
+
 func TestLoad_ValidTradeSide(t *testing.T) {
 	t.Parallel()
 	sysCfg := sysWithDefaults(testDefaults{
@@ -632,4 +684,54 @@ func TestExchangeObfuscationCfg_OrderNotionalUSD(t *testing.T) {
 		}
 		assert.InDelta(t, 0.8, cfg.MaxPriceDiffPercent, 1e-9)
 	})
+}
+
+func TestMergeExchangeReversionConfig(t *testing.T) {
+	t.Parallel()
+
+	dest := config.ExchangeReversionConfig{
+		TakeProfitPct: 1.0,
+		StopLossPct:   2.0,
+		Leverage:      5,
+		MarginUSD:     100,
+		PnLTrailing: config.PnLTrailingConfig{
+			Enabled:      false,
+			DropPct:      5.0,
+			ConfirmTicks: 1,
+		},
+		DynamicTP: config.DynamicTPConfig{
+			Enabled:          false,
+			TPMultiplier:     1.5,
+			MinTakeProfitPct: 0.5,
+			MaxTakeProfitPct: 5.0,
+		},
+	}
+
+	src := config.ExchangeReversionConfig{
+		TakeProfitPct: 2.5,
+		PnLTrailing: config.PnLTrailingConfig{
+			Enabled:      true,
+			DropPct:      10.0,
+			ConfirmTicks: 3,
+		},
+		DynamicTP: config.DynamicTPConfig{
+			Enabled:          true,
+			TPMultiplier:     2.0,
+			MinTakeProfitPct: 1.0,
+			MaxTakeProfitPct: 8.0,
+		},
+	}
+
+	config.MergeExchangeReversionConfig(&dest, src)
+
+	assert.InDelta(t, 2.5, dest.TakeProfitPct, 1e-9)
+	assert.InDelta(t, 2.0, dest.StopLossPct, 1e-9) // unmerged retains original
+	assert.Equal(t, 5, dest.Leverage)              // unmerged retains original
+	assert.True(t, dest.PnLTrailing.Enabled)
+	assert.InDelta(t, 10.0, dest.PnLTrailing.DropPct, 1e-9)
+	assert.Equal(t, 3, dest.PnLTrailing.ConfirmTicks)
+	assert.True(t, dest.DynamicTP.Enabled)
+	assert.InDelta(t, 2.0, dest.DynamicTP.TPMultiplier, 1e-9)
+	assert.InDelta(t, 1.0, dest.DynamicTP.MinTakeProfitPct, 1e-9)
+	assert.InDelta(t, 8.0, dest.DynamicTP.MaxTakeProfitPct, 1e-9)
 }

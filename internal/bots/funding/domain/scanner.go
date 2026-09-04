@@ -57,17 +57,31 @@ type TradeConfig struct {
 	ParsedPositionMode int
 }
 
+// PnLTrailingConfig holds settings for PnL trailing stop order management.
+type PnLTrailingConfig struct {
+	Enabled      bool    `json:"enabled,omitempty"`
+	DropPct      float64 `json:"dropPct,omitempty" validate:"omitempty,gte=0,lte=100"`
+	ConfirmTicks int     `json:"confirmTicks,omitempty" validate:"omitempty,gte=1"`
+}
+
+// DynamicTPConfig holds settings for scaling Take Profit proportionally with Funding Rate.
+type DynamicTPConfig struct {
+	Enabled          bool    `json:"enabled,omitempty"`
+	TPMultiplier     float64 `json:"tpMultiplier,omitempty" validate:"omitempty,gte=0"`
+	MinTakeProfitPct float64 `json:"minTakeProfitPct,omitempty" validate:"omitempty,gte=0"`
+	MaxTakeProfitPct float64 `json:"maxTakeProfitPct,omitempty" validate:"omitempty,gte=0"`
+}
+
 // FundingReversionConfig holds configuration specific to the reversion strategy.
 type FundingReversionConfig struct {
-	Enabled                 bool           `json:"enabled"`
-	TakeProfitPct           float64        `json:"takeProfitPct"`
-	StopLossPct             float64        `json:"stopLossPct"`
-	MaxLatency              types.Duration `json:"maxLatency"`
-	BufferTime              types.Duration `json:"bufferTime"`
-	PostSettleTimeout       types.Duration `json:"postSettleTimeout"`
-	EnablePnLTrailing       bool           `json:"enablePnLTrailing"`
-	PnLTrailingDropPct      float64        `json:"pnlTrailingDropPct"`
-	PnLTrailingConfirmTicks int            `json:"pnlTrailingConfirmTicks"`
+	Enabled           bool              `json:"enabled"`
+	TakeProfitPct     float64           `json:"takeProfitPct"`
+	StopLossPct       float64           `json:"stopLossPct"`
+	MaxLatency        types.Duration    `json:"maxLatency"`
+	BufferTime        types.Duration    `json:"bufferTime"`
+	PostSettleTimeout types.Duration    `json:"postSettleTimeout"`
+	PnLTrailing       PnLTrailingConfig `json:"pnlTrailing"`
+	DynamicTP         DynamicTPConfig   `json:"dynamicTP"`
 }
 
 // TradeIntent captures the directional decision from funding rate analysis.

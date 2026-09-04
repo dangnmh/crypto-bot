@@ -210,6 +210,13 @@ func newValidator() *validator.Validate {
 }
 
 func MergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
+	mergeReversionCore(dest, src)
+	mergeRiskAndScoring(dest, src)
+	mergePnLTrailing(dest, src)
+	mergeDynamicTP(dest, src)
+}
+
+func mergeReversionCore(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
 	if src.TakeProfitPct > 0 {
 		dest.TakeProfitPct = src.TakeProfitPct
 	}
@@ -234,6 +241,9 @@ func MergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeRev
 	if src.MinFundingRate > 0 {
 		dest.MinFundingRate = src.MinFundingRate
 	}
+}
+
+func mergeRiskAndScoring(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
 	if src.MaxCandidateTrade > 0 {
 		dest.MaxCandidateTrade = src.MaxCandidateTrade
 	}
@@ -248,6 +258,33 @@ func MergeExchangeReversionConfig(dest *ExchangeReversionConfig, src ExchangeRev
 	}
 	if src.MaxVolumeScore > 0 {
 		dest.MaxVolumeScore = src.MaxVolumeScore
+	}
+}
+
+func mergePnLTrailing(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
+	if src.PnLTrailing.Enabled {
+		dest.PnLTrailing.Enabled = src.PnLTrailing.Enabled
+	}
+	if src.PnLTrailing.DropPct > 0 {
+		dest.PnLTrailing.DropPct = src.PnLTrailing.DropPct
+	}
+	if src.PnLTrailing.ConfirmTicks > 0 {
+		dest.PnLTrailing.ConfirmTicks = src.PnLTrailing.ConfirmTicks
+	}
+}
+
+func mergeDynamicTP(dest *ExchangeReversionConfig, src ExchangeReversionConfig) {
+	if src.DynamicTP.Enabled {
+		dest.DynamicTP.Enabled = src.DynamicTP.Enabled
+	}
+	if src.DynamicTP.TPMultiplier > 0 {
+		dest.DynamicTP.TPMultiplier = src.DynamicTP.TPMultiplier
+	}
+	if src.DynamicTP.MinTakeProfitPct > 0 {
+		dest.DynamicTP.MinTakeProfitPct = src.DynamicTP.MinTakeProfitPct
+	}
+	if src.DynamicTP.MaxTakeProfitPct > 0 {
+		dest.DynamicTP.MaxTakeProfitPct = src.DynamicTP.MaxTakeProfitPct
 	}
 }
 
@@ -297,9 +334,8 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
 		sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
-		sc.FundingReversion.EnablePnLTrailing = exchConfig.EnablePnLTrailing
-		sc.FundingReversion.PnLTrailingDropPct = exchConfig.PnLTrailingDropPct
-		sc.FundingReversion.PnLTrailingConfirmTicks = exchConfig.PnLTrailingConfirmTicks
+		sc.FundingReversion.PnLTrailing = exchConfig.PnLTrailing
+		sc.FundingReversion.DynamicTP = exchConfig.DynamicTP
 	} else if sc.FundingReversion.Enabled {
 		if sc.FundingReversion.MaxLatency == 0 {
 			sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
@@ -313,11 +349,35 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		if sc.FundingReversion.BufferTime == 0 {
 			sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		}
-		if !sc.FundingReversion.EnablePnLTrailing && exchConfig.EnablePnLTrailing {
-			sc.FundingReversion.EnablePnLTrailing = exchConfig.EnablePnLTrailing
-			sc.FundingReversion.PnLTrailingDropPct = exchConfig.PnLTrailingDropPct
-			sc.FundingReversion.PnLTrailingConfirmTicks = exchConfig.PnLTrailingConfirmTicks
-		}
+		mergeSymbolPnLTrailing(sc, exchConfig)
+		mergeSymbolDynamicTP(sc, exchConfig)
+	}
+}
+
+func mergeSymbolPnLTrailing(sc *SymbolConfig, exchConfig *ExchangeReversionConfig) {
+	if !sc.FundingReversion.PnLTrailing.Enabled && exchConfig.PnLTrailing.Enabled {
+		sc.FundingReversion.PnLTrailing.Enabled = exchConfig.PnLTrailing.Enabled
+	}
+	if sc.FundingReversion.PnLTrailing.DropPct == 0 {
+		sc.FundingReversion.PnLTrailing.DropPct = exchConfig.PnLTrailing.DropPct
+	}
+	if sc.FundingReversion.PnLTrailing.ConfirmTicks == 0 {
+		sc.FundingReversion.PnLTrailing.ConfirmTicks = exchConfig.PnLTrailing.ConfirmTicks
+	}
+}
+
+func mergeSymbolDynamicTP(sc *SymbolConfig, exchConfig *ExchangeReversionConfig) {
+	if !sc.FundingReversion.DynamicTP.Enabled && exchConfig.DynamicTP.Enabled {
+		sc.FundingReversion.DynamicTP.Enabled = exchConfig.DynamicTP.Enabled
+	}
+	if sc.FundingReversion.DynamicTP.TPMultiplier == 0 {
+		sc.FundingReversion.DynamicTP.TPMultiplier = exchConfig.DynamicTP.TPMultiplier
+	}
+	if sc.FundingReversion.DynamicTP.MinTakeProfitPct == 0 {
+		sc.FundingReversion.DynamicTP.MinTakeProfitPct = exchConfig.DynamicTP.MinTakeProfitPct
+	}
+	if sc.FundingReversion.DynamicTP.MaxTakeProfitPct == 0 {
+		sc.FundingReversion.DynamicTP.MaxTakeProfitPct = exchConfig.DynamicTP.MaxTakeProfitPct
 	}
 }
 
@@ -343,6 +403,12 @@ func (c *Config) normalizeSymbolMetrics(sc *SymbolConfig) {
 		}
 		sc.FundingReversion.TakeProfitPct = normalizePercentRatio(sc.FundingReversion.TakeProfitPct)
 		sc.FundingReversion.StopLossPct = normalizePercentRatio(sc.FundingReversion.StopLossPct)
+		if sc.FundingReversion.DynamicTP.MinTakeProfitPct > 0 {
+			sc.FundingReversion.DynamicTP.MinTakeProfitPct = normalizePercentRatio(sc.FundingReversion.DynamicTP.MinTakeProfitPct)
+		}
+		if sc.FundingReversion.DynamicTP.MaxTakeProfitPct > 0 {
+			sc.FundingReversion.DynamicTP.MaxTakeProfitPct = normalizePercentRatio(sc.FundingReversion.DynamicTP.MaxTakeProfitPct)
+		}
 	}
 }
 

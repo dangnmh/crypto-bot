@@ -18,9 +18,17 @@
     "scoringRateWeight": 1.0, // Points per 0.1% (0.001) absolute funding rate
     "scoringVolumeWeight": 0.5, // Points per 1M USDT 24h volume
     "maxVolumeScore": 5.0, // Max volume score cap (5.0 pts = equivalent of 10M USDT volume cap)
-    "enablePnLTrailing": true,
-    "pnlTrailingDropPct": 10.0,
-    "pnlTrailingConfirmTicks": 2
+    "pnlTrailing": {
+      "enabled": true,
+      "dropPct": 10.0,
+      "confirmTicks": 2
+    },
+    "dynamicTP": {
+      "enabled": true,
+      "tpMultiplier": 2.5,
+      "minTakeProfitPct": 1.5,
+      "maxTakeProfitPct": 7.0
+    }
   },
   "sync": {
     "time": "60s",
@@ -56,9 +64,17 @@
       "stopLossPct": 2,
       "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
       "postSettleTimeout": "300s", // Force close if reversion lifecycle does not terminally close
-      "enablePnLTrailing": true,
-      "pnlTrailingDropPct": 10.0,
-      "pnlTrailingConfirmTicks": 2
+      "pnlTrailing": {
+        "enabled": true,
+        "dropPct": 10.0,
+        "confirmTicks": 2
+      },
+      "dynamicTP": {
+        "enabled": true,
+        "tpMultiplier": 2.0,
+        "minTakeProfitPct": 1.0,
+        "maxTakeProfitPct": 7.0
+      }
       // "minVol24USD": 1000000,
       // "minFundingRate": 0.3
     },
