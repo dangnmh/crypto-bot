@@ -1,4 +1,4 @@
-package bybit
+package futures
 
 import (
 	"context"
@@ -11,11 +11,10 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/xjson"
 )
-
-const exchangeName = "bybit"
 
 // Explicit request/response structs for account/position endpoints.
 
@@ -110,7 +109,7 @@ func (c *Client) rawGetOpenPositions(ctx context.Context, req bybitPositionsRequ
 	if err != nil {
 		return nil, err
 	}
-	return decodeListResponse[bybitPosition](body, "bybit get position")
+	return bybit.DecodeListResponse[bybitPosition](body, "bybit get position")
 }
 
 func (c *Client) rawGetClosedPnL(ctx context.Context, req bybitClosedPnLRequest) (*bybitClosedPnLResult, error) {
@@ -131,7 +130,7 @@ func (c *Client) rawGetClosedPnL(ctx context.Context, req bybitClosedPnLRequest)
 	if err != nil {
 		return nil, err
 	}
-	res, err := parseResponse[bybitClosedPnLResult](body, "bybit get closed pnl")
+	res, err := bybit.ParseResponse[bybitClosedPnLResult](body, "bybit get closed pnl")
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +161,7 @@ func (c *Client) rawGetTransactionLog(ctx context.Context, req bybitTransactionL
 	if err != nil {
 		return nil, err
 	}
-	return decodeListResponse[bybitTransactionLogChange](body, "bybit query transaction log")
+	return bybit.DecodeListResponse[bybitTransactionLogChange](body, "bybit query transaction log")
 }
 
 //nolint:dupl // Structurally similar to rawSwitchPositionMode and rawSetMarginMode.
@@ -176,7 +175,7 @@ func (c *Client) rawSwitchPositionMode(ctx context.Context, req bybitSwitchPosit
 		return fmt.Errorf("bybit switch position mode: %w", err)
 	}
 
-	var resp bybitResponse[any]
+	var resp bybit.Response[any]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit switch position mode json unmarshal: %w", err)
 	}
@@ -322,7 +321,7 @@ func (c *Client) GetOrderPNL(ctx context.Context, symbol, orderID string) (*exch
 	// Query Bybit's Transaction Log to get the settled funding fee (holdFee) for this symbol.
 	fdFee, err := c.getHoldFee(ctx, symbol, startTimeVal)
 	if err != nil {
-		c.logger.Debug("Bybit failed to query transaction log for funding fee", slog.Any("error", err))
+		c.base.Logger().Debug("Bybit failed to query transaction log for funding fee", slog.Any("error", err))
 	}
 
 	// Bybit's closedPnl is net realized PnL (already has openFee, closeFee, and fundingFee deducted).
@@ -390,7 +389,7 @@ func mapPosition(raw bybitPosition) exchange.Position {
 // getHoldFee queries Bybit's Transaction Log to retrieve the settled funding fee for a symbol.
 func (c *Client) getHoldFee(ctx context.Context, symbol string, startTime time.Time) (float64, error) {
 	apiAccountType := accountTypeContract
-	if strings.EqualFold(c.accountType, "unified") {
+	if strings.EqualFold(c.base.AccountType(), "unified") {
 		apiAccountType = accountTypeUnified
 	}
 	req := bybitTransactionLogRequest{

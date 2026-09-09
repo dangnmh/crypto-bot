@@ -14,7 +14,7 @@
     "bybit": {
       "accountType": "unified",
       "future": {
-        "enable": false,
+        "enable": true,
         "baseURL": "https://api.bybit.com",
         "websocket": {
           "publicURL": "wss://stream.bybit.com/v5/public/linear",

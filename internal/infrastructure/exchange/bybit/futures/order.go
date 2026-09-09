@@ -1,4 +1,4 @@
-package bybit
+package futures
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/pkg/decmath"
-
 	"crypto-bot/pkg/xjson"
 )
 
@@ -98,7 +98,7 @@ func (c *Client) rawCreateOrder(ctx context.Context, req bybitCreateOrderRequest
 	if err != nil {
 		return nil, fmt.Errorf("bybit create order: %w", err)
 	}
-	res, err := parseResponse[bybitCreateOrderResult](body, "bybit create order")
+	res, err := bybit.ParseResponse[bybitCreateOrderResult](body, "bybit create order")
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (c *Client) rawPlaceTPSL(ctx context.Context, req bybitPlaceTPSLRequest) er
 	if err != nil {
 		return fmt.Errorf("bybit set trading stop: %w", err)
 	}
-	_, err = parseResponse[any](body, "bybit set trading stop")
+	_, err = bybit.ParseResponse[any](body, "bybit set trading stop")
 	return err
 }
 
@@ -127,7 +127,7 @@ func (c *Client) rawCancelOrder(ctx context.Context, req bybitCancelOrderRequest
 	if err != nil {
 		return fmt.Errorf("bybit cancel order: %w", err)
 	}
-	var resp bybitResponse[any]
+	var resp bybit.Response[any]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit cancel order json unmarshal: %w", err)
 	}
@@ -149,7 +149,7 @@ func (c *Client) rawCancelAllOpenOrders(ctx context.Context, req bybitCancelAllO
 	if err != nil {
 		return fmt.Errorf("bybit cancel all orders: %w", err)
 	}
-	_, err = parseResponse[any](body, "bybit cancel all orders")
+	_, err = bybit.ParseResponse[any](body, "bybit cancel all orders")
 	return err
 }
 
@@ -168,7 +168,7 @@ func (c *Client) rawGetOrder(ctx context.Context, req bybitGetOrderRequest) (*by
 	if err != nil {
 		return nil, err
 	}
-	list, err := decodeListResponse[bybitOrder](body, "bybit get order")
+	list, err := bybit.DecodeListResponse[bybitOrder](body, "bybit get order")
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (c *Client) rawGetOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 	if err != nil {
 		return nil, err
 	}
-	return decodeListResponse[bybitOrder](body, "bybit list open orders")
+	return bybit.DecodeListResponse[bybitOrder](body, "bybit list open orders")
 }
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.

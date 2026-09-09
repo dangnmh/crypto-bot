@@ -1,4 +1,4 @@
-package bybit
+package futures
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/pkg/decmath"
 	"crypto-bot/pkg/xjson"
 )
@@ -87,7 +88,7 @@ func (c *Client) getRawInstrumentInfo(ctx context.Context, req bybitInstrumentIn
 	if err != nil {
 		return nil, fmt.Errorf("bybit list contracts: %w", err)
 	}
-	res, err := parseResponse[bybitInstrumentsInfoResult](body, "bybit list contracts")
+	res, err := bybit.ParseResponse[bybitInstrumentsInfoResult](body, "bybit list contracts")
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (c *Client) getRawMarketTickers(ctx context.Context, req bybitMarketTickers
 	if err != nil {
 		return nil, fmt.Errorf("bybit list tickers: %w", err)
 	}
-	res, err := parseResponse[bybitTickerList](body, "bybit list tickers")
+	res, err := bybit.ParseResponse[bybitTickerList](body, "bybit list tickers")
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +297,7 @@ func (c *Client) GetPotentialFundingSymbols(
 }
 
 // FetchKlines fetches public K-lines for Bybit.
-
+//
 //nolint:cyclop // Switch statements mapping intervals are naturally complex but easy to read
 func mapBybitInterval(interval exchange.Interval) string {
 	switch interval {
@@ -354,7 +355,7 @@ func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchan
 		List     [][]xjson.Number `json:"list"`
 	}
 
-	res, err := parseResponse[klineResp](body, "bybit fetch klines")
+	res, err := bybit.ParseResponse[klineResp](body, "bybit fetch klines")
 	if err != nil {
 		return nil, err
 	}

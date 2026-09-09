@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,15 +18,14 @@ import (
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/httpclient"
 	"crypto-bot/pkg/ratelimit"
+	"crypto-bot/pkg/xjson"
 
 	transportlog "github.com/dangnmh/transport"
 	"golang.org/x/time/rate"
-
-	"crypto-bot/pkg/xjson"
 )
 
-// Client is the Bybit V5 Perpetual Futures REST API client.
-type Client struct {
+// BaseClient encapsulates shared transport, signing, rate limiting, and execution for Bybit V5 API.
+type BaseClient struct {
 	httpClient  *http.Client
 	baseURL     string
 	apiKey      string
@@ -39,8 +37,8 @@ type Client struct {
 	limiter     *ratelimit.ExchangeRateLimiter
 }
 
-// NewClient creates a new Bybit client.
-func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType string, logCfg config.LoggingConfig) *Client {
+// NewBaseClient creates a new Bybit BaseClient.
+func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType string, logCfg config.LoggingConfig) *BaseClient {
 	logger := slog.Default().With("component", "exchange").With("exchange", "bybit")
 
 	var clientCopy http.Client
@@ -63,7 +61,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 					}, // match everything cleanly
 				}),
 				transportlog.LogOptionRedactSensitive(true),
-				transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key"}),
+				transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key", "X-BAPI-API-KEY"}),
 				transportlog.LogOptionQueryParams(true),
 			)
 			clientCopy.Transport = rt
@@ -73,9 +71,9 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 
 	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
 
-	return &Client{
+	return &BaseClient{
 		httpClient:  &clientCopy,
-		baseURL:     baseURL,
+		baseURL:     strings.TrimRight(baseURL, "/"),
 		apiKey:      apiKey,
 		apiSecret:   apiSecret,
 		accountType: accountType,
@@ -86,14 +84,54 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 	}
 }
 
+// HTTPClient returns the underlying HTTP client.
+func (c *BaseClient) HTTPClient() *http.Client {
+	return c.httpClient
+}
+
+// BaseURL returns the configured base URL.
+func (c *BaseClient) BaseURL() string {
+	return c.baseURL
+}
+
+// APIKey returns the API key.
+func (c *BaseClient) APIKey() string {
+	return c.apiKey
+}
+
+// APISecret returns the API secret.
+func (c *BaseClient) APISecret() string {
+	return c.apiSecret
+}
+
+// AccountType returns the configured account type ("standard" or "unified").
+func (c *BaseClient) AccountType() string {
+	return c.accountType
+}
+
+// Logger returns the logger.
+func (c *BaseClient) Logger() *slog.Logger {
+	return c.logger
+}
+
+// Clock returns the clock.
+func (c *BaseClient) Clock() exchange.Clock {
+	return c.clock
+}
+
 // SetClock configures a custom clock implementation.
-func (c *Client) SetClock(clk exchange.Clock) {
+func (c *BaseClient) SetClock(clk exchange.Clock) {
 	if clk != nil {
 		c.clock = clk
 	}
 }
 
-func (c *Client) signRequest(method string, bodyBytes []byte, queryString string) (string, string) {
+// Limiter returns the rate limiter.
+func (c *BaseClient) Limiter() *ratelimit.ExchangeRateLimiter {
+	return c.limiter
+}
+
+func (c *BaseClient) signRequest(method string, bodyBytes []byte, queryString string) (string, string) {
 	ts := strconv.FormatInt(c.clock.Now().UnixMilli(), 10)
 	recvWindow := "5000"
 
@@ -111,8 +149,10 @@ func (c *Client) signRequest(method string, bodyBytes []byte, queryString string
 	return ts, signature
 }
 
+// RawRequest executes an HTTP request to Bybit V5 with rate limiting and signing.
+//
 //nolint:cyclop // Request wrappers are naturally complex
-func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+func (c *BaseClient) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
 	if c.limiter != nil {
 		if err := c.limiter.Acquire(ctx, path); err != nil {
 			return nil, fmt.Errorf("rate limit acquire: %w", err)
@@ -180,14 +220,16 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, query map[
 	return respBody, nil
 }
 
-type bybitResponse[T any] struct {
+// Response represents a standard Bybit V5 JSON response envelope.
+type Response[T any] struct {
 	RetCode int    `json:"retCode"`
 	RetMsg  string `json:"retMsg"`
 	Result  T      `json:"result"`
 }
 
-func parseResponse[T any](body []byte, errPrefix string) (T, error) {
-	var resp bybitResponse[T]
+// ParseResponse unmarshals a Bybit V5 JSON response and validates retCode == 0.
+func ParseResponse[T any](body []byte, errPrefix string) (T, error) {
+	var resp Response[T]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
 		var zero T
 		return zero, fmt.Errorf("%s json unmarshal: %w", errPrefix, err)
@@ -199,8 +241,9 @@ func parseResponse[T any](body []byte, errPrefix string) (T, error) {
 	return resp.Result, nil
 }
 
-func decodeListResponse[T any](body []byte, errPrefix string) ([]T, error) {
-	var resp bybitResponse[struct {
+// DecodeListResponse unmarshals a Bybit V5 list response and validates retCode == 0.
+func DecodeListResponse[T any](body []byte, errPrefix string) ([]T, error) {
+	var resp Response[struct {
 		List []T `json:"list"`
 	}]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
@@ -210,96 +253,4 @@ func decodeListResponse[T any](body []byte, errPrefix string) ([]T, error) {
 		return nil, fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
 	}
 	return resp.Result.List, nil
-}
-
-func (c *Client) GetFundingRateRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/market/tickers", p, nil)
-}
-
-func (c *Client) GetTickersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/market/tickers", p, nil)
-}
-
-func (c *Client) GetOpenPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/position/list", p, nil)
-}
-
-func (c *Client) GetHistoryPositionsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/position/closed-pnl", p, nil)
-}
-
-func (c *Client) GetOrderDetailRaw(ctx context.Context, orderID string, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	p["orderId"] = orderID
-	return c.RawRequest(ctx, http.MethodGet, "/v5/order/realtime", p, nil)
-}
-
-func (c *Client) GetHistoryOrdersRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/order/history", p, nil)
-}
-
-func (c *Client) GetOrderDealsRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/execution/list", p, nil)
-}
-
-func (c *Client) GetClosedPnLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	p := make(map[string]string)
-	maps.Copy(p, params)
-	if p["category"] == "" {
-		p["category"] = categoryLinear
-	}
-	return c.RawRequest(ctx, http.MethodGet, "/v5/position/closed-pnl", p, nil)
-}
-
-func (c *Client) GetOrderPNLRaw(ctx context.Context, params map[string]string) ([]byte, error) {
-	symbol := params["symbol"]
-	orderID := params["order_id"]
-	if orderID == "" {
-		orderID = params["orderId"]
-	}
-	if symbol == "" {
-		return nil, fmt.Errorf("symbol is required")
-	}
-	if orderID == "" {
-		return nil, fmt.Errorf("order_id is required")
-	}
-	info, err := c.GetOrderPNL(ctx, symbol, orderID)
-	if err != nil {
-		return nil, err
-	}
-	return xjson.Marshal(info)
 }

@@ -8,7 +8,7 @@ import (
 
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange/binance"
-	"crypto-bot/internal/infrastructure/exchange/bybit"
+	bybit "crypto-bot/internal/infrastructure/exchange/bybit/futures"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

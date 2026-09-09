@@ -1,10 +1,11 @@
-package bybit
+package futures
 
 import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -16,13 +17,20 @@ import (
 	"crypto-bot/internal/infrastructure/store"
 	"crypto-bot/pkg/decmath"
 	pkgws "crypto-bot/pkg/ws"
-
 	"crypto-bot/pkg/xjson"
+)
+
+var (
+	_ exchange.DepthSubscriber = (*WsAdapter)(nil)
+	_ exchange.DepthParser     = (*WsAdapter)(nil)
+	_ exchange.TradeSubscriber = (*WsAdapter)(nil)
+	_ exchange.TradeParser     = (*WsAdapter)(nil)
 )
 
 // WsAdapter implements ws.ExchangeAdapter for Bybit Futures.
 type WsAdapter struct {
 	pool          *pkgws.Pool
+	client        *Client
 	apiKey        string
 	apiSecret     string
 	clock         exchange.Clock
@@ -36,6 +44,11 @@ func NewWsAdapter() *WsAdapter {
 		clock:         exchange.RealClock{},
 		authenticated: make(chan struct{}),
 	}
+}
+
+// SetClient injects the REST client reference.
+func (a *WsAdapter) SetClient(client *Client) {
+	a.client = client
 }
 
 // SetClock configures a custom clock implementation.
@@ -71,7 +84,7 @@ func (a *WsAdapter) SubscribeTicker(ctx context.Context, symbol string) error {
 		wsArgsKey: []string{"tickers." + symbol},
 	}
 	topic := symbol + ":ticker"
-	return a.pool.SubscribePublic(ctx, topic, msg)
+	return a.SubscribePublic(ctx, topic, msg)
 }
 
 // UnsubscribeTicker unsubscribes from ticker push.
@@ -81,7 +94,47 @@ func (a *WsAdapter) UnsubscribeTicker(ctx context.Context, symbol string) error 
 		wsArgsKey: []string{"tickers." + symbol},
 	}
 	topic := symbol + ":ticker"
-	return a.pool.UnsubscribePublic(ctx, topic, msg)
+	return a.UnsubscribePublic(ctx, topic, msg)
+}
+
+// SubscribeTrade subscribes to real-time public trade deals.
+func (a *WsAdapter) SubscribeTrade(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		"op":      wsOpSubscribe,
+		wsArgsKey: []string{"publicTrade." + symbol},
+	}
+	topic := symbol + ":trade"
+	return a.SubscribePublic(ctx, topic, msg)
+}
+
+// UnsubscribeTrade stops subscribing to real-time public trade deals.
+func (a *WsAdapter) UnsubscribeTrade(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		"op":      wsOpUnsubscribe,
+		wsArgsKey: []string{"publicTrade." + symbol},
+	}
+	topic := symbol + ":trade"
+	return a.UnsubscribePublic(ctx, topic, msg)
+}
+
+// SubscribeDepth streams orderbook depth updates.
+func (a *WsAdapter) SubscribeDepth(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		"op":      wsOpSubscribe,
+		wsArgsKey: []string{"orderbook.50." + symbol},
+	}
+	topic := symbol + ":depth"
+	return a.SubscribePublic(ctx, topic, msg)
+}
+
+// UnsubscribeDepth stops streaming orderbook depth updates.
+func (a *WsAdapter) UnsubscribeDepth(ctx context.Context, symbol string) error {
+	msg := map[string]any{
+		"op":      wsOpUnsubscribe,
+		wsArgsKey: []string{"orderbook.50." + symbol},
+	}
+	topic := symbol + ":depth"
+	return a.UnsubscribePublic(ctx, topic, msg)
 }
 
 // SubscribePersonal subscribes to all private futures channels.
@@ -160,45 +213,51 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 	}
 }
 
+func (a *WsAdapter) handleAuthResponse(data []byte) {
+	var authResp struct {
+		Op      string `json:"op"`
+		RetCode int    `json:"retCode"`
+	}
+	if err := xjson.Unmarshal(data, &authResp); err == nil && authResp.Op == wsOpAuth && authResp.RetCode == 0 {
+		a.authMu.Lock()
+		select {
+		case <-a.authenticated:
+		default:
+			close(a.authenticated)
+		}
+		a.authMu.Unlock()
+	}
+}
+
+func routeBybitTopic(topic string) string {
+	switch {
+	case strings.HasPrefix(topic, "tickers."):
+		return "ticker"
+	case strings.HasPrefix(topic, "publicTrade."):
+		return "trade"
+	case strings.HasPrefix(topic, "orderbook."):
+		return "depth"
+	case strings.HasPrefix(topic, "kline."):
+		return "kline"
+	case topic == wsTopicOrder:
+		return "personal.order"
+	case topic == wsTopicPosition:
+		return "personal.position"
+	default:
+		return topic
+	}
+}
+
 // GetChannelExtractor routes WebSocket push channels.
 func (a *WsAdapter) GetChannelExtractor() func([]byte) string {
 	return func(data []byte) string {
-		var authResp struct {
-			Op      string `json:"op"`
-			RetCode int    `json:"retCode"`
-		}
-		if err := xjson.Unmarshal(data, &authResp); err == nil && authResp.Op == wsOpAuth {
-			if authResp.RetCode == 0 {
-				a.authMu.Lock()
-				select {
-				case <-a.authenticated:
-				default:
-					close(a.authenticated)
-				}
-				a.authMu.Unlock()
-			}
-		}
+		a.handleAuthResponse(data)
 
 		var msg struct {
 			Topic string `json:"topic"`
 		}
 		if err := xjson.Unmarshal(data, &msg); err == nil {
-			if strings.HasPrefix(msg.Topic, "tickers.") {
-				return "ticker"
-			}
-			if strings.HasPrefix(msg.Topic, "orderbook.") {
-				return "depth"
-			}
-			if strings.HasPrefix(msg.Topic, "kline.") {
-				return "kline"
-			}
-			switch msg.Topic {
-			case wsTopicOrder:
-				return "personal.order"
-			case wsTopicPosition:
-				return "personal.position"
-			}
-			return msg.Topic
+			return routeBybitTopic(msg.Topic)
 		}
 		return ""
 	}
@@ -227,6 +286,101 @@ func (a *WsAdapter) ParseTicker(data []byte) (symbol string, pd *store.PriceData
 		UpdatedAt: time.Now(),
 	}
 	return raw.Symbol, pd, nil
+}
+
+type wsTradeEntry struct {
+	T    int64  `json:"T"`
+	S    string `json:"s"`
+	Side string `json:"S"` // "Buy", "Sell"
+	V    string `json:"v"`
+	P    string `json:"p"`
+	L    string `json:"L"`
+	I    string `json:"i"`
+	BT   bool   `json:"BT"`
+	Seq  int64  `json:"seq"`
+}
+
+func parseTradeEntries(raw json.RawMessage) ([]wsTradeEntry, error) {
+	var entries []wsTradeEntry
+	if err := xjson.Unmarshal(raw, &entries); err == nil {
+		return entries, nil
+	}
+	var single wsTradeEntry
+	if err := xjson.Unmarshal(raw, &single); err == nil {
+		return []wsTradeEntry{single}, nil
+	}
+	return nil, fmt.Errorf("unmarshal trade data failed")
+}
+
+func mapTradeEntry(entry wsTradeEntry, fallbackSym string, fallbackTs int64) *domain.PublicTrade {
+	price := decmath.ParseFloat(entry.P)
+	volume := decmath.ParseFloat(entry.V)
+	if price <= 0 || volume <= 0 {
+		return nil
+	}
+
+	itemSym := entry.S
+	if itemSym == "" {
+		itemSym = fallbackSym
+	}
+
+	side := domain.SideOpenLong
+	if strings.EqualFold(entry.Side, "sell") {
+		side = domain.SideOpenShort
+	}
+
+	tradeTime := time.Now().UTC()
+	if entry.T > 0 {
+		tradeTime = time.UnixMilli(entry.T).UTC()
+	} else if fallbackTs > 0 {
+		tradeTime = time.UnixMilli(fallbackTs).UTC()
+	}
+
+	return &domain.PublicTrade{
+		Symbol:    itemSym,
+		Price:     price,
+		Volume:    volume,
+		Side:      side,
+		Timestamp: tradeTime,
+	}
+}
+
+// ParseTrade parses public trade messages into []domain.PublicTrade.
+func (a *WsAdapter) ParseTrade(data []byte) (string, []domain.PublicTrade, error) {
+	var push struct {
+		Topic string          `json:"topic"`
+		Type  string          `json:"type"`
+		Ts    int64           `json:"ts"`
+		Data  json.RawMessage `json:"data"`
+	}
+	if err := xjson.Unmarshal(data, &push); err != nil {
+		return "", nil, fmt.Errorf("unmarshal trade push: %w", err)
+	}
+
+	sym := strings.TrimPrefix(push.Topic, "publicTrade.")
+	if len(push.Data) == 0 || string(push.Data) == "null" {
+		return sym, nil, nil
+	}
+
+	entries, err := parseTradeEntries(push.Data)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(entries) == 0 {
+		return sym, nil, nil
+	}
+	if sym == "" {
+		sym = entries[0].S
+	}
+
+	trades := make([]domain.PublicTrade, 0, len(entries))
+	for _, entry := range entries {
+		if pt := mapTradeEntry(entry, sym, push.Ts); pt != nil {
+			trades = append(trades, *pt)
+		}
+	}
+
+	return sym, trades, nil
 }
 
 // ParsePosition parses push.personal.position.

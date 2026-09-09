@@ -1,12 +1,13 @@
-package bybit_test
+package futures_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/exchange/bybit"
+	futures "crypto-bot/internal/infrastructure/exchange/bybit/futures"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/stretchr/testify/assert"
@@ -61,7 +62,7 @@ func TestWsAdapter_ParsePositionBybitSchema(t *testing.T) {
 		}]
 	}`)
 
-	pos, err := bybit.NewWsAdapter().ParsePosition(raw)
+	pos, err := futures.NewWsAdapter().ParsePosition(raw)
 	require.NoError(t, err)
 	require.NotNil(t, pos)
 
@@ -91,7 +92,7 @@ func TestWsAdapter_ParsePositionAvgPriceFallback(t *testing.T) {
 		}]
 	}`)
 
-	pos, err := bybit.NewWsAdapter().ParsePosition(raw)
+	pos, err := futures.NewWsAdapter().ParsePosition(raw)
 	require.NoError(t, err)
 	require.NotNil(t, pos)
 
@@ -113,7 +114,7 @@ func TestWsAdapter_ParsePositionSelectsActiveRow(t *testing.T) {
 		]
 	}`)
 
-	pos, err := bybit.NewWsAdapter().ParsePosition(raw)
+	pos, err := futures.NewWsAdapter().ParsePosition(raw)
 	require.NoError(t, err)
 	require.NotNil(t, pos)
 
@@ -133,7 +134,7 @@ func TestWsAdapter_ParsePositionSelectsRecentlyClosedRow(t *testing.T) {
 		]
 	}`)
 
-	pos, err := bybit.NewWsAdapter().ParsePosition(raw)
+	pos, err := futures.NewWsAdapter().ParsePosition(raw)
 	require.NoError(t, err)
 	require.NotNil(t, pos)
 
@@ -147,44 +148,37 @@ func TestWsAdapter_LoginSync(t *testing.T) {
 
 	t.Run("Success Login Closes Authenticated Channel", func(t *testing.T) {
 		t.Parallel()
-		adapter := bybit.NewWsAdapter()
+		adapter := futures.NewWsAdapter()
 		extractor := adapter.GetChannelExtractor()
 
-		// GetAuthHook with key returns non-nil hook
 		hook := adapter.GetAuthHook("key", "secret")
 		assert.NotNil(t, hook)
 
-		// Before running hook or receiving login event, SubscribePersonal with short timeout context should timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		err := adapter.SubscribePersonal(ctx)
 		cancel()
 		assert.ErrorIs(t, err, context.DeadlineExceeded)
 
-		// Simulate receiving a successful login event response from Bybit
 		loginResp := []byte(`{"op":"auth","retCode":0,"retMsg":"OK"}`)
 		channel := extractor(loginResp)
-		assert.Equal(t, "", channel) // Extractor maps it to empty string or handles internally
+		assert.Equal(t, "", channel)
 
-		// Now SubscribePersonal should unblock instantly even with an active context
 		ctx2, cancel2 := context.WithCancel(context.Background())
-		// Prepare a mock private client to avoid panic during SendPrivate
 		pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
 		adapter.SetPool(pool)
 
 		err = adapter.SubscribePersonal(ctx2)
 		cancel2()
-		// Since the private client is nil in the pool, it will return nil (success/noop) instead of blocking
 		assert.NoError(t, err)
 	})
 
 	t.Run("Empty APIKey Closes Authenticated Channel Immediately", func(t *testing.T) {
 		t.Parallel()
-		adapter := bybit.NewWsAdapter()
+		adapter := futures.NewWsAdapter()
 
 		hook := adapter.GetAuthHook("", "")
 		assert.Nil(t, hook)
 
-		// Since apiKey is empty, a.authenticated should be closed immediately
 		ctx, cancel := context.WithCancel(context.Background())
 		pool := pkgws.NewPool("ws://127.0.0.1:1", 1, nil)
 		adapter.SetPool(pool)
@@ -192,5 +186,139 @@ func TestWsAdapter_LoginSync(t *testing.T) {
 		err := adapter.SubscribePersonal(ctx)
 		cancel()
 		assert.NoError(t, err)
+	})
+}
+
+func TestWsAdapter_TradeSubscription(t *testing.T) {
+	t.Parallel()
+
+	adapter := futures.NewWsAdapter()
+	ctx := context.Background()
+
+	// With nil pool, methods return nil gracefully
+	assert.NoError(t, adapter.SubscribeTrade(ctx, "BTCUSDT"))
+	assert.NoError(t, adapter.UnsubscribeTrade(ctx, "BTCUSDT"))
+	assert.NoError(t, adapter.SubscribeDepth(ctx, "BTCUSDT"))
+	assert.NoError(t, adapter.UnsubscribeDepth(ctx, "BTCUSDT"))
+	assert.NoError(t, adapter.SubscribeTicker(ctx, "BTCUSDT"))
+	assert.NoError(t, adapter.UnsubscribeTicker(ctx, "BTCUSDT"))
+}
+
+func TestWsAdapter_ChannelExtractor(t *testing.T) {
+	t.Parallel()
+
+	adapter := futures.NewWsAdapter()
+	extractor := adapter.GetChannelExtractor()
+
+	assert.Equal(t, "ticker", extractor([]byte(`{"topic":"tickers.BTCUSDT"}`)))
+	assert.Equal(t, "trade", extractor([]byte(`{"topic":"publicTrade.BTCUSDT"}`)))
+	assert.Equal(t, "depth", extractor([]byte(`{"topic":"orderbook.50.BTCUSDT"}`)))
+	assert.Equal(t, "kline", extractor([]byte(`{"topic":"kline.1.BTCUSDT"}`)))
+	assert.Equal(t, "personal.order", extractor([]byte(`{"topic":"order"}`)))
+	assert.Equal(t, "personal.position", extractor([]byte(`{"topic":"position"}`)))
+	assert.Equal(t, "", extractor([]byte(`invalid json`)))
+}
+
+func TestWsAdapter_ParseTrade(t *testing.T) {
+	t.Parallel()
+
+	adapter := futures.NewWsAdapter()
+
+	t.Run("Multiple Trades Snapshot", func(t *testing.T) {
+		t.Parallel()
+		raw := []byte(`{
+			"topic": "publicTrade.BTCUSDT",
+			"type": "snapshot",
+			"ts": 1672304486868,
+			"data": [
+				{
+					"T": 1672304486865,
+					"s": "BTCUSDT",
+					"S": "Buy",
+					"v": "0.001",
+					"p": "16578.50",
+					"L": "PlusTick",
+					"i": "20f43950-d8dd-5b31-9112-a178eb6023af",
+					"BT": false,
+					"seq": 1783284617
+				},
+				{
+					"T": 1672304486870,
+					"s": "BTCUSDT",
+					"S": "Sell",
+					"v": "0.005",
+					"p": "16578.00",
+					"L": "MinusTick",
+					"i": "20f43950-d8dd-5b31-9112-a178eb6023b0",
+					"BT": false,
+					"seq": 1783284618
+				}
+			]
+		}`)
+
+		sym, trades, err := adapter.ParseTrade(raw)
+		require.NoError(t, err)
+		assert.Equal(t, "BTCUSDT", sym)
+		require.Len(t, trades, 2)
+
+		// Trade 1: Taker Buy
+		assert.Equal(t, "BTCUSDT", trades[0].Symbol)
+		assert.Equal(t, 16578.50, trades[0].Price)
+		assert.Equal(t, 0.001, trades[0].Volume)
+		assert.Equal(t, domain.SideOpenLong, trades[0].Side)
+		assert.Equal(t, time.UnixMilli(1672304486865).UTC(), trades[0].Timestamp)
+
+		// Trade 2: Taker Sell
+		assert.Equal(t, "BTCUSDT", trades[1].Symbol)
+		assert.Equal(t, 16578.00, trades[1].Price)
+		assert.Equal(t, 0.005, trades[1].Volume)
+		assert.Equal(t, domain.SideOpenShort, trades[1].Side)
+		assert.Equal(t, time.UnixMilli(1672304486870).UTC(), trades[1].Timestamp)
+	})
+
+	t.Run("Single Trade Entry", func(t *testing.T) {
+		t.Parallel()
+		raw := []byte(`{
+			"topic": "publicTrade.ETHUSDT",
+			"type": "snapshot",
+			"ts": 1672304486900,
+			"data": {
+				"T": 1672304486899,
+				"s": "ETHUSDT",
+				"S": "Buy",
+				"v": "1.25",
+				"p": "1200.50",
+				"i": "trade-id-1"
+			}
+		}`)
+
+		sym, trades, err := adapter.ParseTrade(raw)
+		require.NoError(t, err)
+		assert.Equal(t, "ETHUSDT", sym)
+		require.Len(t, trades, 1)
+		assert.Equal(t, 1200.50, trades[0].Price)
+		assert.Equal(t, 1.25, trades[0].Volume)
+		assert.Equal(t, domain.SideOpenLong, trades[0].Side)
+	})
+
+	t.Run("Empty Data List", func(t *testing.T) {
+		t.Parallel()
+		raw := []byte(`{
+			"topic": "publicTrade.SOLUSDT",
+			"type": "snapshot",
+			"ts": 1672304486900,
+			"data": []
+		}`)
+
+		sym, trades, err := adapter.ParseTrade(raw)
+		require.NoError(t, err)
+		assert.Equal(t, "SOLUSDT", sym)
+		assert.Empty(t, trades)
+	})
+
+	t.Run("Invalid Payload", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := adapter.ParseTrade([]byte(`invalid json`))
+		assert.Error(t, err)
 	})
 }

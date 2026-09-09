@@ -54,8 +54,9 @@
   "scanners": {
     "configured": false,
     "schedule": {
-      "toobit_futures": false,
       "mexc_futures": true,
+      "bybit_futures": true, // very high cancel rate,
+      "toobit_futures": false,
       "bitget_futures": false, // negative pnl
       "deepcoin_futures": false, // exchange restricted
       "kucoin_futures": false, // negative pnl
@@ -66,7 +67,6 @@
       "gate_futures": false, // rare oppotunity, negative pnl,
       "binance_futures": false, // negative pnl,
       "orangex_futures": false, // negative pnl,
-      "bybit_futures": false, // very high cancel rate,
       "hotcoin_futures": false, // prevent trade at funding settle
       "weex_futures": false, // no funding oppotunity
       "aster_futures": false // negative pnl
@@ -84,6 +84,16 @@
       "marginUSD": 1000,
       "maxCandidateTrade": 2,
       "maxMarginUSDOfCandidate": 500
+    },
+    "bybit_futures": {
+      "takeProfitPct": 1.5,
+      "stopLossPct": 2,
+      "bufferTime": "40ms", // 0ms high cancel rate 50ms paid funding fee
+      "postSettleTimeout": "6s",
+      "minVol24USD": 6000000,
+      "minFundingRate": 0.6,
+      "marginUSD": 5,
+      "leverage": 6,
     },
     "toobit_futures": {
       "takeProfitPct": 1.5,
@@ -125,12 +135,6 @@
       "minFundingRate": 0.7,
       "leverage": 2,
       "marginUSD": 50
-    },
-    "bybit_futures": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "0ms", // 0ms high cancel rate 50ms paid funding fee
-      "postSettleTimeout": "0.5s"
     },
     "binance_futures": {
       "takeProfitPct": 1,

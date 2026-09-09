@@ -1,4 +1,4 @@
-package bybit
+package futures
 
 import (
 	"context"
@@ -18,7 +18,7 @@ func (c *Client) WarmUp(ctx context.Context, interval time.Duration) {
 	ticker.RunImmediate(ctx, interval, func() bool {
 		_, err := c.GetServerTime(ctx)
 		if err != nil {
-			c.logger.Debug("Bybit warmup ping failed", slog.Any("error", err))
+			c.base.Logger().Debug("Bybit warmup ping failed", slog.Any("error", err))
 		}
 		return true
 	})

@@ -1,4 +1,4 @@
-package bybit
+package futures
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
+	"crypto-bot/internal/infrastructure/exchange/bybit"
 	"crypto-bot/pkg/xjson"
 )
 
@@ -40,7 +41,7 @@ func (c *Client) rawChangeLeverage(ctx context.Context, req bybitChangeLeverageR
 	if err != nil {
 		return fmt.Errorf("bybit change leverage: %w", err)
 	}
-	var resp bybitResponse[any]
+	var resp bybit.Response[any]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit change leverage json unmarshal: %w", err)
 	}
@@ -59,7 +60,7 @@ func (c *Client) rawSwitchIsolatedMode(ctx context.Context, req bybitSwitchIsola
 	if err != nil {
 		return fmt.Errorf("bybit switch isolated mode: %w", err)
 	}
-	var resp bybitResponse[any]
+	var resp bybit.Response[any]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit switch isolated mode json unmarshal: %w", err)
 	}
@@ -69,7 +70,7 @@ func (c *Client) rawSwitchIsolatedMode(ctx context.Context, req bybitSwitchIsola
 		}
 		// Fallback for unified account
 		if resp.RetCode == 100028 || strings.Contains(strings.ToLower(resp.RetMsg), "unified account is forbidden") {
-			c.logger.InfoContext(ctx, "Bybit SwitchPositionMargin returned unified account restriction, falling back to SetMarginMode", slog.String("symbol", req.Symbol))
+			c.base.Logger().InfoContext(ctx, "Bybit SwitchPositionMargin returned unified account restriction, falling back to SetMarginMode", slog.String("symbol", req.Symbol))
 			marginMode := constantCross
 			if req.TradeMode == 1 {
 				marginMode = "ISOLATED"
@@ -91,7 +92,7 @@ func (c *Client) rawSetMarginMode(ctx context.Context, req bybitSetMarginModeReq
 	if err != nil {
 		return fmt.Errorf("bybit set account margin mode: %w", err)
 	}
-	var resp bybitResponse[any]
+	var resp bybit.Response[any]
 	if err := xjson.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("bybit set account margin mode json unmarshal: %w", err)
 	}
@@ -117,7 +118,7 @@ func (c *Client) ChangeLeverage(ctx context.Context, req exchange.ChangeLeverage
 
 // SwitchMarginMode switches the margin mode (CROSS vs ISOLATED) for Bybit.
 func (c *Client) SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error {
-	if strings.EqualFold(c.accountType, "unified") {
+	if strings.EqualFold(c.base.AccountType(), "unified") {
 		return c.switchUnifiedMarginMode(ctx, string(marginMode))
 	}
 

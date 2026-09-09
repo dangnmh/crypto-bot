@@ -1,6 +1,7 @@
-package bybit
+package futures
 
 const (
+	exchangeName   = "bybit"
 	categoryLinear = "linear"
 	categoryKey    = "category"
 	symbolKey      = "symbol"

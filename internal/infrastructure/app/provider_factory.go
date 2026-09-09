@@ -15,7 +15,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitget"
 	"crypto-bot/internal/infrastructure/exchange/bitmart"
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
-	"crypto-bot/internal/infrastructure/exchange/bybit"
+	bybit "crypto-bot/internal/infrastructure/exchange/bybit/futures"
 	"crypto-bot/internal/infrastructure/exchange/deepcoin"
 	"crypto-bot/internal/infrastructure/exchange/gate"
 	"crypto-bot/internal/infrastructure/exchange/hotcoin"

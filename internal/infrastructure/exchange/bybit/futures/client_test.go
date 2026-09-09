@@ -1,4 +1,4 @@
-package bybit_test
+package futures_test
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
-	"crypto-bot/internal/infrastructure/exchange/bybit"
+	futures "crypto-bot/internal/infrastructure/exchange/bybit/futures"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/stretchr/testify/assert"
@@ -206,7 +206,7 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+			client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 			res, err := client.CreateOrder(context.Background(), tt.req)
 			require.NoError(t, err)
@@ -236,7 +236,7 @@ func TestClient_CancelOrder(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+		client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 		err := client.CancelOrder(context.Background(), "BTCUSDT", "bybit-ord-987654")
 		require.NoError(t, err)
 	})
@@ -252,7 +252,7 @@ func TestClient_CancelOrder(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+		client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 		err := client.CancelOrder(context.Background(), "BTCUSDT", "bybit-ord-987654")
 		require.NoError(t, err) // returns nil
 	})
@@ -272,7 +272,7 @@ func TestClient_CancelOrder(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+		client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 		err := client.CancelOrders(context.Background(), []string{"id1", "id2"})
 		require.NoError(t, err)
 		assert.Equal(t, 2, calls)
@@ -314,7 +314,7 @@ func TestClient_GetOrder_And_GetOpenOrders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	// GetOrder
 	info, err := client.GetOrder(context.Background(), "BTCUSDT", "bybit-ord-987654")
@@ -363,7 +363,7 @@ func TestClient_GetOpenPositions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	positions, err := client.GetOpenPositions(context.Background(), "BTCUSDT")
 	require.NoError(t, err)
@@ -432,7 +432,7 @@ func TestClient_GetContractDetails(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	details, err := client.GetContractDetails(context.Background())
 	require.NoError(t, err)
@@ -481,7 +481,7 @@ func TestClient_GetTickers_And_GetFundingRate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	tickers, err := client.GetTickers(context.Background(), "BTCUSDT")
 	require.NoError(t, err)
@@ -524,7 +524,7 @@ func TestClient_ClosePosition_And_ChangeLeverage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	// ClosePosition
 	err := client.ClosePosition(context.Background(), "BTCUSDT", domain.SideCloseLong, 1.0, 1, 10)
@@ -545,7 +545,7 @@ func TestClient_ClosePosition_And_ChangeLeverage(t *testing.T) {
 func TestWsAdapter_HooksAndParsing(t *testing.T) {
 	t.Parallel()
 
-	adapter := bybit.NewWsAdapter()
+	adapter := futures.NewWsAdapter()
 	require.NotNil(t, adapter)
 
 	// Check extract ping config
@@ -665,7 +665,7 @@ func TestClient_GetServerTime_WarmUp_OtherCases(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 
 	// Test GetServerTime
 	serverTime, err := client.GetServerTime(context.Background())
@@ -701,7 +701,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 	ctx := context.Background()
 
 	// Test GetServerTime error
@@ -745,7 +745,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	assert.Error(t, err)
 
 	// 2. Test GetAuthHook with empty credentials
-	adapter := bybit.NewWsAdapter()
+	adapter := futures.NewWsAdapter()
 	hook := adapter.GetAuthHook("", "")
 	assert.Nil(t, hook)
 
@@ -768,7 +768,7 @@ func TestClient_ErrorAndEdgeCases(t *testing.T) {
 	}))
 	defer server2.Close()
 
-	client2 := bybit.NewClient(server2.Client(), server2.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client2 := futures.NewClient(server2.Client(), server2.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 	info, err := client2.GetOrder(ctx, "BTCUSDT", "bybit-ord-987654")
 	require.NoError(t, err)
 	assert.Equal(t, exchange.OrderStateCanceled, info.State)
@@ -890,7 +890,7 @@ func TestClient_GetOrderPNL(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+			client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 			info, err := client.GetOrderPNL(context.Background(), "BTCUSDT", "ext-123")
 
 			if tt.wantErr != "" {
@@ -946,7 +946,7 @@ func TestClient_TimeSync(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 	client.SetClock(clk)
 
 	res, err := client.CreateOrder(context.Background(), exchange.SubmitOrderRequest{
@@ -1034,7 +1034,7 @@ func TestClient_SwitchPositionMode(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+			client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
 			err := client.SwitchPositionMode(context.Background(), tt.symbol, tt.mode)
 
 			if tt.wantErrMsg != "" {
@@ -1121,8 +1121,8 @@ func TestClient_BybitRemainingMethods(t *testing.T) {
 	}))
 	defer server.Close()
 
-	clientStandard := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
-	clientUnified := bybit.NewClient(server.Client(), server.URL, "api_key", "api_secret", "unified", config.LoggingConfig{})
+	clientStandard := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+	clientUnified := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "unified", config.LoggingConfig{})
 
 	// 1. GetPotentialFundingSymbols
 	res, err := clientStandard.GetPotentialFundingSymbols(context.Background(), 10000000, 0, nil, nil)

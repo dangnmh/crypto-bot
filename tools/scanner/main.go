@@ -33,7 +33,7 @@ import (
 	"crypto-bot/internal/infrastructure/exchange/bitunix"
 	"crypto-bot/internal/infrastructure/exchange/blofin"
 	"crypto-bot/internal/infrastructure/exchange/btse"
-	"crypto-bot/internal/infrastructure/exchange/bybit"
+	bybit "crypto-bot/internal/infrastructure/exchange/bybit/futures"
 	"crypto-bot/internal/infrastructure/exchange/bydfi"
 	"crypto-bot/internal/infrastructure/exchange/coinex"
 	"crypto-bot/internal/infrastructure/exchange/coinw"
