@@ -37,7 +37,7 @@
     "funding": "30s"
   },
   "safety": {
-    "maxImpactRatio": 200,
+    "maxImpactRatio": 250,
     "maxLatency": "400ms", // Abort if RTT > 400ms
     "maxPriceDiffPercent": 0.8,
     "maxSymbolUSDTPrice": 100
@@ -76,19 +76,19 @@
     "mexc_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "-53ms", // -55ms dont paid funding fee, -50 paid funding fee
+      "bufferTime": "-52ms", // -55ms dont paid funding fee, -50 paid funding fee
       "postSettleTimeout": "6s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 6000000,
       "minFundingRate": 0.6,
       "leverage": 15,
       "marginUSD": 1000,
       "maxCandidateTrade": 2,
-      "maxMarginUSDOfCandidate": 500
+      "maxMarginUSDOfCandidate": 700
     },
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "40ms", // 0ms high cancel rate 50ms paid funding fee
+      "bufferTime": "15ms", // 0ms high cancel rate 40ms paid funding fee
       "postSettleTimeout": "6s",
       "minVol24USD": 6000000,
       "minFundingRate": 0.6,
