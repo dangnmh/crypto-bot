@@ -228,6 +228,7 @@ func mapOrderTypeAndForce(t domain.OrderType) (string, string) {
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	orderType, force := mapOrderTypeAndForce(req.Type)
 
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0

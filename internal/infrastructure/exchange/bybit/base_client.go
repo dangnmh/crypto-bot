@@ -149,24 +149,10 @@ func (c *BaseClient) signRequest(method string, bodyBytes []byte, queryString st
 	return ts, signature
 }
 
-// RawRequest executes an HTTP request to Bybit V5 with rate limiting and signing.
-//
-//nolint:cyclop // Request wrappers are naturally complex
-func (c *BaseClient) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
-	if c.limiter != nil {
-		if err := c.limiter.Acquire(ctx, path); err != nil {
-			return nil, fmt.Errorf("rate limit acquire: %w", err)
-		}
-	}
-
-	var bodyReader io.Reader
-	if len(body) > 0 {
-		bodyReader = bytes.NewReader(body)
-	}
-
+func (c *BaseClient) buildURL(method, path string, query map[string]string) (string, string, error) {
 	reqURL, err := url.Parse(c.baseURL + path)
 	if err != nil {
-		return nil, fmt.Errorf("parse URL: %w", err)
+		return "", "", fmt.Errorf("parse URL: %w", err)
 	}
 
 	var queryString string
@@ -180,20 +166,16 @@ func (c *BaseClient) RawRequest(ctx context.Context, method, path string, query 
 			reqURL.RawQuery = queryString
 		}
 	}
-	urlPath := reqURL.String()
+	return reqURL.String(), queryString, nil
+}
 
-	req, err := http.NewRequestWithContext(ctx, method, urlPath, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
+func (c *BaseClient) applyHeaders(req *http.Request, method, path string, body []byte, queryString string) {
 	req.Header.Set("User-Agent", "bybit.api.go/1.0.7")
 	if method != http.MethodGet && len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	isSigned := c.apiKey != "" && !strings.Contains(path, "/market/")
-	if isSigned {
+	if c.apiKey != "" && !strings.Contains(path, "/market/") {
 		ts, signature := c.signRequest(method, body, queryString)
 		req.Header.Set("X-BAPI-API-KEY", c.apiKey)
 		req.Header.Set("X-BAPI-SIGN-TYPE", "2")
@@ -201,23 +183,62 @@ func (c *BaseClient) RawRequest(ctx context.Context, method, path string, query 
 		req.Header.Set("X-BAPI-RECV-WINDOW", "5000")
 		req.Header.Set("X-BAPI-SIGN", signature)
 	}
+}
 
-	resp, err := c.httpClient.Do(req)
+// PrepareRequest pre-builds, rate-limits, and signs an HTTP request to Bybit V5,
+// returning a dispatch function ready for low-latency execution upon trigger time.
+func (c *BaseClient) PrepareRequest(ctx context.Context, method, path string, query map[string]string, body []byte) (func(context.Context) ([]byte, error), error) {
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, path); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
+	var bodyReader io.Reader
+	if len(body) > 0 {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	urlPath, queryString, err := c.buildURL(method, path, query)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	req, err := http.NewRequestWithContext(ctx, method, urlPath, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, fmt.Errorf("HTTP error: status=%d, body=%s", resp.StatusCode, string(respBody))
-	}
+	c.applyHeaders(req, method, path, body, queryString)
 
-	return respBody, nil
+	return func(execCtx context.Context) ([]byte, error) {
+		req = req.WithContext(execCtx)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read response body: %w", err)
+		}
+
+		if resp.StatusCode >= http.StatusBadRequest {
+			return nil, fmt.Errorf("HTTP error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		}
+
+		return respBody, nil
+	}, nil
+}
+
+// RawRequest executes an HTTP request to Bybit V5 with rate limiting and signing.
+func (c *BaseClient) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {
+	dispatch, err := c.PrepareRequest(ctx, method, path, query, body)
+	if err != nil {
+		return nil, err
+	}
+	return dispatch(ctx)
 }
 
 // Response represents a standard Bybit V5 JSON response envelope.

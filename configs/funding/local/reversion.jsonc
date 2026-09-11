@@ -7,7 +7,8 @@
   "default": {
     "takeProfitPct": 1,
     "stopLossPct": 2,
-    "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+    // "bufferTime": "-150ms", // Reference: legacy fire offset buffer
+    "targetArriveOffset": "150ms", // Target exchange arrival time relative to settle (T + offset)
     "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close
     "leverage": 5,
     "marginUSD": 3,
@@ -62,7 +63,8 @@
     "mexc_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      // "bufferTime": "-150ms", // Fire at T - (Latency/2 + Buffer) the bigger the earlier
+      "targetArriveOffset": "52ms", // Target arrival: 150ms after settle
       "postSettleTimeout": "300s", // Force close if reversion lifecycle does not terminally close
       "pnlTrailing": {
         "enabled": true,
@@ -81,109 +83,127 @@
     "bybit_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-200ms",
+      // "bufferTime": "-200ms",
+      "targetArriveOffset": "-15ms",
       "postSettleTimeout": "300s"
     },
     "toobit_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "390ms",
+      // "bufferTime": "390ms",
+      "targetArriveOffset": "-390ms",
       "postSettleTimeout": "3s"
     },
     "binance_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-250ms",
+      // "bufferTime": "-250ms",
+      "targetArriveOffset": "250ms",
       "postSettleTimeout": "300s"
     },
     "kucoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-350ms",
+      // "bufferTime": "-350ms",
+      "targetArriveOffset": "350ms",
       "postSettleTimeout": "300s"
     },
     "okx_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms",
+      // "bufferTime": "0ms",
+      "targetArriveOffset": "0ms",
       "postSettleTimeout": "300s"
     },
     "gate_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "-50ms",
+      // "bufferTime": "-50ms",
+      "targetArriveOffset": "50ms",
       "postSettleTimeout": "300s"
     },
     "deepcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "0ms",
+      // "bufferTime": "0ms",
+      "targetArriveOffset": "0ms",
       "postSettleTimeout": "300s"
     },
     "hyperliquid_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "bitget_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "bingx_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "bitmart_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "weex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "bitunix_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "xt_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "orangex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "aster_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "pionex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     },
     "hotcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "bufferTime": "30ms",
+      // "bufferTime": "30ms",
+      "targetArriveOffset": "-30ms",
       "postSettleTimeout": "300s"
     }
   }

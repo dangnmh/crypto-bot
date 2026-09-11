@@ -15,6 +15,7 @@ type (
 	NotiLevelProvider = common.NotiLevelProvider
 	Clock             = common.Clock
 	SyncerClock       = common.SyncerClock
+	PrecisionClock    = common.PrecisionClock
 	MarketType        = common.MarketType
 	StrategyType      = common.StrategyType
 	OrderType         = common.OrderType

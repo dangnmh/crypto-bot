@@ -143,6 +143,7 @@ func (c *Client) rawGetIncome(ctx context.Context, symbol, incomeType string, st
 
 // CreateOrder places a new order on Aster V3.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	clientOid := req.ExternalOID
 	if clientOid == "" {
 		clientOid = uuid.NewString()

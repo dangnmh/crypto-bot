@@ -449,12 +449,16 @@ func (d *WallDetector) handleExistingCandidate(
 	existingWall.RelativeRatio = candidate.RelativeRatio
 	existingWall.DepthImbalance = candidate.DepthImbalance
 	existingWall.BackingRatio = candidate.BackingRatio
-	existingWall.RelativeRatio = candidate.RelativeRatio
+
+	// Persist updated wall snapshot state to depthStore BEFORE emitting any events
+	// so that event subscribers reading active wall always see the latest volume and metrics.
+	d.depthStore.SaveActiveWall(*existingWall)
 
 	// Maturation check (>= minLifespan)
 	minLifespan := d.cfg.MinLifespan.Duration()
 	if !existingWall.Matured && minLifespan > 0 && existingWall.GetAgeAt(now) >= minLifespan {
 		existingWall.Matured = true
+		d.depthStore.SaveActiveWall(*existingWall)
 		d.emitWallEvent(existingWall, pjdomain.WallEventMatured, 0, spreadPct, now)
 	}
 
@@ -523,7 +527,6 @@ func (d *WallDetector) handleFreshCandidate(
 ) *pjdomain.Wall {
 	candidate.EventSeq = 0
 	d.emitWallEvent(candidate, pjdomain.WallEventBorn, 0, spreadPct, now)
-	d.depthStore.SaveActiveWall(*candidate)
 
 	return candidate
 }
@@ -575,6 +578,7 @@ func (d *WallDetector) emitWallEvent(
 	}
 
 	d.depthStore.AppendWallEvent(wall.ID, evt)
+	d.depthStore.SaveActiveWall(*wall)
 
 	payload := pjdomain.WallEventStreamPayload{
 		Exchange:  d.exchange,

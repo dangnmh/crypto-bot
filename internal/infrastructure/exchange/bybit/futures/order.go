@@ -89,22 +89,6 @@ type bybitOrder struct {
 
 // Private raw methods invoking the Bybit API.
 
-func (c *Client) rawCreateOrder(ctx context.Context, req bybitCreateOrderRequest) (*bybitCreateOrderResult, error) {
-	bodyBytes, err := xjson.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("bybit create order marshal: %w", err)
-	}
-	body, err := c.RawRequest(ctx, http.MethodPost, "/v5/order/create", nil, bodyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("bybit create order: %w", err)
-	}
-	res, err := bybit.ParseResponse[bybitCreateOrderResult](body, "bybit create order")
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
 func (c *Client) rawPlaceTPSL(ctx context.Context, req bybitPlaceTPSLRequest) error {
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {
@@ -202,8 +186,10 @@ func (c *Client) rawGetOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
-// CreateOrder submits a new order and returns the order ID.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+// PrepareOrder implements exchange.PreSignExecutor. It serializes, signs, and rate-limits
+// the order request ahead of time, returning a zero-overhead dispatch function.
+func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	bybitOrderType, bybitTif := mapOrderTypeAndTif(req.Type)
 	bybitSide, positionIdx, reduceOnly := mapSideAndPosition(req.Side, req.PositionMode == 1)
 
@@ -236,13 +222,38 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.Leverage = fmt.Sprintf("%d", req.Leverage)
 	}
 
-	res, err := c.rawCreateOrder(ctx, rawReq)
+	bodyBytes, err := xjson.Marshal(rawReq)
 	if err != nil {
-		return exchange.CreateOrderResult{}, err
+		return nil, fmt.Errorf("bybit create order marshal: %w", err)
+	}
+
+	dispatch, err := c.PrepareRequest(ctx, http.MethodPost, "/v5/order/create", nil, bodyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("bybit prepare order: %w", err)
 	}
 
 	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
-	return exchange.CreateOrderResult{OrderID: res.OrderID, TPSLSubmitted: tpslSubmitted}, nil
+
+	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
+		body, err := dispatch(execCtx)
+		if err != nil {
+			return exchange.CreateOrderResult{}, fmt.Errorf("bybit create order: %w", err)
+		}
+		res, err := bybit.ParseResponse[bybitCreateOrderResult](body, "bybit create order")
+		if err != nil {
+			return exchange.CreateOrderResult{}, err
+		}
+		return exchange.CreateOrderResult{OrderID: res.OrderID, TPSLSubmitted: tpslSubmitted}, nil
+	}, nil
+}
+
+// CreateOrder submits a new order and returns the order ID.
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	dispatch, err := c.PrepareOrder(ctx, req)
+	if err != nil {
+		return exchange.CreateOrderResult{}, err
+	}
+	return dispatch(ctx)
 }
 
 // PlaceTPSL places Take Profit and Stop Loss on Bybit.

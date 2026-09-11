@@ -294,6 +294,7 @@ func (c *Client) rawCancelOrder(ctx context.Context, symbol, orderID string) err
 
 // CreateOrder satisfies the Client interface.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	res, err := c.rawCreateOrder(ctx, req)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err

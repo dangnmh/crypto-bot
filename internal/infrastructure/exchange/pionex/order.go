@@ -235,6 +235,7 @@ func mapOrderType(orderType domain.OrderType) (string, error) {
 }
 
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	sideStr, posSideStr, reduceOnly, err := mapOrderSide(req.PositionMode, req.Side)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err

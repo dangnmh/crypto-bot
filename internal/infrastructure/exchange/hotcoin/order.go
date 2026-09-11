@@ -100,6 +100,7 @@ func mapOrderSide(s domain.Side) (string, error) {
 
 // CreateOrder places a new limit, market, or post-only order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	contractCode := strings.ToLower(strings.ReplaceAll(req.Symbol, "_", ""))
 
 	typeStr, err := mapOrderType(req.Type)

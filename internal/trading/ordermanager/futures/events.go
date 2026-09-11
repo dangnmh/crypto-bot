@@ -91,6 +91,7 @@ type OrderIntentEvent struct {
 	PositionCloseTimeout    time.Duration `json:"position_close_timeout,omitempty"`
 	UnfilledCancelTimeout   time.Duration `json:"unfilled_cancel_timeout,omitempty"`
 	SkipPreFlight           bool          `json:"skip_pre_flight,omitempty"`
+	SkipRateLimit           bool          `json:"skip_rate_limit,omitempty"`
 	EnablePnLTrailing       bool          `json:"enable_pnl_trailing,omitempty"`
 	PnLTrailingDropPct      float64       `json:"pnl_trailing_drop_pct,omitempty"`
 	PnLTrailingConfirmTicks int           `json:"pnl_trailing_confirm_ticks,omitempty"`
@@ -113,26 +114,26 @@ type OrderPreFlightCompletedEvent struct {
 
 func (e OrderPreFlightCompletedEvent) GetTopic() string { return TopicOrderPreFlightDone }
 
-// OrderFireWindowReachedEvent indicates precision fire window offset reached.
-type OrderFireWindowReachedEvent struct {
-	OrderPreFlightCompletedEvent
-	FireWindowReachedAt time.Time `json:"fire_window_reached_at"`
-}
-
-func (e OrderFireWindowReachedEvent) GetTopic() string { return TopicOrderFireWindowReached }
-
 // OrderPositionWatchReadyEvent indicates position stream watcher registered BEFORE order execution.
 type OrderPositionWatchReadyEvent struct {
-	OrderFireWindowReachedEvent
+	OrderPreFlightCompletedEvent
 	Timeout      time.Duration `json:"timeout"`
 	WatchReadyAt time.Time     `json:"watch_ready_at"`
 }
 
 func (e OrderPositionWatchReadyEvent) GetTopic() string { return TopicOrderPositionWatchReady }
 
+// OrderFireWindowReachedEvent indicates precision fire window offset reached.
+type OrderFireWindowReachedEvent struct {
+	OrderPositionWatchReadyEvent
+	FireWindowReachedAt time.Time `json:"fire_window_reached_at"`
+}
+
+func (e OrderFireWindowReachedEvent) GetTopic() string { return TopicOrderFireWindowReached }
+
 // OrderSubmittedEvent indicates order dispatched to exchange.
 type OrderSubmittedEvent struct {
-	OrderPositionWatchReadyEvent
+	OrderFireWindowReachedEvent
 	OrderID       string    `json:"order_id,omitempty"`
 	Price         float64   `json:"price"`
 	Volume        float64   `json:"volume"`

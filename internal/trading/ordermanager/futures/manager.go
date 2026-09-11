@@ -43,6 +43,7 @@ type OrderManager struct {
 	notifier             notifier.Notifier
 	bus                  *eventbus.Bus
 	log                  *slog.Logger
+	combatCoordinator    *CombatModeCoordinator
 	timers               sync.Map
 	aggregates           *cache.Cache
 	orderIDMapCache      *cache.Cache
@@ -109,14 +110,15 @@ func NewOrderManager(
 	}
 
 	m := &OrderManager{
-		engine:          engine,
-		bus:             bus,
-		repo:            repo,
-		notifier:        n,
-		log:             log.With("component", "GenericOrderManager"),
-		aggregates:      cache.New(defaultCacheTTL, defaultCleanupInterval),
-		orderIDMapCache: cache.New(defaultCacheTTL, defaultCleanupInterval),
-		pnlTrackers:     cache.New(defaultCacheTTL, defaultCleanupInterval),
+		engine:            engine,
+		bus:               bus,
+		repo:              repo,
+		notifier:          n,
+		log:               log.With("component", "GenericOrderManager"),
+		combatCoordinator: NewCombatModeCoordinator(log),
+		aggregates:        cache.New(defaultCacheTTL, defaultCleanupInterval),
+		orderIDMapCache:   cache.New(defaultCacheTTL, defaultCleanupInterval),
+		pnlTrackers:       cache.New(defaultCacheTTL, defaultCleanupInterval),
 	}
 
 	if err := m.Init(ctx); err != nil {
@@ -140,7 +142,28 @@ func (m *OrderManager) Init(ctx context.Context) error {
 
 // Shutdown gracefully shuts down OrderManager resources upon application shutdown signal.
 func (m *OrderManager) Shutdown(ctx context.Context) error {
+	if m.combatCoordinator != nil {
+		m.combatCoordinator.Close()
+	}
 	return nil
+}
+
+// CombatCoordinator returns the CombatModeCoordinator instance managing high-priority windows.
+func (m *OrderManager) CombatCoordinator() *CombatModeCoordinator {
+	return m.combatCoordinator
+}
+
+func (m *OrderManager) registerCombatTarget(fireTime time.Time, settleTime *time.Time) {
+	if m.combatCoordinator == nil {
+		return
+	}
+	targetTime := fireTime
+	if settleTime != nil && !settleTime.IsZero() {
+		targetTime = *settleTime
+	}
+	if !targetTime.IsZero() {
+		m.combatCoordinator.RegisterTargetTime(targetTime)
+	}
 }
 
 func (m *OrderManager) resolveClient(exchangeName string) (ExchangeClient, error) {
@@ -456,12 +479,15 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 		return OrderPreFlightCompletedEvent{}, fmt.Errorf("pre-flight failed to resolve clock: %w", err)
 	}
 
-	if syncer, ok := clock.(SyncerClock); ok {
-		m.log.InfoContext(ctx, "Forcing clock sync on pre-flight")
-		syncer.SyncNow(ctx)
+	if !evt.SkipPreFlight {
+		if syncer, ok := clock.(SyncerClock); ok {
+			m.log.InfoContext(ctx, "Forcing clock sync on pre-flight")
+			syncer.SyncNow(ctx)
+		}
 	}
 
 	adjustedLeverage := evt.Leverage
+	m.registerCombatTarget(evt.FireTime, evt.SettleTime)
 	if !evt.Side.IsClose() && !evt.SkipPreFlight {
 		// Switch Margin Mode
 		if err := client.SwitchMarginMode(ctx, evt.Symbol, evt.MarginMode, evt.Leverage, evt.Side); err != nil {
@@ -494,41 +520,13 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 	}, nil
 }
 
-// HandleFireTiming calculates latency offset & precision sleep window.
-func (m *OrderManager) HandleFireTiming(ctx context.Context, evt OrderPreFlightCompletedEvent) (OrderFireWindowReachedEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 2] HandleFireTiming", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
-
-	clock, err := m.resolveClock(evt.Exchange)
-	if err != nil {
-		return OrderFireWindowReachedEvent{}, fmt.Errorf("fire timing failed to resolve clock: %w", err)
-	}
-
-	fireTime := evt.FireTime
-	if !fireTime.IsZero() {
-		if clock.Until(fireTime) > 0 {
-			m.log.InfoContext(ctx, "Sleeping for fire window target", slog.Time("target", fireTime))
-			if err := clock.Sleep(ctx, clock.Until(fireTime)); err != nil {
-				return OrderFireWindowReachedEvent{}, fmt.Errorf("fire timing sleep failed: %w", err)
-			}
-		}
-	}
-
-	evt.PreTopic = TopicOrderPreFlightDone
-	evt.NextTopic = TopicOrderFireWindowReached
-
-	return OrderFireWindowReachedEvent{
-		OrderPreFlightCompletedEvent: evt,
-		FireWindowReachedAt:          clock.Now(),
-	}, nil
-}
-
-// HandlePositionWatchReady subscribes to real-time personal position stream updates BEFORE order execution.
-func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFireWindowReachedEvent) (OrderPositionWatchReadyEvent, error) {
+// HandlePositionWatchReady subscribes to real-time personal position stream updates BEFORE fire timing & execution.
+func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderPreFlightCompletedEvent) (OrderPositionWatchReadyEvent, error) {
 	timeout := 30 * time.Minute
 	if evt.PositionCloseTimeout > 0 && evt.PositionCloseTimeout*2 > timeout {
 		timeout = evt.PositionCloseTimeout * 2
 	}
-	m.log.InfoContext(ctx, "[Micro-Step 3] HandlePositionWatchReady",
+	m.log.InfoContext(ctx, "[Micro-Step 2] HandlePositionWatchReady",
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.String("strategy", string(evt.StrategyType)),
@@ -546,7 +544,7 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFi
 		posWatcher, _ := m.resolvePositionWatcher(evt.Exchange)
 		if posWatcher != nil {
 			posWatcher.OnPositionUpdate(ctx, evt.Symbol, timeout, func(pos exchange.PersonalPositionUpdate) {
-				m.log.Debug("[Micro-Step 3] HandlePositionUpdate OnPositionUpdate", slog.Any("pos", pos))
+				m.log.Debug("[Micro-Step 2] HandlePositionUpdate OnPositionUpdate", slog.Any("pos", pos))
 				m.HandlePositionUpdate(ctx, evt.GetReqID(), pos)
 			})
 			if evt.EnablePnLTrailing {
@@ -558,13 +556,31 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderFi
 		}
 	}
 
-	evt.PreTopic = TopicOrderFireWindowReached
+	evt.PreTopic = TopicOrderPreFlightDone
 	evt.NextTopic = TopicOrderPositionWatchReady
 
 	return OrderPositionWatchReadyEvent{
-		OrderFireWindowReachedEvent: evt,
-		Timeout:                     timeout,
-		WatchReadyAt:                clock.Now(),
+		OrderPreFlightCompletedEvent: evt,
+		Timeout:                      timeout,
+		WatchReadyAt:                 clock.Now(),
+	}, nil
+}
+
+// HandleFireTiming marks the fire window ready before final execution.
+func (m *OrderManager) HandleFireTiming(ctx context.Context, evt OrderPositionWatchReadyEvent) (OrderFireWindowReachedEvent, error) {
+	m.log.InfoContext(ctx, "[Micro-Step 3] HandleFireTiming", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
+
+	clock, err := m.resolveClock(evt.Exchange)
+	if err != nil {
+		return OrderFireWindowReachedEvent{}, fmt.Errorf("fire timing failed to resolve clock: %w", err)
+	}
+
+	evt.PreTopic = TopicOrderPositionWatchReady
+	evt.NextTopic = TopicOrderFireWindowReached
+
+	return OrderFireWindowReachedEvent{
+		OrderPositionWatchReadyEvent: evt,
+		FireWindowReachedAt:          clock.Now(),
 	}, nil
 }
 
@@ -920,8 +936,90 @@ func (m *OrderManager) GetPnLTracker(reqID string) *PositionPnLTracker {
 	return tracker
 }
 
+func buildSubmitOrderRequest(evt OrderFireWindowReachedEvent) exchange.SubmitOrderRequest {
+	isReduceOnly := evt.Side == shared.SideCloseLong || evt.Side == shared.SideCloseShort
+	return exchange.SubmitOrderRequest{
+		Symbol:          evt.Symbol,
+		Price:           evt.Price,
+		Vol:             evt.Volume,
+		Leverage:        evt.AdjustedLeverage,
+		Side:            evt.Side,
+		Type:            mapOrderType(evt.OrderType),
+		OpenType:        mapOpenType(evt.MarginMode),
+		PositionMode:    evt.PositionMode,
+		ExternalOID:     evt.GetClientOrderID(),
+		ReduceOnly:      isReduceOnly,
+		TakeProfitPrice: evt.TakeProfitPrice,
+		StopLossPrice:   evt.StopLossPrice,
+		SkipRateLimit:   evt.SkipRateLimit,
+	}
+}
+
+func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient, req exchange.SubmitOrderRequest) func(context.Context) (exchange.CreateOrderResult, error) {
+	pse, ok := client.(exchange.PreSignExecutor)
+	if !ok {
+		return nil
+	}
+	fn, prepErr := pse.PrepareOrder(ctx, req)
+	if prepErr != nil {
+		m.log.WarnContext(ctx, "Failed to pre-sign order, falling back to standard create order", slog.Any("error", prepErr))
+		return nil
+	}
+	return fn
+}
+
+func sleepUntilFireTime(ctx context.Context, clock Clock, fireTime time.Time) error {
+	if fireTime.IsZero() {
+		return nil
+	}
+	if ps, ok := clock.(PrecisionClock); ok {
+		if err := ps.PrecisionSleepUntil(ctx, fireTime); err != nil {
+			return fmt.Errorf("precision sleep until fire time failed: %w", err)
+		}
+		return nil
+	}
+	if dur := clock.Until(fireTime); dur > 0 {
+		if err := clock.Sleep(ctx, dur); err != nil {
+			return fmt.Errorf("sleep until fire time failed: %w", err)
+		}
+	}
+	return nil
+}
+
+func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowReachedEvent, preSubmittedAt, submittedAt, exchangeTime time.Time) {
+	if evt.SettleTime == nil || evt.SettleTime.IsZero() {
+		return
+	}
+	rtt := submittedAt.Sub(preSubmittedAt)
+	estimatedArrivedAt := preSubmittedAt.Add(rtt / 2)
+	arriveOffsetMs := estimatedArrivedAt.Sub(*evt.SettleTime).Milliseconds()
+	responseOffsetMs := submittedAt.Sub(*evt.SettleTime).Milliseconds()
+
+	attrs := []any{
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol),
+		slog.Int64("arrive_offset_ms", arriveOffsetMs),
+		slog.Int64("response_offset_ms", responseOffsetMs),
+		slog.Duration("rtt", rtt),
+		slog.Time("fire_time", evt.FireTime),
+		slog.Time("pre_submitted_at", preSubmittedAt),
+		slog.Time("estimated_arrived_at", estimatedArrivedAt),
+		slog.Time("submitted_at", submittedAt),
+		slog.Time("settle_time", *evt.SettleTime),
+	}
+	if !exchangeTime.IsZero() {
+		exchangeOffsetMs := exchangeTime.Sub(*evt.SettleTime).Milliseconds()
+		attrs = append(attrs,
+			slog.Time("exchange_time", exchangeTime),
+			slog.Int64("exchange_offset_ms", exchangeOffsetMs),
+		)
+	}
+
+	log.InfoContext(ctx, "🎯 Order execution timing relative to settle", attrs...)
+}
+
 // HandleExecuteOrder executes order submission REST API.
-func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderPositionWatchReadyEvent) (OrderSubmittedEvent, error) {
+func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWindowReachedEvent) (OrderSubmittedEvent, error) {
 	m.log.InfoContext(ctx, "[Micro-Step 4] HandleExecuteOrder", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
 
 	client, err := m.resolveClient(evt.Exchange)
@@ -933,44 +1031,50 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderPosition
 		return OrderSubmittedEvent{}, fmt.Errorf("execute order failed to resolve clock: %w", err)
 	}
 
-	isReduceOnly := evt.Side == shared.SideCloseLong || evt.Side == shared.SideCloseShort
+	req := buildSubmitOrderRequest(evt)
+	ctx = req.Context(ctx)
 
-	clientOID := evt.GetClientOrderID()
-	req := exchange.SubmitOrderRequest{
-		Symbol:          evt.Symbol,
-		Price:           evt.Price,
-		Vol:             evt.Volume,
-		Leverage:        evt.AdjustedLeverage,
-		Side:            evt.Side,
-		Type:            mapOrderType(evt.OrderType),
-		OpenType:        mapOpenType(evt.MarginMode),
-		PositionMode:    evt.PositionMode,
-		ExternalOID:     clientOID,
-		ReduceOnly:      isReduceOnly,
-		TakeProfitPrice: evt.TakeProfitPrice,
-		StopLossPrice:   evt.StopLossPrice,
+	// Pre-sign and coordinate combat mode if fireTime is scheduled
+	var dispatchFn func(context.Context) (exchange.CreateOrderResult, error)
+	if !evt.FireTime.IsZero() {
+		dispatchFn = m.preparePreSign(ctx, client, req)
+		m.registerCombatTarget(evt.FireTime, evt.SettleTime)
 	}
 
-	resp, err := client.CreateOrder(ctx, req)
+	// Precision sleep right until fireTime immediately before network transmission:
+	if err := sleepUntilFireTime(ctx, clock, evt.FireTime); err != nil {
+		return OrderSubmittedEvent{}, err
+	}
+
+	preSubmittedAt := clock.Now()
+	var resp exchange.CreateOrderResult
+	if dispatchFn != nil {
+		resp, err = dispatchFn(ctx)
+	} else {
+		resp, err = client.CreateOrder(ctx, req)
+	}
 	if err != nil {
 		m.log.ErrorContext(ctx, "Create order failed", slog.Any("error", err))
 		return OrderSubmittedEvent{}, fmt.Errorf("create order failed: %w", err)
 	}
 
+	submittedAt := clock.Now()
+	logSettleOffset(ctx, m.log, evt, preSubmittedAt, submittedAt, resp.Time)
+
 	if resp.OrderID != "" && evt.GetReqID() != "" {
 		m.SetExchangeOrderIDByReqID(evt.GetReqID(), resp.OrderID)
 	}
 
-	evt.PreTopic = TopicOrderPositionWatchReady
+	evt.PreTopic = TopicOrderFireWindowReached
 	evt.NextTopic = TopicOrderSubmitted
 
 	return OrderSubmittedEvent{
-		OrderPositionWatchReadyEvent: evt,
-		OrderID:                      resp.OrderID,
-		Price:                        evt.Price,
-		Volume:                       evt.Volume,
-		TPSLSubmitted:                resp.TPSLSubmitted,
-		SubmittedAt:                  clock.Now(),
+		OrderFireWindowReachedEvent: evt,
+		OrderID:                     resp.OrderID,
+		Price:                       evt.Price,
+		Volume:                      evt.Volume,
+		TPSLSubmitted:               resp.TPSLSubmitted,
+		SubmittedAt:                 submittedAt,
 	}, nil
 }
 
@@ -995,15 +1099,26 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 		return nil, nil
 	}
 
-	m.log.InfoContext(ctx, "[Micro-Step 5A] HandleTPSLContingency", slog.String("symbol", evt.Symbol), slog.Float64("tp", intent.TakeProfitPrice), slog.Float64("sl", intent.StopLossPrice))
+	volume := evt.Volume
+	if volume <= 0 {
+		volume = intent.Volume
+	}
+
+	m.log.InfoContext(ctx, "[Micro-Step 5A] HandleTPSLContingency",
+		slog.String("symbol", evt.Symbol),
+		slog.Float64("tp", intent.TakeProfitPrice),
+		slog.Float64("sl", intent.StopLossPrice),
+		slog.Float64("vol", volume),
+	)
 
 	req := exchange.TPSLRequest{
 		Symbol:          evt.Symbol,
 		PositionMode:    intent.PositionMode,
 		Side:            intent.Side,
+		OpenType:        mapOpenType(intent.MarginMode),
 		TakeProfitPrice: intent.TakeProfitPrice,
 		StopLossPrice:   intent.StopLossPrice,
-		Volume:          intent.Volume,
+		Volume:          volume,
 	}
 
 	if err := provider.PlaceTPSL(ctx, req); err != nil {

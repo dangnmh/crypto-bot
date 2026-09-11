@@ -151,6 +151,7 @@ func mapOrderType(orderType domain.OrderType) (string, string) {
 
 // CreateOrder places a new futures order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	sideStr, tradeSideStr, err := mapOrderSide(req.Side)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err

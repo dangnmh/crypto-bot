@@ -1,6 +1,7 @@
 package application_test
 
 import (
+	"fmt"
 	"log/slog"
 	"sync"
 	"testing"
@@ -67,11 +68,15 @@ func TestPennyJumperRunner_FullEventSourcedPipeline(t *testing.T) {
 	bus := eventbus.New(logger)
 	depthStore := pjstore.NewDepthStore(10*time.Minute, 1*time.Minute)
 
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	dbURI := fmt.Sprintf("file:%s_%d?mode=memory&cache=shared&_busy_timeout=5000", t.Name(), time.Now().UnixNano())
+	db, err := gorm.Open(sqlite.Open(dbURI), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
 	require.NoError(t, db.AutoMigrate(&persistence.PennyJumperWallRecord{}))
 	repo := persistence.NewGormWallRepository(db)
 

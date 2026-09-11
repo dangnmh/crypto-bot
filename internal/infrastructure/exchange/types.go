@@ -1,6 +1,8 @@
 package exchange
 
 import (
+	"context"
+
 	"crypto-bot/internal/domain"
 	"crypto-bot/pkg/xjson"
 )
@@ -330,6 +332,17 @@ type SubmitOrderRequest struct {
 	FlashClose      bool                `json:"flashClose,omitempty"`      // Flash close
 	StopLossPrice   float64             `json:"stopLossPrice,omitempty"`   // Server-side stop loss trigger price
 	TakeProfitPrice float64             `json:"takeProfitPrice,omitempty"` // Server-side take profit trigger price
+	SkipRateLimit   bool                `json:"skipRateLimit,omitempty"`   // Critical order execution: bypass rate limiter delay
+}
+
+// ShouldSkipRateLimit implements RateLimitSkipper.
+func (r SubmitOrderRequest) ShouldSkipRateLimit() bool {
+	return r.SkipRateLimit
+}
+
+// Context returns a context derived from parent with any request flags applied.
+func (r SubmitOrderRequest) Context(parent context.Context) context.Context {
+	return ContextWithRequest(parent, r)
 }
 
 // PositionType represents a position side (1=Long, 2=Short, etc.).

@@ -180,6 +180,7 @@ func (c *Client) mapOrderInfo(raw *bitmartOrderInfo) *exchange.OrderInfo {
 
 // CreateOrder submits a new order to the exchange.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	clientOID := req.ExternalOID
 	if clientOID == "" {
 		clientOID = strings.ReplaceAll(uuid.NewString(), "-", "")
