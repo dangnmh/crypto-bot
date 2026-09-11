@@ -211,17 +211,17 @@ func runPreFlightToOrderExecution(t *testing.T, ctx context.Context, mgr *future
 		t.Errorf("expected pre-flight exchange setup methods to be called")
 	}
 
-	fireWindow, err := mgr.HandleFireTiming(ctx, preflight)
-	if err != nil {
-		t.Fatalf("HandleFireTiming failed: %v", err)
-	}
-
-	watchReady, err := mgr.HandlePositionWatchReady(ctx, fireWindow)
+	watchReady, err := mgr.HandlePositionWatchReady(ctx, preflight)
 	if err != nil {
 		t.Fatalf("HandlePositionWatchReady failed: %v", err)
 	}
 
-	submitted, err := mgr.HandleExecuteOrder(ctx, watchReady)
+	fireWindow, err := mgr.HandleFireTiming(ctx, watchReady)
+	if err != nil {
+		t.Fatalf("HandleFireTiming failed: %v", err)
+	}
+
+	submitted, err := mgr.HandleExecuteOrder(ctx, fireWindow)
 	if err != nil {
 		t.Fatalf("HandleExecuteOrder failed: %v", err)
 	}
@@ -555,7 +555,7 @@ func TestOrderManager_SubmitError_PublishesAbort(t *testing.T) {
 
 	ctx := context.Background()
 	reqID := "req-submit-err-001"
-	watchReady := futures.OrderPositionWatchReadyEvent{
+	fireWindow := futures.OrderFireWindowReachedEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
 		Exchange:     "mexc",
@@ -567,7 +567,7 @@ func TestOrderManager_SubmitError_PublishesAbort(t *testing.T) {
 		Volume:       1.0,
 	}
 
-	_, submitErr := mgr.HandleExecuteOrder(ctx, watchReady)
+	_, submitErr := mgr.HandleExecuteOrder(ctx, fireWindow)
 	assert.Error(t, submitErr)
 }
 
@@ -1247,4 +1247,213 @@ func TestHandleTradeUpdate_PnLTrailingStop_ViaDealStream(t *testing.T) {
 		CloseProfitLoss: 17.0,
 	})
 	assert.Nil(t, mgr.GetPnLTracker(reqID), "tracker should be cleaned up on position close")
+}
+
+type mockPreSignClient struct {
+	mockExchangeClient
+	prepareCalled  bool
+	dispatchCalled bool
+	prepareErr     error
+}
+
+func (m *mockPreSignClient) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
+	m.prepareCalled = true
+	if m.prepareErr != nil {
+		return nil, m.prepareErr
+	}
+	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
+		m.dispatchCalled = true
+		return exchange.CreateOrderResult{OrderID: "presign-order-999", TPSLSubmitted: false}, nil
+	}, nil
+}
+
+func TestHandleExecuteOrder_PreSignExecutor(t *testing.T) {
+	t.Parallel()
+
+	client := &mockPreSignClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-presign-001"
+	fireTime := time.Now().Add(50 * time.Millisecond)
+
+	fireWindow := futures.OrderFireWindowReachedEvent{
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "bybit",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		FireTime:     fireTime,
+	}
+
+	submitted, err := mgr.HandleExecuteOrder(ctx, fireWindow)
+	assert.NoError(t, err)
+	assert.True(t, client.prepareCalled, "PrepareOrder must be called when client implements PreSignExecutor")
+	assert.True(t, client.dispatchCalled, "dispatch closure must be executed upon waking at fire time")
+	assert.False(t, client.orderCreated, "standard CreateOrder should not be called when dispatch succeeds")
+	assert.Equal(t, "presign-order-999", submitted.OrderID)
+}
+
+func TestHandleExecuteOrder_PreSignFallback_OnError(t *testing.T) {
+	t.Parallel()
+
+	client := &mockPreSignClient{
+		prepareErr: errors.New("prepare order failure"),
+	}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-presign-fallback-001"
+	fireTime := time.Now().Add(50 * time.Millisecond)
+
+	fireWindow := futures.OrderFireWindowReachedEvent{
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "bybit",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		FireTime:     fireTime,
+	}
+
+	submitted, err := mgr.HandleExecuteOrder(ctx, fireWindow)
+	assert.NoError(t, err)
+	assert.True(t, client.prepareCalled, "PrepareOrder must be attempted")
+	assert.False(t, client.dispatchCalled, "dispatch closure should not be called when PrepareOrder fails")
+	assert.True(t, client.orderCreated, "standard CreateOrder should be called as fallback")
+	assert.Equal(t, "mock-order-123", submitted.OrderID)
+}
+
+func TestHandleExecuteOrder_StandardClient_NoPreSign(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-standard-001"
+	fireTime := time.Now().Add(50 * time.Millisecond)
+
+	fireWindow := futures.OrderFireWindowReachedEvent{
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "bybit",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		FireTime:     fireTime,
+	}
+
+	submitted, err := mgr.HandleExecuteOrder(ctx, fireWindow)
+	assert.NoError(t, err)
+	assert.True(t, client.orderCreated, "standard CreateOrder must be called for non-PreSignExecutor client")
+	assert.Equal(t, "mock-order-123", submitted.OrderID)
+}
+
+func TestOrderManager_CombatModeIntegration(t *testing.T) {
+	t.Parallel()
+
+	client := &mockExchangeClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+
+	ctx := context.Background()
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, mgr.CombatCoordinator())
+
+	// Configure tight durations for testing
+	mgr.CombatCoordinator().SetDurations(100*time.Millisecond, 100*time.Millisecond)
+
+	settleTime := time.Now().Add(50 * time.Millisecond)
+	intent := futures.OrderIntentEvent{
+		ReqID:         "combat-test-1",
+		Symbol:        "BTCUSDT",
+		Exchange:      "bybit",
+		StrategyType:  futures.StrategyFundingReversion,
+		Timestamp:     time.Now(),
+		Side:          shared.SideOpenLong,
+		OrderType:     futures.OrderTypeIOC,
+		Price:         50000.0,
+		Volume:        1.0,
+		SkipPreFlight: true,
+		SettleTime:    &settleTime,
+	}
+
+	_, err = mgr.HandlePreFlight(ctx, intent)
+	assert.NoError(t, err)
+
+	// Settle time is within lead duration (50ms < 100ms), so combat mode should be active
+	assert.True(t, mgr.CombatCoordinator().IsActive(), "combat mode should be active after PreFlight registration")
+
+	// Shutdown should close coordinator
+	err = mgr.Shutdown(ctx)
+	assert.NoError(t, err)
+	assert.False(t, mgr.CombatCoordinator().IsActive(), "combat mode should be inactive after Shutdown")
 }

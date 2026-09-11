@@ -85,6 +85,7 @@ func (c *Client) changeRawLeverage(ctx context.Context, req hyperliquidUpdateLev
 
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	if c.exchange == nil {
 		return exchange.CreateOrderResult{}, fmt.Errorf("trading is disabled: exchange signer is not configured")
 	}

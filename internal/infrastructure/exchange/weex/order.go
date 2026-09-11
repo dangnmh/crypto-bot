@@ -40,6 +40,7 @@ type weexOrder struct {
 }
 
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	body := c.buildOrderBody(req)
 
 	resBytes, err := c.request(ctx, http.MethodPost, "/capi/v3/order", nil, body, true)

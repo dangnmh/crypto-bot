@@ -3,6 +3,7 @@ package timesync
 import (
 	"context"
 	"log/slog"
+	"runtime"
 	"sync"
 	"time"
 
@@ -10,13 +11,20 @@ import (
 	"crypto-bot/pkg/ticker"
 )
 
-// TimeSync continuously synchronizes local time with MEXC server time.
-// Uses Exponential Moving Average to smooth out network jitter.
+type rttSample struct {
+	rtt int64
+	at  time.Time
+}
+
+// TimeSync continuously synchronizes local time with exchange server time.
+// Uses Exponential Moving Average to smooth clock offset and maintains a rolling minimum RTT.
 type TimeSync struct {
 	client    exchange.Client
 	mu        sync.RWMutex
 	offset    int64 // server - local (ms)
-	latency   int64 // round-trip time (ms)
+	latency   int64 // last measured round-trip time (ms)
+	minRTT    int64 // rolling minimum round-trip time (ms)
+	samples   []rttSample
 	lastSync  time.Time
 	healthy   bool
 	alpha     float64 // EMA smoothing factor
@@ -62,9 +70,9 @@ func (ts *TimeSync) Start(ctx context.Context) {
 
 // syncOnce performs a single time sync round.
 func (ts *TimeSync) syncOnce(ctx context.Context) {
-	localBefore := time.Now().UnixMilli()
+	localBefore := time.Now()
 	serverTime, err := ts.client.GetServerTime(ctx)
-	localAfter := time.Now().UnixMilli()
+	localAfter := time.Now()
 	if err != nil {
 		ts.mu.Lock()
 		ts.healthy = false
@@ -73,10 +81,12 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 		return
 	}
 
-	rtt := localAfter - localBefore
-	localMid := localBefore + rtt/2
-	newOffset := serverTime - localMid
+	rttDur := localAfter.Sub(localBefore)
+	rttMs := rttDur.Milliseconds()
+	localMid := localBefore.Add(rttDur / 2)
+	newOffset := serverTime - localMid.UnixMilli()
 
+	now := time.Now()
 	ts.mu.Lock()
 	if ts.lastSync.IsZero() {
 		// First sync — use raw value
@@ -85,12 +95,34 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 		// EMA smoothing
 		ts.offset = int64(float64(ts.offset)*(1-ts.alpha) + float64(newOffset)*ts.alpha)
 	}
-	ts.latency = rtt
-	ts.lastSync = time.Now()
-	ts.healthy = rtt < 100 // healthy if RTT < 100ms
+	ts.latency = rttMs
+	ts.lastSync = now
+	ts.healthy = rttMs < 100 // healthy if RTT < 100ms
+
+	// Maintain rolling window of RTT samples (60s retention)
+	ts.samples = append(ts.samples, rttSample{rtt: rttMs, at: now})
+	cutoff := now.Add(-60 * time.Second)
+	idx := 0
+	for idx < len(ts.samples) && ts.samples[idx].at.Before(cutoff) {
+		idx++
+	}
+	if idx > 0 {
+		ts.samples = ts.samples[idx:]
+	}
+
+	// Calculate rolling minimum RTT across active samples
+	minRTT := rttMs
+	for _, s := range ts.samples {
+		if s.rtt < minRTT {
+			minRTT = s.rtt
+		}
+	}
+	ts.minRTT = minRTT
+
 	offset := ts.offset
 	latency := ts.latency
 	healthy := ts.healthy
+	minLatency := ts.minRTT
 	ts.mu.Unlock()
 
 	// Signal readiness after first successful sync
@@ -103,11 +135,13 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 		ts.logger.InfoContext(ctx, "🟢 Time sync OK",
 			slog.Int64("offset_ms", offset),
 			slog.Int64("latency_ms", latency),
+			slog.Int64("min_rtt_ms", minLatency),
 		)
 	} else {
 		ts.logger.WarnContext(ctx, "🟡 Time sync high latency",
 			slog.Int64("offset_ms", offset),
 			slog.Int64("latency_ms", latency),
+			slog.Int64("min_rtt_ms", minLatency),
 		)
 	}
 }
@@ -138,8 +172,21 @@ func (ts *TimeSync) Offset() int64 {
 	return ts.offset
 }
 
-// LatencyMs returns the last measured round-trip time in milliseconds.
+// LatencyMs returns the rolling minimum round-trip time in milliseconds across recent samples.
 func (ts *TimeSync) LatencyMs() int64 {
+	if ts == nil {
+		return 0
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	if ts.minRTT > 0 {
+		return ts.minRTT
+	}
+	return ts.latency
+}
+
+// LastLatencyMs returns the raw single-ping round-trip time of the most recent sync.
+func (ts *TimeSync) LastLatencyMs() int64 {
 	if ts == nil {
 		return 0
 	}
@@ -202,5 +249,76 @@ func (ts *TimeSync) Sleep(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	case <-time.After(d):
 		return nil
+	}
+}
+
+// PrecisionSleepUntil blocks until target arrives using a hybrid sleep + spin-wait strategy:
+// 1. Normal sleep until leadTime (3ms) before target to release CPU.
+// 2. High-resolution monotonic spin-wait with locked OS thread for the final remaining milliseconds.
+func (ts *TimeSync) PrecisionSleepUntil(ctx context.Context, target time.Time) error {
+	if sleeper := ts.getSleeper(); sleeper != nil {
+		dur := ts.Until(target)
+		if dur <= 0 {
+			return nil
+		}
+		return sleeper(ctx, dur)
+	}
+
+	const leadTime = 3 * time.Millisecond
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		now := ts.currentTime()
+		remaining := target.Sub(now)
+		if remaining <= 0 {
+			return nil
+		}
+		if remaining <= leadTime {
+			return ts.spinWaitUntil(ctx, target)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(remaining - leadTime):
+		}
+	}
+}
+
+func (ts *TimeSync) getSleeper() func(context.Context, time.Duration) error {
+	if ts == nil {
+		return nil
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.sleeper
+}
+
+func (ts *TimeSync) currentTime() time.Time {
+	if ts != nil {
+		return ts.Now()
+	}
+	return time.Now()
+}
+
+func (ts *TimeSync) spinWaitUntil(ctx context.Context, target time.Time) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	var offset int64
+	if ts != nil {
+		offset = ts.Offset()
+	}
+	targetLocal := target.Add(-time.Duration(offset) * time.Millisecond)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		now := time.Now()
+		if now.After(targetLocal) || now.Equal(targetLocal) {
+			return nil
+		}
 	}
 }

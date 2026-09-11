@@ -188,6 +188,7 @@ func (c *Client) changeRawLeverage(ctx context.Context, req bingxChangeLeverageR
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	ordType, tif := mapOrderTypeAndTif(req.Type)
 	side, posSide := mapSideAndPosSide(req.Side, req.PositionMode)
 

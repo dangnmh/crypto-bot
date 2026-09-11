@@ -2,11 +2,15 @@ package futures_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
+	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/exchange/mexc/futures"
@@ -133,6 +137,42 @@ func TestFuturesClient_OrderAndPosition(t *testing.T) {
 	client.WarmUp(warmCtx, 10*time.Millisecond)
 }
 
+func TestFuturesClient_PrepareOrder(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		assert.Equal(t, "/api/v1/private/order/create", r.URL.Path)
+		assert.Equal(t, "POST", r.Method)
+		assert.NotEmpty(t, r.Header.Get("ApiKey"))
+		assert.NotEmpty(t, r.Header.Get("Signature"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"mexc-pre-123","ts":1670000000000}}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	dispatch, err := client.PrepareOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol: "BTC_USDT",
+		Price:  50000,
+		Vol:    1,
+		Side:   exchange.SideOpenLong,
+		Type:   exchange.OrderTypeLimit,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dispatch)
+	assert.False(t, called, "PrepareOrder must not make HTTP call during preparation phase")
+
+	res, err := dispatch(context.Background())
+	require.NoError(t, err)
+	assert.True(t, called, "dispatch must execute the prepared HTTP request")
+	assert.Equal(t, "mexc-pre-123", res.OrderID)
+}
+
 func TestFuturesClient_GetFundingRates(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -232,4 +272,253 @@ func TestFuturesClient_GetPotentialFundingSymbols(t *testing.T) {
 	assert.Equal(t, "ZORA_USDT", res[1].Symbol)
 	assert.Equal(t, -0.0061, res[1].Rate)
 	assert.Equal(t, int64(1788192000000), res[1].SettleTime)
+}
+
+func TestFuturesClient_PlaceTPSL_Long(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var requests []map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/private/planorder/place/v2", r.URL.Path)
+		assert.Equal(t, "POST", r.Method)
+
+		bodyBytes, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+
+		var reqMap map[string]any
+		err = json.Unmarshal(bodyBytes, &reqMap)
+		assert.NoError(t, err)
+
+		mu.Lock()
+		requests = append(requests, reqMap)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success": true, "code": 0, "data": "739206374277809664"}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	err := client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+		Symbol:          "BTC_USDT",
+		PositionMode:    domain.PositionModeHedge,
+		Side:            domain.SideOpenLong,
+		TakeProfitPrice: 55000.0,
+		StopLossPrice:   45000.0,
+		Volume:          2.0,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, requests, 2)
+
+	// In Long position, closing side is 4 (close long)
+	for _, req := range requests {
+		assert.Equal(t, "BTC_USDT", req["symbol"])
+		assert.Equal(t, float64(4), req["side"])
+		assert.Equal(t, float64(2), req["vol"])
+		assert.Equal(t, float64(5), req["orderType"]) // market
+		assert.Equal(t, float64(1), req["trend"])     // latest
+		assert.Equal(t, float64(1), req["openType"])  // isolated default
+		assert.Equal(t, true, req["reduceOnly"])
+
+		triggerPrice, ok := req["triggerPrice"].(float64)
+		require.True(t, ok)
+		triggerType, ok := req["triggerType"].(float64)
+		require.True(t, ok)
+		switch triggerPrice {
+		case 55000.0:
+			// TP for Long: >=
+			assert.Equal(t, float64(1), triggerType)
+		case 45000.0:
+			// SL for Long: <=
+			assert.Equal(t, float64(2), triggerType)
+		default:
+			t.Fatalf("unexpected trigger price: %v", triggerPrice)
+		}
+	}
+}
+
+func TestFuturesClient_PlaceTPSL_Short(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var requests []map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/private/planorder/place/v2", r.URL.Path)
+
+		bodyBytes, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+
+		var reqMap map[string]any
+		err = json.Unmarshal(bodyBytes, &reqMap)
+		assert.NoError(t, err)
+
+		mu.Lock()
+		requests = append(requests, reqMap)
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success": true, "code": 0, "data": "739206374277809665"}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	err := client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+		Symbol:          "ETH_USDT",
+		PositionMode:    domain.PositionModeHedge,
+		Side:            domain.SideOpenShort,
+		OpenType:        domain.OpenTypeCross,
+		TakeProfitPrice: 2800.0,
+		StopLossPrice:   3200.0,
+		Volume:          5.0,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, requests, 2)
+
+	// In Short position, closing side is 2 (close short)
+	for _, req := range requests {
+		assert.Equal(t, "ETH_USDT", req["symbol"])
+		assert.Equal(t, float64(2), req["side"])
+		assert.Equal(t, float64(5), req["vol"])
+		assert.Equal(t, float64(5), req["orderType"])
+		assert.Equal(t, float64(2), req["openType"]) // cross margin
+		assert.Equal(t, true, req["reduceOnly"])
+
+		triggerPrice, ok := req["triggerPrice"].(float64)
+		require.True(t, ok)
+		triggerType, ok := req["triggerType"].(float64)
+		require.True(t, ok)
+		switch triggerPrice {
+		case 2800.0:
+			// TP for Short: <=
+			assert.Equal(t, float64(2), triggerType)
+		case 3200.0:
+			// SL for Short: >=
+			assert.Equal(t, float64(1), triggerType)
+		default:
+			t.Fatalf("unexpected trigger price: %v", triggerPrice)
+		}
+	}
+}
+
+func TestFuturesClient_PlaceTPSL_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	client := futures.NewClient(nil, "http://localhost", "key", "secret", config.LoggingConfig{})
+
+	// 1. Both prices <= 0 -> no-op, nil error
+	err := client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+		Symbol: "BTC_USDT",
+		Side:   domain.SideOpenLong,
+	})
+	require.NoError(t, err)
+
+	// 2. Invalid side -> error
+	err = client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+		Symbol:          "BTC_USDT",
+		Side:            domain.SideUnknown,
+		TakeProfitPrice: 55000.0,
+		Volume:          1.0,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid side")
+
+	// 3. Invalid volume -> error
+	err = client.PlaceTPSL(context.Background(), exchange.TPSLRequest{
+		Symbol:          "BTC_USDT",
+		Side:            domain.SideOpenLong,
+		TakeProfitPrice: 55000.0,
+		Volume:          0,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid volume")
+}
+
+func TestFuturesClient_PrepareOrder_NoInlineTPSL(t *testing.T) {
+	t.Parallel()
+
+	var recordedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/private/order/create", r.URL.Path)
+		var err error
+		recordedBody, err = io.ReadAll(r.Body)
+		assert.NoError(t, err)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"mexc-123","ts":1670000000000}}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	dispatch, err := client.PrepareOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:          "BTC_USDT",
+		Price:           50000,
+		Vol:             1,
+		Side:            exchange.SideOpenLong,
+		Type:            exchange.OrderTypeLimit,
+		TakeProfitPrice: 55000,
+		StopLossPrice:   45000,
+	})
+	require.NoError(t, err)
+
+	res, err := dispatch(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "mexc-123", res.OrderID)
+	assert.False(t, res.TPSLSubmitted, "TPSLSubmitted must be false for MEXC standalone TP/SL")
+
+	// Verify the body payload has NO stopLossPrice or takeProfitPrice keys
+	var payload map[string]any
+	err = json.Unmarshal(recordedBody, &payload)
+	require.NoError(t, err)
+	_, hasTP := payload["takeProfitPrice"]
+	_, hasSL := payload["stopLossPrice"]
+	assert.False(t, hasTP, "inline takeProfitPrice must not be sent")
+	assert.False(t, hasSL, "inline stopLossPrice must not be sent")
+}
+
+func TestFuturesClient_CancelAllOpenOrders_WithPlanOrders(t *testing.T) {
+	t.Parallel()
+
+	var cancelAllOrdersCalled, cancelAllPlanOrdersCalled bool
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		mu.Lock()
+		switch r.URL.Path {
+		case "/api/v1/private/planorder/cancel_all":
+			cancelAllPlanOrdersCalled = true
+			_, _ = w.Write([]byte(`{"success":true,"code":0,"data":null}`))
+		case "/api/v1/private/order/cancel_all":
+			cancelAllOrdersCalled = true
+			_, _ = w.Write([]byte(`{"success":true,"code":0,"data":null}`))
+		}
+		mu.Unlock()
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+	err := client.CancelAllOpenOrders(context.Background(), "BTC_USDT")
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.True(t, cancelAllPlanOrdersCalled, "CancelAllOpenOrders must cancel plan orders")
+	assert.True(t, cancelAllOrdersCalled, "CancelAllOpenOrders must cancel regular orders")
 }

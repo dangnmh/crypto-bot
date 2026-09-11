@@ -48,4 +48,60 @@ func TestTimeSync_WaitReadyAndSleepCancel(t *testing.T) {
 
 	assert.ErrorIs(t, ts.WaitReady(ctx), context.Canceled)
 	assert.ErrorIs(t, ts.Sleep(ctx, time.Second), context.Canceled)
+	assert.ErrorIs(t, ts.PrecisionSleepUntil(ctx, time.Now().Add(time.Second)), context.Canceled)
+}
+
+func TestTimeSync_PrecisionSleepUntil(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	ts := timesync.New(mocks.NewMockClient(ctrl), slog.Default(), time.Second)
+
+	// Test immediate past target
+	assert.NoError(t, ts.PrecisionSleepUntil(t.Context(), time.Now().Add(-time.Second)))
+
+	// Test short duration spin-wait
+	start := time.Now()
+	target := start.Add(5 * time.Millisecond)
+	assert.NoError(t, ts.PrecisionSleepUntil(t.Context(), target))
+	assert.True(t, time.Now().After(target) || time.Now().Equal(target))
+}
+
+func TestTimeSync_RollingMinRTT(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	client := mocks.NewMockClient(ctrl)
+
+	callCount := 0
+	delays := []time.Duration{
+		40 * time.Millisecond,
+		15 * time.Millisecond, // minimum
+		60 * time.Millisecond,
+	}
+
+	client.EXPECT().GetServerTime(gomock.Any()).DoAndReturn(func(context.Context) (int64, error) {
+		d := delays[callCount%len(delays)]
+		callCount++
+		time.Sleep(d)
+		return time.Now().UnixMilli(), nil
+	}).Times(3)
+
+	ts := timesync.New(client, slog.Default(), time.Minute)
+	ctx := t.Context()
+
+	// 1st sync (40ms)
+	ts.SyncNow(ctx)
+	assert.GreaterOrEqual(t, ts.LatencyMs(), int64(35))
+	assert.Equal(t, ts.LatencyMs(), ts.LastLatencyMs())
+
+	// 2nd sync (15ms -> new minimum)
+	ts.SyncNow(ctx)
+	assert.GreaterOrEqual(t, ts.LatencyMs(), int64(14))
+	assert.LessOrEqual(t, ts.LatencyMs(), int64(30))
+
+	// 3rd sync (60ms -> spike, minRTT should stay around ~15ms)
+	ts.SyncNow(ctx)
+	assert.GreaterOrEqual(t, ts.LastLatencyMs(), int64(55))
+	assert.LessOrEqual(t, ts.LatencyMs(), int64(30))
 }

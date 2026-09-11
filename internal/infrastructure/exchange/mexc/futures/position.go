@@ -115,8 +115,9 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// CloseAllPositions closes all open positions for a symbol.
+// CloseAllPositions closes all open positions for a symbol and cancels pending plan orders.
 func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	_ = c.rawCancelAllPlanOrders(ctx, mexcCancelAllPlanOrdersRequest{Symbol: symbol})
 	req := map[string]string{"symbol": symbol}
 	bodyBytes, err := xjson.Marshal(req)
 	if err != nil {

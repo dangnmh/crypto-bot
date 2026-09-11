@@ -171,6 +171,7 @@ func (c *Client) rawGetOpenOrders(ctx context.Context, req binanceListOpenOrders
 
 // CreateOrder places a new order.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	sdkSide := sideBuy
 	if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseLong {
 		sdkSide = sideSell

@@ -86,6 +86,7 @@ func (c *Client) rawGetOrderState(ctx context.Context, orderID, customOrderID st
 }
 
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	var posSide, method string
 
 	switch req.Side {

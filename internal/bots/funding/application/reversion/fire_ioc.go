@@ -72,7 +72,7 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 	latencyMs := evt.LatencyRTTMs
 	now := r.now()
 	oneWayMs := max(latencyMs/2, 0)
-	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
+	targetArriveOffset := time.Duration(evt.Candidate.Config.FundingReversion.TargetArriveOffset)
 
 	cand := evt.Candidate
 	marginMode := shared.MarginModeIsolated
@@ -115,20 +115,21 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 		MaxLatency:              time.Duration(cand.Config.FundingReversion.MaxLatency),
 		SettleTime:              settleTimePtr,
 		SkipPreFlight:           true,
+		SkipRateLimit:           true,
 		EnablePnLTrailing:       cand.Config.FundingReversion.PnLTrailing.Enabled,
 		PnLTrailingDropPct:      cand.Config.FundingReversion.PnLTrailing.DropPct,
 		PnLTrailingConfirmTicks: cand.Config.FundingReversion.PnLTrailing.ConfirmTicks,
 		Extra: map[string]any{
-			"buffer_time_ms":    bufferTime.Milliseconds(),
-			"fire_offset_ms":    evt.FireOffsetMs,
-			"one_way_ms":        oneWayMs,
-			"funding_rate":      cand.FundingRate,
-			"vol_24h_usdt":      cand.Vol24USDT,
-			"tp_pct":            cand.ResolveTakeProfitPct(),
-			"sl_pct":            cand.Config.FundingReversion.StopLossPct,
-			"ioc_price":         iocPrice,
-			"take_profit_price": tpPrice,
-			"stop_loss_price":   slPrice,
+			"target_arrive_offset_ms": targetArriveOffset.Milliseconds(),
+			"fire_offset_ms":          evt.FireOffsetMs,
+			"one_way_ms":              oneWayMs,
+			"funding_rate":            cand.FundingRate,
+			"vol_24h_usdt":            cand.Vol24USDT,
+			"tp_pct":                  cand.ResolveTakeProfitPct(),
+			"sl_pct":                  cand.Config.FundingReversion.StopLossPct,
+			"ioc_price":               iocPrice,
+			"take_profit_price":       tpPrice,
+			"stop_loss_price":         slPrice,
 		},
 	}
 
@@ -184,8 +185,8 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 
 	latencyMs := r.latencyMs()
 	oneWayMs := latencyMs / 2
-	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
-	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
+	targetArriveOffset := time.Duration(evt.Candidate.Config.FundingReversion.TargetArriveOffset)
+	fireOffset := time.Duration(oneWayMs)*time.Millisecond - targetArriveOffset
 
 	// Ensure snapshotOffset is at least fireOffset + 300ms, and at least 300ms overall
 	// to avoid race conditions during the price refresh and safety calculation.
@@ -208,6 +209,22 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 		r.abortAfter(ctx, evt.BaseReversionEvent, evt.Symbol, "wait snapshot failed: "+err.Error())
 		return err
 	}
+
+	// Pre-warm TCP connection via clock syncer to keep socket open and TLS hot, and refresh latency
+	type syncer interface {
+		SyncNow(ctx context.Context)
+	}
+	if s, ok := r.deps.Clock.(syncer); ok {
+		s.SyncNow(ctx)
+	}
+
+	freshLatencyMs := r.latencyMs()
+	if freshLatencyMs <= 0 {
+		freshLatencyMs = evt.LatencyRTTMs
+	}
+	oneWayMs := max(freshLatencyMs/2, 0)
+	targetArriveOffset := time.Duration(evt.Candidate.Config.FundingReversion.TargetArriveOffset)
+	fireOffset := time.Duration(oneWayMs)*time.Millisecond - targetArriveOffset
 
 	c := evt.Candidate
 	if err := r.refreshPrice(ctx, &c); err != nil {
@@ -241,8 +258,8 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 	next := FirePlanCheckedEvent{
 		BaseReversionEvent: nextReversionBase(evt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now()),
 		Candidate:          c,
-		LatencyRTTMs:       evt.LatencyRTTMs,
-		FireOffsetMs:       evt.FireOffsetMs,
+		LatencyRTTMs:       freshLatencyMs,
+		FireOffsetMs:       fireOffset.Milliseconds(),
 		IOCPrice:           ioc,
 		RefPrice:           refPrice,
 		AdjustedVolume:     c.Volume,

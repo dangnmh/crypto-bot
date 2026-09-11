@@ -207,6 +207,7 @@ func (c *Client) rawGetClosedPositions(ctx context.Context, symbol string, creat
 // Public OrderDataProvider methods.
 
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	side, posSide, reduceOnly := mapDeepcoinOrderSideAndPosition(req.Side)
 	ordType := mapDeepcoinOrderType(req.Type)
 

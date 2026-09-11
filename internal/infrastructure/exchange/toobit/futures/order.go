@@ -118,6 +118,7 @@ func (c *Client) rawGetOpenOrders(ctx context.Context, params map[string]string)
 
 // CreateOrder submits a new order to the exchange.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	params := map[string]string{
 		symbolKey:  req.Symbol,
 		"quantity": strconv.FormatFloat(req.Vol, 'f', -1, 64),

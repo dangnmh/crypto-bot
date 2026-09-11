@@ -7,6 +7,7 @@ type TPSLRequest struct {
 	Symbol          string              `json:"symbol"`
 	PositionMode    domain.PositionMode `json:"positionMode"` // 1=Hedge, 2=OneWay
 	Side            domain.Side         `json:"side"`         // Main order opening side (1=OpenLong, 3=OpenShort)
+	OpenType        domain.OpenType     `json:"openType,omitempty"`
 	TakeProfitPrice float64             `json:"takeProfitPrice,omitempty"`
 	StopLossPrice   float64             `json:"stopLossPrice,omitempty"`
 	Volume          float64             `json:"volume,omitempty"`

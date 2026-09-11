@@ -188,6 +188,7 @@ func (c *Client) rawGetOrderDetail(ctx context.Context, req okxOrderDetailReques
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	ordType := mapOKXOrderType(req.Type)
 	isHedge := req.PositionMode == 1 || req.PositionMode == 0
 	side, posSide := mapOKXOrderSide(req.Side, isHedge)

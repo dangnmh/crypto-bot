@@ -34,8 +34,25 @@ func NewExchangeRateLimiter(globalLimit rate.Limit, globalBurst int, configs map
 	}
 }
 
+type skipRateLimitKey struct{}
+
+// WithSkipRateLimit returns a context marking the request to bypass client-side rate limit queues.
+func WithSkipRateLimit(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipRateLimitKey{}, true)
+}
+
+// IsSkipRateLimit returns true if the context requests bypassing client-side rate limit queues.
+func IsSkipRateLimit(ctx context.Context) bool {
+	v, ok := ctx.Value(skipRateLimitKey{}).(bool)
+	return ok && v
+}
+
 // Acquire blocks until the request is allowed under all registered rate limits.
 func (rl *ExchangeRateLimiter) Acquire(ctx context.Context, path string) error {
+	if IsSkipRateLimit(ctx) {
+		return nil
+	}
+
 	prefix, config, hasConfig := rl.resolveConfig(path)
 
 	// 1. Consume tokens from path-specific limiter if configured

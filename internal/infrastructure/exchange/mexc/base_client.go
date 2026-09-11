@@ -166,8 +166,9 @@ func (c *BaseClient) applyFuturesAuth(req *http.Request, method string, params m
 	req.Header.Set("Signature", signature)
 }
 
-// Request executes an HTTP request with rate limiting and optional MEXC futures header authentication.
-func (c *BaseClient) Request(ctx context.Context, method, path string, params map[string]any, body []byte, signed bool) ([]byte, error) {
+// PrepareRequest pre-builds, rate-limits, and signs an HTTP request to MEXC Futures,
+// returning a dispatch function ready for low-latency execution upon trigger time.
+func (c *BaseClient) PrepareRequest(ctx context.Context, method, path string, params map[string]any, body []byte, signed bool) (func(context.Context) ([]byte, error), error) {
 	if c.limiter != nil {
 		if err := c.limiter.Acquire(ctx, path); err != nil {
 			return nil, fmt.Errorf("rate limiter: %w", err)
@@ -191,26 +192,38 @@ func (c *BaseClient) Request(ctx context.Context, method, path string, params ma
 		c.applyFuturesAuth(req, method, params, body)
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("execute request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, &exchange.APIError{
-			StatusCode: resp.StatusCode,
-			Message:    string(respBody),
-			Path:       path,
+	return func(execCtx context.Context) ([]byte, error) {
+		req = req.WithContext(execCtx)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("execute request: %w", err)
 		}
-	}
+		defer func() { _ = resp.Body.Close() }()
 
-	return respBody, nil
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, &exchange.APIError{
+				StatusCode: resp.StatusCode,
+				Message:    string(respBody),
+				Path:       path,
+			}
+		}
+
+		return respBody, nil
+	}, nil
+}
+
+// Request executes an HTTP request with rate limiting and optional MEXC futures header authentication.
+func (c *BaseClient) Request(ctx context.Context, method, path string, params map[string]any, body []byte, signed bool) ([]byte, error) {
+	dispatch, err := c.PrepareRequest(ctx, method, path, params, body, signed)
+	if err != nil {
+		return nil, err
+	}
+	return dispatch(ctx)
 }
 
 // RequestSpot executes a signed or unsigned request using MEXC Spot v3 API query parameter signing format.

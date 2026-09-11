@@ -17,6 +17,7 @@ var (
 	_ exchange.KlineProvider     = (*Client)(nil)
 	_ exchange.TopGainerProvider = (*Client)(nil)
 	_ exchange.OrderExecutor     = (*Client)(nil)
+	_ exchange.PreSignExecutor   = (*Client)(nil)
 	_ exchange.ClosedPnLProvider = (*Client)(nil)
 	_ exchange.RawRequest        = (*Client)(nil)
 	_ exchange.RawRequester      = (*Client)(nil)
@@ -47,6 +48,10 @@ func (c *Client) SetClock(clk exchange.Clock) {
 // IsFutures returns true for Futures client.
 func (c *Client) IsFutures() bool {
 	return true
+}
+
+func (c *Client) PrepareRequest(ctx context.Context, method, path string, query map[string]string, body []byte) (func(context.Context) ([]byte, error), error) {
+	return c.base.PrepareRequest(ctx, method, path, query, body)
 }
 
 func (c *Client) RawRequest(ctx context.Context, method, path string, query map[string]string, body []byte) ([]byte, error) {

@@ -125,24 +125,11 @@ func registerPreFlightSubscriptions(ctx context.Context, mgr *OrderManager) {
 		return om.publishEvent(ctx, TopicOrderPreFlightDone, res)
 	})
 
-	// 2. OrderPreFlightCompletedEvent -> HandleFireTiming -> TopicOrderFireWindowReached
+	// 2. OrderPreFlightCompletedEvent -> HandlePositionWatchReady -> TopicOrderPositionWatchReady
 	registerEventSubscription(ctx, mgr, TopicOrderPreFlightDone, func(ctx context.Context, om *OrderManager, evt OrderPreFlightCompletedEvent) error {
-		res, err := om.HandleFireTiming(ctx, evt)
-		if err != nil {
-			return om.abortOrder(ctx, evt, TopicOrderPreFlightDone, "fire_timing_error", err)
-		}
-		agg := om.GetAggregate(evt.ReqID)
-		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
-		}
-		return om.publishEvent(ctx, TopicOrderFireWindowReached, res)
-	})
-
-	// 3. OrderFireWindowReachedEvent -> HandlePositionWatchReady -> TopicOrderPositionWatchReady
-	registerEventSubscription(ctx, mgr, TopicOrderFireWindowReached, func(ctx context.Context, om *OrderManager, evt OrderFireWindowReachedEvent) error {
 		res, err := om.HandlePositionWatchReady(ctx, evt)
 		if err != nil {
-			return om.abortOrder(ctx, evt, TopicOrderFireWindowReached, "position_watch_ready_error", err)
+			return om.abortOrder(ctx, evt, TopicOrderPreFlightDone, "position_watch_ready_error", err)
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
@@ -150,14 +137,27 @@ func registerPreFlightSubscriptions(ctx context.Context, mgr *OrderManager) {
 		}
 		return om.publishEvent(ctx, TopicOrderPositionWatchReady, res)
 	})
+
+	// 3. OrderPositionWatchReadyEvent -> HandleFireTiming -> TopicOrderFireWindowReached
+	registerEventSubscription(ctx, mgr, TopicOrderPositionWatchReady, func(ctx context.Context, om *OrderManager, evt OrderPositionWatchReadyEvent) error {
+		res, err := om.HandleFireTiming(ctx, evt)
+		if err != nil {
+			return om.abortOrder(ctx, evt, TopicOrderPositionWatchReady, "fire_timing_error", err)
+		}
+		agg := om.GetAggregate(evt.ReqID)
+		if err := agg.Record(res); err != nil {
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+		}
+		return om.publishEvent(ctx, TopicOrderFireWindowReached, res)
+	})
 }
 
 func registerOrderExecutionSubscriptions(ctx context.Context, mgr *OrderManager) {
-	// 4. OrderPositionWatchReadyEvent -> HandleExecuteOrder -> TopicOrderSubmitted
-	registerEventSubscription(ctx, mgr, TopicOrderPositionWatchReady, func(ctx context.Context, om *OrderManager, evt OrderPositionWatchReadyEvent) error {
+	// 4. OrderFireWindowReachedEvent -> HandleExecuteOrder -> TopicOrderSubmitted
+	registerEventSubscription(ctx, mgr, TopicOrderFireWindowReached, func(ctx context.Context, om *OrderManager, evt OrderFireWindowReachedEvent) error {
 		res, err := om.HandleExecuteOrder(ctx, evt)
 		if err != nil {
-			return om.abortOrder(ctx, evt, TopicOrderPositionWatchReady, "submit_error", err)
+			return om.abortOrder(ctx, evt, TopicOrderFireWindowReached, "submit_error", err)
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {

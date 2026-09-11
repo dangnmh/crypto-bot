@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"crypto-bot/internal/domain"
+	"crypto-bot/pkg/ratelimit"
 )
 
 // MarketDataProvider is the interface for reading market data.
@@ -20,8 +21,9 @@ type MarketDataProvider interface {
 
 // CreateOrderResult is the result returned from the CreateOrder method.
 type CreateOrderResult struct {
-	OrderID       string `json:"orderId"`
-	TPSLSubmitted bool   `json:"tpslSubmitted"`
+	OrderID       string    `json:"orderId"`
+	TPSLSubmitted bool      `json:"tpslSubmitted"`
+	Time          time.Time `json:"time"`
 }
 
 // OrderExecutor is the interface for placing and managing orders.
@@ -39,6 +41,13 @@ type OrderExecutor interface {
 	CloseAllPositions(ctx context.Context, symbol string) error
 	ChangeLeverage(ctx context.Context, req ChangeLeverageRequest) error
 	SwitchMarginMode(ctx context.Context, symbol string, marginMode domain.MarginMode, leverage int, side domain.Side) error
+}
+
+// PreSignExecutor is an optional interface that exchange adapters can implement
+// to pre-marshal, pre-sign, and pre-build an order request prior to precision sleep,
+// returning a dispatch function that executes the network request immediately upon fire time.
+type PreSignExecutor interface {
+	PrepareOrder(ctx context.Context, req SubmitOrderRequest) (func(context.Context) (CreateOrderResult, error), error)
 }
 
 // TPSLProvider is an optional interface that exchange REST clients can implement
@@ -253,3 +262,26 @@ func (UnimplementedClient) SwitchMarginMode(ctx context.Context, symbol string, 
 }
 func (UnimplementedClient) WarmUp(ctx context.Context, interval time.Duration) {}
 func (UnimplementedClient) SupportLeverageOnOrder() bool                       { return false }
+
+// RateLimitSkipper is implemented by requests that can declare whether they should bypass rate limits.
+type RateLimitSkipper interface {
+	ShouldSkipRateLimit() bool
+}
+
+// WithSkipRateLimit returns a context marking the request to bypass client-side rate limit queues.
+func WithSkipRateLimit(ctx context.Context) context.Context {
+	return ratelimit.WithSkipRateLimit(ctx)
+}
+
+// IsSkipRateLimit returns true if the context requests bypassing client-side rate limit queues.
+func IsSkipRateLimit(ctx context.Context) bool {
+	return ratelimit.IsSkipRateLimit(ctx)
+}
+
+// ContextWithRequest extracts policy flags from req and enriches ctx accordingly.
+func ContextWithRequest(ctx context.Context, req any) context.Context {
+	if s, ok := req.(RateLimitSkipper); ok && s.ShouldSkipRateLimit() {
+		return WithSkipRateLimit(ctx)
+	}
+	return ctx
+}

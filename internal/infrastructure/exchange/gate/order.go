@@ -110,6 +110,7 @@ func (c *Client) rawGetOrdersTimerange(ctx context.Context, settle, symbol strin
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	order := c.mapSubmitOrder(req)
 	resp, err := c.rawCreateOrder(ctx, gateSettleUsdt, order)
 	if err != nil {

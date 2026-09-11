@@ -215,6 +215,49 @@ func TestClient_CreateOrder_Mapping(t *testing.T) {
 	}
 }
 
+func TestClient_PrepareOrder(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		assert.Equal(t, "/v5/order/create", r.URL.Path)
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "api_key", r.Header.Get("X-Bapi-Api-Key"))
+		assert.NotEmpty(t, r.Header.Get("X-Bapi-Sign"))
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"retCode": 0,
+			"retMsg": "OK",
+			"result": {
+				"orderId": "presign-123456",
+				"orderLinkId": "link-pre"
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "api_key", "api_secret", "standard", config.LoggingConfig{})
+
+	dispatch, err := client.PrepareOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol:       "BTCUSDT",
+		Price:        50000.0,
+		Vol:          1.0,
+		Side:         exchange.SideOpenLong,
+		Type:         exchange.OrderTypeLimit,
+		PositionMode: 1,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dispatch)
+	assert.False(t, called, "PrepareOrder must not make HTTP call during preparation phase")
+
+	res, err := dispatch(context.Background())
+	require.NoError(t, err)
+	assert.True(t, called, "dispatch must execute the prepared HTTP request")
+	assert.Equal(t, "presign-123456", res.OrderID)
+}
+
 func TestClient_CancelOrder(t *testing.T) {
 	t.Parallel()
 

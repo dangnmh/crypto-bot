@@ -30,6 +30,11 @@ type SyncerClock interface {
 	SyncNow(ctx context.Context)
 }
 
+// PrecisionClock represents a clock capable of sub-millisecond precision sleep with spin-wait.
+type PrecisionClock interface {
+	PrecisionSleepUntil(ctx context.Context, target time.Time) error
+}
+
 // MarketType identifies whether the target market is Spot or Future/Perpetual.
 type MarketType string
 

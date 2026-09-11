@@ -161,6 +161,7 @@ func (c *Client) rawGetOrderByClientOid(ctx context.Context, clientOid string) (
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	ctx = exchange.ContextWithRequest(ctx, req)
 	ordType, timeInForce, postOnly := mapOrderType(req.Type)
 	side, posSide, reduceOnly := mapSideAndPosition(req.Side, req.PositionMode == 1)
 

@@ -322,9 +322,9 @@ func stateRank(s OrderLifecycleState) int {
 		return 1
 	case StatePreFlightDone:
 		return 2
-	case StateFireWindow:
-		return 3
 	case StatePositionWatchReady:
+		return 3
+	case StateFireWindow:
 		return 4
 	case StateSubmitted:
 		return 5
@@ -361,10 +361,10 @@ func resolvePreExecutionNextState(evt common.OrderEvent) OrderLifecycleState {
 		return StateInit
 	case OrderPreFlightCompletedEvent:
 		return StatePreFlightDone
-	case OrderFireWindowReachedEvent:
-		return StateFireWindow
 	case OrderPositionWatchReadyEvent:
 		return StatePositionWatchReady
+	case OrderFireWindowReachedEvent:
+		return StateFireWindow
 	default:
 		return ""
 	}

@@ -134,6 +134,7 @@ func (d *DryRunClient) GetOrderPNLRaw(ctx context.Context, params map[string]str
 // ── OrderExecutor (intercepted — no real orders) ─────────────────────.
 
 func (d *DryRunClient) CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error) {
+	ctx = ContextWithRequest(ctx, req)
 	seq := d.orderSeq.Add(1)
 	fakeID := fmt.Sprintf("dry_%d_%d", time.Now().UnixMilli(), seq)
 

@@ -14,6 +14,8 @@ var (
 	_ exchange.DepthCommitsProvider = (*Client)(nil)
 	_ exchange.TopGainerProvider    = (*Client)(nil)
 	_ exchange.OrderExecutor        = (*Client)(nil)
+	_ exchange.PreSignExecutor      = (*Client)(nil)
+	_ exchange.TPSLProvider         = (*Client)(nil)
 )
 
 // Client is the MEXC Futures REST API client.

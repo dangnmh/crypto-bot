@@ -167,10 +167,10 @@ func TestStrategy_Execute_Success(t *testing.T) {
 		Symbol:   "BTC_USDT",
 		Exchange: "mexc",
 		FundingReversion: domain.FundingReversionConfig{
-			Enabled:           true,
-			PostSettleTimeout: types.Duration(10 * time.Second),
-			MaxLatency:        types.Duration(100 * time.Millisecond),
-			BufferTime:        0,
+			Enabled:            true,
+			PostSettleTimeout:  types.Duration(10 * time.Second),
+			MaxLatency:         types.Duration(100 * time.Millisecond),
+			TargetArriveOffset: 0,
 		},
 	}
 
@@ -333,10 +333,10 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		Symbol:   "BTC_USDT",
 		Exchange: "mexc",
 		FundingReversion: domain.FundingReversionConfig{
-			Enabled:           true,
-			PostSettleTimeout: types.Duration(10 * time.Second),
-			MaxLatency:        types.Duration(100 * time.Millisecond),
-			BufferTime:        0,
+			Enabled:            true,
+			PostSettleTimeout:  types.Duration(10 * time.Second),
+			MaxLatency:         types.Duration(100 * time.Millisecond),
+			TargetArriveOffset: 0,
 		},
 	}
 
@@ -514,10 +514,10 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		Exchange: "bybit",
 		Leverage: 10,
 		FundingReversion: domain.FundingReversionConfig{
-			Enabled:           true,
-			PostSettleTimeout: types.Duration(10 * time.Second),
-			MaxLatency:        types.Duration(100 * time.Millisecond),
-			BufferTime:        0,
+			Enabled:            true,
+			PostSettleTimeout:  types.Duration(10 * time.Second),
+			MaxLatency:         types.Duration(100 * time.Millisecond),
+			TargetArriveOffset: 0,
 		},
 	}
 
@@ -706,10 +706,10 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		Exchange: "bybit",
 		Leverage: 10,
 		FundingReversion: domain.FundingReversionConfig{
-			Enabled:           true,
-			PostSettleTimeout: types.Duration(10 * time.Second),
-			MaxLatency:        types.Duration(100 * time.Millisecond),
-			BufferTime:        0,
+			Enabled:            true,
+			PostSettleTimeout:  types.Duration(10 * time.Second),
+			MaxLatency:         types.Duration(100 * time.Millisecond),
+			TargetArriveOffset: 0,
 		},
 	}
 
@@ -841,10 +841,10 @@ func TestReversion_OrderManager_DispatchesOrderIntent(t *testing.T) {
 			MarginUSDT:          100,
 			Leverage:            5,
 			FundingReversion: domain.FundingReversionConfig{
-				Enabled:           true,
-				PostSettleTimeout: types.Duration(10 * time.Second),
-				BufferTime:        types.Duration(150 * time.Millisecond),
-				MaxLatency:        types.Duration(50 * time.Millisecond),
+				Enabled:            true,
+				PostSettleTimeout:  types.Duration(10 * time.Second),
+				TargetArriveOffset: types.Duration(-150 * time.Millisecond),
+				MaxLatency:         types.Duration(50 * time.Millisecond),
 			},
 		},
 		Symbol:    "BTC_USDT",
