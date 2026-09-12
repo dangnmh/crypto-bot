@@ -1017,6 +1017,7 @@ func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowR
 	}
 
 	attrs := []any{
+		slog.String("exchange", evt.Exchange),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.Int64("arrive_offset_ms", actualArriveOffsetMs),

@@ -55,7 +55,7 @@
     "configured": false,
     "schedule": {
       "mexc_futures": true,
-      "bybit_futures": true, // very high cancel rate,
+      "bybit_futures": false, // very high cancel rate,
       "toobit_futures": false,
       "bitget_futures": false, // negative pnl
       "deepcoin_futures": false, // exchange restricted

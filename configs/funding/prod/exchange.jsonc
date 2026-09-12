@@ -14,7 +14,7 @@
     "bybit": {
       "accountType": "unified",
       "future": {
-        "enable": true,
+        "enable": false,
         "baseURL": "https://api.bybit.com",
         "tradeMode": "ws",
         "websocket": {

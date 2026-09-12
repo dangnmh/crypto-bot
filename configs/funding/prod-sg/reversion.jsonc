@@ -55,7 +55,7 @@
     "configured": false,
     "schedule": {
       "mexc_futures": true,
-      "bybit_futures": false, // very high cancel rate,
+      "bybit_futures": true, // very high cancel rate,
       "toobit_futures": false,
       "bitget_futures": false, // negative pnl
       "deepcoin_futures": false, // exchange restricted
@@ -93,12 +93,12 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "10ms", // SG low-latency: arrives at T_settle + 10ms (0 funding fee, front-run reversion tick)
+      "bufferTime": "0ms", // SG low-latency: arrives at T_settle + 10ms (0 funding fee, front-run reversion tick)
       "postSettleTimeout": "6s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
       "marginUSD": 5,
-      "leverage": 6
+      "leverage": 4
     },
     "toobit_futures": {
       "takeProfitPct": 1.5,
