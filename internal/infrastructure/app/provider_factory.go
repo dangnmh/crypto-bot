@@ -134,10 +134,7 @@ func DefaultProviderFactories() []ProviderFactory {
 		bybitClient.SetTradeMode(tradeMode)
 
 		if tradeMode == exchange.TradeModeWS {
-			tradeURL := ep.WebSocket.TradeEndpoint()
-			if tradeURL == "" {
-				tradeURL = bybit.DefaultTradeURL(ep.BaseURL)
-			}
+			tradeURL := ep.TradeEndpoint()
 			wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBybit, "subsystem", "trade_ws")
 			tradeWS := bybit.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, bybitClient.BaseClient().Clock(), wsLogger)
 			bybitClient.SetWSTradeExecutor(tradeWS)
@@ -148,13 +145,23 @@ func DefaultProviderFactories() []ProviderFactory {
 	})
 
 	binanceFactories := newExchangeFactories(exchange.ExchangeBinance, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(binance.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+		binanceClient := binance.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+
+		tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
+		binanceClient.SetTradeMode(tradeMode)
+
+		if tradeMode == exchange.TradeModeWS {
+			tradeURL := ep.TradeEndpoint()
+			wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBinance, "subsystem", "trade_ws")
+			tradeWS := binance.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, binanceClient.Clock(), wsLogger)
+			binanceClient.SetWSTradeExecutor(tradeWS)
+			go tradeWS.Start(ctx)
+		}
+
 		adapter := binance.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
 		adapter.SetURLs(ep.WebSocket.PublicEndpoint(), ep.WebSocket.MarketEndpoint())
-		if concreteClient, ok := client.(*binance.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
+		adapter.SetClient(binanceClient)
+		return binanceClient, adapter
 	})
 
 	okxFactories := newExchangeFactories(exchange.ExchangeOkx, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {

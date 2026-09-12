@@ -52,9 +52,8 @@ When a Reversion terminal event starts whole-cycle cleanup, cleanup must first s
 ## Timing Rule
 
 ```text
-targetArriveTime = settleTime + targetArriveOffset
-fireOffset       = latencyRTT / 2 - targetArriveOffset
-fireAt           = settleTime - fireOffset
+fireOffset = latencyRTT / 2 + bufferTime
+fireAt     = settleTime - fireOffset
 ```
 
 The journal must record `fire_timestamp`, `settle_time`, `settle_offset_ms`, and `latency_rtt_ms`. Without these fields, timing cannot be tuned safely.

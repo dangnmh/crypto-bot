@@ -494,10 +494,10 @@ func reversionTestCandidate() fundingdomain.Candidate {
 			Leverage:            0,
 			MinFundingRate:      0.001,
 			FundingReversion: fundingdomain.FundingReversionConfig{
-				Enabled:            true,
-				PostSettleTimeout:  10_000_000_000, // 10s
-				TargetArriveOffset: -150_000_000,   // -150ms
-				MaxLatency:         50_000_000,     // 50ms
+				Enabled:           true,
+				PostSettleTimeout: 10_000_000_000, // 10s
+				BufferTime:        150_000_000,    // 150ms
+				MaxLatency:        50_000_000,     // 50ms
 			},
 		},
 		Symbol:       "BTC_USDT",

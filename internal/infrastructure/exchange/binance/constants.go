@@ -37,4 +37,10 @@ const (
 	defaultPublicURL = "wss://fstream.binance.com/public"
 	defaultMarketURL = "wss://fstream.binance.com/market"
 	binanceTrueStr   = "true"
+
+	paramSymbol = "symbol"
+	tifGTX      = "GTX"
+	tifIOC      = "IOC"
+	tifFOK      = "FOK"
+	tifGTC      = "GTC"
 )

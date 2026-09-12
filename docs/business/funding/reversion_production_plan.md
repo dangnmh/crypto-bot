@@ -82,7 +82,7 @@ Kích hoạt khi có nghi ngờ leak, unexpected auth behavior, hoặc exchange 
 | Max active cycles | 1 Reversion cycle at a time for first rollout | Abort or skip additional candidates |
 | Max notional | Small fixed notional per symbol/account | Reject candidate before order |
 | Max latency | Respect `maxLatency` | Abort before IOC |
-| Fire offset | Use configured `latencyRTT/2 - targetArriveOffset` | Journal offset for tuning |
+| Fire offset | Use configured `latencyRTT/2 + bufferTime` | Journal offset for tuning |
 | Post-settle timeout | Keep bounded and explicit | Exact-leg close, then fallback close all |
 | Retry budget | Bounded retry/backoff for close/cancel paths | Critical alert after retry exhaustion |
 | Symbol disable | Disable symbol after critical close/cancel failure | Require manual review to re-enable |

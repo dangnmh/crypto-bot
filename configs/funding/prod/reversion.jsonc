@@ -7,8 +7,7 @@
   "default": {
     "takeProfitPct": 1,
     "stopLossPct": 2,
-    // "bufferTime": "-150ms",
-    "targetArriveOffset": "150ms",
+    "bufferTime": "-150ms",
     "postSettleTimeout": "0.5s",
     "leverage": 6,
     "marginUSD": 5,
@@ -77,13 +76,12 @@
     "mexc_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      // "bufferTime": "-52ms", // -55ms dont paid funding fee, -50 paid funding fee
-      "targetArriveOffset": "10ms",
+      "bufferTime": "-52ms", // -55ms dont pay funding fee, -50 pays funding fee
       "postSettleTimeout": "6s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
-      "leverage": 5,
-      "marginUSD": 10,
+      "leverage": 6,
+      "marginUSD": 5,
       "maxCandidateTrade": 1,
       // "minVol24USD": 6000000,
       // "minFundingRate": 0.6,
@@ -95,10 +93,9 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      // "bufferTime": "15ms", // 0ms high cancel rate 40ms paid funding fee
-      "targetArriveOffset": "-3ms", // 0ms high cancel rate, -40ms paid funding fee
+      "bufferTime": "15ms", // 0ms high cancel rate, 40ms paid funding fee
       "postSettleTimeout": "6s",
-      "minVol24USD": 1000000,
+      "minVol24USD": 500000,
       "minFundingRate": 0.3,
       "marginUSD": 5,
       "leverage": 6
@@ -106,8 +103,7 @@
     "toobit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      // "bufferTime": "390ms", // 350ms dont paid funding fee, 400ms paid funding fee
-      "targetArriveOffset": "-390ms", // -350ms dont pay funding fee, -400ms pays funding fee
+      "bufferTime": "390ms", // 350ms dont pay funding fee, 400ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 7000000,
       "minFundingRate": 0.6,
@@ -119,8 +115,7 @@
     "bitget_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-320ms", // -300ms paid funding fee
-      "targetArriveOffset": "320ms", // 300ms pays funding fee
+      "bufferTime": "-320ms", // -300ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minFundingRate": 0.7,
       "leverage": 10,
@@ -129,8 +124,7 @@
     "deepcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-20ms", // 0ms paid funding fee
-      "targetArriveOffset": "20ms", // 0ms pays funding fee
+      "bufferTime": "-20ms", // 0ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minFundingRate": 0.7,
       "leverage": 20,
@@ -139,8 +133,7 @@
     "aster_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-80ms", // -50ms paid funding fee
-      "targetArriveOffset": "80ms", // 50ms pays funding fee
+      "bufferTime": "-80ms", // -50ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 2000000,
       "minFundingRate": 0.7,
@@ -150,22 +143,19 @@
     "binance_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-200ms", // -200ms fill bad price -150ms paid funding fee
-      "targetArriveOffset": "200ms", // 200ms fill bad price, 150ms pays funding fee
+      "bufferTime": "-200ms", // -200ms fill bad price, -150ms pays funding fee
       "postSettleTimeout": "0.5s"
     },
     "kucoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-250ms", // -200ms paid funding fee
-      "targetArriveOffset": "250ms", // 200ms pays funding fee
+      "bufferTime": "-250ms", // -200ms pays funding fee
       "postSettleTimeout": "0.5s"
     },
     "okx_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "0ms",
-      "targetArriveOffset": "0ms",
+      "bufferTime": "0ms",
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3
@@ -173,15 +163,13 @@
     "gate_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-150ms",
-      "targetArriveOffset": "150ms",
+      "bufferTime": "-150ms",
       "postSettleTimeout": "0.5s"
     },
     "bitmart_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-100ms", // -50ms paid funding fee
-      "targetArriveOffset": "100ms", // 50ms pays funding fee
+      "bufferTime": "-100ms", // -50ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -191,8 +179,7 @@
     "weex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-200ms", // -150ms paid funding fee
-      "targetArriveOffset": "200ms", // 150ms pays funding fee
+      "bufferTime": "-200ms", // -150ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -202,15 +189,13 @@
     "bitunix_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "250ms", // 200ms dont get funding fee 300ms paid funding fee
-      "targetArriveOffset": "-250ms", // -200ms dont get funding fee, -300ms pays funding fee
+      "bufferTime": "250ms", // 200ms dont get funding fee, 300ms pays funding fee
       "postSettleTimeout": "0.5s"
     },
     "xt_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "-550ms", // -500ms paid funding fee
-      "targetArriveOffset": "550ms", // 500ms pays funding fee
+      "bufferTime": "-550ms", // -500ms pays funding fee
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -220,8 +205,7 @@
     "orangex_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "300ms", // 100ms dont paid funding fee, 250ms cancel high cancel rate
-      "targetArriveOffset": "-300ms", // -100ms dont pay funding fee, -250ms cancel high cancel rate
+      "bufferTime": "300ms", // 100ms dont pay funding fee, 250ms cancel high cancel rate
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,
@@ -231,8 +215,7 @@
     "hotcoin_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      // "bufferTime": "0ms",
-      "targetArriveOffset": "0ms",
+      "bufferTime": "0ms",
       "postSettleTimeout": "0.5s",
       "minVol24USD": 1000000,
       "minFundingRate": 0.3,

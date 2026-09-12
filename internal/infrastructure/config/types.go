@@ -47,16 +47,33 @@ type APIEndpointConfig struct {
 	BaseURL string `json:"baseURL"`
 }
 
+const (
+	TradeModeHTTP    = "http"
+	TradeModeWS      = "ws"
+	DefaultTradeMode = TradeModeHTTP
+)
+
 type EndpointConfig struct {
 	Enable    bool              `json:"enable"`
 	BaseURL   string            `json:"baseURL"`
 	API       APIEndpointConfig `json:"api"`
 	WebSocket WebSocketConfig   `json:"websocket"`
-	TradeMode string            `json:"tradeMode,omitempty"`
+	TradeMode string            `json:"tradeMode,omitempty" validate:"oneof=http ws"`
+	TradeURL  string            `json:"tradeURL,omitempty" validate:"required_if=TradeMode ws"`
 }
 
 func (e EndpointConfig) GetTradeMode() string {
+	if e.TradeMode == "" {
+		return DefaultTradeMode
+	}
 	return e.TradeMode
+}
+
+func (e EndpointConfig) TradeEndpoint() string {
+	if e.TradeURL != "" {
+		return e.TradeURL
+	}
+	return e.WebSocket.TradeURL
 }
 
 func (e *EndpointConfig) UnmarshalJSON(data []byte) error {
@@ -71,6 +88,15 @@ func (e *EndpointConfig) UnmarshalJSON(data []byte) error {
 	}
 	if e.BaseURL == "" && e.API.BaseURL != "" {
 		e.BaseURL = e.API.BaseURL
+	}
+	if e.TradeMode == "" {
+		e.TradeMode = DefaultTradeMode
+	}
+	if e.TradeURL == "" && e.WebSocket.TradeURL != "" {
+		e.TradeURL = e.WebSocket.TradeURL
+	}
+	if e.WebSocket.TradeURL == "" && e.TradeURL != "" {
+		e.WebSocket.TradeURL = e.TradeURL
 	}
 	return nil
 }

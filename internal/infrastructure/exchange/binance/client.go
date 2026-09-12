@@ -28,6 +28,11 @@ import (
 	"crypto-bot/pkg/xjson"
 )
 
+var (
+	_ exchange.TradeModeConfigurable = (*Client)(nil)
+	_ exchange.PreSignExecutor       = (*Client)(nil)
+)
+
 // Client is the Binance USD-M Futures REST API client.
 type Client struct {
 	httpClient *http.Client
@@ -38,6 +43,8 @@ type Client struct {
 	logger     *slog.Logger
 	clock      exchange.Clock
 	limiter    *ratelimit.ExchangeRateLimiter
+	tradeMode  exchange.TradeMode
+	wsTrade    exchange.WSTradeExecutor
 }
 
 // NewClient creates a new Binance Futures REST Client.
@@ -97,7 +104,39 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		logger:     logger,
 		clock:      exchange.RealClock{},
 		limiter:    limiter,
+		tradeMode:  exchange.TradeModeHTTP,
 	}
+}
+
+// Clock returns the clock used by the client.
+func (c *Client) Clock() exchange.Clock {
+	if c.clock == nil {
+		return exchange.RealClock{}
+	}
+	return c.clock
+}
+
+// SetTradeMode sets the trade execution mode (http or ws).
+func (c *Client) SetTradeMode(mode exchange.TradeMode) {
+	c.tradeMode = mode
+}
+
+// TradeMode returns the current trade execution mode.
+func (c *Client) TradeMode() exchange.TradeMode {
+	if c.tradeMode == "" {
+		return exchange.TradeModeHTTP
+	}
+	return c.tradeMode
+}
+
+// SetWSTradeExecutor sets the WebSocket trade executor.
+func (c *Client) SetWSTradeExecutor(executor exchange.WSTradeExecutor) {
+	c.wsTrade = executor
+}
+
+// WSTradeExecutor returns the current WebSocket trade executor.
+func (c *Client) WSTradeExecutor() exchange.WSTradeExecutor {
+	return c.wsTrade
 }
 
 // SetClock configures a custom clock implementation.

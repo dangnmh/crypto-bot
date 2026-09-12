@@ -365,9 +365,9 @@ func (c *Client) GetPotentialFundingSymbols(
 // FetchKlines fetches public K-lines for Binance.
 func (c *Client) FetchKlines(ctx context.Context, symbol string, interval exchange.Interval, start, end time.Time) ([]exchange.Kline, error) {
 	params := map[string]any{
-		"symbol":   symbol,
-		"interval": string(interval),
-		"limit":    100,
+		paramSymbol: symbol,
+		"interval":  string(interval),
+		"limit":     100,
 	}
 	if !start.IsZero() {
 		params["startTime"] = start.UnixMilli()

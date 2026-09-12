@@ -239,6 +239,20 @@ func validateSingleExchangeConfig(name string, cfg APIConfig, spec ExchangeSpec)
 }
 
 func validateEndpoint(name string, ep EndpointConfig) error {
+	if ep.TradeMode == "" {
+		ep.TradeMode = DefaultTradeMode
+	}
+	if ep.TradeURL == "" && ep.WebSocket.TradeURL != "" {
+		ep.TradeURL = ep.WebSocket.TradeURL
+	}
+	if ep.WebSocket.TradeURL == "" && ep.TradeURL != "" {
+		ep.WebSocket.TradeURL = ep.TradeURL
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(ep); err != nil {
+		return fmt.Errorf("%s: endpoint validation failed: %w", name, err)
+	}
 	if !isValidURL(ep.BaseURL) {
 		return fmt.Errorf("%s: invalid base URL: %s", name, ep.BaseURL)
 	}
@@ -247,6 +261,9 @@ func validateEndpoint(name string, ep EndpointConfig) error {
 	}
 	if ep.WebSocket.PrivateEndpoint() != "" && !isValidURL(ep.WebSocket.PrivateEndpoint()) {
 		return fmt.Errorf("%s: invalid websocket endpoint URL", name)
+	}
+	if ep.TradeMode == TradeModeWS && !isValidURL(ep.TradeEndpoint()) {
+		return fmt.Errorf("%s: invalid trade websocket URL: %s", name, ep.TradeEndpoint())
 	}
 	return nil
 }
@@ -288,10 +305,25 @@ func applySystemDefaults(c *SystemConfig) {
 }
 
 func applyExchangeWSDefaults(cfg *APIConfig) {
-	if cfg.Future != nil && cfg.Future.BaseURL != "" && cfg.Future.WebSocket.MaxPairsPerWSConn <= 0 {
-		cfg.Future.WebSocket.MaxPairsPerWSConn = 30
+	if cfg.Future != nil {
+		applyEndpointWSDefaults(cfg.Future)
 	}
-	if cfg.Spot != nil && cfg.Spot.BaseURL != "" && cfg.Spot.WebSocket.MaxPairsPerWSConn <= 0 {
-		cfg.Spot.WebSocket.MaxPairsPerWSConn = 30
+	if cfg.Spot != nil {
+		applyEndpointWSDefaults(cfg.Spot)
+	}
+}
+
+func applyEndpointWSDefaults(ep *EndpointConfig) {
+	if ep.TradeMode == "" {
+		ep.TradeMode = DefaultTradeMode
+	}
+	if ep.TradeURL == "" && ep.WebSocket.TradeURL != "" {
+		ep.TradeURL = ep.WebSocket.TradeURL
+	}
+	if ep.WebSocket.TradeURL == "" && ep.TradeURL != "" {
+		ep.WebSocket.TradeURL = ep.TradeURL
+	}
+	if ep.BaseURL != "" && ep.WebSocket.MaxPairsPerWSConn <= 0 {
+		ep.WebSocket.MaxPairsPerWSConn = 30
 	}
 }

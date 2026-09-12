@@ -166,7 +166,7 @@ type RawFundingReversionConfig struct {
 type ExchangeReversionConfig struct {
 	TakeProfitPct           float64           `json:"takeProfitPct" validate:"omitempty,gt=0"`
 	StopLossPct             float64           `json:"stopLossPct" validate:"omitempty,gt=0"`
-	TargetArriveOffset      types.Duration    `json:"targetArriveOffset"`
+	BufferTime              types.Duration    `json:"bufferTime"`
 	PostSettleTimeout       types.Duration    `json:"postSettleTimeout"`
 	Leverage                int               `json:"leverage" validate:"omitempty,gt=0"`
 	MarginUSD               float64           `json:"marginUSD" validate:"omitempty,gt=0"`

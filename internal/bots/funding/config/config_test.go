@@ -96,7 +96,7 @@ func loadWithError(t *testing.T, sysCfg *config.SystemConfig, fundingJSON string
 	dir := t.TempDir()
 	path := filepath.Join(dir, "funding.jsonc")
 	require.NoError(t, os.WriteFile(path, []byte(fundingJSON), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "default": {"targetArriveOffset": "0ms"}, "scanners": {"configured": true}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "default": {"bufferTime": "0ms"}, "scanners": {"configured": true}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
@@ -159,7 +159,7 @@ func TestLoad_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(path, []byte("{not valid json"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "default": {"targetArriveOffset": "0ms"}, "scanners": {"configured": true}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "default": {"bufferTime": "0ms"}, "scanners": {"configured": true}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "blacklist.jsonc"), []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
@@ -258,10 +258,10 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 		},
 		Exchanges: map[string]config.ExchangeReversionConfig{
 			"mexc": {
-				TakeProfitPct:      15,
-				StopLossPct:        3,
-				TargetArriveOffset: types.Duration(10 * time.Millisecond),
-				MinFundingRate:     0.5,
+				TakeProfitPct:  15,
+				StopLossPct:    3,
+				BufferTime:     types.Duration(10 * time.Millisecond),
+				MinFundingRate: 0.5,
 			},
 		},
 		Safety: config.SafetyConfig{
@@ -282,7 +282,7 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	assert.InDelta(t, 0.15, sc.FundingReversion.TakeProfitPct, 1e-9, "15% -> 0.15")
 	assert.InDelta(t, 0.03, sc.FundingReversion.StopLossPct, 1e-9, "3% -> 0.03")
 	assert.Equal(t, types.Duration(200*time.Millisecond), sc.FundingReversion.MaxLatency)
-	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.TargetArriveOffset)
+	assert.Equal(t, types.Duration(10*time.Millisecond), sc.FundingReversion.BufferTime)
 }
 
 func TestLoad_DefaultsDoNotOverrideExisting(t *testing.T) {
@@ -483,7 +483,7 @@ func TestLoad_WithBlacklist(t *testing.T) {
 	require.NoError(t, os.WriteFile(blacklistPath, []byte(blacklistContent), 0o600))
 
 	// Create reversion.jsonc
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "default": {"targetArriveOffset": "0ms"}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "reversion.jsonc"), []byte(`{"enabled": true, "default": {"bufferTime": "0ms"}}`), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "obfuscator.jsonc"), []byte(defaultObfuscatorJSON), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "dilution.jsonc"), []byte(defaultDilutionJSON), 0o600))
 
@@ -506,7 +506,7 @@ func TestLoad_WithObfuscator(t *testing.T) {
 	require.NoError(t, os.WriteFile(blacklistPath, []byte(`{}`), 0o600))
 
 	reversionPath := filepath.Join(dir, "reversion.jsonc")
-	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "default": {"targetArriveOffset": "0ms"}}`), 0o600))
+	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "default": {"bufferTime": "0ms"}}`), 0o600))
 
 	dilutionPath := filepath.Join(dir, "dilution.jsonc")
 	require.NoError(t, os.WriteFile(dilutionPath, []byte(defaultDilutionJSON), 0o600))
@@ -561,7 +561,7 @@ func TestLoad_WithDilution(t *testing.T) {
 	require.NoError(t, os.WriteFile(blacklistPath, []byte(`{}`), 0o600))
 
 	reversionPath := filepath.Join(dir, "reversion.jsonc")
-	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "default": {"targetArriveOffset": "0ms"}}`), 0o600))
+	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "default": {"bufferTime": "0ms"}}`), 0o600))
 
 	obfuscatorPath := filepath.Join(dir, "obfuscator.jsonc")
 	require.NoError(t, os.WriteFile(obfuscatorPath, []byte(defaultObfuscatorJSON), 0o600))
@@ -607,7 +607,7 @@ func TestLoad_WithDilution_CappedMaxPositionUSD(t *testing.T) {
 	require.NoError(t, os.WriteFile(blacklistPath, []byte(`{}`), 0o600))
 
 	reversionPath := filepath.Join(dir, "reversion.jsonc")
-	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "default": {"targetArriveOffset": "0ms"}}`), 0o600))
+	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "default": {"bufferTime": "0ms"}}`), 0o600))
 
 	obfuscatorPath := filepath.Join(dir, "obfuscator.jsonc")
 	require.NoError(t, os.WriteFile(obfuscatorPath, []byte(defaultObfuscatorJSON), 0o600))
@@ -737,63 +737,63 @@ func TestMergeExchangeReversionConfig(t *testing.T) {
 	assert.InDelta(t, 8.0, dest.DynamicTP.MaxTakeProfitPct, 1e-9)
 }
 
-func TestExchangeReversionConfig_UnmarshalTargetArriveOffset(t *testing.T) {
+func TestExchangeReversionConfig_UnmarshalBufferTime(t *testing.T) {
 	t.Parallel()
 
-	// 1. Positive targetArriveOffset (150ms)
+	// 1. Positive bufferTime (150ms)
 	{
 		var cfg config.ExchangeReversionConfig
-		err := json.Unmarshal([]byte(`{"targetArriveOffset": "150ms"}`), &cfg)
+		err := json.Unmarshal([]byte(`{"bufferTime": "150ms"}`), &cfg)
 		require.NoError(t, err)
-		assert.Equal(t, types.Duration(150*time.Millisecond), cfg.TargetArriveOffset)
+		assert.Equal(t, types.Duration(150*time.Millisecond), cfg.BufferTime)
 	}
 
-	// 2. Negative targetArriveOffset (-390ms)
+	// 2. Negative bufferTime (-390ms)
 	{
 		var cfg config.ExchangeReversionConfig
-		err := json.Unmarshal([]byte(`{"targetArriveOffset": "-390ms"}`), &cfg)
+		err := json.Unmarshal([]byte(`{"bufferTime": "-390ms"}`), &cfg)
 		require.NoError(t, err)
-		assert.Equal(t, types.Duration(-390*time.Millisecond), cfg.TargetArriveOffset)
+		assert.Equal(t, types.Duration(-390*time.Millisecond), cfg.BufferTime)
 	}
 
-	// 3. Zero targetArriveOffset (0ms)
+	// 3. Zero bufferTime (0ms)
 	{
 		var cfg config.ExchangeReversionConfig
-		err := json.Unmarshal([]byte(`{"targetArriveOffset": "0ms"}`), &cfg)
+		err := json.Unmarshal([]byte(`{"bufferTime": "0ms"}`), &cfg)
 		require.NoError(t, err)
-		assert.Equal(t, types.Duration(0), cfg.TargetArriveOffset)
+		assert.Equal(t, types.Duration(0), cfg.BufferTime)
 	}
 }
 
-func TestFundingReversionConfig_UnmarshalTargetArriveOffset(t *testing.T) {
+func TestFundingReversionConfig_UnmarshalBufferTime(t *testing.T) {
 	t.Parallel()
 
-	// 1. Positive targetArriveOffset (150ms)
+	// 1. Positive bufferTime (150ms)
 	{
 		var cfg domain.FundingReversionConfig
-		err := json.Unmarshal([]byte(`{"targetArriveOffset": "150ms"}`), &cfg)
+		err := json.Unmarshal([]byte(`{"bufferTime": "150ms"}`), &cfg)
 		require.NoError(t, err)
-		assert.Equal(t, types.Duration(150*time.Millisecond), cfg.TargetArriveOffset)
+		assert.Equal(t, types.Duration(150*time.Millisecond), cfg.BufferTime)
 	}
 
-	// 2. Negative targetArriveOffset (-390ms)
+	// 2. Negative bufferTime (-390ms)
 	{
 		var cfg domain.FundingReversionConfig
-		err := json.Unmarshal([]byte(`{"targetArriveOffset": "-390ms"}`), &cfg)
+		err := json.Unmarshal([]byte(`{"bufferTime": "-390ms"}`), &cfg)
 		require.NoError(t, err)
-		assert.Equal(t, types.Duration(-390*time.Millisecond), cfg.TargetArriveOffset)
+		assert.Equal(t, types.Duration(-390*time.Millisecond), cfg.BufferTime)
 	}
 }
 
-func TestMergeExchangeReversionConfig_TargetArriveOffset(t *testing.T) {
+func TestMergeExchangeReversionConfig_BufferTime(t *testing.T) {
 	t.Parallel()
 
 	dest := config.ExchangeReversionConfig{
-		TargetArriveOffset: types.Duration(150 * time.Millisecond),
+		BufferTime: types.Duration(150 * time.Millisecond),
 	}
 	src := config.ExchangeReversionConfig{
-		TargetArriveOffset: types.Duration(-390 * time.Millisecond),
+		BufferTime: types.Duration(-390 * time.Millisecond),
 	}
 	config.MergeExchangeReversionConfig(&dest, src)
-	assert.Equal(t, types.Duration(-390*time.Millisecond), dest.TargetArriveOffset)
+	assert.Equal(t, types.Duration(-390*time.Millisecond), dest.BufferTime)
 }

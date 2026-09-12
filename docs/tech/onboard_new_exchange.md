@@ -116,7 +116,7 @@ Add the reversion execution settings for this exchange:
     "<your_exchange_name_lowercase>": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "targetArriveOffset": "-30ms",
+      "bufferTime": "15ms",
       "postSettleTimeout": "300s"
     }
 ```

@@ -236,7 +236,8 @@ func TestClient_CreateOrder(t *testing.T) {
 					"orderId": 1234567,
 					"symbol": "BTCUSDT",
 					"status": "NEW",
-					"clientOrderId": "external_123"
+					"clientOrderId": "external_123",
+					"updateTime": 1710000000500
 				}`))
 			}))
 			defer server.Close()
@@ -246,6 +247,7 @@ func TestClient_CreateOrder(t *testing.T) {
 			res, err := client.CreateOrder(context.Background(), tt.req)
 			require.NoError(t, err)
 			assert.Equal(t, "1234567", res.OrderID)
+			assert.Equal(t, time.UnixMilli(1710000000500), res.Time)
 		})
 	}
 }
@@ -1002,4 +1004,79 @@ func TestClient_FetchKlines(t *testing.T) {
 
 	assert.Equal(t, int64(1783665240000), klines[0].Timestamp)
 	assert.Equal(t, 63888.7, klines[0].Close)
+}
+
+type mockWSTradeExecutor struct {
+	ready      bool
+	createdReq exchange.SubmitOrderRequest
+	canceledID string
+}
+
+func (m *mockWSTradeExecutor) Start(ctx context.Context) {}
+func (m *mockWSTradeExecutor) IsReady() bool             { return m.ready }
+func (m *mockWSTradeExecutor) Close()                    {}
+func (m *mockWSTradeExecutor) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	m.createdReq = req
+	return exchange.CreateOrderResult{OrderID: "mock-binance-ws-123"}, nil
+}
+func (m *mockWSTradeExecutor) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	m.canceledID = orderID
+	return nil
+}
+func (m *mockWSTradeExecutor) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
+	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
+		return m.CreateOrder(execCtx, req)
+	}, nil
+}
+func (m *mockWSTradeExecutor) LatencyMs() int64 {
+	return 8
+}
+
+func TestClient_TradeModeAndWSDelegation(t *testing.T) {
+	t.Parallel()
+
+	client := binance.NewClient(nil, "https://fapi.binance.com", "key", "secret", config.LoggingConfig{})
+	assert.Equal(t, exchange.TradeModeHTTP, client.TradeMode())
+	assert.Nil(t, client.WSTradeExecutor())
+	assert.NotNil(t, client.Clock())
+
+	// Set to WS mode
+	client.SetTradeMode(exchange.TradeModeWS)
+	assert.Equal(t, exchange.TradeModeWS, client.TradeMode())
+
+	ctx := context.Background()
+
+	// When wsTrade is nil or not ready
+	_, err := client.CreateOrder(ctx, exchange.SubmitOrderRequest{Symbol: "BTCUSDT"})
+	assert.ErrorIs(t, err, binance.ErrWSTradeNotReady)
+
+	err = client.CancelOrder(ctx, "BTCUSDT", "123")
+	assert.ErrorIs(t, err, binance.ErrWSTradeNotReady)
+
+	_, err = client.PrepareOrder(ctx, exchange.SubmitOrderRequest{Symbol: "BTCUSDT"})
+	assert.ErrorIs(t, err, binance.ErrWSTradeNotReady)
+
+	// Attach ready executor
+	mockExec := &mockWSTradeExecutor{ready: true}
+	client.SetWSTradeExecutor(mockExec)
+	assert.Equal(t, mockExec, client.WSTradeExecutor())
+
+	// CreateOrder delegates to wsTrade
+	res, err := client.CreateOrder(ctx, exchange.SubmitOrderRequest{Symbol: "BTCUSDT", Vol: 1.0})
+	require.NoError(t, err)
+	assert.Equal(t, "mock-binance-ws-123", res.OrderID)
+	assert.Equal(t, "BTCUSDT", mockExec.createdReq.Symbol)
+
+	// CancelOrder delegates to wsTrade
+	err = client.CancelOrder(ctx, "BTCUSDT", "45678")
+	require.NoError(t, err)
+	assert.Equal(t, "45678", mockExec.canceledID)
+
+	// PrepareOrder delegates to wsTrade
+	prepFn, err := client.PrepareOrder(ctx, exchange.SubmitOrderRequest{Symbol: "ETHUSDT", Vol: 2.0})
+	require.NoError(t, err)
+	res, err = prepFn(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "mock-binance-ws-123", res.OrderID)
+	assert.Equal(t, "ETHUSDT", mockExec.createdReq.Symbol)
 }

@@ -7,8 +7,7 @@
   "default": {
     "takeProfitPct": 1,
     "stopLossPct": 2,
-    // "bufferTime": "-150ms", // Reference: legacy fire offset buffer
-    "targetArriveOffset": "150ms", // Target exchange arrival time relative to settle (T + offset)
+    "bufferTime": "-150ms",
     "postSettleTimeout": "3s", // Force close if reversion lifecycle does not terminally close
     "leverage": 5,
     "marginUSD": 3,
@@ -63,16 +62,16 @@
     "mexc_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "targetArriveOffset": "10ms", // Target arrival: 150ms after settle
-      "postSettleTimeout": "300s", // Force close if reversion lifecycle does not terminally close
+      "bufferTime": "-52ms",
+      "postSettleTimeout": "300s" // Force close if reversion lifecycle does not terminally close
       // "minVol24USD": 1000000,
       // "minFundingRate": 0.3
     },
     "bybit_futures": {
       "takeProfitPct": 1,
       "stopLossPct": 2,
-      "targetArriveOffset": "-3ms",
-      "postSettleTimeout": "300s",
-    },
+      "bufferTime": "15ms",
+      "postSettleTimeout": "300s"
+    }
   }
 }

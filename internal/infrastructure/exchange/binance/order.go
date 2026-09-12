@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -167,35 +168,40 @@ func (c *Client) rawGetOpenOrders(ctx context.Context, req binanceListOpenOrders
 	return resp, nil
 }
 
+func toBinanceOrderTypeAndTIF(t domain.OrderType) (string, string) {
+	switch t {
+	case exchange.OrderTypeMarket:
+		return orderTypeMarket, ""
+	case exchange.OrderTypePostOnly:
+		return orderTypeLimit, tifGTX
+	case exchange.OrderTypeIOC:
+		return orderTypeLimit, tifIOC
+	case exchange.OrderTypeFOK:
+		return orderTypeLimit, tifFOK
+	default:
+		return orderTypeLimit, tifGTC
+	}
+}
+
+func toBinanceSide(side domain.Side) (string, error) {
+	switch side {
+	case exchange.SideOpenLong, exchange.SideCloseShort:
+		return sideBuy, nil
+	case exchange.SideOpenShort, exchange.SideCloseLong:
+		return sideSell, nil
+	default:
+		return "", fmt.Errorf("unknown side: %v", side)
+	}
+}
+
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
-// CreateOrder places a new order.
-func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
-	ctx = exchange.ContextWithRequest(ctx, req)
-	sdkSide := sideBuy
-	if req.Side == exchange.SideOpenShort || req.Side == exchange.SideCloseLong {
-		sdkSide = sideSell
+func buildBinanceCreateOrderHTTPRequest(req exchange.SubmitOrderRequest) (binanceCreateOrderRequest, error) {
+	sdkSide, err := toBinanceSide(req.Side)
+	if err != nil {
+		return binanceCreateOrderRequest{}, err
 	}
-
-	var sdkType string
-	var sdkTif string
-
-	switch req.Type {
-	case exchange.OrderTypeMarket:
-		sdkType = orderTypeMarket
-	case exchange.OrderTypePostOnly:
-		sdkType = orderTypeLimit
-		sdkTif = "GTX"
-	case exchange.OrderTypeIOC:
-		sdkType = orderTypeLimit
-		sdkTif = "IOC"
-	case exchange.OrderTypeFOK:
-		sdkType = orderTypeLimit
-		sdkTif = "FOK"
-	default:
-		sdkType = orderTypeLimit
-		sdkTif = "GTC"
-	}
+	sdkType, sdkTif := toBinanceOrderTypeAndTIF(req.Type)
 
 	rawReq := binanceCreateOrderRequest{
 		Symbol:   req.Symbol,
@@ -224,13 +230,60 @@ func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderReques
 		rawReq.NewClientOrderId = req.ExternalOID
 	}
 
-	resp, err := c.rawCreateOrder(ctx, rawReq)
+	return rawReq, nil
+}
+
+// PrepareOrder implements exchange.PreSignExecutor.
+func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
+	if c.TradeMode() == exchange.TradeModeWS {
+		if c.wsTrade == nil || !c.wsTrade.IsReady() {
+			return nil, ErrWSTradeNotReady
+		}
+		return c.wsTrade.PrepareOrder(ctx, req)
+	}
+
+	rawReq, err := buildBinanceCreateOrderHTTPRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
+		execCtx = exchange.ContextWithRequest(execCtx, req)
+		resp, err := c.rawCreateOrder(execCtx, rawReq)
+		if err != nil {
+			return exchange.CreateOrderResult{}, err
+		}
+
+		orderID := strconv.FormatInt(resp.OrderId, 10)
+		var exchTime time.Time
+		if resp.UpdateTime != nil && *resp.UpdateTime > 0 {
+			exchTime = time.UnixMilli(*resp.UpdateTime)
+		} else if resp.Time != nil && *resp.Time > 0 {
+			exchTime = time.UnixMilli(*resp.Time)
+		}
+
+		return exchange.CreateOrderResult{
+			OrderID:       orderID,
+			Time:          exchTime,
+			TPSLSubmitted: false,
+		}, nil
+	}, nil
+}
+
+// CreateOrder places a new order.
+func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	if c.TradeMode() == exchange.TradeModeWS {
+		if c.wsTrade == nil || !c.wsTrade.IsReady() {
+			return exchange.CreateOrderResult{}, ErrWSTradeNotReady
+		}
+		return c.wsTrade.CreateOrder(ctx, req)
+	}
+
+	dispatch, err := c.PrepareOrder(ctx, req)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
 	}
-
-	orderID := strconv.FormatInt(resp.OrderId, 10)
-	return exchange.CreateOrderResult{OrderID: orderID, TPSLSubmitted: false}, nil
+	return dispatch(ctx)
 }
 
 // PlaceTPSL places Take Profit and Stop Loss conditional orders on Binance.
@@ -316,6 +369,13 @@ func (c *Client) placeAlgoOrder(ctx context.Context, symbol, side, algoType stri
 
 // CancelOrder cancels an open order.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	if c.TradeMode() == exchange.TradeModeWS {
+		if c.wsTrade == nil || !c.wsTrade.IsReady() {
+			return ErrWSTradeNotReady
+		}
+		return c.wsTrade.CancelOrder(ctx, symbol, orderID)
+	}
+
 	id, err := strconv.ParseInt(orderID, 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid orderID type for binance: %w", err)

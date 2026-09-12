@@ -223,8 +223,8 @@ func mergeReversionCore(dest *ExchangeReversionConfig, src ExchangeReversionConf
 	if src.StopLossPct > 0 {
 		dest.StopLossPct = src.StopLossPct
 	}
-	if src.TargetArriveOffset != 0 {
-		dest.TargetArriveOffset = src.TargetArriveOffset
+	if src.BufferTime != 0 {
+		dest.BufferTime = src.BufferTime
 	}
 	if src.PostSettleTimeout != 0 {
 		dest.PostSettleTimeout = src.PostSettleTimeout
@@ -332,7 +332,7 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
 		sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
 		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
-		sc.FundingReversion.TargetArriveOffset = exchConfig.TargetArriveOffset
+		sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		sc.FundingReversion.PostSettleTimeout = exchConfig.PostSettleTimeout
 		sc.FundingReversion.PnLTrailing = exchConfig.PnLTrailing
 		sc.FundingReversion.DynamicTP = exchConfig.DynamicTP
@@ -346,8 +346,8 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		if sc.FundingReversion.StopLossPct == 0 {
 			sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
 		}
-		if sc.FundingReversion.TargetArriveOffset == 0 {
-			sc.FundingReversion.TargetArriveOffset = exchConfig.TargetArriveOffset
+		if sc.FundingReversion.BufferTime == 0 {
+			sc.FundingReversion.BufferTime = exchConfig.BufferTime
 		}
 		mergeSymbolPnLTrailing(sc, exchConfig)
 		mergeSymbolDynamicTP(sc, exchConfig)

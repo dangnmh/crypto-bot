@@ -29,10 +29,12 @@
       "future": {
         "enable": false,
         "baseURL": "https://fapi.binance.com",
+        "tradeMode": "ws",
         "websocket": {
           "publicURL": "wss://fstream.binance.com/public/ws",
           "marketURL": "wss://fstream.binance.com/market/ws",
           "privateURL": "wss://fstream.binance.com/private/ws",
+          "tradeURL": "wss://ws-fapi.binance.com/ws-fapi/v1",
           "maxPairsPerWSConn": 30
         }
       }

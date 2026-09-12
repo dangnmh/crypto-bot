@@ -72,7 +72,7 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 	latencyMs := evt.LatencyRTTMs
 	now := r.now()
 	oneWayMs := max(latencyMs/2, 0)
-	targetArriveOffset := time.Duration(evt.Candidate.Config.FundingReversion.TargetArriveOffset)
+	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
 
 	cand := evt.Candidate
 	marginMode := shared.MarginModeIsolated
@@ -120,16 +120,16 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 		PnLTrailingDropPct:      cand.Config.FundingReversion.PnLTrailing.DropPct,
 		PnLTrailingConfirmTicks: cand.Config.FundingReversion.PnLTrailing.ConfirmTicks,
 		Extra: map[string]any{
-			"target_arrive_offset_ms": targetArriveOffset.Milliseconds(),
-			"fire_offset_ms":          evt.FireOffsetMs,
-			"one_way_ms":              oneWayMs,
-			"funding_rate":            cand.FundingRate,
-			"vol_24h_usdt":            cand.Vol24USDT,
-			"tp_pct":                  cand.ResolveTakeProfitPct(),
-			"sl_pct":                  cand.Config.FundingReversion.StopLossPct,
-			"ioc_price":               iocPrice,
-			"take_profit_price":       tpPrice,
-			"stop_loss_price":         slPrice,
+			"buffer_time_ms":    bufferTime.Milliseconds(),
+			"fire_offset_ms":    evt.FireOffsetMs,
+			"one_way_ms":        oneWayMs,
+			"funding_rate":      cand.FundingRate,
+			"vol_24h_usdt":      cand.Vol24USDT,
+			"tp_pct":            cand.ResolveTakeProfitPct(),
+			"sl_pct":            cand.Config.FundingReversion.StopLossPct,
+			"ioc_price":         iocPrice,
+			"take_profit_price": tpPrice,
+			"stop_loss_price":   slPrice,
 		},
 	}
 
@@ -185,8 +185,8 @@ func (r *StatelessRunner) handleMarginModeReady(ctx context.Context, evt MarginM
 
 	latencyMs := r.latencyMs()
 	oneWayMs := latencyMs / 2
-	targetArriveOffset := time.Duration(evt.Candidate.Config.FundingReversion.TargetArriveOffset)
-	fireOffset := time.Duration(oneWayMs)*time.Millisecond - targetArriveOffset
+	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
+	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
 
 	// Ensure snapshotOffset is at least fireOffset + 300ms, and at least 300ms overall
 	// to avoid race conditions during the price refresh and safety calculation.
@@ -223,8 +223,8 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 		freshLatencyMs = evt.LatencyRTTMs
 	}
 	oneWayMs := max(freshLatencyMs/2, 0)
-	targetArriveOffset := time.Duration(evt.Candidate.Config.FundingReversion.TargetArriveOffset)
-	fireOffset := time.Duration(oneWayMs)*time.Millisecond - targetArriveOffset
+	bufferTime := time.Duration(evt.Candidate.Config.FundingReversion.BufferTime)
+	fireOffset := time.Duration(oneWayMs)*time.Millisecond + bufferTime
 
 	c := evt.Candidate
 	if err := r.refreshPrice(ctx, &c); err != nil {
