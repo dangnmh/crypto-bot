@@ -76,7 +76,7 @@
     "mexc_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "100ms", // SG low-latency: arrives at T_settle + 150ms (matches immediately after settlement snapshot)
+      "bufferTime": "130ms", // SG low-latency: arrives at T_settle + 150ms (matches immediately after settlement snapshot)
       "postSettleTimeout": "6s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
@@ -93,7 +93,7 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "0ms", // SG low-latency WS: arrives at T_settle + 12ms (0 funding fee, instant tick fill)
+      "bufferTime": "-3ms", // SG low-latency WS: arrives at T_settle + 12ms (0 funding fee, instant tick fill)
       "postSettleTimeout": "6s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
