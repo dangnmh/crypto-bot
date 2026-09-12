@@ -1,0 +1,186 @@
+{
+  "exchange": {
+    "mexc": {
+      "future": {
+        "enable": true,
+        "baseURL": "https://api.mexc.com",
+        "websocket": {
+          "publicURL": "wss://contract.mexc.com/edge",
+          "privateURL": "wss://contract.mexc.com/edge",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "bybit": {
+      "accountType": "unified",
+      "future": {
+        "enable": false,
+        "baseURL": "https://api.bybit.com",
+        "tradeMode": "ws",
+        "websocket": {
+          "publicURL": "wss://stream.bybit.com/v5/public/linear",
+          "privateURL": "wss://stream.bybit.com/v5/private",
+          "tradeURL": "wss://stream.bybit.com/v5/trade",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "binance": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://fapi.binance.com",
+        "tradeMode": "ws",
+        "websocket": {
+          "publicURL": "wss://fstream.binance.com/public/ws",
+          "marketURL": "wss://fstream.binance.com/market/ws",
+          "privateURL": "wss://fstream.binance.com/private/ws",
+          "tradeURL": "wss://ws-fapi.binance.com/ws-fapi/v1",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "kucoin": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api-futures.kucoin.com",
+        "websocket": {
+          "publicURL": "wss://ws-api-futures.kucoin.com",
+          "privateURL": "wss://ws-api-futures.kucoin.com",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "okx": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://openapi.okx.com",
+        "websocket": {
+          "publicURL": "wss://ws.okx.com:8443/ws/v5/public",
+          "privateURL": "wss://ws.okx.com:8443/ws/v5/private",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "gate": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api.gateio.ws/api/v4",
+        "websocket": {
+          "publicURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
+          "privateURL": "wss://fx-ws.gateio.ws/v4/ws/usdt",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "deepcoin": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api.deepcoin.com",
+        "websocket": {
+          "publicURL": "wss://stream.deepcoin.com/streamlet/trade/public/swap?platform=api&version=v2",
+          "privateURL": "wss://stream.deepcoin.com/v1/private",
+          "maxPairsPerWSConn": 30
+        }
+      }
+    },
+    "toobit": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api.toobit.com",
+        "websocket": {
+          "publicURL": "wss://stream.toobit.com/quote/ws/v1",
+          "privateURL": "wss://stream.toobit.com",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "bitmart": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api-cloud-v2.bitmart.com",
+        "websocket": {
+          "publicURL": "wss://openapi-ws-v2.bitmart.com/api?protocol=1.1",
+          "privateURL": "wss://openapi-ws-v2.bitmart.com/user?protocol=1.1",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "weex": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api-contract.weex.com",
+        "websocket": {
+          "publicURL": "wss://ws-contract.weex.com/v3/ws/public",
+          "privateURL": "wss://ws-contract.weex.com/v3/ws/private",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "bitunix": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://fapi.bitunix.com",
+        "websocket": {
+          "publicURL": "wss://fapi.bitunix.com/public/",
+          "privateURL": "wss://fapi.bitunix.com/private/",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "xt": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://fapi.xt.com",
+        "websocket": {
+          "publicURL": "wss://fstream.xt.com/ws/market",
+          "privateURL": "wss://fstream.xt.com/ws/user",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "orangex": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api.orangex.com/api/v1",
+        "websocket": {
+          "publicURL": "wss://api.orangex.com/ws/api/v1",
+          "privateURL": "wss://api.orangex.com/ws/api/v1",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "aster": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://fapi.asterdex.com",
+        "websocket": {
+          "publicURL": "wss://fstream.asterdex.com/ws",
+          "privateURL": "wss://fstream.asterdex.com/ws",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "bitget": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api.bitget.com",
+        "websocket": {
+          "publicURL": "wss://ws.bitget.com/v2/ws/public",
+          "privateURL": "wss://ws.bitget.com/v2/ws/private",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    },
+    "hotcoin": {
+      "future": {
+        "enable": false,
+        "baseURL": "https://api-ct.hotcoin.fit",
+        "websocket": {
+          "publicURL": "wss://wss-ct.hotcoin.fit/",
+          "privateURL": "wss://wss-ct.hotcoin.fit/",
+          "maxPairsPerWSConn": 20
+        }
+      }
+    }
+  }
+}

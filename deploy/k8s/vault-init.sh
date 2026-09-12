@@ -164,6 +164,7 @@ vault kv put secret/crypto-bot \
   AI_PROXY_API_KEY="sk-local-proxy-secret" \
   AI_PROXY_MODEL="gemini-3.7-flash-high" \
   TELEGRAM_CHAT_ID="telegram_chat_id_from_vault" \
+  TELEGRAM_CRITICAL_CHAT_ID="telegram_chat_id_from_vault" \
   TELEGRAM_BOT_TOKEN="telegram_bot_token_from_vault"
 
 echo "Vault configuration complete."

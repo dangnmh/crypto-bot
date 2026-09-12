@@ -44,5 +44,12 @@ local.md
 
 
 
+# Credentials & Keys
+*.pem
+k3s-*.yaml
+deploy/k8s/k3s-*.
+
+vault-keys-*.json
+
 # Local config overrides
 configs/funding/**/*.local.jsonc
