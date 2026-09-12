@@ -22,3 +22,10 @@ func ProvideHTTPClient(log *slog.Logger) *http.Client {
 	cfg.Logger = log
 	return httpclient.NewPool(cfg)
 }
+
+// ProvideOrderHTTPClient instantiates a dedicated HTTP client pool isolated exclusively for order executions.
+func ProvideOrderHTTPClient(log *slog.Logger) *http.Client {
+	cfg := httpclient.OrderPoolConfig()
+	cfg.Logger = log
+	return httpclient.NewPool(cfg)
+}

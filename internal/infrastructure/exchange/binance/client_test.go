@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -1079,4 +1080,58 @@ func TestClient_TradeModeAndWSDelegation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "mock-binance-ws-123", res.OrderID)
 	assert.Equal(t, "ETHUSDT", mockExec.createdReq.Symbol)
+}
+
+func TestClient_PreWarm_And_OrderHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	var pingCount int
+	var orderCount int
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/fapi/v1/ping":
+			pingCount++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+		case "/fapi/v1/order":
+			orderCount++
+			assert.NotEmpty(t, r.URL.Query().Get("signature"))
+			assert.NotEmpty(t, r.URL.Query().Get("timestamp"))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"orderId":987654,"symbol":"BTCUSDT","status":"NEW"}`))
+		}
+	}))
+	defer server.Close()
+
+	generalClient := server.Client()
+	client := binance.NewClient(generalClient, server.URL, "key", "secret", config.LoggingConfig{})
+
+	orderClient := server.Client()
+	client.SetOrderHTTPClient(orderClient)
+
+	err := client.PreWarm(context.Background())
+	require.NoError(t, err)
+
+	dispatch, err := client.PrepareOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol: "BTCUSDT",
+		Price:  50000,
+		Vol:    1,
+		Side:   exchange.SideOpenLong,
+		Type:   exchange.OrderTypeLimit,
+	})
+	require.NoError(t, err)
+
+	res, err := dispatch(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "987654", res.OrderID)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, pingCount)
+	assert.Equal(t, 1, orderCount)
 }

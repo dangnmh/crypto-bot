@@ -51,6 +51,7 @@ type ProviderFactory interface {
 type ProviderFactoryConfig struct {
 	SystemConfig     *sysconfig.SystemConfig
 	HTTPClient       *http.Client
+	OrderHTTPClient  *http.Client
 	Logger           *slog.Logger
 	Bus              *eventbus.Bus
 	TimeSyncInterval time.Duration
@@ -80,11 +81,14 @@ func (s SimpleProviderFactory) Build(ctx context.Context, cfg ProviderFactoryCon
 
 // DefaultProviderFactories returns the exchange factories supported by the app layer.
 //
-//nolint:gocognit // Factory method registers all exchange providers
+//nolint:gocognit,cyclop // Factory method registers all exchange providers
 func DefaultProviderFactories() []ProviderFactory {
 	mexcFactories := newExchangeFactories(exchange.ExchangeMexc, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
 		if isFutures {
 			mexcClient := mexcfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+			if cfg.OrderHTTPClient != nil {
+				mexcClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
+			}
 			mexcAdapter := mexcfutures.NewWsAdapter()
 			return mexcClient, mexcAdapter
 		}
@@ -129,6 +133,9 @@ func DefaultProviderFactories() []ProviderFactory {
 	bybitFactories := newExchangeFactories(exchange.ExchangeBybit, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
 		accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
 		bybitClient := bybit.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, accountType, cfg.SystemConfig.Logging)
+		if cfg.OrderHTTPClient != nil {
+			bybitClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
+		}
 
 		tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
 		bybitClient.SetTradeMode(tradeMode)
@@ -146,6 +153,9 @@ func DefaultProviderFactories() []ProviderFactory {
 
 	binanceFactories := newExchangeFactories(exchange.ExchangeBinance, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
 		binanceClient := binance.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+		if cfg.OrderHTTPClient != nil {
+			binanceClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
+		}
 
 		tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
 		binanceClient.SetTradeMode(tradeMode)

@@ -968,6 +968,22 @@ func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient
 	return fn
 }
 
+func (m *OrderManager) preWarmConnection(ctx context.Context, client ExchangeClient, exchangeName string) {
+	pw, ok := client.(exchange.PreWarmer)
+	if !ok {
+		return
+	}
+	go func() {
+		warmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if err := pw.PreWarm(warmCtx); err != nil {
+			m.log.Warn("OrderManager: TCP/TLS pre-warm failed", slog.String("exchange", exchangeName), slog.Any("error", err))
+		} else {
+			m.log.Debug("OrderManager: TCP/TLS connection pre-warmed successfully", slog.String("exchange", exchangeName))
+		}
+	}()
+}
+
 func sleepUntilFireTime(ctx context.Context, clock Clock, fireTime time.Time) error {
 	if fireTime.IsZero() {
 		return nil
@@ -1044,6 +1060,7 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWind
 	if !evt.FireTime.IsZero() {
 		dispatchFn = m.preparePreSign(ctx, client, req)
 		m.registerCombatTarget(evt.FireTime, evt.SettleTime)
+		m.preWarmConnection(ctx, client, evt.Exchange)
 	}
 
 	// Precision sleep right until fireTime immediately before network transmission:

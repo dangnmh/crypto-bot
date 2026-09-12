@@ -18,6 +18,7 @@ var (
 	_ exchange.TopGainerProvider     = (*Client)(nil)
 	_ exchange.OrderExecutor         = (*Client)(nil)
 	_ exchange.PreSignExecutor       = (*Client)(nil)
+	_ exchange.PreWarmer             = (*Client)(nil)
 	_ exchange.ClosedPnLProvider     = (*Client)(nil)
 	_ exchange.RawRequest            = (*Client)(nil)
 	_ exchange.RawRequester          = (*Client)(nil)
@@ -38,6 +39,16 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType 
 		base:      bybit.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, accountType, logCfg),
 		tradeMode: exchange.TradeModeHTTP,
 	}
+}
+
+// SetOrderHTTPClient sets the dedicated HTTP client for order execution.
+func (c *Client) SetOrderHTTPClient(httpClient *http.Client) {
+	c.base.SetOrderHTTPClient(httpClient)
+}
+
+// PreWarm pre-warms the dedicated order HTTP client connection.
+func (c *Client) PreWarm(ctx context.Context) error {
+	return c.base.PreWarm(ctx)
 }
 
 // SetTradeMode sets the trading execution transport mode (http or ws).

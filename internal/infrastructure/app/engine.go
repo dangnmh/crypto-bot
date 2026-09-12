@@ -17,6 +17,7 @@ import (
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
+	"crypto-bot/pkg/httpclient"
 	pkgws "crypto-bot/pkg/ws"
 )
 
@@ -105,6 +106,7 @@ type Engine struct {
 type EngineConfig struct {
 	SystemConfig      *sysconfig.SystemConfig
 	HTTPClient        *http.Client
+	OrderHTTPClient   *http.Client
 	Logger            *slog.Logger
 	ProviderFactories []ProviderFactory
 	ActiveExchanges   []string
@@ -138,6 +140,11 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 		}
 	}
 
+	orderHTTPClient := cfg.OrderHTTPClient
+	if orderHTTPClient == nil {
+		orderHTTPClient = httpclient.NewPool(httpclient.OrderPoolConfig())
+	}
+
 	activeMap := make(map[string]bool)
 	for _, exch := range cfg.ActiveExchanges {
 		activeMap[strings.ToLower(strings.TrimSpace(exch))] = true
@@ -150,6 +157,7 @@ func NewEngine(ctx context.Context, cfg EngineConfig) (*Engine, error) {
 	factoryCfg := ProviderFactoryConfig{
 		SystemConfig:     sysCfg,
 		HTTPClient:       httpClient,
+		OrderHTTPClient:  orderHTTPClient,
 		Logger:           engineLogger,
 		Bus:              bus,
 		TimeSyncInterval: cfg.TimeSyncInterval,

@@ -522,3 +522,55 @@ func TestFuturesClient_CancelAllOpenOrders_WithPlanOrders(t *testing.T) {
 	assert.True(t, cancelAllPlanOrdersCalled, "CancelAllOpenOrders must cancel plan orders")
 	assert.True(t, cancelAllOrdersCalled, "CancelAllOpenOrders must cancel regular orders")
 }
+
+func TestFuturesClient_PreWarm_And_OrderHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	var pingCount int
+	var orderCount int
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/contract/ping":
+			pingCount++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"code":0}`))
+		case "/api/v1/private/order/create":
+			orderCount++
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"mexc-prewarm-123","ts":1670000000000}}`))
+		}
+	}))
+	defer server.Close()
+
+	generalClient := server.Client()
+	client := futures.NewClient(generalClient, server.URL, "key", "secret", config.LoggingConfig{})
+
+	orderClient := server.Client()
+	client.SetOrderHTTPClient(orderClient)
+
+	err := client.PreWarm(context.Background())
+	require.NoError(t, err)
+
+	dispatch, err := client.PrepareOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol: "BTC_USDT",
+		Price:  50000,
+		Vol:    1,
+		Side:   exchange.SideOpenLong,
+		Type:   exchange.OrderTypeLimit,
+	})
+	require.NoError(t, err)
+
+	res, err := dispatch(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "mexc-prewarm-123", res.OrderID)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, pingCount)
+	assert.Equal(t, 1, orderCount)
+}

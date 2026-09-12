@@ -129,3 +129,46 @@ func TestBaseClient_PrepareRequestAndExecute(t *testing.T) {
 	assert.Equal(t, "123", resp.Result.OrderID)
 	assert.Equal(t, int64(1672217377164), resp.Time)
 }
+
+func TestBaseClient_PreWarm_And_OrderHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	var pingCount int
+	var orderCount int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v5/market/time":
+			pingCount++
+			_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK","result":{"timeSecond":"1672217377"}}`))
+		case "/v5/order/create":
+			orderCount++
+			assert.Equal(t, "test-api-key", r.Header.Get("X-BAPI-API-KEY"))
+			assert.NotEmpty(t, r.Header.Get("X-BAPI-SIGN"))
+			_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK","result":{"orderId":"123"},"time":1672217377164}`))
+		}
+	}))
+	defer server.Close()
+
+	client := bybit.NewBaseClient(server.Client(), server.URL, "test-api-key", "test-api-secret", "unified", config.LoggingConfig{})
+	orderClient := server.Client()
+	client.SetOrderHTTPClient(orderClient)
+	assert.NotNil(t, client.OrderHTTPClient())
+
+	err := client.PreWarm(context.Background())
+	require.NoError(t, err)
+
+	dispatch, err := client.PrepareRequest(context.Background(), http.MethodPost, "/v5/order/create", nil, []byte(`{"category":"linear"}`))
+	require.NoError(t, err)
+
+	respBody, err := dispatch(context.Background())
+	require.NoError(t, err)
+
+	resp, err := bybit.ParseResponseEnvelope[dummyResult](respBody, "prepare")
+	require.NoError(t, err)
+	assert.Equal(t, "123", resp.Result.OrderID)
+
+	assert.Equal(t, 1, pingCount)
+	assert.Equal(t, 1, orderCount)
+}

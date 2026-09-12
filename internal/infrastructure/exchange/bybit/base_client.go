@@ -26,15 +26,16 @@ import (
 
 // BaseClient encapsulates shared transport, signing, rate limiting, and execution for Bybit V5 API.
 type BaseClient struct {
-	httpClient  *http.Client
-	baseURL     string
-	apiKey      string
-	apiSecret   string
-	accountType string // "standard" or "unified"
-	logCfg      config.LoggingConfig
-	logger      *slog.Logger
-	clock       exchange.Clock
-	limiter     *ratelimit.ExchangeRateLimiter
+	httpClient      *http.Client
+	orderHTTPClient *http.Client
+	baseURL         string
+	apiKey          string
+	apiSecret       string
+	accountType     string // "standard" or "unified"
+	logCfg          config.LoggingConfig
+	logger          *slog.Logger
+	clock           exchange.Clock
+	limiter         *ratelimit.ExchangeRateLimiter
 }
 
 // NewBaseClient creates a new Bybit BaseClient.
@@ -87,6 +88,43 @@ func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountT
 // HTTPClient returns the underlying HTTP client.
 func (c *BaseClient) HTTPClient() *http.Client {
 	return c.httpClient
+}
+
+// OrderHTTPClient returns the dedicated order *http.Client if configured, or falls back to httpClient.
+func (c *BaseClient) OrderHTTPClient() *http.Client {
+	if c.orderHTTPClient != nil {
+		return c.orderHTTPClient
+	}
+	return c.httpClient
+}
+
+// SetOrderHTTPClient sets the dedicated HTTP client for order execution.
+func (c *BaseClient) SetOrderHTTPClient(client *http.Client) {
+	if client == nil {
+		return
+	}
+	clientCopy := *client
+	if clientCopy.Transport == nil {
+		clientCopy.Transport = http.DefaultTransport
+	}
+	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	c.orderHTTPClient = &clientCopy
+}
+
+// PreWarm pre-warms the TCP/TLS connection of the order HTTP client.
+func (c *BaseClient) PreWarm(ctx context.Context) error {
+	client := c.OrderHTTPClient()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v5/market/time", http.NoBody)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }
 
 // BaseURL returns the configured base URL.
@@ -213,7 +251,7 @@ func (c *BaseClient) PrepareRequest(ctx context.Context, method, path string, qu
 
 	return func(execCtx context.Context) ([]byte, error) {
 		req = req.WithContext(execCtx)
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.OrderHTTPClient().Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("HTTP request: %w", err)
 		}

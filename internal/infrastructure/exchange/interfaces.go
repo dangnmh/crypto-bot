@@ -51,6 +51,13 @@ type PreSignExecutor interface {
 	PrepareOrder(ctx context.Context, req SubmitOrderRequest) (func(context.Context) (CreateOrderResult, error), error)
 }
 
+// PreWarmer is an optional interface that exchange clients can implement
+// to pre-warm their execution transport (e.g. warming the TCP connection and TLS session
+// of the dedicated order HTTP client) prior to the fire time.
+type PreWarmer interface {
+	PreWarm(ctx context.Context) error
+}
+
 // TPSLProvider is an optional interface that exchange REST clients can implement
 // to support post-fill Take Profit and Stop Loss configuration.
 type TPSLProvider interface {

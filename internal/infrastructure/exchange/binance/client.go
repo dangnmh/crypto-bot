@@ -31,20 +31,22 @@ import (
 var (
 	_ exchange.TradeModeConfigurable = (*Client)(nil)
 	_ exchange.PreSignExecutor       = (*Client)(nil)
+	_ exchange.PreWarmer             = (*Client)(nil)
 )
 
 // Client is the Binance USD-M Futures REST API client.
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	apiSecret  string
-	logCfg     config.LoggingConfig
-	logger     *slog.Logger
-	clock      exchange.Clock
-	limiter    *ratelimit.ExchangeRateLimiter
-	tradeMode  exchange.TradeMode
-	wsTrade    exchange.WSTradeExecutor
+	httpClient      *http.Client
+	orderHTTPClient *http.Client
+	baseURL         string
+	apiKey          string
+	apiSecret       string
+	logCfg          config.LoggingConfig
+	logger          *slog.Logger
+	clock           exchange.Clock
+	limiter         *ratelimit.ExchangeRateLimiter
+	tradeMode       exchange.TradeMode
+	wsTrade         exchange.WSTradeExecutor
 }
 
 // NewClient creates a new Binance Futures REST Client.
@@ -106,6 +108,48 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 		limiter:    limiter,
 		tradeMode:  exchange.TradeModeHTTP,
 	}
+}
+
+// HTTPClient returns the configured *http.Client.
+func (c *Client) HTTPClient() *http.Client {
+	return c.httpClient
+}
+
+// OrderHTTPClient returns the dedicated order *http.Client if configured, or falls back to httpClient.
+func (c *Client) OrderHTTPClient() *http.Client {
+	if c.orderHTTPClient != nil {
+		return c.orderHTTPClient
+	}
+	return c.httpClient
+}
+
+// SetOrderHTTPClient sets the dedicated HTTP client for order execution.
+func (c *Client) SetOrderHTTPClient(client *http.Client) {
+	if client == nil {
+		return
+	}
+	clientCopy := *client
+	if clientCopy.Transport == nil {
+		clientCopy.Transport = http.DefaultTransport
+	}
+	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	c.orderHTTPClient = &clientCopy
+}
+
+// PreWarm pre-warms the TCP/TLS connection of the order HTTP client.
+func (c *Client) PreWarm(ctx context.Context) error {
+	client := c.OrderHTTPClient()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/fapi/v1/ping", http.NoBody)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }
 
 // Clock returns the clock used by the client.

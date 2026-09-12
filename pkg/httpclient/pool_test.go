@@ -38,6 +38,20 @@ func TestNewPool(t *testing.T) {
 	assert.Equal(t, cfg.IdleConnTimeout, transport.IdleConnTimeout)
 	assert.Equal(t, cfg.TLSHandshakeTimeout, transport.TLSHandshakeTimeout)
 	assert.Equal(t, cfg.DisableCompression, transport.DisableCompression)
+	assert.True(t, transport.ForceAttemptHTTP2)
+}
+
+func TestOrderPoolConfig(t *testing.T) {
+	t.Parallel()
+	cfg := httpclient.OrderPoolConfig()
+
+	assert.Equal(t, 50, cfg.MaxIdleConns)
+	assert.Equal(t, 2, cfg.MaxIdleConnsPerHost)
+	assert.Equal(t, 120*time.Second, cfg.IdleConnTimeout)
+	assert.Equal(t, 5*time.Second, cfg.TLSHandshakeTimeout)
+	assert.False(t, cfg.DisableCompression)
+	assert.Equal(t, 10*time.Second, cfg.Timeout)
+	assert.False(t, cfg.EnableRetry)
 }
 
 func TestNewPool_CustomConfig(t *testing.T) {

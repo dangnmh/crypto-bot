@@ -3,6 +3,7 @@ package binance
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/xjson"
 )
 
 // Explicit request/response structs for order endpoints.
@@ -59,7 +61,7 @@ type binanceListOpenOrdersRequest struct {
 
 // Private raw methods invoking the Binance API directly.
 
-func (c *Client) rawCreateOrder(ctx context.Context, req binanceCreateOrderRequest) (*binanceOrder, error) {
+func (c *Client) buildOrderParams(req binanceCreateOrderRequest) map[string]any {
 	params := make(map[string]any)
 	params["symbol"] = req.Symbol
 	params["side"] = req.Side
@@ -82,13 +84,7 @@ func (c *Client) rawCreateOrder(ctx context.Context, req binanceCreateOrderReque
 	if req.NewClientOrderId != "" {
 		params["newClientOrderId"] = req.NewClientOrderId
 	}
-
-	var resp binanceOrder
-	err := c.request(ctx, http.MethodPost, "/fapi/v1/order", params, true, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("binance place order: %w", err)
-	}
-	return &resp, nil
+	return params
 }
 
 func (c *Client) rawPlaceAlgoOrder(ctx context.Context, req binancePlaceAlgoOrderRequest) (*binanceOrder, error) {
@@ -247,26 +243,70 @@ func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderReque
 		return nil, err
 	}
 
+	if c.limiter != nil {
+		if err := c.limiter.Acquire(ctx, "/fapi/v1/order"); err != nil {
+			return nil, fmt.Errorf("rate limit acquire: %w", err)
+		}
+	}
+
+	params := c.buildOrderParams(rawReq)
+	queryString := c.encodeParams(params, true)
+	fullURL := c.baseURL + "/fapi/v1/order?" + queryString
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("X-MBX-APIKEY", c.apiKey)
+	}
+
 	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
-		execCtx = exchange.ContextWithRequest(execCtx, req)
-		resp, err := c.rawCreateOrder(execCtx, rawReq)
-		if err != nil {
-			return exchange.CreateOrderResult{}, err
-		}
+		return c.executeHTTPOrder(execCtx, req, httpReq)
+	}, nil
+}
 
-		orderID := strconv.FormatInt(resp.OrderId, 10)
-		var exchTime time.Time
-		if resp.UpdateTime != nil && *resp.UpdateTime > 0 {
-			exchTime = time.UnixMilli(*resp.UpdateTime)
-		} else if resp.Time != nil && *resp.Time > 0 {
-			exchTime = time.UnixMilli(*resp.Time)
-		}
+func (c *Client) executeHTTPOrder(execCtx context.Context, req exchange.SubmitOrderRequest, httpReq *http.Request) (exchange.CreateOrderResult, error) {
+	execCtx = exchange.ContextWithRequest(execCtx, req)
+	reqToSend := httpReq.WithContext(execCtx)
 
-		return exchange.CreateOrderResult{
-			OrderID:       orderID,
-			Time:          exchTime,
-			TPSLSubmitted: false,
-		}, nil
+	client := c.OrderHTTPClient()
+	httpResp, err := client.Do(reqToSend)
+	if err != nil {
+		return exchange.CreateOrderResult{}, fmt.Errorf("binance place order HTTP: %w", err)
+	}
+	defer func() {
+		_ = httpResp.Body.Close()
+	}()
+
+	body, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return exchange.CreateOrderResult{}, fmt.Errorf("read response body: %w", err)
+	}
+
+	if httpResp.StatusCode != http.StatusOK {
+		return exchange.CreateOrderResult{}, handleBinanceError(execCtx, httpResp.StatusCode, body, "/fapi/v1/order", c.logger)
+	}
+
+	var resp binanceOrder
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return exchange.CreateOrderResult{}, fmt.Errorf("unmarshal response: %w (body=%s)", err, string(body))
+	}
+
+	orderID := strconv.FormatInt(resp.OrderId, 10)
+	var exchTime time.Time
+	if resp.UpdateTime != nil && *resp.UpdateTime > 0 {
+		exchTime = time.UnixMilli(*resp.UpdateTime)
+	} else if resp.Time != nil && *resp.Time > 0 {
+		exchTime = time.UnixMilli(*resp.Time)
+	}
+
+	return exchange.CreateOrderResult{
+		OrderID:       orderID,
+		Time:          exchTime,
+		TPSLSubmitted: false,
 	}, nil
 }
 

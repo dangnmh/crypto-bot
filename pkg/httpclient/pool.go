@@ -45,6 +45,21 @@ func DefaultPoolConfig() PoolConfig {
 	}
 }
 
+// OrderPoolConfig returns connection pool settings optimized specifically for order execution.
+// It disables automatic retries (to prevent double-order submission risk) and increases
+// per-host idle connections and idle timeout so order connections remain hot and isolated.
+func OrderPoolConfig() PoolConfig {
+	return PoolConfig{
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 2,
+		IdleConnTimeout:     120 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
+		DisableCompression:  false,
+		Timeout:             10 * time.Second,
+		EnableRetry:         false,
+	}
+}
+
 // checkRetry ensures we only retry GET requests that failed with HTTP 429 (Too Many Requests).
 func checkRetry(ctx context.Context, resp *http.Response, err error) (bool, error) {
 	if err != nil {
@@ -118,6 +133,7 @@ func (t *traceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 // NewPool creates an optimized *http.Client with a pre-configured RoundTripper.
 func NewPool(cfg PoolConfig) *http.Client {
 	transport := &http.Transport{
+		ForceAttemptHTTP2:   true,
 		MaxIdleConns:        cfg.MaxIdleConns,
 		MaxIdleConnsPerHost: cfg.MaxIdleConnsPerHost,
 		IdleConnTimeout:     cfg.IdleConnTimeout,

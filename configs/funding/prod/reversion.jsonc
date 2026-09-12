@@ -76,7 +76,7 @@
     "mexc_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "-52ms", // -55ms dont pay funding fee, -50 pays funding fee
+      "bufferTime": "-50ms", // -55ms dont pay funding fee, -50 pays funding fee
       "postSettleTimeout": "6s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
@@ -93,7 +93,7 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "15ms", // 0ms high cancel rate, 40ms paid funding fee
+      "bufferTime": "10ms", // 0ms high cancel rate, 40ms paid funding fee
       "postSettleTimeout": "6s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,

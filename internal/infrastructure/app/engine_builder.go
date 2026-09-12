@@ -11,10 +11,11 @@ import (
 
 // EngineBuilder provides a fluent API for constructing an Engine with validation.
 type EngineBuilder struct {
-	cfg        *sysconfig.SystemConfig
-	httpClient *http.Client
-	logger     *slog.Logger
-	errors     []string
+	cfg             *sysconfig.SystemConfig
+	httpClient      *http.Client
+	orderHTTPClient *http.Client
+	logger          *slog.Logger
+	errors          []string
 }
 
 // NewEngineBuilder creates a new EngineBuilder.
@@ -31,6 +32,12 @@ func (b *EngineBuilder) WithSystemConfig(cfg *sysconfig.SystemConfig) *EngineBui
 // WithHTTPClient sets the HTTP client connection pool (optional).
 func (b *EngineBuilder) WithHTTPClient(client *http.Client) *EngineBuilder {
 	b.httpClient = client
+	return b
+}
+
+// WithOrderHTTPClient sets the dedicated order HTTP client connection pool (optional).
+func (b *EngineBuilder) WithOrderHTTPClient(client *http.Client) *EngineBuilder {
+	b.orderHTTPClient = client
 	return b
 }
 
@@ -58,9 +65,10 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	}
 
 	return NewEngine(context.Background(), EngineConfig{
-		SystemConfig: b.cfg,
-		HTTPClient:   b.httpClient,
-		Logger:       b.logger,
+		SystemConfig:    b.cfg,
+		HTTPClient:      b.httpClient,
+		OrderHTTPClient: b.orderHTTPClient,
+		Logger:          b.logger,
 	})
 }
 

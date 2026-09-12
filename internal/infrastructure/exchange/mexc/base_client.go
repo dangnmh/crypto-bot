@@ -23,14 +23,15 @@ import (
 
 // BaseClient encapsulates shared transport, authentication, signing, and rate limiting for MEXC.
 type BaseClient struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	apiSecret  string
-	logCfg     config.LoggingConfig
-	logger     *slog.Logger
-	clock      exchange.Clock
-	limiter    *ratelimit.ExchangeRateLimiter
+	httpClient      *http.Client
+	orderHTTPClient *http.Client
+	baseURL         string
+	apiKey          string
+	apiSecret       string
+	logCfg          config.LoggingConfig
+	logger          *slog.Logger
+	clock           exchange.Clock
+	limiter         *ratelimit.ExchangeRateLimiter
 }
 
 // NewBaseClient creates a new MEXC BaseClient.
@@ -95,6 +96,27 @@ func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, l
 // HTTPClient returns the configured *http.Client.
 func (c *BaseClient) HTTPClient() *http.Client {
 	return c.httpClient
+}
+
+// OrderHTTPClient returns the dedicated order *http.Client if configured, or falls back to httpClient.
+func (c *BaseClient) OrderHTTPClient() *http.Client {
+	if c.orderHTTPClient != nil {
+		return c.orderHTTPClient
+	}
+	return c.httpClient
+}
+
+// SetOrderHTTPClient sets the dedicated HTTP client for order execution.
+func (c *BaseClient) SetOrderHTTPClient(client *http.Client) {
+	if client == nil {
+		return
+	}
+	clientCopy := *client
+	if clientCopy.Transport == nil {
+		clientCopy.Transport = http.DefaultTransport
+	}
+	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	c.orderHTTPClient = &clientCopy
 }
 
 // BaseURL returns the base URL.
@@ -192,9 +214,11 @@ func (c *BaseClient) PrepareRequest(ctx context.Context, method, path string, pa
 		c.applyFuturesAuth(req, method, params, body)
 	}
 
+	orderClient := c.OrderHTTPClient()
+
 	return func(execCtx context.Context) ([]byte, error) {
 		req = req.WithContext(execCtx)
-		resp, err := c.httpClient.Do(req)
+		resp, err := orderClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("execute request: %w", err)
 		}
@@ -215,6 +239,22 @@ func (c *BaseClient) PrepareRequest(ctx context.Context, method, path string, pa
 
 		return respBody, nil
 	}, nil
+}
+
+// PreWarm executes a lightweight ping over the dedicated order connection pool
+// to ensure TCP connection is established and TLS session is hot.
+func (c *BaseClient) PreWarm(ctx context.Context) error {
+	client := c.OrderHTTPClient()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/contract/ping", http.NoBody)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	return nil
 }
 
 // Request executes an HTTP request with rate limiting and optional MEXC futures header authentication.

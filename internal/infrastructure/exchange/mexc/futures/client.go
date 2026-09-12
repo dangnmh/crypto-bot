@@ -1,6 +1,7 @@
 package futures
 
 import (
+	"context"
 	"net/http"
 
 	"crypto-bot/internal/infrastructure/config"
@@ -15,6 +16,7 @@ var (
 	_ exchange.TopGainerProvider    = (*Client)(nil)
 	_ exchange.OrderExecutor        = (*Client)(nil)
 	_ exchange.PreSignExecutor      = (*Client)(nil)
+	_ exchange.PreWarmer            = (*Client)(nil)
 	_ exchange.TPSLProvider         = (*Client)(nil)
 )
 
@@ -33,6 +35,16 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCf
 // BaseClient returns the underlying shared MEXC BaseClient.
 func (c *Client) BaseClient() *mexc.BaseClient {
 	return c.base
+}
+
+// SetOrderHTTPClient sets the dedicated HTTP client for order execution.
+func (c *Client) SetOrderHTTPClient(httpClient *http.Client) {
+	c.base.SetOrderHTTPClient(httpClient)
+}
+
+// PreWarm pre-warms the dedicated order HTTP client connection.
+func (c *Client) PreWarm(ctx context.Context) error {
+	return c.base.PreWarm(ctx)
 }
 
 // SetClock configures a custom clock implementation for testing.

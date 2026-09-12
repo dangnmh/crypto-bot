@@ -18,6 +18,7 @@ import (
 	"crypto-bot/pkg/eventbus"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockExchangeClient struct {
@@ -1265,6 +1266,72 @@ func (m *mockPreSignClient) PrepareOrder(ctx context.Context, req exchange.Submi
 		m.dispatchCalled = true
 		return exchange.CreateOrderResult{OrderID: "presign-order-999", TPSLSubmitted: false}, nil
 	}, nil
+}
+
+type mockPreWarmerClient struct {
+	mockPreSignClient
+	preWarmCalled bool
+	preWarmMu     sync.Mutex
+}
+
+func (m *mockPreWarmerClient) PreWarm(ctx context.Context) error {
+	m.preWarmMu.Lock()
+	defer m.preWarmMu.Unlock()
+	m.preWarmCalled = true
+	return nil
+}
+
+func (m *mockPreWarmerClient) isPreWarmCalled() bool {
+	m.preWarmMu.Lock()
+	defer m.preWarmMu.Unlock()
+	return m.preWarmCalled
+}
+
+func TestHandleExecuteOrder_PreWarmerTriggered(t *testing.T) {
+	t.Parallel()
+
+	client := &mockPreWarmerClient{}
+	bus := eventbus.New(slog.Default())
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(context.Background(), engine, bus, repo, noti, nil)
+	assert.NoError(t, err)
+	assert.NoError(t, mgr.Init(context.Background()))
+
+	ctx := context.Background()
+	reqID := "req-prewarm-001"
+	fireTime := time.Now().Add(50 * time.Millisecond)
+
+	fireWindow := futures.OrderFireWindowReachedEvent{
+		ReqID:        reqID,
+		Symbol:       "BTCUSDT",
+		Exchange:     "bybit",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Price:        50000.0,
+		Volume:       1.0,
+		FireTime:     fireTime,
+	}
+
+	submitted, err := mgr.HandleExecuteOrder(ctx, fireWindow)
+	assert.NoError(t, err)
+	assert.Equal(t, "presign-order-999", submitted.OrderID)
+
+	require.Eventually(t, func() bool {
+		return client.isPreWarmCalled()
+	}, 500*time.Millisecond, 10*time.Millisecond, "PreWarm should be called asynchronously upon fire window entry")
 }
 
 func TestHandleExecuteOrder_PreSignExecutor(t *testing.T) {
