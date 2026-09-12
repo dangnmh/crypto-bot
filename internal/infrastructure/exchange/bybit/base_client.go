@@ -246,18 +246,27 @@ type Response[T any] struct {
 	RetCode int    `json:"retCode"`
 	RetMsg  string `json:"retMsg"`
 	Result  T      `json:"result"`
+	Time    int64  `json:"time"`
+}
+
+// ParseResponseEnvelope unmarshals a Bybit V5 JSON response and validates retCode == 0, returning the envelope.
+func ParseResponseEnvelope[T any](body []byte, errPrefix string) (Response[T], error) {
+	var resp Response[T]
+	if err := xjson.Unmarshal(body, &resp); err != nil {
+		return resp, fmt.Errorf("%s json unmarshal: %w", errPrefix, err)
+	}
+	if resp.RetCode != 0 {
+		return resp, fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
+	}
+	return resp, nil
 }
 
 // ParseResponse unmarshals a Bybit V5 JSON response and validates retCode == 0.
 func ParseResponse[T any](body []byte, errPrefix string) (T, error) {
-	var resp Response[T]
-	if err := xjson.Unmarshal(body, &resp); err != nil {
+	resp, err := ParseResponseEnvelope[T](body, errPrefix)
+	if err != nil {
 		var zero T
-		return zero, fmt.Errorf("%s json unmarshal: %w", errPrefix, err)
-	}
-	if resp.RetCode != 0 {
-		var zero T
-		return zero, fmt.Errorf("%s error: retCode=%d, retMsg=%s", errPrefix, resp.RetCode, resp.RetMsg)
+		return zero, err
 	}
 	return resp.Result, nil
 }

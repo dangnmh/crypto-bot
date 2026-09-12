@@ -2,6 +2,7 @@ package ws_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -1543,4 +1544,116 @@ func TestPool_PrivateAuthReconnectFlow(t *testing.T) {
 
 	assert.True(t, authReceived)
 	assert.True(t, subReceived)
+}
+
+func TestClient_RoundTrip_Success(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		for {
+			_, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			var req struct {
+				ReqID string `json:"reqId"`
+				Cmd   string `json:"cmd"`
+			}
+			if err := json.Unmarshal(data, &req); err == nil && req.ReqID != "" {
+				resp := map[string]string{
+					"reqId":  req.ReqID,
+					"result": "ok-" + req.Cmd,
+				}
+				b, _ := json.Marshal(resp)
+				_ = conn.WriteMessage(websocket.TextMessage, b)
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	extractor := func(data []byte) (string, bool) {
+		var header struct {
+			ReqID string `json:"reqId"`
+		}
+		if err := json.Unmarshal(data, &header); err == nil && header.ReqID != "" {
+			return header.ReqID, true
+		}
+		return "", false
+	}
+
+	c := ws.NewClient(wsURL(srv), slog.Default(), ws.WithRequestIDExtractor(extractor))
+	defer c.Close()
+
+	go c.Connect(ctx)
+	require.NoError(t, c.WaitReady(ctx))
+
+	req := map[string]string{
+		"reqId": "r-123",
+		"cmd":   "ping_rpc",
+	}
+	respBytes, err := c.RoundTrip(ctx, "r-123", req)
+	require.NoError(t, err)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(respBytes, &resp))
+	assert.Equal(t, "r-123", resp["reqId"])
+	assert.Equal(t, "ok-ping_rpc", resp["result"])
+}
+
+func TestClient_RoundTrip_NotConnected(t *testing.T) {
+	t.Parallel()
+
+	c := ws.NewClient("ws://127.0.0.1:1", slog.Default())
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err := c.RoundTrip(ctx, "r-1", "hello")
+	assert.ErrorIs(t, err, ws.ErrNotConnected)
+}
+
+func TestClient_PingPong_LatencyTracking(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		for {
+			mt, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			str := string(data)
+			if strings.Contains(str, `"op":"ping"`) || strings.Contains(str, `"op": "ping"`) {
+				_ = conn.WriteMessage(mt, []byte(`{"op":"pong","args":["123"]}`))
+			} else if str == "ping" {
+				_ = conn.WriteMessage(mt, []byte("pong"))
+			}
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	c := ws.NewClient(wsURL(srv), slog.Default(),
+		ws.WithPing(map[string]string{"op": "ping"}, 50*time.Millisecond),
+		ws.WithPongDetector(func(data []byte) bool {
+			return strings.Contains(string(data), `"op":"pong"`)
+		}),
+	)
+	defer c.Close()
+
+	go c.Connect(ctx)
+	require.NoError(t, c.WaitReady(ctx))
+
+	// Send manual ping
+	require.NoError(t, c.Ping(ctx))
+
+	// Give time for pong response
+	assert.Eventually(t, func() bool {
+		return c.LatencyMs() >= 0
+	}, time.Second, 10*time.Millisecond)
 }

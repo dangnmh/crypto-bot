@@ -20,6 +20,7 @@ type WebSocketConfig struct {
 	PublicURL         string `json:"publicURL"`
 	MarketURL         string `json:"marketURL,omitempty"`
 	PrivateURL        string `json:"privateURL"`
+	TradeURL          string `json:"tradeURL,omitempty"`
 	MaxPairsPerWSConn int    `json:"maxPairsPerWSConn"`
 }
 
@@ -38,6 +39,10 @@ func (c WebSocketConfig) PrivateEndpoint() string {
 	return c.PrivateURL
 }
 
+func (c WebSocketConfig) TradeEndpoint() string {
+	return c.TradeURL
+}
+
 type APIEndpointConfig struct {
 	BaseURL string `json:"baseURL"`
 }
@@ -47,6 +52,11 @@ type EndpointConfig struct {
 	BaseURL   string            `json:"baseURL"`
 	API       APIEndpointConfig `json:"api"`
 	WebSocket WebSocketConfig   `json:"websocket"`
+	TradeMode string            `json:"tradeMode,omitempty"`
+}
+
+func (e EndpointConfig) GetTradeMode() string {
+	return e.TradeMode
 }
 
 func (e *EndpointConfig) UnmarshalJSON(data []byte) error {

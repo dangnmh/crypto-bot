@@ -13,25 +13,60 @@ import (
 )
 
 var (
-	_ exchange.Client            = (*Client)(nil)
-	_ exchange.KlineProvider     = (*Client)(nil)
-	_ exchange.TopGainerProvider = (*Client)(nil)
-	_ exchange.OrderExecutor     = (*Client)(nil)
-	_ exchange.PreSignExecutor   = (*Client)(nil)
-	_ exchange.ClosedPnLProvider = (*Client)(nil)
-	_ exchange.RawRequest        = (*Client)(nil)
-	_ exchange.RawRequester      = (*Client)(nil)
+	_ exchange.Client                = (*Client)(nil)
+	_ exchange.KlineProvider         = (*Client)(nil)
+	_ exchange.TopGainerProvider     = (*Client)(nil)
+	_ exchange.OrderExecutor         = (*Client)(nil)
+	_ exchange.PreSignExecutor       = (*Client)(nil)
+	_ exchange.ClosedPnLProvider     = (*Client)(nil)
+	_ exchange.RawRequest            = (*Client)(nil)
+	_ exchange.RawRequester          = (*Client)(nil)
+	_ exchange.TradeModeConfigurable = (*Client)(nil)
+	_ exchange.TPSLProvider          = (*Client)(nil)
 )
 
-// Client is the Bybit V5 Linear Perpetual Futures REST API client.
+// Client is the Bybit V5 Linear Perpetual Futures REST & WebSocket API client.
 type Client struct {
-	base *bybit.BaseClient
+	base      *bybit.BaseClient
+	tradeMode exchange.TradeMode
+	wsTrade   exchange.WSTradeExecutor
 }
 
 // NewClient creates a new Bybit Futures API client.
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType string, logCfg config.LoggingConfig) *Client {
 	return &Client{
-		base: bybit.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, accountType, logCfg),
+		base:      bybit.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, accountType, logCfg),
+		tradeMode: exchange.TradeModeHTTP,
+	}
+}
+
+// SetTradeMode sets the trading execution transport mode (http or ws).
+func (c *Client) SetTradeMode(mode exchange.TradeMode) {
+	c.tradeMode = mode
+}
+
+// TradeMode returns the current trading execution transport mode.
+func (c *Client) TradeMode() exchange.TradeMode {
+	if c.tradeMode == "" {
+		return exchange.TradeModeHTTP
+	}
+	return c.tradeMode
+}
+
+// SetWSTradeExecutor sets the WebSocket trade executor.
+func (c *Client) SetWSTradeExecutor(executor exchange.WSTradeExecutor) {
+	c.wsTrade = executor
+}
+
+// WSTradeExecutor returns the current WebSocket trade executor.
+func (c *Client) WSTradeExecutor() exchange.WSTradeExecutor {
+	return c.wsTrade
+}
+
+// Close closes any underlying active WebSocket trade connections.
+func (c *Client) Close() {
+	if c.wsTrade != nil {
+		c.wsTrade.Close()
 	}
 }
 

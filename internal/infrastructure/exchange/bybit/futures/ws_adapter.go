@@ -2,9 +2,6 @@ package futures
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -166,9 +163,12 @@ func (a *WsAdapter) UnsubscribePersonal(ctx context.Context) error {
 
 // GetPingConfig returns application ping and interval.
 func (a *WsAdapter) GetPingConfig() (any, time.Duration) {
-	return map[string]any{
-		"op": "ping",
-	}, 20 * time.Second
+	return GetBybitPingConfig()
+}
+
+// GetPongDetector returns the pong frame matcher for Bybit V5.
+func (a *WsAdapter) GetPongDetector() func([]byte) bool {
+	return IsBybitPong
 }
 
 // GetAuthHook intercepts OnConnected to store credentials and authenticate private WS.
@@ -192,21 +192,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 		a.authenticated = make(chan struct{})
 		a.authMu.Unlock()
 
-		expires := a.clock.Now().UnixMilli() + 10000 // expires in 10 seconds
-		reqStr := fmt.Sprintf("GET/realtime%d", expires)
-
-		h := hmac.New(sha256.New, []byte(apiSecret))
-		h.Write([]byte(reqStr))
-		signature := hex.EncodeToString(h.Sum(nil))
-
-		authMsg := map[string]any{
-			"op": wsOpAuth,
-			wsArgsKey: []any{
-				apiKey,
-				expires,
-				signature,
-			},
-		}
+		authMsg := BuildBybitAuthMessage(apiKey, apiSecret, a.clock.Now().UnixMilli())
 		if err := client.SendJSON(authMsg); err != nil {
 			slog.Error("Bybit private websocket auth send failed", slog.Any("error", err))
 		}
@@ -214,11 +200,7 @@ func (a *WsAdapter) GetAuthHook(apiKey, apiSecret string) func(*pkgws.Client) {
 }
 
 func (a *WsAdapter) handleAuthResponse(data []byte) {
-	var authResp struct {
-		Op      string `json:"op"`
-		RetCode int    `json:"retCode"`
-	}
-	if err := xjson.Unmarshal(data, &authResp); err == nil && authResp.Op == wsOpAuth && authResp.RetCode == 0 {
+	if _, success, _, _, _ := ParseBybitAuthResponse(data); success {
 		a.authMu.Lock()
 		select {
 		case <-a.authenticated:

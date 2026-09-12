@@ -995,10 +995,16 @@ func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowR
 	arriveOffsetMs := estimatedArrivedAt.Sub(*evt.SettleTime).Milliseconds()
 	responseOffsetMs := submittedAt.Sub(*evt.SettleTime).Milliseconds()
 
+	actualArriveOffsetMs := arriveOffsetMs
+	if !exchangeTime.IsZero() {
+		actualArriveOffsetMs = exchangeTime.Sub(*evt.SettleTime).Milliseconds()
+	}
+
 	attrs := []any{
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
-		slog.Int64("arrive_offset_ms", arriveOffsetMs),
+		slog.Int64("arrive_offset_ms", actualArriveOffsetMs),
+		slog.Int64("estimated_arrive_offset_ms", arriveOffsetMs),
 		slog.Int64("response_offset_ms", responseOffsetMs),
 		slog.Duration("rtt", rtt),
 		slog.Time("fire_time", evt.FireTime),
@@ -1008,10 +1014,9 @@ func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowR
 		slog.Time("settle_time", *evt.SettleTime),
 	}
 	if !exchangeTime.IsZero() {
-		exchangeOffsetMs := exchangeTime.Sub(*evt.SettleTime).Milliseconds()
 		attrs = append(attrs,
 			slog.Time("exchange_time", exchangeTime),
-			slog.Int64("exchange_offset_ms", exchangeOffsetMs),
+			slog.Int64("exchange_offset_ms", actualArriveOffsetMs),
 		)
 	}
 

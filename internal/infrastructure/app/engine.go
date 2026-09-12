@@ -201,6 +201,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 			if prov.WSPool != nil {
 				prov.WSPool.Close()
 			}
+			if closer, ok := prov.Client.(interface{ Close() }); ok {
+				closer.Close()
+			}
 		}
 		if e.Bus != nil {
 			if err := e.Bus.Close(); err != nil {

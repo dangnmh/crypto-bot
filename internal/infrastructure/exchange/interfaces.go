@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"crypto-bot/internal/domain"
@@ -54,6 +55,42 @@ type PreSignExecutor interface {
 // to support post-fill Take Profit and Stop Loss configuration.
 type TPSLProvider interface {
 	PlaceTPSL(ctx context.Context, req TPSLRequest) error
+}
+
+// TradeMode indicates the transport mechanism for order operations ("http" or "ws").
+type TradeMode string
+
+const (
+	TradeModeHTTP TradeMode = "http"
+	TradeModeWS   TradeMode = "ws"
+)
+
+// NormalizeTradeMode normalizes raw configuration string into TradeMode.
+func NormalizeTradeMode(raw string) TradeMode {
+	if strings.EqualFold(raw, string(TradeModeWS)) {
+		return TradeModeWS
+	}
+	return TradeModeHTTP
+}
+
+// WSTradeExecutor defines the interface for executing trade actions directly over a WebSocket connection.
+// Exchange-specific implementations (e.g. Bybit, OKX, Binance) satisfy this interface.
+type WSTradeExecutor interface {
+	Start(ctx context.Context)
+	IsReady() bool
+	Close()
+	CreateOrder(ctx context.Context, req SubmitOrderRequest) (CreateOrderResult, error)
+	CancelOrder(ctx context.Context, symbol, orderID string) error
+	PrepareOrder(ctx context.Context, req SubmitOrderRequest) (func(context.Context) (CreateOrderResult, error), error)
+	LatencyMs() int64
+}
+
+// TradeModeConfigurable is implemented by exchange clients that support multiple trade execution modes.
+type TradeModeConfigurable interface {
+	SetTradeMode(mode TradeMode)
+	TradeMode() TradeMode
+	SetWSTradeExecutor(executor WSTradeExecutor)
+	WSTradeExecutor() WSTradeExecutor
 }
 
 // Interval represents candlestick granularity.

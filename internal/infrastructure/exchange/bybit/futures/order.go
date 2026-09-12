@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -186,10 +187,8 @@ func (c *Client) rawGetOpenOrders(ctx context.Context, req bybitListOpenOrdersRe
 
 // Public mapper methods implementing the exchange.OrderExecutor interface.
 
-// PrepareOrder implements exchange.PreSignExecutor. It serializes, signs, and rate-limits
-// the order request ahead of time, returning a zero-overhead dispatch function.
-func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
-	ctx = exchange.ContextWithRequest(ctx, req)
+// buildBybitCreateOrderRequest constructs the Bybit V5 linear order request payload.
+func buildBybitCreateOrderRequest(req exchange.SubmitOrderRequest) bybitCreateOrderRequest {
 	bybitOrderType, bybitTif := mapOrderTypeAndTif(req.Type)
 	bybitSide, positionIdx, reduceOnly := mapSideAndPosition(req.Side, req.PositionMode == 1)
 
@@ -212,15 +211,25 @@ func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderReque
 	if req.ExternalOID != "" {
 		rawReq.OrderLinkID = req.ExternalOID
 	}
-	if req.TakeProfitPrice > 0 {
-		rawReq.TakeProfit = decmath.FormatFloat(req.TakeProfitPrice)
-	}
-	if req.StopLossPrice > 0 {
-		rawReq.StopLoss = decmath.FormatFloat(req.StopLossPrice)
-	}
 	if req.Leverage > 0 {
 		rawReq.Leverage = fmt.Sprintf("%d", req.Leverage)
 	}
+
+	return rawReq
+}
+
+// PrepareOrder implements exchange.PreSignExecutor. It serializes, signs, and rate-limits
+// the order request ahead of time, returning a zero-overhead dispatch function.
+func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
+	if c.TradeMode() == exchange.TradeModeWS {
+		if c.wsTrade == nil || !c.wsTrade.IsReady() {
+			return nil, ErrWSTradeNotReady
+		}
+		return c.wsTrade.PrepareOrder(ctx, req)
+	}
+
+	ctx = exchange.ContextWithRequest(ctx, req)
+	rawReq := buildBybitCreateOrderRequest(req)
 
 	bodyBytes, err := xjson.Marshal(rawReq)
 	if err != nil {
@@ -232,23 +241,37 @@ func (c *Client) PrepareOrder(ctx context.Context, req exchange.SubmitOrderReque
 		return nil, fmt.Errorf("bybit prepare order: %w", err)
 	}
 
-	tpslSubmitted := req.TakeProfitPrice > 0 || req.StopLossPrice > 0
-
 	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
 		body, err := dispatch(execCtx)
 		if err != nil {
 			return exchange.CreateOrderResult{}, fmt.Errorf("bybit create order: %w", err)
 		}
-		res, err := bybit.ParseResponse[bybitCreateOrderResult](body, "bybit create order")
+		resp, err := bybit.ParseResponseEnvelope[bybitCreateOrderResult](body, "bybit create order")
 		if err != nil {
 			return exchange.CreateOrderResult{}, err
 		}
-		return exchange.CreateOrderResult{OrderID: res.OrderID, TPSLSubmitted: tpslSubmitted}, nil
+
+		var exchTime time.Time
+		if resp.Time > 0 {
+			exchTime = time.UnixMilli(resp.Time)
+		}
+		return exchange.CreateOrderResult{
+			OrderID:       resp.Result.OrderID,
+			Time:          exchTime,
+			TPSLSubmitted: false,
+		}, nil
 	}, nil
 }
 
 // CreateOrder submits a new order and returns the order ID.
 func (c *Client) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	if c.TradeMode() == exchange.TradeModeWS {
+		if c.wsTrade == nil || !c.wsTrade.IsReady() {
+			return exchange.CreateOrderResult{}, ErrWSTradeNotReady
+		}
+		return c.wsTrade.CreateOrder(ctx, req)
+	}
+
 	dispatch, err := c.PrepareOrder(ctx, req)
 	if err != nil {
 		return exchange.CreateOrderResult{}, err
@@ -291,6 +314,13 @@ func (c *Client) PlaceTPSL(ctx context.Context, req exchange.TPSLRequest) error 
 
 // CancelOrder cancels a single order by its ID.
 func (c *Client) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	if c.TradeMode() == exchange.TradeModeWS {
+		if c.wsTrade == nil || !c.wsTrade.IsReady() {
+			return ErrWSTradeNotReady
+		}
+		return c.wsTrade.CancelOrder(ctx, symbol, orderID)
+	}
+
 	return c.rawCancelOrder(ctx, bybitCancelOrderRequest{
 		Category: categoryLinear,
 		Symbol:   symbol,

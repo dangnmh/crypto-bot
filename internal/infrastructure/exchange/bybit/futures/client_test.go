@@ -1204,3 +1204,111 @@ func TestClient_BybitRemainingMethods(t *testing.T) {
 	_, _ = clientStandard.GetOrderDealsRaw(context.Background(), nil)
 	_, _ = clientStandard.GetOrderPNLRaw(context.Background(), nil)
 }
+
+type mockWSTradeExecutor struct {
+	ready      bool
+	createdRes exchange.CreateOrderResult
+	createErr  error
+	cancelErr  error
+}
+
+func (m *mockWSTradeExecutor) Start(ctx context.Context) {}
+func (m *mockWSTradeExecutor) IsReady() bool             { return m.ready }
+func (m *mockWSTradeExecutor) Close()                    {}
+func (m *mockWSTradeExecutor) CreateOrder(ctx context.Context, req exchange.SubmitOrderRequest) (exchange.CreateOrderResult, error) {
+	return m.createdRes, m.createErr
+}
+func (m *mockWSTradeExecutor) CancelOrder(ctx context.Context, symbol, orderID string) error {
+	return m.cancelErr
+}
+func (m *mockWSTradeExecutor) PrepareOrder(ctx context.Context, req exchange.SubmitOrderRequest) (func(context.Context) (exchange.CreateOrderResult, error), error) {
+	if !m.ready {
+		return nil, fmt.Errorf("ws trade not ready")
+	}
+	return func(execCtx context.Context) (exchange.CreateOrderResult, error) {
+		return m.createdRes, m.createErr
+	}, nil
+}
+func (m *mockWSTradeExecutor) LatencyMs() int64 {
+	return 10
+}
+
+func TestClient_TradeMode_StrictRouting(t *testing.T) {
+	t.Parallel()
+
+	// 1. HTTP Mode (default)
+	httpCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"retCode": 0,
+			"retMsg":  "OK",
+			"result":  map[string]any{"orderId": "rest-100"},
+			"time":    1672217377164,
+		})
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", "unified", config.LoggingConfig{})
+	assert.Equal(t, exchange.TradeModeHTTP, client.TradeMode())
+
+	req := exchange.SubmitOrderRequest{
+		Symbol:       "BTCUSDT",
+		Vol:          1.0,
+		Side:         exchange.SideOpenLong,
+		Type:         exchange.OrderTypeMarket,
+		PositionMode: 1,
+	}
+
+	res, err := client.CreateOrder(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "rest-100", res.OrderID)
+	assert.Equal(t, int64(1672217377164), res.Time.UnixMilli())
+	assert.True(t, httpCalled)
+
+	// 2. WS Mode - Not Ready -> Fails Fast, HTTP server is NOT called
+	httpCalled = false
+	client.SetTradeMode(exchange.TradeModeWS)
+	assert.Equal(t, exchange.TradeModeWS, client.TradeMode())
+
+	_, err = client.CreateOrder(context.Background(), req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mode=ws")
+	assert.False(t, httpCalled, "HTTP must NOT be called when tradeMode is WS")
+
+	_, err = client.PrepareOrder(context.Background(), req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mode=ws")
+
+	err = client.CancelOrder(context.Background(), "BTCUSDT", "rest-100")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mode=ws")
+
+	// 3. WS Mode - Ready Executor -> Delegates to WS, HTTP server is NOT called
+	mockExec := &mockWSTradeExecutor{
+		ready: true,
+		createdRes: exchange.CreateOrderResult{
+			OrderID: "ws-200",
+			Time:    time.UnixMilli(1711000000000),
+		},
+	}
+	client.SetWSTradeExecutor(mockExec)
+	assert.Equal(t, mockExec, client.WSTradeExecutor())
+
+	res, err = client.CreateOrder(context.Background(), req)
+	require.NoError(t, err)
+	assert.Equal(t, "ws-200", res.OrderID)
+	assert.Equal(t, int64(1711000000000), res.Time.UnixMilli())
+	assert.False(t, httpCalled, "HTTP must NOT be called when tradeMode is WS")
+
+	dispatch, err := client.PrepareOrder(context.Background(), req)
+	require.NoError(t, err)
+	res, err = dispatch(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "ws-200", res.OrderID)
+
+	err = client.CancelOrder(context.Background(), "BTCUSDT", "ws-200")
+	require.NoError(t, err)
+	assert.False(t, httpCalled)
+}

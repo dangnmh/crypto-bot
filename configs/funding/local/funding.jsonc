@@ -6,13 +6,13 @@
     "symbol": "VTHO_USDT",
     "marginUSDT": 5,
     "exchange": "mexc_futures",
-    "simulateSettle": "2026-09-11T16:45:00.000+07:00"
+    "simulateSettle": "2026-09-12T09:40:00.000+07:00"
   },
   // {
-  //   "symbol": "WAVESUSDT",
+  //   "symbol": "PUFFERUSDT",
   //   "marginUSDT": 3,
   //   "exchange": "bybit_futures",
-  //   "simulateSettle": "2026-09-09T23:10:00.000+07:00"
+  //   "simulateSettle": "2026-09-12T09:35:00.000+07:00"
   // },
   // {
   //   "symbol": "PRLUSDT",

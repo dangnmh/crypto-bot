@@ -3,16 +3,24 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"crypto-bot/pkg/ticker"
 
 	"github.com/gorilla/websocket"
+)
+
+var (
+	// ErrNotConnected is returned when attempting an RPC over a disconnected WebSocket.
+	ErrNotConnected = errors.New("websocket not connected")
 )
 
 // Handler is a callback function for processing raw WebSocket messages.
@@ -22,21 +30,24 @@ type Handler func(data []byte)
 
 // Client manages a generic WebSocket connection.
 type Client struct {
-	url           string
-	conn          *websocket.Conn
-	mu            sync.Mutex
-	handlers      map[string]Handler // channel -> external handler
-	handlerMu     sync.RWMutex
-	globalHandler Handler // callback from Multiplexer/Pool
-	connected     bool
-	logger        *slog.Logger
-	done          chan struct{}
-	ready         chan struct{}
-	readyOnce     sync.Once
-	closeOnce     sync.Once
+	url            string
+	conn           *websocket.Conn
+	mu             sync.Mutex
+	handlers       map[string]Handler // channel -> external handler
+	handlerMu      sync.RWMutex
+	globalHandler  Handler // callback from Multiplexer/Pool
+	connected      bool
+	logger         *slog.Logger
+	done           chan struct{}
+	ready          chan struct{}
+	readyOnce      sync.Once
+	closeOnce      sync.Once
+	dispatcher     *RequestDispatcher[[]byte]
+	reqIDExtractor func([]byte) (string, bool)
 
 	// Hooks
 	onConnected       func(*Client) // Used for custom authentication logic immediately after dial
+	onDisconnected    func(*Client) // Called whenever active connection is lost
 	onReady           func(*Client) // Called after each successful connection is ready
 	pingPayload       any           // Payload to send periodically. If nil, no ping is sent.
 	pingPeriod        time.Duration
@@ -45,6 +56,15 @@ type Client struct {
 	preprocessor      func([]byte) ([]byte, error)
 	headersFunc       func() (http.Header, error)
 	customPingHandler func(*websocket.Conn, []byte) bool
+	pongDetector      func([]byte) bool
+
+	// Latency metrics
+	lastPingSent atomic.Int64
+	lastRTTMs    atomic.Int64
+	minRTTMs     atomic.Int64
+	medianRTTMs  atomic.Int64
+	samples      []int64
+	pongWaiters  []chan struct{}
 }
 
 // ClientOption configures the generic WebSocket client.
@@ -57,10 +77,24 @@ func WithChannelExtractor(extractor func([]byte) string) ClientOption {
 	}
 }
 
+// WithRequestIDExtractor sets a function to extract correlation request IDs from inbound JSON payloads for RPC routing.
+func WithRequestIDExtractor(extractor func([]byte) (string, bool)) ClientOption {
+	return func(c *Client) {
+		c.reqIDExtractor = extractor
+	}
+}
+
 // WithCustomPingHandler sets a callback to handle custom server-initiated pings.
 func WithCustomPingHandler(handler func(*websocket.Conn, []byte) bool) ClientOption {
 	return func(c *Client) {
 		c.customPingHandler = handler
+	}
+}
+
+// WithPongDetector sets a callback to identify whether an incoming message is a pong frame.
+func WithPongDetector(detector func([]byte) bool) ClientOption {
+	return func(c *Client) {
+		c.pongDetector = detector
 	}
 }
 
@@ -69,6 +103,13 @@ func WithCustomPingHandler(handler func(*websocket.Conn, []byte) bool) ClientOpt
 func WithOnConnected(hook func(*Client)) ClientOption {
 	return func(c *Client) {
 		c.onConnected = hook
+	}
+}
+
+// WithOnDisconnected sets a callback fired whenever an active connection is lost.
+func WithOnDisconnected(hook func(*Client)) ClientOption {
+	return func(c *Client) {
+		c.onDisconnected = hook
 	}
 }
 
@@ -115,12 +156,16 @@ func NewClient(wsURL string, logger *slog.Logger, opts ...ClientOption) *Client 
 	}
 
 	c := &Client{
-		url:      wsURL,
-		handlers: make(map[string]Handler),
-		logger:   logger,
-		done:     make(chan struct{}),
-		ready:    make(chan struct{}),
+		url:        wsURL,
+		handlers:   make(map[string]Handler),
+		logger:     logger,
+		done:       make(chan struct{}),
+		ready:      make(chan struct{}),
+		dispatcher: NewRequestDispatcher[[]byte](),
 	}
+	c.minRTTMs.Store(-1)
+	c.medianRTTMs.Store(-1)
+	c.lastRTTMs.Store(-1)
 
 	for _, opt := range opts {
 		opt(c)
@@ -192,6 +237,12 @@ func (c *Client) Connect(ctx context.Context) {
 		c.connected = false
 		c.mu.Unlock()
 
+		c.dispatcher.AbortAll()
+
+		if c.onDisconnected != nil {
+			c.onDisconnected(c)
+		}
+
 		c.logger.WarnContext(ctx, "🟡 WebSocket disconnected, reconnecting in 2s...")
 		if !waitContextOrDone(ctx, c.done, 2*time.Second) {
 			return
@@ -229,6 +280,11 @@ func (c *Client) dial() error {
 	c.connected = true
 	c.mu.Unlock()
 
+	conn.SetPongHandler(func(string) error {
+		c.recordPong()
+		return nil
+	})
+
 	return nil
 }
 
@@ -243,26 +299,147 @@ func (c *Client) heartbeat(ctx context.Context) {
 		}
 	}()
 
+	// Send an initial ping immediately to measure baseline RTT upon connection
+	if err := c.sendPing(); err != nil {
+		c.logger.WarnContext(ctx, "🟡 Initial ping failed", slog.Any("error", err))
+	}
+
 	ticker.Run(ctx, c.pingPeriod, func() bool {
-		c.mu.Lock()
-		if c.conn != nil {
-			var err error
-			if strPayload, ok := c.pingPayload.(string); ok {
-				err = c.conn.WriteMessage(websocket.TextMessage, []byte(strPayload))
-			} else {
-				var data []byte
-				data, err = json.Marshal(c.pingPayload)
-				if err == nil {
-					err = c.conn.WriteMessage(websocket.TextMessage, data)
-				}
-			}
-			if err != nil {
-				c.logger.WarnContext(ctx, "🟡 Heartbeat ping failed", slog.Any("error", err))
-			}
+		if err := c.sendPing(); err != nil {
+			c.logger.WarnContext(ctx, "🟡 Heartbeat ping failed", slog.Any("error", err))
 		}
-		c.mu.Unlock()
 		return true
 	})
+}
+
+func (c *Client) sendPing() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return ErrNotConnected
+	}
+	var err error
+	if strPayload, ok := c.pingPayload.(string); ok {
+		err = c.conn.WriteMessage(websocket.TextMessage, []byte(strPayload))
+	} else if c.pingPayload != nil {
+		var data []byte
+		data, err = json.Marshal(c.pingPayload)
+		if err == nil {
+			err = c.conn.WriteMessage(websocket.TextMessage, data)
+		}
+	} else {
+		err = c.conn.WriteMessage(websocket.PingMessage, nil)
+	}
+	if err == nil {
+		c.lastPingSent.Store(time.Now().UnixNano())
+	}
+	return err
+}
+
+// Ping sends an immediate WebSocket ping and blocks until the pong is received,
+// ctx is cancelled, or the connection drops.
+func (c *Client) Ping(ctx context.Context) error {
+	c.mu.Lock()
+	if c.conn == nil {
+		c.mu.Unlock()
+		return ErrNotConnected
+	}
+	ch := make(chan struct{})
+	c.pongWaiters = append(c.pongWaiters, ch)
+	c.mu.Unlock()
+
+	if err := c.sendPing(); err != nil {
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return ErrNotConnected
+	case <-ch:
+		return nil
+	}
+}
+
+// LatencyMs returns the rolling median or last measured WebSocket round-trip time in milliseconds,
+// or -1 if no pong has been recorded yet.
+func (c *Client) LatencyMs() int64 {
+	medianVal := c.medianRTTMs.Load()
+	if medianVal >= 0 {
+		return medianVal
+	}
+	minVal := c.minRTTMs.Load()
+	if minVal >= 0 {
+		return minVal
+	}
+	return c.lastRTTMs.Load()
+}
+
+// MinLatencyMs returns the rolling minimum WebSocket round-trip time in milliseconds,
+// or -1 if no pong has been recorded yet.
+func (c *Client) MinLatencyMs() int64 {
+	return c.minRTTMs.Load()
+}
+
+// MedianLatencyMs returns the rolling median WebSocket round-trip time in milliseconds,
+// or -1 if no pong has been recorded yet.
+func (c *Client) MedianLatencyMs() int64 {
+	return c.medianRTTMs.Load()
+}
+
+// LastLatencyMs returns the raw single-ping round-trip time of the most recent WebSocket pong,
+// or -1 if no pong has been recorded yet.
+func (c *Client) LastLatencyMs() int64 {
+	return c.lastRTTMs.Load()
+}
+
+func (c *Client) recordPong() {
+	sent := c.lastPingSent.Swap(0)
+	if sent <= 0 {
+		return
+	}
+	rttMs := (time.Now().UnixNano() - sent) / int64(time.Millisecond)
+	if rttMs < 0 {
+		return
+	}
+	c.lastRTTMs.Store(rttMs)
+	c.updateRTTStats(rttMs)
+
+	c.mu.Lock()
+	for _, ch := range c.pongWaiters {
+		close(ch)
+	}
+	c.pongWaiters = nil
+	c.mu.Unlock()
+}
+
+func (c *Client) updateRTTStats(rttMs int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.samples = append(c.samples, rttMs)
+	if len(c.samples) > 20 {
+		c.samples = c.samples[len(c.samples)-20:]
+	}
+	minVal := rttMs
+	for _, s := range c.samples {
+		if s < minVal {
+			minVal = s
+		}
+	}
+	c.minRTTMs.Store(minVal)
+
+	sorted := make([]int64, len(c.samples))
+	copy(sorted, c.samples)
+	slices.Sort(sorted)
+	n := len(sorted)
+	var median int64
+	if n%2 == 1 {
+		median = sorted[n/2]
+	} else if n > 0 {
+		median = (sorted[n/2-1] + sorted[n/2]) / 2
+	}
+	c.medianRTTMs.Store(median)
 }
 
 // readLoop reads messages from the WebSocket and dispatches them.
@@ -301,30 +478,58 @@ func (c *Client) readLoop(ctx context.Context) {
 	}
 }
 
-// processMessage parses and dispatches a single WebSocket message.
-func (c *Client) processMessage(data []byte) {
-	if strings.ToLower(strings.TrimSpace(string(data))) == "pong" {
-		return
+func (c *Client) handlePingPong(data []byte) bool {
+	if c.pongDetector != nil && c.pongDetector(data) {
+		c.recordPong()
+		return true
 	}
 	if c.customPingHandler != nil {
 		c.mu.Lock()
 		conn := c.conn
 		c.mu.Unlock()
 		if conn != nil && c.customPingHandler(conn, data) {
-			return
+			return true
 		}
 	}
-
-	if strings.ToLower(strings.TrimSpace(string(data))) == "ping" {
+	str := strings.ToLower(strings.TrimSpace(string(data)))
+	if str == "pong" {
+		c.recordPong()
+		return true
+	}
+	if str == "ping" {
 		c.mu.Lock()
 		if c.conn != nil {
 			_ = c.conn.WriteMessage(websocket.TextMessage, []byte("Pong"))
 		}
 		c.mu.Unlock()
+		return true
+	}
+	return false
+}
+
+func (c *Client) dispatchRPC(data []byte) bool {
+	if c.reqIDExtractor == nil {
+		return false
+	}
+	reqID, ok := c.reqIDExtractor(data)
+	if !ok || reqID == "" {
+		return false
+	}
+	return c.dispatcher.Dispatch(reqID, data)
+}
+
+// processMessage parses and dispatches a single WebSocket message.
+func (c *Client) processMessage(data []byte) {
+	if c.handlePingPong(data) {
 		return
 	}
 
 	c.handleEventLog(data)
+
+	if c.dispatchRPC(data) {
+		return
+	}
+
 	if c.channelExtractor == nil {
 		c.mu.Lock()
 		gh := c.globalHandler
@@ -383,10 +588,45 @@ func (c *Client) IsConnected() bool {
 	return c.connected
 }
 
+// RoundTrip sends a JSON payload and blocks until a response matching reqID is received, ctx expires, or connection drops.
+func (c *Client) RoundTrip(ctx context.Context, reqID string, payload any) ([]byte, error) {
+	if !c.IsConnected() {
+		return nil, ErrNotConnected
+	}
+
+	ch, cancel, err := c.dispatcher.Register(reqID)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+
+	c.logger.Debug("WS RoundTrip req", slog.Any("req", payload))
+	if err := c.SendJSON(payload); err != nil {
+		return nil, err
+	}
+	if !c.IsConnected() {
+		return nil, ErrNotConnected
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.done:
+		return nil, ErrNotConnected
+	case data, ok := <-ch:
+		if !ok || len(data) == 0 {
+			return nil, ErrNotConnected
+		}
+		c.logger.Debug("WS RoundTrip res", slog.String("res", string(data)))
+		return data, nil
+	}
+}
+
 // Close closes the WebSocket connection.
 func (c *Client) Close() {
 	c.closeOnce.Do(func() {
 		close(c.done)
+		c.dispatcher.Close()
 	})
 	c.mu.Lock()
 	defer c.mu.Unlock()

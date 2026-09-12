@@ -235,3 +235,35 @@ func (d *DryRunClient) FetchKlines(ctx context.Context, symbol string, interval 
 	}
 	return nil, fmt.Errorf("inner exchange client does not implement KlineProvider")
 }
+
+// ── TradeModeConfigurable (delegated) ───────────────────────────────.
+
+// SetTradeMode forwards trade mode configuration to the inner client.
+func (d *DryRunClient) SetTradeMode(mode TradeMode) {
+	if tmc, ok := d.inner.(TradeModeConfigurable); ok {
+		tmc.SetTradeMode(mode)
+	}
+}
+
+// TradeMode returns the inner client's trade mode or HTTP by default.
+func (d *DryRunClient) TradeMode() TradeMode {
+	if tmc, ok := d.inner.(TradeModeConfigurable); ok {
+		return tmc.TradeMode()
+	}
+	return TradeModeHTTP
+}
+
+// SetWSTradeExecutor forwards the WebSocket trade executor to the inner client.
+func (d *DryRunClient) SetWSTradeExecutor(executor WSTradeExecutor) {
+	if tmc, ok := d.inner.(TradeModeConfigurable); ok {
+		tmc.SetWSTradeExecutor(executor)
+	}
+}
+
+// WSTradeExecutor returns the inner client's WebSocket trade executor.
+func (d *DryRunClient) WSTradeExecutor() WSTradeExecutor {
+	if tmc, ok := d.inner.(TradeModeConfigurable); ok {
+		return tmc.WSTradeExecutor()
+	}
+	return nil
+}

@@ -79,6 +79,8 @@ func (s SimpleProviderFactory) Build(ctx context.Context, cfg ProviderFactoryCon
 }
 
 // DefaultProviderFactories returns the exchange factories supported by the app layer.
+//
+//nolint:gocognit // Factory method registers all exchange providers
 func DefaultProviderFactories() []ProviderFactory {
 	mexcFactories := newExchangeFactories(exchange.ExchangeMexc, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
 		if isFutures {
@@ -126,8 +128,23 @@ func DefaultProviderFactories() []ProviderFactory {
 
 	bybitFactories := newExchangeFactories(exchange.ExchangeBybit, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
 		accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
-		client := exchange.Client(bybit.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, accountType, cfg.SystemConfig.Logging))
-		return client, bybit.NewWsAdapter()
+		bybitClient := bybit.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, accountType, cfg.SystemConfig.Logging)
+
+		tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
+		bybitClient.SetTradeMode(tradeMode)
+
+		if tradeMode == exchange.TradeModeWS {
+			tradeURL := ep.WebSocket.TradeEndpoint()
+			if tradeURL == "" {
+				tradeURL = bybit.DefaultTradeURL(ep.BaseURL)
+			}
+			wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBybit, "subsystem", "trade_ws")
+			tradeWS := bybit.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, bybitClient.BaseClient().Clock(), wsLogger)
+			bybitClient.SetWSTradeExecutor(tradeWS)
+			go tradeWS.Start(ctx)
+		}
+
+		return bybitClient, bybit.NewWsAdapter()
 	})
 
 	binanceFactories := newExchangeFactories(exchange.ExchangeBinance, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
@@ -326,6 +343,14 @@ func buildWSCommonOpts(adapter ws.ExchangeAdapter) []pkgws.ClientOption {
 	if pp, ok := adapter.(PreprocessorProvider); ok {
 		if preprocessor := pp.GetPreprocessor(); preprocessor != nil {
 			opts = append(opts, pkgws.WithPreprocessor(preprocessor))
+		}
+	}
+	type PongDetectorProvider interface {
+		GetPongDetector() func([]byte) bool
+	}
+	if pdp, ok := adapter.(PongDetectorProvider); ok {
+		if detector := pdp.GetPongDetector(); detector != nil {
+			opts = append(opts, pkgws.WithPongDetector(detector))
 		}
 	}
 	return opts

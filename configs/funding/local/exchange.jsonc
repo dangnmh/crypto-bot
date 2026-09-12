@@ -16,9 +16,11 @@
       "future": {
         "enable": true,
         "baseURL": "https://api.bybit.com",
+        "tradeMode": "ws",
         "websocket": {
           "publicURL": "wss://stream.bybit.com/v5/public/linear",
           "privateURL": "wss://stream.bybit.com/v5/private",
+          "tradeURL": "wss://stream.bybit.com/v5/trade",
           "maxPairsPerWSConn": 30
         }
       }

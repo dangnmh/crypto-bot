@@ -209,3 +209,16 @@ func TestInitializeBase_SeparatePublicPrivateWSURLs(t *testing.T) {
 	assert.Equal(t, "wss://stream.bybit.com/v5/private", cfg.ExchangeConfig["bybit"].GetFutureEndpoint().WebSocket.PrivateEndpoint())
 	assert.Equal(t, 30, cfg.ExchangeConfig["bybit"].GetFutureEndpoint().WebSocket.MaxPairsPerWSConn)
 }
+
+func TestEndpointConfig_TradeModeAndTradeURL(t *testing.T) {
+	t.Parallel()
+
+	ep := config.EndpointConfig{
+		TradeMode: "ws",
+		WebSocket: config.WebSocketConfig{
+			TradeURL: "wss://stream.bybit.com/v5/trade",
+		},
+	}
+	assert.Equal(t, "ws", ep.GetTradeMode())
+	assert.Equal(t, "wss://stream.bybit.com/v5/trade", ep.WebSocket.TradeEndpoint())
+}

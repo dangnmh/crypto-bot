@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,14 +18,18 @@ type rttSample struct {
 }
 
 // TimeSync continuously synchronizes local time with exchange server time.
-// Uses Exponential Moving Average to smooth clock offset and maintains a rolling minimum RTT.
+// Uses Exponential Moving Average to smooth clock offset and maintains rolling minimum and median RTT for HTTP and WS.
 type TimeSync struct {
-	client    exchange.Client
-	mu        sync.RWMutex
-	offset    int64 // server - local (ms)
-	latency   int64 // last measured round-trip time (ms)
-	minRTT    int64 // rolling minimum round-trip time (ms)
-	samples   []rttSample
+	client exchange.Client
+	mu     sync.RWMutex
+	offset int64 // server - local (ms)
+
+	// HTTP metrics
+	httpLatency   int64 // last measured HTTP round-trip time (ms)
+	httpMinRTT    int64 // rolling minimum HTTP round-trip time (ms)
+	httpMedianRTT int64 // rolling median HTTP round-trip time (ms)
+	httpSamples   []rttSample
+
 	lastSync  time.Time
 	healthy   bool
 	alpha     float64 // EMA smoothing factor
@@ -95,34 +100,17 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 		// EMA smoothing
 		ts.offset = int64(float64(ts.offset)*(1-ts.alpha) + float64(newOffset)*ts.alpha)
 	}
-	ts.latency = rttMs
+	ts.httpLatency = rttMs
 	ts.lastSync = now
 	ts.healthy = rttMs < 100 // healthy if RTT < 100ms
 
-	// Maintain rolling window of RTT samples (60s retention)
-	ts.samples = append(ts.samples, rttSample{rtt: rttMs, at: now})
-	cutoff := now.Add(-60 * time.Second)
-	idx := 0
-	for idx < len(ts.samples) && ts.samples[idx].at.Before(cutoff) {
-		idx++
-	}
-	if idx > 0 {
-		ts.samples = ts.samples[idx:]
-	}
-
-	// Calculate rolling minimum RTT across active samples
-	minRTT := rttMs
-	for _, s := range ts.samples {
-		if s.rtt < minRTT {
-			minRTT = s.rtt
-		}
-	}
-	ts.minRTT = minRTT
+	ts.updateHTTPSamples(rttMs, now)
 
 	offset := ts.offset
-	latency := ts.latency
+	httpLatency := ts.httpLatency
 	healthy := ts.healthy
-	minLatency := ts.minRTT
+	httpMinLatency := ts.httpMinRTT
+	httpMedianLatency := ts.httpMedianRTT
 	ts.mu.Unlock()
 
 	// Signal readiness after first successful sync
@@ -131,24 +119,95 @@ func (ts *TimeSync) syncOnce(ctx context.Context) {
 		ts.logger.InfoContext(ctx, "🟢 TimeSync ready")
 	})
 
+	ts.logSyncStatus(ctx, offset, httpLatency, httpMinLatency, httpMedianLatency, healthy)
+}
+
+func (ts *TimeSync) updateHTTPSamples(rttMs int64, now time.Time) {
+	// Maintain rolling window of HTTP RTT samples (60s retention)
+	ts.httpSamples = append(ts.httpSamples, rttSample{rtt: rttMs, at: now})
+	cutoff := now.Add(-60 * time.Second)
+	idx := 0
+	for idx < len(ts.httpSamples) && ts.httpSamples[idx].at.Before(cutoff) {
+		idx++
+	}
+	if idx > 0 {
+		ts.httpSamples = ts.httpSamples[idx:]
+	}
+
+	// Calculate rolling minimum RTT across active HTTP samples
+	minRTT := rttMs
+	for _, s := range ts.httpSamples {
+		if s.rtt < minRTT {
+			minRTT = s.rtt
+		}
+	}
+	ts.httpMinRTT = minRTT
+
+	// Calculate rolling median RTT across active HTTP samples
+	rtts := make([]int64, len(ts.httpSamples))
+	for i, s := range ts.httpSamples {
+		rtts[i] = s.rtt
+	}
+	slices.Sort(rtts)
+	n := len(rtts)
+	var medianRTT int64
+	if n%2 == 1 {
+		medianRTT = rtts[n/2]
+	} else if n > 0 {
+		medianRTT = (rtts[n/2-1] + rtts[n/2]) / 2
+	}
+	ts.httpMedianRTT = medianRTT
+}
+
+func (ts *TimeSync) logSyncStatus(ctx context.Context, offset, httpLatency, httpMinLatency, httpMedianLatency int64, healthy bool) {
+	mode := exchange.TradeModeHTTP
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok {
+		mode = tmc.TradeMode()
+	}
+	wsLast := ts.WSLastLatencyMs()
+	wsMin := ts.WSMinRTTMs()
+	wsMedian := ts.WSMedianRTTMs()
+
+	attrs := []any{
+		slog.Int64("offset_ms", offset),
+		slog.String("trade_mode", string(mode)),
+		slog.Int64("http_latency_ms", httpLatency),
+		slog.Int64("http_min_rtt_ms", httpMinLatency),
+		slog.Int64("http_median_rtt_ms", httpMedianLatency),
+	}
+	if wsLast >= 0 {
+		attrs = append(attrs, slog.Int64("ws_latency_ms", wsLast))
+	}
+	if wsMin >= 0 {
+		attrs = append(attrs, slog.Int64("ws_min_rtt_ms", wsMin))
+	}
+	if wsMedian >= 0 {
+		attrs = append(attrs, slog.Int64("ws_median_rtt_ms", wsMedian))
+	}
+
 	if healthy {
-		ts.logger.InfoContext(ctx, "🟢 Time sync OK",
-			slog.Int64("offset_ms", offset),
-			slog.Int64("latency_ms", latency),
-			slog.Int64("min_rtt_ms", minLatency),
-		)
+		ts.logger.InfoContext(ctx, "🟢 Time sync OK", attrs...)
 	} else {
-		ts.logger.WarnContext(ctx, "🟡 Time sync high latency",
-			slog.Int64("offset_ms", offset),
-			slog.Int64("latency_ms", latency),
-			slog.Int64("min_rtt_ms", minLatency),
-		)
+		ts.logger.WarnContext(ctx, "🟡 Time sync high latency", attrs...)
 	}
 }
 
 // SyncNow forces an immediate time synchronization round synchronously.
+// If running in WebSocket trade mode, it triggers a WebSocket ping and HTTP sync concurrently,
+// waiting for both to complete to ensure both clock offset and WebSocket RTT are fresh.
 func (ts *TimeSync) SyncNow(ctx context.Context) {
+	var wg sync.WaitGroup
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok && tmc.TradeMode() == exchange.TradeModeWS {
+		if wsExec := tmc.WSTradeExecutor(); wsExec != nil && wsExec.IsReady() {
+			if pinger, ok := wsExec.(interface{ Ping(context.Context) error }); ok {
+				wg.Go(func() {
+					_ = pinger.Ping(ctx)
+				})
+			}
+		}
+	}
 	ts.syncOnce(ctx)
+	wg.Wait()
 }
 
 // GetServerTime returns the estimated current server time in milliseconds.
@@ -172,27 +231,164 @@ func (ts *TimeSync) Offset() int64 {
 	return ts.offset
 }
 
-// LatencyMs returns the rolling minimum round-trip time in milliseconds across recent samples.
+// LatencyMs returns the rolling median round-trip time in milliseconds across recent samples
+// for the currently active trade mode of the exchange client (WS if in WS trade mode, HTTP otherwise).
 func (ts *TimeSync) LatencyMs() int64 {
 	if ts == nil {
 		return 0
 	}
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-	if ts.minRTT > 0 {
-		return ts.minRTT
+	mode := exchange.TradeModeHTTP
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok {
+		mode = tmc.TradeMode()
 	}
-	return ts.latency
+	return ts.LatencyForMode(mode)
 }
 
-// LastLatencyMs returns the raw single-ping round-trip time of the most recent sync.
-func (ts *TimeSync) LastLatencyMs() int64 {
+// LatencyForMode returns the rolling median round-trip time in milliseconds for the specified trade mode.
+// If mode is TradeModeWS, it returns the WebSocket median RTT (falling back to HTTP if WS is not ready or has no samples).
+func (ts *TimeSync) LatencyForMode(mode exchange.TradeMode) int64 {
+	if ts == nil {
+		return 0
+	}
+	switch mode {
+	case exchange.TradeModeWS:
+		if wsLat := ts.WSLatencyMs(); wsLat >= 0 {
+			return wsLat
+		}
+		return ts.HTTPLatencyMs()
+	case exchange.TradeModeHTTP:
+		return ts.HTTPLatencyMs()
+	default:
+		return ts.HTTPLatencyMs()
+	}
+}
+
+// HTTPLatencyMs returns the rolling median round-trip time in milliseconds for HTTP requests,
+// falling back to rolling minimum or last measured latency if fewer samples exist.
+func (ts *TimeSync) HTTPLatencyMs() int64 {
 	if ts == nil {
 		return 0
 	}
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	return ts.latency
+	if ts.httpMedianRTT > 0 {
+		return ts.httpMedianRTT
+	}
+	if ts.httpMinRTT > 0 {
+		return ts.httpMinRTT
+	}
+	return ts.httpLatency
+}
+
+// HTTPMinRTTMs returns the rolling minimum round-trip time in milliseconds for HTTP requests.
+func (ts *TimeSync) HTTPMinRTTMs() int64 {
+	if ts == nil {
+		return 0
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.httpMinRTT
+}
+
+// HTTPMedianRTTMs returns the rolling median round-trip time in milliseconds for HTTP requests.
+func (ts *TimeSync) HTTPMedianRTTMs() int64 {
+	if ts == nil {
+		return 0
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.httpMedianRTT
+}
+
+// MinRTTMs returns the rolling minimum RTT in milliseconds for the currently active trade mode.
+func (ts *TimeSync) MinRTTMs() int64 {
+	if ts == nil {
+		return 0
+	}
+	mode := exchange.TradeModeHTTP
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok {
+		mode = tmc.TradeMode()
+	}
+	if mode == exchange.TradeModeWS {
+		if wsMin := ts.WSMinRTTMs(); wsMin >= 0 {
+			return wsMin
+		}
+	}
+	return ts.HTTPMinRTTMs()
+}
+
+// MedianRTTMs returns the rolling median RTT in milliseconds for the currently active trade mode.
+func (ts *TimeSync) MedianRTTMs() int64 {
+	return ts.LatencyMs()
+}
+
+// LastHTTPLatencyMs returns the raw single-ping round-trip time of the most recent HTTP sync.
+func (ts *TimeSync) LastHTTPLatencyMs() int64 {
+	if ts == nil {
+		return 0
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.httpLatency
+}
+
+// WSMinRTTMs returns the rolling minimum WebSocket round-trip time in milliseconds,
+// or -1 if the exchange client is not in WS mode, WS executor is not ready, or no pong was received.
+func (ts *TimeSync) WSMinRTTMs() int64 {
+	if ts == nil {
+		return -1
+	}
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok {
+		if wsExec := tmc.WSTradeExecutor(); wsExec != nil && wsExec.IsReady() {
+			if minProv, ok := wsExec.(interface{ MinLatencyMs() int64 }); ok {
+				return minProv.MinLatencyMs()
+			}
+			return wsExec.LatencyMs()
+		}
+	}
+	return -1
+}
+
+// WSLatencyMs returns the rolling median or last measured WebSocket round-trip time in milliseconds,
+// or -1 if the exchange client is not in WS mode, WS executor is not ready, or no pong was received.
+func (ts *TimeSync) WSLatencyMs() int64 {
+	if ts == nil {
+		return -1
+	}
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok {
+		if wsExec := tmc.WSTradeExecutor(); wsExec != nil && wsExec.IsReady() {
+			return wsExec.LatencyMs()
+		}
+	}
+	return -1
+}
+
+// WSMedianRTTMs returns the rolling median WebSocket round-trip time in milliseconds,
+// or -1 if the exchange client is not in WS mode, WS executor is not ready, or no pong was received.
+func (ts *TimeSync) WSMedianRTTMs() int64 {
+	return ts.WSLatencyMs()
+}
+
+// WSLastLatencyMs returns the raw single-ping round-trip time of the most recent WebSocket pong,
+// or -1 if the exchange client is not in WS mode, WS executor is not ready, or no pong was received.
+func (ts *TimeSync) WSLastLatencyMs() int64 {
+	if ts == nil {
+		return -1
+	}
+	if tmc, ok := ts.client.(exchange.TradeModeConfigurable); ok {
+		if wsExec := tmc.WSTradeExecutor(); wsExec != nil && wsExec.IsReady() {
+			if lastProv, ok := wsExec.(interface{ LastLatencyMs() int64 }); ok {
+				return lastProv.LastLatencyMs()
+			}
+			return wsExec.LatencyMs()
+		}
+	}
+	return -1
+}
+
+// LastLatencyMs returns the raw single-ping round-trip time of the most recent HTTP sync.
+func (ts *TimeSync) LastLatencyMs() int64 {
+	return ts.LastHTTPLatencyMs()
 }
 
 // IsHealthy returns true if the time sync is in a good state.
