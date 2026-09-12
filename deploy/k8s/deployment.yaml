@@ -21,6 +21,12 @@ spec:
         prometheus.io/path: "/metrics"
         prometheus.io/port: "3100"
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       securityContext:
         fsGroup: 10001
         runAsNonRoot: true
@@ -45,16 +51,21 @@ spec:
             - "/app/configs/funding/prod/obfuscator.jsonc"
             - "-dilution"
             - "/app/configs/funding/prod/dilution.jsonc"
+          env:
+            - name: GOGC
+              value: "200"
+            - name: GOMEMLIMIT
+              value: "800MiB"
           envFrom:
             - secretRef:
                 name: crypto-bot-vault-secrets
           resources:
             limits:
-              cpu: "4000m"
-              memory: "2Gi"
+              cpu: "4"
+              memory: "1Gi"
             requests:
-              cpu: "4000m"
-              memory: "500Mb"
+              cpu: "4"
+              memory: "1Gi"
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false

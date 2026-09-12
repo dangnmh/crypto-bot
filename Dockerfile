@@ -22,10 +22,11 @@ ARG BUILD_TIME=unknown
 
 # Build the executables targeting cmd/funding and cmd/penny_jumper
 # Bitwarden SDK requires CGO to be enabled (CGO_ENABLED=1) to link its C-bindings
+# -tags "netgo,osusergo" forces Go pure-network async resolver, eliminating musl libc DNS blocking
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/funding-bot ./cmd/funding && \
+    go build -tags "netgo,osusergo" -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/funding-bot ./cmd/funding && \
     CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/penny-jumper-bot ./cmd/penny_jumper
+    go build -tags "netgo,osusergo" -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/penny-jumper-bot ./cmd/penny_jumper
 
 # ==========================================
 # Stage 2: Hardened Runtime Container
