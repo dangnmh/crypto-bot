@@ -81,7 +81,7 @@
       "minVol24USD": 1000000,
       "minFundingRate": 0.5,
       "leverage": 4,
-      "marginUSD": 50,
+      "marginUSD": 100,
       "maxCandidateTrade": 1
       // "minVol24USD": 6000000,
       // "minFundingRate": 0.6,
