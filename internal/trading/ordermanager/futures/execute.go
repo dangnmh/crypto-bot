@@ -72,6 +72,8 @@ func registerNotificationHandler[T common.OrderEvent](ctx context.Context, mgr *
 					Message: notifMsg,
 				}); err != nil {
 					mgr.log.ErrorContext(orderCtx, "Failed to send event notification",
+						slog.String("exchange", evt.GetExchange()),
+						slog.String("req_id", evt.GetReqID()),
 						slog.String("topic", topic),
 						slog.String("level", string(level)),
 						slog.Any("error", err),
@@ -120,7 +122,10 @@ func registerPreFlightSubscriptions(ctx context.Context, mgr *OrderManager) {
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderPreFlightDone, res)
 	})
@@ -133,7 +138,10 @@ func registerPreFlightSubscriptions(ctx context.Context, mgr *OrderManager) {
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderPositionWatchReady, res)
 	})
@@ -146,7 +154,10 @@ func registerPreFlightSubscriptions(ctx context.Context, mgr *OrderManager) {
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderFireWindowReached, res)
 	})
@@ -161,7 +172,10 @@ func registerOrderExecutionSubscriptions(ctx context.Context, mgr *OrderManager)
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderSubmitted, res)
 	})
@@ -175,7 +189,10 @@ func registerOrderExecutionSubscriptions(ctx context.Context, mgr *OrderManager)
 		if res != nil {
 			agg := om.GetAggregate(evt.ReqID)
 			if err := agg.Record(*res); err != nil {
-				om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+				om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+					slog.String("exchange", evt.Exchange),
+					slog.String("req_id", evt.ReqID),
+					slog.Any("error", err))
 			}
 			return om.publishEvent(ctx, TopicOrderTPSLDispatched, *res)
 		}
@@ -190,7 +207,10 @@ func registerOrderExecutionSubscriptions(ctx context.Context, mgr *OrderManager)
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderOutcomeResolved, res)
 	})
@@ -215,7 +235,10 @@ func registerTimeoutSubscriptions(ctx context.Context, mgr *OrderManager) {
 		}
 		agg := om.GetAggregate(evt.ReqID)
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderTimeoutPositionChecked, res)
 	})
@@ -231,7 +254,10 @@ func registerTimeoutSubscriptions(ctx context.Context, mgr *OrderManager) {
 			return om.abortOrder(ctx, evt, TopicOrderTimeoutPositionChecked, "bailout_error", err)
 		}
 		if err := agg.Record(res); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.ReqID), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderBailoutExecuted, res)
 	})
@@ -248,7 +274,9 @@ func registerOutcomeResolvedSubscription(ctx context.Context, mgr *OrderManager)
 	// 8. OrderOutcomeResolvedEvent -> Only complete if canceled with no fill or if closing order filled; resting orders await fill; filled opening orders remain open awaiting position close or timeout.
 	registerEventSubscription(ctx, mgr, TopicOrderOutcomeResolved, func(ctx context.Context, om *OrderManager, evt OrderOutcomeResolvedEvent) error {
 		if evt.Outcome == common.OutcomeResting {
-			om.log.InfoContext(ctx, "Order resting on order book awaiting stream fill or cancel", slog.String("req_id", evt.GetReqID()))
+			om.log.InfoContext(ctx, "Order resting on order book awaiting stream fill or cancel",
+				slog.String("exchange", evt.GetExchange()),
+				slog.String("req_id", evt.GetReqID()))
 			return nil
 		}
 
@@ -267,11 +295,17 @@ func registerOutcomeResolvedSubscription(ctx context.Context, mgr *OrderManager)
 			}
 
 			if err := agg.Record(completed); err != nil {
-				om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.GetReqID()), slog.Any("error", err))
+				om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+					slog.String("exchange", evt.GetExchange()),
+					slog.String("req_id", evt.GetReqID()),
+					slog.Any("error", err))
 			}
 			return om.publishEvent(ctx, TopicOrderCompleted, completed)
 		}
-		om.log.InfoContext(ctx, "Order filled; position now open, awaiting position close update or timeout", slog.String("req_id", evt.GetReqID()), slog.String("outcome", string(evt.Outcome)))
+		om.log.InfoContext(ctx, "Order filled; position now open, awaiting position close update or timeout",
+			slog.String("exchange", evt.GetExchange()),
+			slog.String("req_id", evt.GetReqID()),
+			slog.String("outcome", string(evt.Outcome)))
 		return nil
 	})
 }
@@ -286,7 +320,10 @@ func registerPositionClosedSubscription(ctx context.Context, mgr *OrderManager) 
 			return err
 		}
 		if err := agg.Record(completed); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.GetReqID()), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.GetExchange()),
+				slog.String("req_id", evt.GetReqID()),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, TopicOrderCompleted, completed)
 	})
@@ -307,7 +344,10 @@ func registerOrderCompletedSubscription(ctx context.Context, mgr *OrderManager) 
 			}
 		}
 		if err := agg.Record(record); err != nil {
-			om.log.ErrorContext(ctx, "Failed to record event to aggregate", slog.String("req_id", evt.GetReqID()), slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to record event to aggregate",
+				slog.String("exchange", evt.GetExchange()),
+				slog.String("req_id", evt.GetReqID()),
+				slog.Any("error", err))
 		}
 		return om.publishEvent(ctx, common.TopicOrderTradeRecord, record)
 	})
@@ -317,10 +357,15 @@ func registerTradeRecordSubscription(ctx context.Context, mgr *OrderManager) {
 	// 10. OrderTradeRecordEvent -> Persistence into DB Repository
 	registerEventSubscription(ctx, mgr, common.TopicOrderTradeRecord, func(ctx context.Context, om *OrderManager, evt common.OrderTradeRecordEvent) error {
 		if err := om.repo.Save(ctx, evt); err != nil {
-			om.log.ErrorContext(ctx, "Failed to persist trade record to DB trades table", slog.Any("error", err))
+			om.log.ErrorContext(ctx, "Failed to persist trade record to DB trades table",
+				slog.String("exchange", evt.GetExchange()),
+				slog.String("req_id", evt.ReqID),
+				slog.Any("error", err))
 			return err
 		}
-		om.log.InfoContext(ctx, "Successfully persisted trade record to DB trades table", slog.String("req_id", evt.ReqID))
+		om.log.InfoContext(ctx, "Successfully persisted trade record to DB trades table",
+			slog.String("exchange", evt.GetExchange()),
+			slog.String("req_id", evt.ReqID))
 		return nil
 	})
 }
@@ -338,7 +383,10 @@ func registerEventSubscription[T common.OrderEvent](
 		}
 		reqID := evt.GetReqID()
 		orderCtx := tracectx.WithRequestIDValue(msgCtx, reqID)
-		mgr.log.InfoContext(orderCtx, "Futures OrderManager: Handled micro-event topic", slog.String("topic", topic), slog.String("req_id", reqID))
+		mgr.log.InfoContext(orderCtx, "Futures OrderManager: Handled micro-event topic",
+			slog.String("exchange", evt.GetExchange()),
+			slog.String("topic", topic),
+			slog.String("req_id", reqID))
 		agg := mgr.GetAggregate(reqID)
 		_ = agg.Record(evt)
 
@@ -352,7 +400,10 @@ func subscribeTopic(subCtx context.Context, bus *eventbus.Bus, logger *slog.Logg
 	}
 	ch, err := bus.Subscribe(subCtx, topic)
 	if err != nil {
-		logger.ErrorContext(subCtx, "Failed to subscribe to topic", slog.String("topic", topic), slog.Any("error", err))
+		logger.ErrorContext(subCtx, "Failed to subscribe to topic",
+			slog.String("exchange", ""),
+			slog.String("topic", topic),
+			slog.Any("error", err))
 		return
 	}
 
@@ -375,14 +426,25 @@ func processTopicMessages(subCtx context.Context, ch <-chan *message.Message, to
 }
 
 func dispatchMessage(msgCtx context.Context, m *message.Message, topic string, logger *slog.Logger, handler func(context.Context, *message.Message) error) {
+	var payloadHeader struct {
+		Exchange string `json:"exchange"`
+	}
+	_ = json.Unmarshal(m.Payload, &payloadHeader)
+
 	defer func() {
 		if r := recover(); r != nil {
-			logger.ErrorContext(msgCtx, "Panic recovered in Futures OrderManager topic handler", slog.String("topic", topic), slog.Any("panic", r))
+			logger.ErrorContext(msgCtx, "Panic recovered in Futures OrderManager topic handler",
+				slog.String("exchange", payloadHeader.Exchange),
+				slog.String("topic", topic),
+				slog.Any("panic", r))
 		}
 		m.Ack()
 	}()
 
 	if err := handler(msgCtx, m); err != nil {
-		logger.ErrorContext(msgCtx, "Futures OrderManager handler execution failed", slog.String("topic", topic), slog.Any("error", err))
+		logger.ErrorContext(msgCtx, "Futures OrderManager handler execution failed",
+			slog.String("exchange", payloadHeader.Exchange),
+			slog.String("topic", topic),
+			slog.Any("error", err))
 	}
 }

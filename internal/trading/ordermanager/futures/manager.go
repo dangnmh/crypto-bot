@@ -31,9 +31,10 @@ type OrderCompletedCallback func(ctx context.Context, evt OrderCompletedEvent)
 
 // PositionPnLTracker tracks peak PnL and rolling PnL history for trailing stop evaluations.
 type PositionPnLTracker struct {
-	ReqID   string
-	MaxPnL  float64
-	History []float64
+	ReqID    string
+	Exchange string
+	MaxPnL   float64
+	History  []float64
 }
 
 // OrderManager is a business-agnostic reactive order execution engine using Micro-Events.
@@ -76,7 +77,7 @@ func (m *OrderManager) invokeOnCompletedCallbacks(ctx context.Context, evt Order
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					m.log.ErrorContext(ctx, "OrderCompletedCallback panicked", slog.Any("panic", r), slog.String("req_id", evt.GetReqID()))
+					m.log.ErrorContext(ctx, "OrderCompletedCallback panicked", slog.String("exchange", evt.GetExchange()), slog.String("req_id", evt.GetReqID()), slog.Any("panic", r))
 				}
 			}()
 			fn(ctx, evt)
@@ -170,12 +171,12 @@ func (m *OrderManager) resolveClient(exchangeName string) (ExchangeClient, error
 	prov, err := m.engine.GetProvider(exchangeName)
 	if err != nil {
 		resErr := fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
-		m.log.Error("Failed to resolve exchange client", "exchange", exchangeName, "error", resErr)
+		m.log.Error("Failed to resolve exchange client", slog.String("exchange", exchangeName), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	if prov == nil || prov.Client == nil {
 		resErr := fmt.Errorf("no exchange client available for exchange %q", exchangeName)
-		m.log.Error("Failed to resolve exchange client", "exchange", exchangeName, "error", resErr)
+		m.log.Error("Failed to resolve exchange client", slog.String("exchange", exchangeName), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	return prov.Client, nil
@@ -185,19 +186,19 @@ func (m *OrderManager) resolvePositionWatcher(exchangeName string) (PositionWatc
 	prov, err := m.engine.GetProvider(exchangeName)
 	if err != nil {
 		resErr := fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
-		m.log.Error("Failed to resolve position watcher", "exchange", exchangeName, "error", resErr)
+		m.log.Error("Failed to resolve position watcher", slog.String("exchange", exchangeName), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	if prov == nil || prov.Watcher == nil {
 		resErr := fmt.Errorf("no position watcher available for exchange %q", exchangeName)
-		m.log.Debug("No position watcher available", "exchange", exchangeName)
+		m.log.Debug("No position watcher available", slog.String("exchange", exchangeName))
 		return nil, resErr
 	}
 	if pw, ok := any(prov.Watcher).(PositionWatcher); ok {
 		return pw, nil
 	}
 	resErr := fmt.Errorf("watcher for exchange %q does not implement PositionWatcher interface", exchangeName)
-	m.log.Debug("Position watcher interface not implemented", "exchange", exchangeName)
+	m.log.Debug("Position watcher interface not implemented", slog.String("exchange", exchangeName))
 	return nil, resErr
 }
 
@@ -205,12 +206,12 @@ func (m *OrderManager) resolveAdapter(exchangeName string) (infraws.ExchangeMana
 	prov, err := m.engine.GetProvider(exchangeName)
 	if err != nil {
 		resErr := fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
-		m.log.Debug("Failed to resolve exchange adapter", "exchange", exchangeName, "error", resErr)
+		m.log.Debug("Failed to resolve exchange adapter", slog.String("exchange", exchangeName), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	if prov == nil || prov.Adapter == nil {
 		resErr := fmt.Errorf("no exchange adapter available for exchange %q", exchangeName)
-		m.log.Debug("Failed to resolve exchange adapter", "exchange", exchangeName, "error", resErr)
+		m.log.Debug("Failed to resolve exchange adapter", slog.String("exchange", exchangeName), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	return prov.Adapter, nil
@@ -301,7 +302,22 @@ func (m *OrderManager) publishEvent(ctx context.Context, topic string, payload a
 	if m.bus == nil {
 		return nil
 	}
-	m.log.InfoContext(ctx, "OrderManager: Publishing Watermill micro-event", slog.String("topic", topic), slog.Any("payload", payload))
+	exchangeName := ""
+	if ex, ok := payload.(interface{ GetExchange() string }); ok {
+		exchangeName = ex.GetExchange()
+	}
+	if exchangeName == "" {
+		if req, ok := payload.(interface{ GetReqID() string }); ok && req.GetReqID() != "" {
+			if agg := m.GetAggregate(req.GetReqID()); agg != nil {
+				exchangeName = agg.Exchange()
+			}
+		}
+	}
+	m.log.InfoContext(ctx, "OrderManager: Publishing Watermill micro-event",
+		slog.String("exchange", exchangeName),
+		slog.String("topic", topic),
+		slog.Any("payload", payload),
+	)
 	return m.bus.Publish(topic, payload)
 }
 
@@ -390,6 +406,7 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 		if orderID != "" {
 			if err := executor.CancelOrder(ctx, symbol, orderID); err != nil {
 				m.log.WarnContext(ctx, "Failed to cancel order by exchange order ID",
+					slog.String("exchange", exchangeName),
 					slog.String("req_id", reqID), slog.String("order_id", orderID), slog.Any("error", err))
 			}
 		}
@@ -417,7 +434,9 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 	}
 
 	if err := agg.Record(cancelEvt); err != nil {
-		m.log.ErrorContext(ctx, "Failed to record OrderCanceledEvent to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
+		m.log.ErrorContext(ctx, "Failed to record OrderCanceledEvent to aggregate",
+			slog.String("exchange", exchangeName),
+			slog.String("req_id", reqID), slog.Any("error", err))
 	}
 
 	return m.publishEvent(ctx, TopicOrderCanceled, cancelEvt)
@@ -459,7 +478,11 @@ func (m *OrderManager) configureExchangeLeverage(ctx context.Context, client Exc
 			PositionType: posType,
 		})
 		if err != nil {
-			m.log.ErrorContext(ctx, "Change leverage failed", slog.Any("error", err))
+			m.log.ErrorContext(ctx, "Change leverage failed",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.ReqID),
+				slog.String("symbol", evt.Symbol),
+				slog.Any("error", err))
 			return 0, fmt.Errorf("change leverage failed: %w", err)
 		}
 	}
@@ -468,7 +491,10 @@ func (m *OrderManager) configureExchangeLeverage(ctx context.Context, client Exc
 
 // HandlePreFlight calculates Margin Mode, Position Mode & Risk Limit Leverage.
 func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent) (OrderPreFlightCompletedEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 1] HandlePreFlight", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
+	m.log.InfoContext(ctx, "[Micro-Step 1] HandlePreFlight",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol))
 
 	client, err := m.resolveClient(evt.Exchange)
 	if err != nil {
@@ -481,7 +507,10 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 
 	if !evt.SkipPreFlight {
 		if syncer, ok := clock.(SyncerClock); ok {
-			m.log.InfoContext(ctx, "Forcing clock sync on pre-flight")
+			m.log.InfoContext(ctx, "Forcing clock sync on pre-flight",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.GetReqID()),
+				slog.String("symbol", evt.Symbol))
 			syncer.SyncNow(ctx)
 		}
 	}
@@ -491,14 +520,22 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 	if !evt.Side.IsClose() && !evt.SkipPreFlight {
 		// Switch Margin Mode
 		if err := client.SwitchMarginMode(ctx, evt.Symbol, evt.MarginMode, evt.Leverage, evt.Side); err != nil {
-			m.log.ErrorContext(ctx, "Switch margin mode failed", slog.Any("error", err))
+			m.log.ErrorContext(ctx, "Switch margin mode failed",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.GetReqID()),
+				slog.String("symbol", evt.Symbol),
+				slog.Any("error", err))
 			return OrderPreFlightCompletedEvent{}, fmt.Errorf("switch margin mode failed: %w", err)
 		}
 
 		// Switch Position Mode if provider exists
 		if switcher, ok := client.(PositionModeSwitcher); ok && evt.PositionMode > 0 {
 			if err := switcher.SwitchPositionMode(ctx, evt.Symbol, evt.PositionMode); err != nil {
-				m.log.ErrorContext(ctx, "Switch position mode failed", slog.Any("error", err))
+				m.log.ErrorContext(ctx, "Switch position mode failed",
+					slog.String("exchange", evt.Exchange),
+					slog.String("req_id", evt.GetReqID()),
+					slog.String("symbol", evt.Symbol),
+					slog.Any("error", err))
 				return OrderPreFlightCompletedEvent{}, fmt.Errorf("switch position mode failed: %w", err)
 			}
 		}
@@ -544,7 +581,11 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderPr
 		posWatcher, _ := m.resolvePositionWatcher(evt.Exchange)
 		if posWatcher != nil {
 			posWatcher.OnPositionUpdate(ctx, evt.Symbol, timeout, func(pos exchange.PersonalPositionUpdate) {
-				m.log.Debug("[Micro-Step 2] HandlePositionUpdate OnPositionUpdate", slog.Any("pos", pos))
+				m.log.Debug("[Micro-Step 2] HandlePositionUpdate OnPositionUpdate",
+					slog.String("exchange", evt.Exchange),
+					slog.String("req_id", evt.GetReqID()),
+					slog.String("symbol", evt.Symbol),
+					slog.Any("pos", pos))
 				m.HandlePositionUpdate(ctx, evt.GetReqID(), pos)
 			})
 			if evt.EnablePnLTrailing {
@@ -568,7 +609,10 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderPr
 
 // HandleFireTiming marks the fire window ready before final execution.
 func (m *OrderManager) HandleFireTiming(ctx context.Context, evt OrderPositionWatchReadyEvent) (OrderFireWindowReachedEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 3] HandleFireTiming", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
+	m.log.InfoContext(ctx, "[Micro-Step 3] HandleFireTiming",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol))
 
 	clock, err := m.resolveClock(evt.Exchange)
 	if err != nil {
@@ -592,7 +636,10 @@ func (m *OrderManager) HandlePositionUpdate(ctx context.Context, reqID string, p
 	}
 	clock, err := m.resolveClock(agg.Exchange())
 	if err != nil {
-		m.log.ErrorContext(ctx, "Failed to resolve clock for position update", slog.String("req_id", reqID), slog.Any("error", err))
+		m.log.ErrorContext(ctx, "Failed to resolve clock for position update",
+			slog.String("exchange", agg.Exchange()),
+			slog.String("req_id", reqID),
+			slog.Any("error", err))
 		return
 	}
 
@@ -715,6 +762,7 @@ func (m *OrderManager) handlePositionClosed(
 
 	if shouldIgnoreZeroVolumeUpdate(agg, pos, closePrice, closeVolContract, closeVolCoin) {
 		m.log.DebugContext(ctx, "Ignoring 0 volume position update for unopened position aggregate",
+			slog.String("exchange", agg.Exchange()),
 			slog.String("req_id", reqID),
 			slog.String("symbol", pos.Symbol),
 		)
@@ -744,7 +792,10 @@ func (m *OrderManager) handlePositionClosed(
 		FundingFee:       pos.HoldFee,
 	}
 	if err := agg.Record(evt); err != nil {
-		m.log.ErrorContext(ctx, "Failed to record OrderPositionClosedEvent to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
+		m.log.ErrorContext(ctx, "Failed to record OrderPositionClosedEvent to aggregate",
+			slog.String("exchange", agg.Exchange()),
+			slog.String("req_id", reqID),
+			slog.Any("error", err))
 	}
 	_ = m.publishEvent(ctx, TopicOrderPositionClosed, evt)
 	sym := pos.Symbol
@@ -805,6 +856,7 @@ func (t *PositionPnLTracker) update(log *slog.Logger, pnl float64) bool {
 
 	if pnl > t.MaxPnL {
 		log.Debug("Position PnL increased",
+			slog.String("exchange", t.Exchange),
 			slog.String("req_id", t.ReqID),
 			slog.Float64("prev_max", t.MaxPnL),
 			slog.Float64("new_max", pnl),
@@ -815,16 +867,18 @@ func (t *PositionPnLTracker) update(log *slog.Logger, pnl float64) bool {
 	return false
 }
 
-func (m *OrderManager) getOrInitPnLTracker(ctx context.Context, reqID, symbol string, pnl float64) *PositionPnLTracker {
+func (m *OrderManager) getOrInitPnLTracker(ctx context.Context, reqID, symbol, exchangeName string, pnl float64) *PositionPnLTracker {
 	val, found := m.pnlTrackers.Get(reqID)
 	if !found {
 		tracker := &PositionPnLTracker{
-			ReqID:   reqID,
-			MaxPnL:  pnl,
-			History: []float64{pnl},
+			ReqID:    reqID,
+			Exchange: exchangeName,
+			MaxPnL:   pnl,
+			History:  []float64{pnl},
 		}
 		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
 		m.log.InfoContext(ctx, "Started tracking position PnL",
+			slog.String("exchange", exchangeName),
 			slog.String("req_id", reqID),
 			slog.String("symbol", symbol),
 			slog.Float64("initial_pnl", pnl),
@@ -834,13 +888,17 @@ func (m *OrderManager) getOrInitPnLTracker(ctx context.Context, reqID, symbol st
 
 	tracker, ok := val.(*PositionPnLTracker)
 	if !ok || tracker == nil {
-		tracker = &PositionPnLTracker{
-			ReqID:   reqID,
-			MaxPnL:  pnl,
-			History: []float64{pnl},
+		tracker := &PositionPnLTracker{
+			ReqID:    reqID,
+			Exchange: exchangeName,
+			MaxPnL:   pnl,
+			History:  []float64{pnl},
 		}
 		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
 		return nil
+	}
+	if tracker.Exchange == "" && exchangeName != "" {
+		tracker.Exchange = exchangeName
 	}
 	return tracker
 }
@@ -856,6 +914,7 @@ func (m *OrderManager) executePnLBailout(
 	dropPctThreshold float64,
 ) {
 	m.log.WarnContext(ctx, "Position PnL reduced from peak with confirmed downward momentum, sending immediate close signal",
+		slog.String("exchange", agg.Exchange()),
 		slog.String("req_id", reqID),
 		slog.String("symbol", symbol),
 		slog.Float64("max_pnl", maxPnL),
@@ -872,6 +931,7 @@ func (m *OrderManager) executePnLBailout(
 	res, err := m.HandleExecuteBailout(ctx, reqID, agg.Exchange(), symbol, agg.Side(), volume, "pnl_reduction")
 	if err != nil {
 		m.log.ErrorContext(ctx, "Failed to execute bailout on PnL reduction",
+			slog.String("exchange", agg.Exchange()),
 			slog.String("req_id", reqID),
 			slog.Any("error", err),
 		)
@@ -879,6 +939,7 @@ func (m *OrderManager) executePnLBailout(
 	}
 	if err := agg.Record(res); err != nil {
 		m.log.ErrorContext(ctx, "Failed to record bailout event",
+			slog.String("exchange", agg.Exchange()),
 			slog.String("req_id", reqID),
 			slog.Any("error", err),
 		)
@@ -900,7 +961,7 @@ func (m *OrderManager) trackPositionPnL(
 		return
 	}
 
-	tracker := m.getOrInitPnLTracker(ctx, reqID, symbol, currentPnL)
+	tracker := m.getOrInitPnLTracker(ctx, reqID, symbol, agg.Exchange(), currentPnL)
 	if tracker == nil {
 		return
 	}
@@ -955,14 +1016,17 @@ func buildSubmitOrderRequest(evt OrderFireWindowReachedEvent) exchange.SubmitOrd
 	}
 }
 
-func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient, req exchange.SubmitOrderRequest) func(context.Context) (exchange.CreateOrderResult, error) {
+func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient, req exchange.SubmitOrderRequest, exchangeName, reqID string) func(context.Context) (exchange.CreateOrderResult, error) {
 	pse, ok := client.(exchange.PreSignExecutor)
 	if !ok {
 		return nil
 	}
 	fn, prepErr := pse.PrepareOrder(ctx, req)
 	if prepErr != nil {
-		m.log.WarnContext(ctx, "Failed to pre-sign order, falling back to standard create order", slog.Any("error", prepErr))
+		m.log.WarnContext(ctx, "Failed to pre-sign order, falling back to standard create order",
+			slog.String("exchange", exchangeName),
+			slog.String("req_id", reqID),
+			slog.Any("error", prepErr))
 		return nil
 	}
 	return fn
@@ -1042,7 +1106,10 @@ func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowR
 
 // HandleExecuteOrder executes order submission REST API.
 func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWindowReachedEvent) (OrderSubmittedEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 4] HandleExecuteOrder", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
+	m.log.InfoContext(ctx, "[Micro-Step 4] HandleExecuteOrder",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol))
 
 	client, err := m.resolveClient(evt.Exchange)
 	if err != nil {
@@ -1059,7 +1126,7 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWind
 	// Pre-sign and coordinate combat mode if fireTime is scheduled
 	var dispatchFn func(context.Context) (exchange.CreateOrderResult, error)
 	if !evt.FireTime.IsZero() {
-		dispatchFn = m.preparePreSign(ctx, client, req)
+		dispatchFn = m.preparePreSign(ctx, client, req, evt.Exchange, evt.GetReqID())
 		m.registerCombatTarget(evt.FireTime, evt.SettleTime)
 		m.preWarmConnection(ctx, client, evt.Exchange)
 	}
@@ -1077,7 +1144,11 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWind
 		resp, err = client.CreateOrder(ctx, req)
 	}
 	if err != nil {
-		m.log.ErrorContext(ctx, "Create order failed", slog.Any("error", err))
+		m.log.ErrorContext(ctx, "Create order failed",
+			slog.String("exchange", evt.Exchange),
+			slog.String("req_id", evt.GetReqID()),
+			slog.String("symbol", evt.Symbol),
+			slog.Any("error", err))
 		return OrderSubmittedEvent{}, fmt.Errorf("create order failed: %w", err)
 	}
 
@@ -1118,7 +1189,10 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 
 	provider, ok := client.(TPSLProvider)
 	if !ok {
-		m.log.WarnContext(ctx, "Exchange does not support standalone PlaceTPSL")
+		m.log.WarnContext(ctx, "Exchange does not support standalone PlaceTPSL",
+			slog.String("exchange", evt.Exchange),
+			slog.String("req_id", evt.GetReqID()),
+			slog.String("symbol", evt.Symbol))
 		return nil, nil
 	}
 
@@ -1128,6 +1202,8 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 	}
 
 	m.log.InfoContext(ctx, "[Micro-Step 5A] HandleTPSLContingency",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.Float64("tp", intent.TakeProfitPrice),
 		slog.Float64("sl", intent.StopLossPrice),
@@ -1145,7 +1221,11 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 	}
 
 	if err := provider.PlaceTPSL(ctx, req); err != nil {
-		m.log.ErrorContext(ctx, "PlaceTPSL contingency failed", slog.Any("error", err))
+		m.log.ErrorContext(ctx, "PlaceTPSL contingency failed",
+			slog.String("exchange", evt.Exchange),
+			slog.String("req_id", evt.GetReqID()),
+			slog.String("symbol", evt.Symbol),
+			slog.Any("error", err))
 		return nil, fmt.Errorf("place TPSL failed: %w", err)
 	}
 
@@ -1177,12 +1257,17 @@ func (m *OrderManager) HandleScheduleUnfilledCancelTimeout(ctx context.Context, 
 		unfilledTimeout := evt.UnfilledCancelTimeout
 		if unfilledTimeout <= 0 {
 			m.log.InfoContext(ctx, "Skipping pre-fill timeout schedule for resting maker order (no UnfilledCancelTimeout set)",
-				slog.String("req_id", evt.GetReqID()))
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.GetReqID()),
+				slog.String("symbol", evt.Symbol))
 			return nil
 		}
 
 		m.log.InfoContext(ctx, "Starting pre-fill resting order timeout watchdog",
-			slog.String("req_id", evt.GetReqID()), slog.Duration("unfilled_cancel_timeout", unfilledTimeout))
+			slog.String("exchange", evt.Exchange),
+			slog.String("req_id", evt.GetReqID()),
+			slog.String("symbol", evt.Symbol),
+			slog.Duration("unfilled_cancel_timeout", unfilledTimeout))
 		return m.scheduleUnfilledCancelTimeoutInternal(ctx, evt.GetReqID(), evt.OrderID, evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), unfilledTimeout)
 	}
 
@@ -1192,7 +1277,11 @@ func (m *OrderManager) HandleScheduleUnfilledCancelTimeout(ctx context.Context, 
 		return nil
 	}
 
-	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleUnfilledCancelTimeout", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleUnfilledCancelTimeout",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol),
+		slog.Duration("duration", dur))
 	return m.schedulePositionCloseTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderSubmitted)
 }
 
@@ -1213,6 +1302,7 @@ func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context
 		// Only auto-cancel if order is still resting/submitted (not filled, completed, or aborted)
 		if state == StateSubmitted || state == StateResting || state == StateInit || state == StatePreFlightDone || state == StateFireWindow || state == StatePositionWatchReady {
 			m.log.WarnContext(ctx, "⏱️ Resting order timeout expired without fill; auto-canceling on exchange",
+				slog.String("exchange", exchangeName),
 				slog.String("req_id", reqID),
 				slog.String("order_id", orderID),
 				slog.String("symbol", symbol),
@@ -1240,7 +1330,10 @@ func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context
 				FilledVol:    0,
 			}
 			if err := agg.Record(resolvedEvt); err != nil {
-				m.log.ErrorContext(ctx, "Failed to record resting timeout outcome to aggregate", slog.String("req_id", reqID), slog.Any("error", err))
+				m.log.ErrorContext(ctx, "Failed to record resting timeout outcome to aggregate",
+					slog.String("exchange", exchangeName),
+					slog.String("req_id", reqID),
+					slog.Any("error", err))
 			}
 			_ = m.publishEvent(ctx, TopicOrderOutcomeResolved, resolvedEvt)
 		}
@@ -1263,7 +1356,11 @@ func (m *OrderManager) HandleSchedulePositionCloseTimeout(ctx context.Context, e
 		return nil
 	}
 
-	m.log.InfoContext(ctx, "Starting post-fill hold timeout watchdog", slog.String("req_id", evt.GetReqID()), slog.Duration("duration", dur))
+	m.log.InfoContext(ctx, "Starting post-fill hold timeout watchdog",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol),
+		slog.Duration("duration", dur))
 	return m.schedulePositionCloseTimeoutInternal(ctx, evt.GetReqID(), evt.GetClientOrderID(), evt.Symbol, evt.Exchange, evt.StrategyType, evt.GetMarketType(), dur, TopicOrderFilled)
 }
 
@@ -1298,9 +1395,13 @@ func (m *OrderManager) schedulePositionCloseTimeoutInternal(ctx context.Context,
 
 // ScheduleTimeoutTimer starts a direct background timeout timer with a custom callback.
 func (m *OrderManager) ScheduleTimeoutTimer(reqID, symbol string, dur time.Duration, onTimeout func()) (OrderTimeoutScheduledEvent, error) {
-	m.log.Info("[Micro-Step] ScheduleTimeoutTimer", slog.String("req_id", reqID), slog.Duration("duration", dur))
-
 	agg := m.GetAggregate(reqID)
+	m.log.Info("[Micro-Step] ScheduleTimeoutTimer",
+		slog.String("exchange", agg.Exchange()),
+		slog.String("req_id", reqID),
+		slog.String("symbol", symbol),
+		slog.Duration("duration", dur))
+
 	clock, err := m.resolveClock(agg.Exchange())
 	if err != nil {
 		return OrderTimeoutScheduledEvent{}, fmt.Errorf("schedule timeout timer failed to resolve clock: %w", err)
@@ -1341,7 +1442,11 @@ func (m *OrderManager) CancelTimeoutGuard(reqID string) bool {
 
 // HandleWaitTimeoutDeadline waits for the timeout deadline and checks open positions.
 func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderTimeoutScheduledEvent) (OrderTimeoutPositionCheckedEvent, error) {
-	m.log.InfoContext(ctx, "Timeout guard started", slog.String("req_id", evt.GetReqID()), slog.Duration("timeout", evt.Duration))
+	m.log.InfoContext(ctx, "Timeout guard started",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol),
+		slog.Duration("timeout", evt.Duration))
 
 	clock, err := m.resolveClock(evt.Exchange)
 	if err != nil {
@@ -1357,7 +1462,11 @@ func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderT
 		pos, errQuery := client.GetOpenPositions(ctx, evt.Symbol)
 		if errQuery != nil {
 			errText = errQuery.Error()
-			m.log.ErrorContext(ctx, "Timeout guard failed to query position", slog.String("symbol", evt.Symbol), slog.Any("error", errQuery))
+			m.log.ErrorContext(ctx, "Timeout guard failed to query position",
+				slog.String("exchange", evt.Exchange),
+				slog.String("req_id", evt.GetReqID()),
+				slog.String("symbol", evt.Symbol),
+				slog.Any("error", errQuery))
 		} else {
 			positions = pos
 		}
@@ -1401,7 +1510,12 @@ func (m *OrderManager) HandleOutcomeWatcher(ctx context.Context, evt OrderSubmit
 	}
 
 	exchangeOrderID, _ := m.GetExchangeOrderIDByReqID(evt.GetReqID())
-	m.log.InfoContext(ctx, "[Micro-Step 6] HandleOutcomeWatcher", slog.String("req_id", evt.GetReqID()), slog.String("client_order_id", evt.GetClientOrderID()), slog.String("exchange_order_id", exchangeOrderID))
+	m.log.InfoContext(ctx, "[Micro-Step 6] HandleOutcomeWatcher",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol),
+		slog.String("client_order_id", evt.GetClientOrderID()),
+		slog.String("exchange_order_id", exchangeOrderID))
 
 	order, err := m.pollOrderUntilTerminal(ctx, evt.Exchange, evt.Symbol, exchangeOrderID)
 
@@ -1491,7 +1605,10 @@ func classifyOrderOutcome(order *exchange.OrderInfo) (OrderOutcome, float64, flo
 
 // HandleTimeoutCheck checks open position HoldVol when timeout expires.
 func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutScheduledEvent) (*OrderTimeoutExpiredEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 7] HandleTimeoutCheck", slog.String("req_id", evt.GetReqID()), slog.String("symbol", evt.Symbol))
+	m.log.InfoContext(ctx, "[Micro-Step 7] HandleTimeoutCheck",
+		slog.String("exchange", evt.Exchange),
+		slog.String("req_id", evt.GetReqID()),
+		slog.String("symbol", evt.Symbol))
 
 	client, err := m.resolveClient(evt.Exchange)
 	if err != nil {
@@ -1504,7 +1621,11 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 
 	positions, err := client.GetOpenPositions(ctx, evt.Symbol)
 	if err != nil {
-		m.log.ErrorContext(ctx, "GetOpenPositions on timeout failed", slog.Any("error", err))
+		m.log.ErrorContext(ctx, "GetOpenPositions on timeout failed",
+			slog.String("exchange", evt.Exchange),
+			slog.String("req_id", evt.GetReqID()),
+			slog.String("symbol", evt.Symbol),
+			slog.Any("error", err))
 		return nil, fmt.Errorf("query position on timeout failed: %w", err)
 	}
 
@@ -1538,7 +1659,11 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 
 // HandleExecuteBailout performs high-priority emergency force close position with retries.
 func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchangeName, symbol string, side shared.Side, volume float64, reason string) (OrderBailoutExecutedEvent, error) {
-	m.log.WarnContext(ctx, "[Micro-Step 8] HandleExecuteBailout", slog.String("req_id", reqID), slog.String("symbol", symbol), slog.String("reason", reason))
+	m.log.WarnContext(ctx, "[Micro-Step 8] HandleExecuteBailout",
+		slog.String("exchange", exchangeName),
+		slog.String("req_id", reqID),
+		slog.String("symbol", symbol),
+		slog.String("reason", reason))
 
 	client, err := m.resolveClient(exchangeName)
 	if err != nil {
@@ -1561,7 +1686,11 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 	}
 
 	if err := client.CloseAllPositions(ctx, symbol); err != nil {
-		m.log.ErrorContext(ctx, "CloseAllPositions bailout failed, entering ClosePosition retry loop", slog.Any("error", err))
+		m.log.ErrorContext(ctx, "CloseAllPositions bailout failed, entering ClosePosition retry loop",
+			slog.String("exchange", exchangeName),
+			slog.String("req_id", reqID),
+			slog.String("symbol", symbol),
+			slog.Any("error", err))
 		maxRetries := 3
 		var errClose error
 		for i := 1; i <= maxRetries; i++ {
@@ -1570,7 +1699,12 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 			if errClose == nil {
 				break
 			}
-			m.log.WarnContext(ctx, "ClosePosition bailout retry failed", slog.Int("attempt", i), slog.Any("error", errClose))
+			m.log.WarnContext(ctx, "ClosePosition bailout retry failed",
+				slog.String("exchange", exchangeName),
+				slog.String("req_id", reqID),
+				slog.String("symbol", symbol),
+				slog.Int("attempt", i),
+				slog.Any("error", errClose))
 		}
 		if errClose != nil {
 			return OrderBailoutExecutedEvent{}, fmt.Errorf("bailout failed after %d retries: %w", retries, errClose)
@@ -1662,7 +1796,11 @@ func (m *OrderManager) fetchClosedPnL(ctx context.Context, exchangeName, symbol,
 	}, bo)
 
 	if errRetry != nil {
-		m.log.WarnContext(ctx, "Failed to fetch closed PnL metrics after backoff retries", slog.String("symbol", symbol), slog.String("order_id", exchangeOrderID), slog.Any("error", errRetry))
+		m.log.WarnContext(ctx, "Failed to fetch closed PnL metrics after backoff retries",
+			slog.String("exchange", exchangeName),
+			slog.String("symbol", symbol),
+			slog.String("order_id", exchangeOrderID),
+			slog.Any("error", errRetry))
 	} else if closedInfo != nil {
 		metrics.status = closedInfo.Status
 		metrics.entryPrice = closedInfo.EntryPrice
@@ -1887,12 +2025,22 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 	}
 
 	if err := clock.Sleep(ctx, time.Second*30); err != nil {
-		m.log.Error("[Micro-Step 9] HandleEnrichAndComplete sleep error", slog.String("req_id", reqID),
+		m.log.Error("[Micro-Step 9] HandleEnrichAndComplete sleep error",
+			slog.String("exchange", exchangeName),
+			slog.String("req_id", reqID),
+			slog.String("symbol", symbol),
 			slog.Any("error", err))
 	}
 
 	exchangeOrderID, _ := m.GetExchangeOrderIDByReqID(reqID)
-	m.log.InfoContext(ctx, "[Micro-Step 9] HandleEnrichAndComplete", slog.String("req_id", reqID), slog.String("client_order_id", clientOrderID), slog.String("exchange_order_id", exchangeOrderID), slog.String("strategy", string(strategyType)), slog.String("outcome", string(outcome)))
+	m.log.InfoContext(ctx, "[Micro-Step 9] HandleEnrichAndComplete",
+		slog.String("exchange", exchangeName),
+		slog.String("req_id", reqID),
+		slog.String("symbol", symbol),
+		slog.String("client_order_id", clientOrderID),
+		slog.String("exchange_order_id", exchangeOrderID),
+		slog.String("strategy", string(strategyType)),
+		slog.String("outcome", string(outcome)))
 
 	agg := m.GetAggregate(reqID)
 	details := m.extractAggregateCompletedDetails(agg)
