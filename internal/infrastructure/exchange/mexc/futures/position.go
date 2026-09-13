@@ -2,7 +2,6 @@ package futures
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -115,20 +114,39 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// CloseAllPositions closes all open positions for a symbol and cancels pending plan orders.
+// CloseAllPositions closes all open positions for a symbol (or all symbols if symbol is empty) and cancels pending plan and open orders.
 func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 	_ = c.rawCancelAllPlanOrders(ctx, mexcCancelAllPlanOrdersRequest{Symbol: symbol})
-	req := map[string]string{"symbol": symbol}
-	bodyBytes, err := xjson.Marshal(req)
+	_ = c.rawCancelAllOpenOrders(ctx, mexcCancelAllOpenOrdersRequest{Symbol: symbol})
+
+	positions, err := c.GetOpenPositions(ctx, symbol)
 	if err != nil {
 		return err
 	}
-	body, err := c.base.Request(ctx, http.MethodPost, "/api/v1/private/position/close_all", nil, bodyBytes, true)
-	if err != nil {
-		return err
+
+	for i := range positions {
+		pos := positions[i]
+		if symbol != "" && pos.Symbol != symbol {
+			continue
+		}
+		vol := pos.HoldVolCoin
+		if vol == 0 {
+			vol = pos.HoldVolContract
+		}
+		if vol <= 0 {
+			continue
+		}
+
+		side := domain.SideCloseShort
+		if pos.PositionType == exchange.PositionTypeLong {
+			side = domain.SideCloseLong
+		}
+
+		if err := c.ClosePosition(ctx, pos.Symbol, side, vol, domain.PositionModeHedge, pos.Leverage); err != nil {
+			return fmt.Errorf("close position for %s failed: %w", pos.Symbol, err)
+		}
 	}
-	_, err = mexc.ParseFuturesResponse[json.RawMessage](body)
-	return err
+	return nil
 }
 
 // ClosePosition closes one position leg using a reduce-only market order.

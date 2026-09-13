@@ -574,3 +574,123 @@ func TestFuturesClient_PreWarm_And_OrderHTTPClient(t *testing.T) {
 	assert.Equal(t, 1, pingCount)
 	assert.Equal(t, 1, orderCount)
 }
+
+func TestFuturesClient_ClosePosition(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var capturedReq map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/private/order/create", r.URL.Path)
+		bodyBytes, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+
+		var reqMap map[string]any
+		assert.NoError(t, json.Unmarshal(bodyBytes, &reqMap))
+
+		mu.Lock()
+		capturedReq = reqMap
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"close-ord-123","ts":1670000000000}}`))
+	}))
+	defer server.Close()
+
+	client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+
+	err := client.ClosePosition(context.Background(), "BTC_USDT", domain.SideCloseLong, 1.5, domain.PositionModeHedge, 5)
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, "BTC_USDT", capturedReq["symbol"])
+	assert.Equal(t, float64(4), capturedReq["side"]) // CloseLong = 4
+	assert.Equal(t, 1.5, capturedReq["vol"])
+	assert.Equal(t, true, capturedReq["reduceOnly"])
+	assert.Equal(t, float64(5), capturedReq["leverage"])
+}
+
+func TestFuturesClient_CloseAllPositions(t *testing.T) {
+	t.Parallel()
+
+	setupMockServer := func() (*httptest.Server, *[]map[string]any) {
+		var mu sync.Mutex
+		closedOrders := make([]map[string]any, 0)
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case "/api/v1/private/planorder/cancel_all", "/api/v1/private/order/cancel_all":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"success":true,"code":0}`))
+			case "/api/v1/private/position/open_positions":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{
+					"success": true,
+					"code": 0,
+					"data": [
+						{
+							"positionId": 12345,
+							"symbol": "BTC_USDT",
+							"positionType": 1,
+							"holdVol": 2.0,
+							"leverage": 10
+						},
+						{
+							"positionId": 67890,
+							"symbol": "ETH_USDT",
+							"positionType": 2,
+							"holdVol": 10.0,
+							"leverage": 5
+						}
+					]
+				}`))
+			case "/api/v1/private/order/create":
+				bodyBytes, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+
+				var reqMap map[string]any
+				assert.NoError(t, json.Unmarshal(bodyBytes, &reqMap))
+
+				mu.Lock()
+				closedOrders = append(closedOrders, reqMap)
+				mu.Unlock()
+
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"close-123","ts":1670000000000}}`))
+			default:
+				t.Fatalf("unexpected request to %s", r.URL.Path)
+			}
+		}))
+		return server, &closedOrders
+	}
+
+	t.Run("all symbols", func(t *testing.T) {
+		t.Parallel()
+		server, closedOrders := setupMockServer()
+		defer server.Close()
+
+		client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+		err := client.CloseAllPositions(context.Background(), "")
+		require.NoError(t, err)
+		require.Len(t, *closedOrders, 2)
+	})
+
+	t.Run("targeted symbol", func(t *testing.T) {
+		t.Parallel()
+		server, closedOrders := setupMockServer()
+		defer server.Close()
+
+		client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
+		err := client.CloseAllPositions(context.Background(), "BTC_USDT")
+		require.NoError(t, err)
+		require.Len(t, *closedOrders, 1)
+		assert.Equal(t, "BTC_USDT", (*closedOrders)[0]["symbol"])
+		assert.Equal(t, float64(4), (*closedOrders)[0]["side"])
+		assert.Equal(t, 2.0, (*closedOrders)[0]["vol"])
+		assert.Equal(t, true, (*closedOrders)[0]["reduceOnly"])
+	})
+}
