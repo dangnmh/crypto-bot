@@ -77,10 +77,10 @@
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
       "bufferTime": "120ms", // 124ms paid funding fee
-      "postSettleTimeout": "6s", // Force close if reversion lifecycle does not terminally close
-      "minVol24USD": 1000000,
+      "postSettleTimeout": "2s", // Force close if reversion lifecycle does not terminally close
+      "minVol24USD": 5000000,
       "minFundingRate": 0.5,
-      "leverage": 4,
+      "leverage": 8,
       "marginUSD": 500,
       "maxCandidateTrade": 1
       // "minVol24USD": 6000000,
@@ -93,8 +93,8 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "-28ms", // -25ms paid funding fee
-      "postSettleTimeout": "6s",
+      "bufferTime": "-30ms", // -28ms paid funding fee
+      "postSettleTimeout": "2s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
       "marginUSD": 5,
