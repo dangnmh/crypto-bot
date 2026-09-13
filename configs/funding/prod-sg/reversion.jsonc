@@ -78,10 +78,10 @@
       "stopLossPct": 2,
       "bufferTime": "130ms", // SG low-latency: arrives at T_settle + 150ms (matches immediately after settlement snapshot)
       "postSettleTimeout": "6s", // Force close if reversion lifecycle does not terminally close
-      "minVol24USD": 500000,
-      "minFundingRate": 0.3,
+      "minVol24USD": 1000000,
+      "minFundingRate": 0.5,
       "leverage": 4,
-      "marginUSD": 5,
+      "marginUSD": 50,
       "maxCandidateTrade": 1
       // "minVol24USD": 6000000,
       // "minFundingRate": 0.6,
@@ -93,7 +93,7 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "-8ms", // -5ms paid funding fee
+      "bufferTime": "-10ms", // -8ms paid funding fee
       "postSettleTimeout": "6s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
