@@ -93,7 +93,7 @@
     "bybit_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "-5ms", // SG low-latency WS: arrives at T_settle + 12ms (0 funding fee, instant tick fill)
+      "bufferTime": "-8ms", // -5ms paid funding fee
       "postSettleTimeout": "6s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
