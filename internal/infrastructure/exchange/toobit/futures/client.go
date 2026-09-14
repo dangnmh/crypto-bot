@@ -24,7 +24,7 @@ type Client struct {
 // NewClient creates a new Toobit Futures API client.
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	return &Client{
-		base: toobit.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, logCfg),
+		base: toobit.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, logCfg, toobit.ExchangeFutures),
 	}
 }
 

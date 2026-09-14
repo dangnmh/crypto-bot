@@ -20,7 +20,7 @@
     "maxVolumeScore": 10.0, // Max volume score cap (10.0 pts = equivalent of 20M USDT volume cap)
     "pnlTrailing": {
       "enabled": true,
-      "dropPct": 10.0,
+      "dropPct": 6.0,
       "confirmTicks": 2
     },
     "dynamicTP": {
@@ -77,10 +77,10 @@
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
       "bufferTime": "110ms", // 118ms paid funding fee
-      "postSettleTimeout": "1s", // Force close if reversion lifecycle does not terminally close
+      "postSettleTimeout": "2s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 5000000,
       "minFundingRate": 0.5,
-      "leverage": 2,
+      "leverage": 4,
       "marginUSD": 1000,
       "maxCandidateTrade": 1
       // "minVol24USD": 6000000,
@@ -94,7 +94,7 @@
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
       "bufferTime": "-40ms", // -34ms paid funding fee
-      "postSettleTimeout": "1s",
+      "postSettleTimeout": "2s",
       "minVol24USD": 500000,
       "minFundingRate": 0.3,
       "marginUSD": 5,

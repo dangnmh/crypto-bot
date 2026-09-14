@@ -25,7 +25,7 @@ type Client struct {
 // NewClient creates a new MEXC Spot API client.
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	return &Client{
-		base: mexc.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, logCfg),
+		base: mexc.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, logCfg, mexc.ExchangeSpot),
 	}
 }
 

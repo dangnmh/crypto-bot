@@ -20,17 +20,24 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Exchange variant constants.
+const (
+	ExchangeFutures = exchange.ExchangeKucoinFutures
+	ExchangeSpot    = exchange.ExchangeKucoinSpot
+)
+
 // BaseClient encapsulates shared transport, authentication, signing, and rate limiting for KuCoin.
 type BaseClient struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	apiSecret  string
-	passphrase string
-	logCfg     config.LoggingConfig
-	logger     *slog.Logger
-	clock      exchange.Clock
-	limiter    *ratelimit.ExchangeRateLimiter
+	httpClient   *http.Client
+	baseURL      string
+	apiKey       string
+	apiSecret    string
+	passphrase   string
+	exchangeName string
+	logCfg       config.LoggingConfig
+	logger       *slog.Logger
+	clock        exchange.Clock
+	limiter      *ratelimit.ExchangeRateLimiter
 }
 
 // NewBaseClient creates a new KuCoin BaseClient.
@@ -41,8 +48,12 @@ func NewBaseClient(
 	apiSecret string,
 	passphrase string,
 	logCfg config.LoggingConfig,
+	exchangeName string,
 ) *BaseClient {
-	logger := slog.Default().With("exchange", exchange.ExchangeKucoin)
+	if exchangeName == "" {
+		exchangeName = exchange.ExchangeKucoin
+	}
+	logger := slog.Default().With("component", "exchange").With("exchange", exchangeName)
 
 	var clientCopy http.Client
 	if httpClient != nil {
@@ -85,16 +96,22 @@ func NewBaseClient(
 	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(30), 10, nil)
 
 	return &BaseClient{
-		httpClient: &clientCopy,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		passphrase: passphrase,
-		logCfg:     logCfg,
-		logger:     logger,
-		clock:      exchange.RealClock{},
-		limiter:    limiter,
+		httpClient:   &clientCopy,
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		apiSecret:    apiSecret,
+		passphrase:   passphrase,
+		exchangeName: exchangeName,
+		logCfg:       logCfg,
+		logger:       logger,
+		clock:        exchange.RealClock{},
+		limiter:      limiter,
 	}
+}
+
+// ExchangeName returns the exchange identifier.
+func (c *BaseClient) ExchangeName() string {
+	return c.exchangeName
 }
 
 // HTTPClient returns the configured *http.Client.

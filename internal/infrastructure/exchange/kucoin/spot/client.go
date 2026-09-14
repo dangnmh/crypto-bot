@@ -32,7 +32,7 @@ func NewClient(
 	logCfg config.LoggingConfig,
 ) *Client {
 	return &Client{
-		base: kucoin.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, passphrase, logCfg),
+		base: kucoin.NewBaseClient(httpClient, baseURL, apiKey, apiSecret, passphrase, logCfg, kucoin.ExchangeSpot),
 	}
 }
 

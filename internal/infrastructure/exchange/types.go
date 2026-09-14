@@ -34,6 +34,8 @@ type DepthCommit struct {
 // Exchange name constants.
 const (
 	ExchangeMexc          = "mexc"
+	ExchangeMexcSpot      = "mexc_spot"
+	ExchangeMexcFutures   = "mexc_futures"
 	ExchangeGate          = "gate"
 	ExchangeBybit         = "bybit"
 	ExchangeBinance       = "binance"
@@ -42,8 +44,12 @@ const (
 	ExchangeBitget        = "bitget"
 	ExchangeBingx         = "bingx"
 	ExchangeKucoin        = "kucoin"
+	ExchangeKucoinSpot    = "kucoin_spot"
+	ExchangeKucoinFutures = "kucoin_futures"
 	ExchangeDeepcoin      = "deepcoin"
 	ExchangeToobit        = "toobit"
+	ExchangeToobitSpot    = "toobit_spot"
+	ExchangeToobitFutures = "toobit_futures"
 	ExchangeWeex          = "weex"
 	ExchangeBatonex       = "batonex"
 	ExchangeZoomex        = "zoomex"

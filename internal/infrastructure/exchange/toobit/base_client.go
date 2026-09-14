@@ -23,21 +23,31 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Exchange variant constants.
+const (
+	ExchangeFutures = exchange.ExchangeToobitFutures
+	ExchangeSpot    = exchange.ExchangeToobitSpot
+)
+
 // BaseClient encapsulates shared transport, signing, rate limiting, and execution for Toobit.
 type BaseClient struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	apiSecret  string
-	logCfg     config.LoggingConfig
-	logger     *slog.Logger
-	clock      exchange.Clock
-	limiter    *ratelimit.ExchangeRateLimiter
+	httpClient   *http.Client
+	baseURL      string
+	apiKey       string
+	apiSecret    string
+	exchangeName string
+	logCfg       config.LoggingConfig
+	logger       *slog.Logger
+	clock        exchange.Clock
+	limiter      *ratelimit.ExchangeRateLimiter
 }
 
 // NewBaseClient creates a new Toobit BaseClient.
-func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *BaseClient {
-	logger := slog.Default().With("component", "exchange").With("exchange", "toobit")
+func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig, exchangeName string) *BaseClient {
+	if exchangeName == "" {
+		exchangeName = exchange.ExchangeToobit
+	}
+	logger := slog.Default().With("component", "exchange").With("exchange", exchangeName)
 	var clientCopy http.Client
 	if httpClient != nil {
 		clientCopy = *httpClient
@@ -75,15 +85,21 @@ func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, l
 	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
 
 	return &BaseClient{
-		httpClient: &clientCopy,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		logCfg:     logCfg,
-		logger:     logger,
-		clock:      exchange.RealClock{},
-		limiter:    limiter,
+		httpClient:   &clientCopy,
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		apiSecret:    apiSecret,
+		exchangeName: exchangeName,
+		logCfg:       logCfg,
+		logger:       logger,
+		clock:        exchange.RealClock{},
+		limiter:      limiter,
 	}
+}
+
+// ExchangeName returns the exchange identifier.
+func (c *BaseClient) ExchangeName() string {
+	return c.exchangeName
 }
 
 // HTTPClient returns the configured HTTP client.

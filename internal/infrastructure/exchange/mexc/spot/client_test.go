@@ -122,3 +122,10 @@ func TestSpotClient_GetContractDetails_And_System(t *testing.T) {
 	err = client.Ping(context.Background())
 	require.NoError(t, err)
 }
+
+func TestSpotClient_ExchangeName(t *testing.T) {
+	t.Parallel()
+	client := spot.NewClient(nil, "http://localhost", "key", "secret", config.LoggingConfig{})
+	require.NotNil(t, client)
+	assert.Equal(t, "mexc_spot", client.BaseClient().ExchangeName())
+}

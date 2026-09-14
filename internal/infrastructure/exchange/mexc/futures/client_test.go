@@ -694,3 +694,10 @@ func TestFuturesClient_CloseAllPositions(t *testing.T) {
 		assert.Equal(t, true, (*closedOrders)[0]["reduceOnly"])
 	})
 }
+
+func TestFuturesClient_ExchangeName(t *testing.T) {
+	t.Parallel()
+	client := futures.NewClient(nil, "http://localhost", "key", "secret", config.LoggingConfig{})
+	require.NotNil(t, client)
+	assert.Equal(t, "mexc_futures", client.BaseClient().ExchangeName())
+}
