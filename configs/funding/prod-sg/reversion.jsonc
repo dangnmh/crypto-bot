@@ -76,7 +76,7 @@
     "mexc_futures": {
       "takeProfitPct": 1.5,
       "stopLossPct": 2,
-      "bufferTime": "111ms", // 110ms dont paid funding fee, 115ms paid funding fee
+      "bufferTime": "110ms", // 110ms dont paid funding fee, 111ms paid funding fee
       "postSettleTimeout": "2s", // Force close if reversion lifecycle does not terminally close
       // "minVol24USD": 5000000,
       // "minFundingRate": 0.5,
