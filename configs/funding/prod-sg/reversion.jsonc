@@ -20,7 +20,7 @@
     "maxVolumeScore": 10.0, // Max volume score cap (10.0 pts = equivalent of 20M USDT volume cap)
     "pnlTrailing": {
       "enabled": true,
-      "dropPct": 6.0,
+      "dropPct": 4.0,
       "confirmTicks": 2
     },
     "dynamicTP": {
