@@ -420,6 +420,49 @@ func TestBlackBox_EmergencyBailoutRetryLoop(t *testing.T) {
 	}
 }
 
+// Test 3b: Emergency Bailout Retry Loop on ClosePosition failure with context cancellation.
+func TestBlackBox_EmergencyBailoutRetryLoop_ContextCancelled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		closeAllErr:      errors.New("close all positions failed"),
+		closePositionErr: errors.New("close position failed"),
+	}
+
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+
+	_, err = mgr.HandleExecuteBailout(ctx, "req-bailout-bb-002", "bybit", "BTCUSDT", shared.SideOpenLong, 1.5, "timeout_expired")
+	if err == nil {
+		t.Fatalf("expected HandleExecuteBailout to fail when context cancelled and ClosePosition fails")
+	}
+
+	if client.closeAllCalls.Load() != 1 {
+		t.Errorf("expected 1 CloseAllPositions call, got %d", client.closeAllCalls.Load())
+	}
+	if client.closePositionCalls.Load() < 1 {
+		t.Errorf("expected at least 1 ClosePosition call, got %d", client.closePositionCalls.Load())
+	}
+}
+
 // Test 4: Custom Contract Size Notional USD Calculation.
 func TestBlackBox_ContractSizeNotionalUSD(t *testing.T) {
 	t.Parallel()

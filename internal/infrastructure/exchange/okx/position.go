@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"time"
 
 	"crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/exchange"
@@ -140,7 +139,6 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
 		ReduceOnly:   true,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "okx"),
 		Leverage:     leverage,
 	}
 	_, err := c.CreateOrder(ctx, req)

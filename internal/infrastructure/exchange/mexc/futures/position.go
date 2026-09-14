@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/samber/lo"
 
@@ -158,7 +157,6 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Type:         int(exchange.OrderTypeMarket),
 		PositionMode: int(positionMode),
 		ReduceOnly:   true,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "mexc"),
 		Leverage:     leverage,
 	}
 	_, err := c.rawCreateOrder(ctx, req)

@@ -155,7 +155,6 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		PositionMode: positionMode,
 		ReduceOnly:   true,
 		Leverage:     leverage,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "binance"),
 	}
 	_, err := c.CreateOrder(ctx, req)
 	return err

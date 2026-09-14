@@ -243,7 +243,6 @@ func (c *Client) ClosePosition(ctx context.Context, symbol string, closeSide dom
 		Side:         orderSide,
 		Type:         exchange.OrderTypeMarket,
 		PositionMode: positionMode,
-		ExternalOID:  exchange.ExternalOrderID(symbol, time.Now(), "gate"),
 		Leverage:     leverage,
 	})
 	if err != nil {

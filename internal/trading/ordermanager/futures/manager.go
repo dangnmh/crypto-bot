@@ -1691,21 +1691,32 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 			slog.String("req_id", reqID),
 			slog.String("symbol", symbol),
 			slog.Any("error", err))
-		maxRetries := 3
-		var errClose error
-		for i := 1; i <= maxRetries; i++ {
-			retries = i
-			errClose = client.ClosePosition(ctx, symbol, closeSide, volume, posMode, leverage)
-			if errClose == nil {
-				break
-			}
+		bo := backoff.WithContext(
+			backoff.WithMaxRetries(
+				backoff.NewExponentialBackOff(
+					backoff.WithInitialInterval(time.Second),
+					backoff.WithMaxInterval(2*time.Second),
+					backoff.WithRandomizationFactor(0.5),
+				),
+				10,
+			),
+			ctx,
+		)
+
+		var attempt int
+		errClose := backoff.RetryNotify(func() error {
+			attempt++
+			return client.ClosePosition(ctx, symbol, closeSide, volume, posMode, leverage)
+		}, bo, func(err error, d time.Duration) {
 			m.log.WarnContext(ctx, "ClosePosition bailout retry failed",
 				slog.String("exchange", exchangeName),
 				slog.String("req_id", reqID),
 				slog.String("symbol", symbol),
-				slog.Int("attempt", i),
-				slog.Any("error", errClose))
-		}
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", d),
+				slog.Any("error", err))
+		})
+		retries = attempt
 		if errClose != nil {
 			return OrderBailoutExecutedEvent{}, fmt.Errorf("bailout failed after %d retries: %w", retries, errClose)
 		}
