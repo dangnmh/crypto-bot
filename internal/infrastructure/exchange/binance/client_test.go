@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -1134,4 +1135,40 @@ func TestClient_PreWarm_And_OrderHTTPClient(t *testing.T) {
 	defer mu.Unlock()
 	assert.Equal(t, 1, pingCount)
 	assert.Equal(t, 1, orderCount)
+}
+
+//nolint:paralleltest // Mutates global slog default logger
+func TestClient_HTTPLog(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"orderId":123,"status":"NEW"}`))
+	}))
+	defer server.Close()
+
+	var buf bytes.Buffer
+	h := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() {
+		slog.SetDefault(oldDefault)
+	})
+
+	logCfg := config.LoggingConfig{HTTP: true}
+	client := binance.NewClient(server.Client(), server.URL, "key", "secret", logCfg)
+
+	orderClient := server.Client()
+	client.SetOrderHTTPClient(orderClient)
+
+	dispatch, err := client.PrepareOrder(context.Background(), exchange.SubmitOrderRequest{
+		Symbol: "BTCUSDT",
+		Price:  50000,
+		Vol:    1,
+		Side:   exchange.SideOpenLong,
+		Type:   exchange.OrderTypeLimit,
+	})
+	require.NoError(t, err)
+	_, err = dispatch(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "HTTP Request", "logs should contain HTTP Request when using SetOrderHTTPClient")
 }

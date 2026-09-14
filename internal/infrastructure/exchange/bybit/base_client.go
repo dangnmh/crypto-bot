@@ -42,38 +42,9 @@ type BaseClient struct {
 func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountType string, logCfg config.LoggingConfig) *BaseClient {
 	logger := slog.Default().With("component", "exchange").With("exchange", "bybit")
 
-	var clientCopy http.Client
-	if httpClient != nil {
-		clientCopy = *httpClient
-	}
-
-	if httpClient != nil && clientCopy.Transport != nil {
-		if logCfg.HTTP {
-			rt := clientCopy.Transport
-			rt = transportlog.NewTransportLog(rt,
-				transportlog.LogOptionLogger(logger),
-				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-					OnStatus:       []int{0},
-					WhiteListPaths: []string{"*"}, // match all paths
-					BlackListPaths: []string{
-						"GET|/v5/market/tickers",
-						"GET|/v5/market/time",
-						"GET|/v5/market/instruments-info",
-					}, // match everything cleanly
-				}),
-				transportlog.LogOptionRedactSensitive(true),
-				transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key", "X-BAPI-API-KEY"}),
-				transportlog.LogOptionQueryParams(true),
-			)
-			clientCopy.Transport = rt
-		}
-		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
-	}
-
 	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
 
-	return &BaseClient{
-		httpClient:  &clientCopy,
+	baseClient := &BaseClient{
 		baseURL:     strings.TrimRight(baseURL, "/"),
 		apiKey:      apiKey,
 		apiSecret:   apiSecret,
@@ -83,6 +54,40 @@ func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret, accountT
 		clock:       exchange.RealClock{},
 		limiter:     limiter,
 	}
+
+	var clientCopy http.Client
+	if httpClient != nil {
+		clientCopy = *httpClient
+	}
+	clientCopy.Transport = baseClient.wrapTransport(clientCopy.Transport)
+	baseClient.httpClient = &clientCopy
+
+	return baseClient
+}
+
+func (c *BaseClient) wrapTransport(transport http.RoundTripper) http.RoundTripper {
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+
+	if c.logCfg.HTTP {
+		transport = transportlog.NewTransportLog(transport,
+			transportlog.LogOptionLogger(c.logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"}, // match all paths
+				BlackListPaths: []string{
+					"GET|/v5/market/tickers",
+					"GET|/v5/market/time",
+					"GET|/v5/market/instruments-info",
+				}, // match everything cleanly
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{"X-Bapi-Api-Key", "X-BAPI-API-KEY"}),
+			transportlog.LogOptionQueryParams(true),
+		)
+	}
+	return httpclient.WrapWithRequestID(transport)
 }
 
 // HTTPClient returns the underlying HTTP client.
@@ -104,10 +109,7 @@ func (c *BaseClient) SetOrderHTTPClient(client *http.Client) {
 		return
 	}
 	clientCopy := *client
-	if clientCopy.Transport == nil {
-		clientCopy.Transport = http.DefaultTransport
-	}
-	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	clientCopy.Transport = c.wrapTransport(clientCopy.Transport)
 	c.orderHTTPClient = &clientCopy
 }
 

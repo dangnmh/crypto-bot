@@ -53,61 +53,60 @@ type Client struct {
 func NewClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, logCfg config.LoggingConfig) *Client {
 	logger := slog.Default().With("component", "exchange", "exchange", "binance")
 
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
+
+	clientObj := &Client{
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		apiKey:    apiKey,
+		apiSecret: apiSecret,
+		logCfg:    logCfg,
+		logger:    logger,
+		clock:     exchange.RealClock{},
+		limiter:   limiter,
+		tradeMode: exchange.TradeModeHTTP,
+	}
+
 	var clientCopy http.Client
 	if httpClient != nil {
 		clientCopy = *httpClient
 	}
-	if clientCopy.Transport == nil {
-		clientCopy.Transport = http.DefaultTransport
+	clientCopy.Transport = clientObj.wrapTransport(clientCopy.Transport)
+	clientObj.httpClient = &clientCopy
+
+	return clientObj
+}
+
+func (c *Client) wrapTransport(transport http.RoundTripper) http.RoundTripper {
+	if transport == nil {
+		transport = http.DefaultTransport
 	}
 
-	if clientCopy.Transport != nil {
-		if logCfg.HTTP {
-			rt := clientCopy.Transport
-			rt = &decompressionRoundTripper{underlying: rt}
-			rt = transportlog.NewTransportLog(rt,
-				transportlog.LogOptionLogger(logger),
-				transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
-					OnStatus:       []int{0},
-					WhiteListPaths: []string{"*"},
-					BlackListPaths: []string{
-						"GET|/fapi/v1/ping",
-						"GET|/fapi/v1/time",
-						"GET|/fapi/v1/ticker/24hr",
-						"GET|/fapi/v1/ticker/bookTicker",
-						"GET|/fapi/v1/exchangeInfo",
-						"GET|/fapi/v1/premiumIndex",
-						"POST|/fapi/v1/listenKey",
-					},
-				}),
-				transportlog.LogOptionRedactSensitive(true),
-				transportlog.LogOptionRedactSensitiveKeys([]string{
-					"X-MBX-APIKEY",
-				}),
-				transportlog.LogOptionQueryParams(true),
-			)
-			clientCopy.Transport = rt
-		}
-		clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	if c.logCfg.HTTP {
+		rt := transport
+		rt = &decompressionRoundTripper{underlying: rt}
+		transport = transportlog.NewTransportLog(rt,
+			transportlog.LogOptionLogger(c.logger),
+			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
+				OnStatus:       []int{0},
+				WhiteListPaths: []string{"*"},
+				BlackListPaths: []string{
+					"GET|/fapi/v1/ping",
+					"GET|/fapi/v1/time",
+					"GET|/fapi/v1/ticker/24hr",
+					"GET|/fapi/v1/ticker/bookTicker",
+					"GET|/fapi/v1/exchangeInfo",
+					"GET|/fapi/v1/premiumIndex",
+					"POST|/fapi/v1/listenKey",
+				},
+			}),
+			transportlog.LogOptionRedactSensitive(true),
+			transportlog.LogOptionRedactSensitiveKeys([]string{
+				"X-MBX-APIKEY",
+			}),
+			transportlog.LogOptionQueryParams(true),
+		)
 	}
-
-	if baseURL == "" {
-		baseURL = "https://fapi.binance.com"
-	}
-
-	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(10), 2, nil)
-
-	return &Client{
-		httpClient: &clientCopy,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		apiSecret:  apiSecret,
-		logCfg:     logCfg,
-		logger:     logger,
-		clock:      exchange.RealClock{},
-		limiter:    limiter,
-		tradeMode:  exchange.TradeModeHTTP,
-	}
+	return httpclient.WrapWithRequestID(transport)
 }
 
 // HTTPClient returns the configured *http.Client.
@@ -129,10 +128,7 @@ func (c *Client) SetOrderHTTPClient(client *http.Client) {
 		return
 	}
 	clientCopy := *client
-	if clientCopy.Transport == nil {
-		clientCopy.Transport = http.DefaultTransport
-	}
-	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	clientCopy.Transport = c.wrapTransport(clientCopy.Transport)
 	c.orderHTTPClient = &clientCopy
 }
 

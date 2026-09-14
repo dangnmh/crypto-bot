@@ -2,7 +2,10 @@ package mexc_test
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"crypto-bot/internal/infrastructure/config"
@@ -56,4 +59,39 @@ func TestNewBaseClient_ExchangeLogger(t *testing.T) {
 			assert.Contains(t, logOutput, `"component":"exchange"`)
 		})
 	}
+}
+
+//nolint:paralleltest // Mutates global slog default logger
+func TestBaseClient_HTTPLog(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":200,"data":"ok"}`))
+	}))
+	defer server.Close()
+
+	var buf bytes.Buffer
+	h := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() {
+		slog.SetDefault(oldDefault)
+	})
+
+	logCfg := config.LoggingConfig{HTTP: true}
+	client := mexc.NewBaseClient(server.Client(), server.URL, "key", "secret", logCfg, mexc.ExchangeFutures)
+
+	// 1. Without SetOrderHTTPClient
+	_, err := client.Request(context.Background(), http.MethodPost, "/api/v1/private/order/create", nil, []byte(`{}`), false)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "HTTP Request", "logs should contain HTTP Request before SetOrderHTTPClient")
+
+	buf.Reset()
+
+	// 2. With SetOrderHTTPClient
+	orderClient := server.Client()
+	client.SetOrderHTTPClient(orderClient)
+
+	_, err = client.Request(context.Background(), http.MethodPost, "/api/v1/private/order/create", nil, []byte(`{}`), false)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "HTTP Request", "logs should contain HTTP Request even when using SetOrderHTTPClient")
 }

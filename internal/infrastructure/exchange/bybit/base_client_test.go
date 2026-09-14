@@ -1,7 +1,9 @@
 package bybit_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -171,4 +173,33 @@ func TestBaseClient_PreWarm_And_OrderHTTPClient(t *testing.T) {
 
 	assert.Equal(t, 1, pingCount)
 	assert.Equal(t, 1, orderCount)
+}
+
+//nolint:paralleltest // Mutates global slog default logger
+func TestBaseClient_HTTPLog(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"retCode":0,"retMsg":"OK","result":{}}`))
+	}))
+	defer server.Close()
+
+	var buf bytes.Buffer
+	h := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() {
+		slog.SetDefault(oldDefault)
+	})
+
+	logCfg := config.LoggingConfig{HTTP: true}
+	client := bybit.NewBaseClient(server.Client(), server.URL, "key", "secret", "unified", logCfg)
+
+	orderClient := server.Client()
+	client.SetOrderHTTPClient(orderClient)
+
+	dispatch, err := client.PrepareRequest(context.Background(), http.MethodPost, "/v5/order/create", nil, []byte(`{}`))
+	require.NoError(t, err)
+	_, err = dispatch(context.Background())
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "HTTP Request", "logs should contain HTTP Request when using SetOrderHTTPClient")
 }

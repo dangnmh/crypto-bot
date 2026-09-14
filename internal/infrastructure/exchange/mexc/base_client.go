@@ -48,18 +48,42 @@ func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, l
 	}
 	logger := slog.Default().With("component", "exchange").With("exchange", exchangeName)
 
+	configs := map[string]ratelimit.EndpointConfig{
+		"/api/v1/contract/depth/":         {Limit: rate.Limit(3), Burst: 1, Weight: 1},
+		"/api/v1/contract/depth_commits/": {Limit: rate.Limit(5), Burst: 2, Weight: 1},
+		"/api/v3/depth":                   {Limit: rate.Limit(5), Burst: 2, Weight: 3},
+	}
+	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(20), 5, configs)
+
+	baseClient := &BaseClient{
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		apiKey:       apiKey,
+		apiSecret:    apiSecret,
+		exchangeName: exchangeName,
+		logCfg:       logCfg,
+		logger:       logger,
+		clock:        exchange.RealClock{},
+		limiter:      limiter,
+	}
+
 	var clientCopy http.Client
 	if httpClient != nil {
 		clientCopy = *httpClient
 	}
-	if clientCopy.Transport == nil {
-		clientCopy.Transport = http.DefaultTransport
+	clientCopy.Transport = baseClient.wrapTransport(clientCopy.Transport)
+	baseClient.httpClient = &clientCopy
+
+	return baseClient
+}
+
+func (c *BaseClient) wrapTransport(transport http.RoundTripper) http.RoundTripper {
+	if transport == nil {
+		transport = http.DefaultTransport
 	}
 
-	if logCfg.HTTP {
-		rt := clientCopy.Transport
-		rt = transportlog.NewTransportLog(rt,
-			transportlog.LogOptionLogger(logger),
+	if c.logCfg.HTTP {
+		transport = transportlog.NewTransportLog(transport,
+			transportlog.LogOptionLogger(c.logger),
 			transportlog.LogOptionMatcherConfig(transportlog.MatcherConfig{
 				OnStatus:       []int{0},
 				WhiteListPaths: []string{"*"},
@@ -80,28 +104,8 @@ func NewBaseClient(httpClient *http.Client, baseURL, apiKey, apiSecret string, l
 			transportlog.LogOptionRedactSensitiveKeys([]string{"ApiKey", "X-MEXC-APIKEY"}),
 			transportlog.LogOptionQueryParams(true),
 		)
-		clientCopy.Transport = rt
 	}
-	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
-
-	configs := map[string]ratelimit.EndpointConfig{
-		"/api/v1/contract/depth/":         {Limit: rate.Limit(3), Burst: 1, Weight: 1},
-		"/api/v1/contract/depth_commits/": {Limit: rate.Limit(5), Burst: 2, Weight: 1},
-		"/api/v3/depth":                   {Limit: rate.Limit(5), Burst: 2, Weight: 3},
-	}
-	limiter := ratelimit.NewExchangeRateLimiter(rate.Limit(20), 5, configs)
-
-	return &BaseClient{
-		httpClient:   &clientCopy,
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		apiKey:       apiKey,
-		apiSecret:    apiSecret,
-		exchangeName: exchangeName,
-		logCfg:       logCfg,
-		logger:       logger,
-		clock:        exchange.RealClock{},
-		limiter:      limiter,
-	}
+	return httpclient.WrapWithRequestID(transport)
 }
 
 // ExchangeName returns the exchange identifier.
@@ -128,10 +132,7 @@ func (c *BaseClient) SetOrderHTTPClient(client *http.Client) {
 		return
 	}
 	clientCopy := *client
-	if clientCopy.Transport == nil {
-		clientCopy.Transport = http.DefaultTransport
-	}
-	clientCopy.Transport = httpclient.WrapWithRequestID(clientCopy.Transport)
+	clientCopy.Transport = c.wrapTransport(clientCopy.Transport)
 	c.orderHTTPClient = &clientCopy
 }
 

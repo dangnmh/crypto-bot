@@ -85,7 +85,7 @@
       // "maxCandidateTrade": 1
       "minVol24USD": 6000000,
       "minFundingRate": 0.6,
-      "leverage": 15,
+      "leverage": 20,
       "marginUSD": 1000,
       "maxCandidateTrade": 2,
       "maxMarginUSDOfCandidate": 700
