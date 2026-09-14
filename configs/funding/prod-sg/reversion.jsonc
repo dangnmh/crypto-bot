@@ -80,7 +80,7 @@
       "postSettleTimeout": "1s", // Force close if reversion lifecycle does not terminally close
       "minVol24USD": 5000000,
       "minFundingRate": 0.5,
-      "leverage": 2,
+      "leverage": 1,
       "marginUSD": 500,
       "maxCandidateTrade": 1
       // "minVol24USD": 6000000,
