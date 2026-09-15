@@ -1,7 +1,7 @@
 {
   // Order Obfuscator Configuration (Production Environment)
   // Master toggle to enable or disable background obfuscation
-  "enabled": false,
+  "enabled": true,
   // Interval between database scans for profitable trades
   "pollInterval": "15m",
   // Jitter duration added/subtracted randomly to pollInterval (e.g. 2m -> [13m, 17m])
@@ -10,9 +10,9 @@
   "lookbackWindow": "24h",
   // Exchange-specific obfuscation settings
   "exchanges": {
-    "toobit_futures": {
+    "mexc_futures": {
       // Enable obfuscation for this specific exchange
-      "enabled": false,
+      "enabled": true,
       // Minimum Net Funding Profit (USDT) of a symbol required to activate loss budget obfuscation
       "netPnLThresholdUSDT": 20.0,
       // Minimum notional order size in USD (floor)
@@ -22,7 +22,7 @@
       // Real USDT collateral/margin allocated per position
       "marginUSDT": 200.0,
       // Leverage (e.g. 2, 5, 10). If 0 or omitted, leverage is dynamically computed as ceil(notional / margin)
-      "leverage": 10,
+      "leverage": 2,
       // Target Take Profit %
       "takeProfitPct": 0.5,
       // Safety Stop Loss %
@@ -36,7 +36,7 @@
       // Maximum number of active obfuscation orders to trigger per scan cycle
       "maxActiveOrders": 2,
       // % of funding profit to sacrifice as intentional loss per symbol (e.g. 50.0 = 50%)
-      "sacrificeLossPct": 35.0,
+      "sacrificeLossPct": 20.0,
       // Safety cap on maximum total loss in USD per symbol per day
       "maxDailyLossUSD": 400.0
     }
