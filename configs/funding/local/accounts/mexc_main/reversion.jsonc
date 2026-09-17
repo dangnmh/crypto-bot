@@ -1,0 +1,6 @@
+{
+  "takeProfitPct": 1,
+  "stopLossPct": 2,
+  "bufferTime": "-52ms",
+  "postSettleTimeout": "2s"
+}

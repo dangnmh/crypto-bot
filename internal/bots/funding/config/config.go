@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -28,7 +31,7 @@ func LoadAndValidate[T any](path string) (*T, error) {
 	}
 
 	typeName := reflect.TypeFor[T]().Name()
-	if typeName != "SystemConfig" && typeName != "FundingConfig" && typeName != "ReversionConfig" {
+	if typeName != "SystemConfig" && typeName != "FundingConfig" && typeName != "ReversionConfig" && typeName != "AccountReversionConfig" {
 		if val.Kind() == reflect.Struct {
 			if err := validate.Struct(cfg); err != nil {
 				return nil, fmt.Errorf("validation failed: %w", err)
@@ -47,45 +50,59 @@ func LoadAndValidate[T any](path string) (*T, error) {
 }
 
 // Load reads configuration files using specific paths and returns the Config.
-func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath, obfuscatorPath, dilutionPath string) (*Config, error) {
-	cfg := &Config{
-		System:    sysCfg,
-		Symbols:   nil,
-		Blacklist: &BlacklistConfig{},
+// Load loads multi-account configurations from an accounts manifest file and validates all configurations.
+// All configurations and credentials must be explicitly provided without fallback defaults.
+func Load(sysCfg *SystemConfig, accountsPath, blacklistPath, commonReversionPath string) (*Config, error) {
+	paths := LoadPaths{
+		AccountsPath:        accountsPath,
+		BlacklistPath:       blacklistPath,
+		CommonReversionPath: commonReversionPath,
+	}
+	validate := newValidator()
+	if err := validate.Struct(paths); err != nil {
+		return nil, fmt.Errorf("config paths validation: %w", err)
+	}
+
+	manifest, err := sysconfig.LoadAccountsManifest(accountsPath)
+	if err != nil {
+		return nil, fmt.Errorf("load accounts manifest: %w", err)
+	}
+
+	commonReversion, err := resolveCommonReversion(commonReversionPath)
+	if err != nil {
+		return nil, fmt.Errorf("parse reversion config: %w", err)
 	}
 
 	blk, err := LoadAndValidate[BlacklistConfig](blacklistPath)
 	if err != nil {
 		return nil, fmt.Errorf("parse blacklist config: %w", err)
 	}
-	cfg.Blacklist = blk
 
-	reversionCfg, err := LoadAndValidate[ReversionConfig](reversionPath)
-	if err != nil {
-		return nil, fmt.Errorf("parse reversion config: %w", err)
+	cfg := &Config{
+		System:          sysCfg,
+		CommonReversion: commonReversion,
+		Accounts:        make(map[string]*AccountBotConfig),
+		Blacklist:       blk,
 	}
-	cfg.Reversion = reversionCfg
 
-	obf, err := LoadAndValidate[ObfuscatorConfig](obfuscatorPath)
-	if err != nil {
-		return nil, fmt.Errorf("parse obfuscator config: %w", err)
-	}
-	cfg.Obfuscator = obf
-
-	dilutionCfg, err := LoadAndValidate[DilutionConfig](dilutionPath)
-	if err != nil {
-		return nil, fmt.Errorf("parse dilution config: %w", err)
-	}
-	cfg.Dilution = dilutionCfg
-
-	applyReversionDefaults(cfg.Reversion)
-
-	if cfg.Reversion.Scanners.Configured {
-		symCfgs, err := LoadAndValidate[FundingConfig](fundingPath)
-		if err != nil {
-			return nil, fmt.Errorf("parse funding config: %w", err)
+	accountsDir := filepath.Dir(accountsPath)
+	for i := range manifest.Accounts {
+		acc := &manifest.Accounts[i]
+		if !acc.Enabled {
+			continue
 		}
-		cfg.Symbols = []SymbolConfig(*symCfgs)
+		if strings.TrimSpace(acc.ID) == "" {
+			return nil, fmt.Errorf("manifest accounts[%d]: account id is required", i)
+		}
+		accBotCfg, err := LoadAccountBotConfig(*acc, commonReversion, accountsDir)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Accounts[acc.ID] = accBotCfg
+	}
+
+	if len(cfg.Accounts) == 0 {
+		return nil, fmt.Errorf("at least one enabled account must be present in %s", accountsPath)
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -93,6 +110,111 @@ func Load(sysCfg *SystemConfig, fundingPath, blacklistPath, reversionPath, obfus
 	}
 
 	return cfg, nil
+}
+
+func resolveCommonReversion(commonReversionPath string) (*ReversionConfig, error) {
+	cr, err := LoadAndValidate[ReversionConfig](commonReversionPath)
+	if err != nil {
+		return nil, fmt.Errorf("load common reversion config from %s: %w", commonReversionPath, err)
+	}
+	applyReversionDefaults(cr)
+	return cr, nil
+}
+
+// LoadMultiAccount is an alias to Load for multi-account manifest loading.
+func LoadMultiAccount(sysCfg *SystemConfig, accountsPath, blacklistPath, commonReversionPath string) (*Config, error) {
+	return Load(sysCfg, accountsPath, blacklistPath, commonReversionPath)
+}
+
+func resolveAccountConfigPath(baseDir, rawPath string) string {
+	rawPath = strings.TrimSpace(rawPath)
+	if rawPath == "" || filepath.IsAbs(rawPath) {
+		return rawPath
+	}
+	if baseDir != "" {
+		rel := filepath.Join(baseDir, rawPath)
+		if _, err := os.Stat(rel); err == nil {
+			return rel
+		}
+	}
+	if _, err := os.Stat(rawPath); err == nil {
+		return rawPath
+	}
+	if baseDir != "" {
+		return filepath.Join(baseDir, rawPath)
+	}
+	return rawPath
+}
+
+func getRequiredAccountConfigPath(acc sysconfig.AccountConfig, key string, baseDir ...string) (string, error) {
+	p, ok := acc.Configs[key]
+	if !ok || strings.TrimSpace(p) == "" {
+		return "", fmt.Errorf("account %q missing %s config in configs.%s", acc.ID, key, key)
+	}
+	if len(baseDir) > 0 && baseDir[0] != "" {
+		return resolveAccountConfigPath(baseDir[0], p), nil
+	}
+	return p, nil
+}
+
+// LoadAccountBotConfig loads and validates isolated configs for a single account.
+// An optional commonReversion can be provided as a base to inherit common settings.
+// An optional baseDir can be provided to resolve account config paths if they are relative.
+func LoadAccountBotConfig(acc sysconfig.AccountConfig, commonReversion *ReversionConfig, baseDir ...string) (*AccountBotConfig, error) {
+	if strings.TrimSpace(acc.ID) == "" {
+		return nil, fmt.Errorf("account id is required")
+	}
+	accCfg := &AccountBotConfig{
+		Account: acc,
+	}
+
+	reversionPath, err := getRequiredAccountConfigPath(acc, "reversion", baseDir...)
+	if err != nil {
+		return nil, err
+	}
+	accRevCfg, err := LoadAndValidate[AccountReversionConfig](reversionPath)
+	if err != nil {
+		return nil, fmt.Errorf("account %q parse reversion config: %w", acc.ID, err)
+	}
+	accCfg.Reversion = MergeReversionConfig(commonReversion, accRevCfg, acc.Exchange)
+
+	obfPath, err := getRequiredAccountConfigPath(acc, "obfuscator", baseDir...)
+	if err != nil {
+		return nil, err
+	}
+	obf, err := LoadAndValidate[ObfuscatorConfig](obfPath)
+	if err != nil {
+		return nil, fmt.Errorf("account %q parse obfuscator config: %w", acc.ID, err)
+	}
+	accCfg.Obfuscator = obf
+
+	dilPath, err := getRequiredAccountConfigPath(acc, "dilution", baseDir...)
+	if err != nil {
+		return nil, err
+	}
+	dil, err := LoadAndValidate[DilutionConfig](dilPath)
+	if err != nil {
+		return nil, fmt.Errorf("account %q parse dilution config: %w", acc.ID, err)
+	}
+	accCfg.Dilution = dil
+
+	fundingPath, err := getRequiredAccountConfigPath(acc, "funding", baseDir...)
+	if err != nil {
+		return nil, err
+	}
+	symCfgs, err := LoadAndValidate[FundingConfig](fundingPath)
+	if err != nil {
+		return nil, fmt.Errorf("account %q parse funding config: %w", acc.ID, err)
+	}
+	accCfg.Symbols = []SymbolConfig(*symCfgs)
+	for j := range accCfg.Symbols {
+		accCfg.Symbols[j].AccountID = acc.ID
+		if accCfg.Symbols[j].Exchange == "" {
+			accCfg.Symbols[j].Exchange = acc.Exchange
+		}
+	}
+
+	return accCfg, nil
 }
 
 func applyReversionDefaults(r *ReversionConfig) {
@@ -128,49 +250,209 @@ func applyReversionDefaults(r *ReversionConfig) {
 		r.TradeSide = "both"
 	}
 
-	// Normalize Safety limit percentage
-	r.Safety.MaxImpactRatio /= 100
-}
-
-func (c *Config) parseTradingDefaults() (RawFundingReversionConfig, error) {
-	return c.Reversion.RawFundingReversionConfig, nil
-}
-
-func (c *Config) validateSymbols(defaults *RawFundingReversionConfig) error {
-	for i := range c.Symbols {
-		sc := &c.Symbols[i]
-
-		sc.Exchange = strings.ToLower(strings.TrimSpace(sc.Exchange))
-		if sc.Exchange == "" {
-			return fmt.Errorf("symbols[%d].exchange is required", i)
-		}
-		if !c.exchangeConfigured(sc.Exchange) {
-			return fmt.Errorf("symbols[%d].exchange %q is not configured", i, sc.Exchange)
-		}
-
-		c.applyDefaults(sc, defaults)
-		c.normalizeSymbolMetrics(sc)
-		c.defaultSymbolModes(sc)
+	// Normalize Safety limit percentage (guard against repeated division)
+	if r.Safety.MaxImpactRatio > 1 {
+		r.Safety.MaxImpactRatio /= 100
 	}
-	return nil
+}
+
+// MergeReversionConfig merges an account-level reversion override over a base common reversion config.
+func MergeReversionConfig(base *ReversionConfig, acc *AccountReversionConfig, accountExchange ...string) *ReversionConfig {
+	res := cloneBaseReversionConfig(base)
+	if acc == nil {
+		applyReversionDefaults(res)
+		return res
+	}
+
+	mergeExchangeReversionConfig(&res.Default, &acc.ExchangeReversionConfig)
+	mergeAccountExchangeOverride(res, acc, accountExchange...)
+
+	applyReversionDefaults(res)
+	return res
+}
+
+func cloneBaseReversionConfig(base *ReversionConfig) *ReversionConfig {
+	res := &ReversionConfig{}
+	if base == nil {
+		res.Exchanges = make(map[string]ExchangeReversionConfig)
+		return res
+	}
+	*res = *base
+	if base.Exchanges != nil {
+		res.Exchanges = make(map[string]ExchangeReversionConfig, len(base.Exchanges))
+		maps.Copy(res.Exchanges, base.Exchanges)
+	} else {
+		res.Exchanges = make(map[string]ExchangeReversionConfig)
+	}
+	return res
+}
+
+func mergeAccountExchangeOverride(res *ReversionConfig, acc *AccountReversionConfig, accountExchange ...string) {
+	if len(accountExchange) == 0 || strings.TrimSpace(accountExchange[0]) == "" {
+		return
+	}
+	rawExch := strings.TrimSpace(accountExchange[0])
+	exchangesToUpdate := []string{rawExch}
+	baseExch := strings.TrimSuffix(strings.TrimSuffix(rawExch, "_spot"), "_futures")
+	if baseExch != rawExch {
+		exchangesToUpdate = append(exchangesToUpdate, baseExch)
+	}
+	futuresExch := baseExch + "_futures"
+	if futuresExch != rawExch {
+		exchangesToUpdate = append(exchangesToUpdate, futuresExch)
+	}
+
+	for _, exch := range exchangesToUpdate {
+		cfg, ok := res.Exchanges[exch]
+		if !ok {
+			cfg = res.Default
+		} else {
+			mergeExchangeReversionConfig(&cfg, &acc.ExchangeReversionConfig)
+		}
+		res.Exchanges[exch] = cfg
+	}
+}
+
+func mergeExchangeReversionConfig(dst, src *ExchangeReversionConfig) {
+	if dst != nil && src != nil {
+		MergeExchangeReversionConfig(dst, *src)
+	}
+}
+
+// ReversionForAccount returns the reversion config for the specified account ID,
+// or an error if the account is not found or its reversion config is missing.
+func (c *Config) ReversionForAccount(accountID string) (*ReversionConfig, error) {
+	if c == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+	if strings.TrimSpace(accountID) == "" {
+		return nil, fmt.Errorf("missing required accountID")
+	}
+	acc, ok := c.Accounts[accountID]
+	if !ok || acc == nil {
+		return nil, fmt.Errorf("account %q not found in config", accountID)
+	}
+	if acc.Reversion == nil {
+		return nil, fmt.Errorf("account %q missing reversion config", accountID)
+	}
+	return acc.Reversion, nil
+}
+
+// ObfuscatorForAccount returns the obfuscator config for the specified account ID,
+// or an error if the account is not found or its obfuscator config is missing.
+func (c *Config) ObfuscatorForAccount(accountID string) (*ObfuscatorConfig, error) {
+	if c == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+	if strings.TrimSpace(accountID) == "" {
+		return nil, fmt.Errorf("missing required accountID")
+	}
+	acc, ok := c.Accounts[accountID]
+	if !ok || acc == nil {
+		return nil, fmt.Errorf("account %q not found in config", accountID)
+	}
+	if acc.Obfuscator == nil {
+		return nil, fmt.Errorf("account %q missing obfuscator config", accountID)
+	}
+	return acc.Obfuscator, nil
+}
+
+// DilutionForAccount returns the dilution config for the specified account ID,
+// or an error if the account is not found or its dilution config is missing.
+func (c *Config) DilutionForAccount(accountID string) (*DilutionConfig, error) {
+	if c == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+	if strings.TrimSpace(accountID) == "" {
+		return nil, fmt.Errorf("missing required accountID")
+	}
+	acc, ok := c.Accounts[accountID]
+	if !ok || acc == nil {
+		return nil, fmt.Errorf("account %q not found in config", accountID)
+	}
+	if acc.Dilution == nil {
+		return nil, fmt.Errorf("account %q missing dilution config", accountID)
+	}
+	return acc.Dilution, nil
 }
 
 func (c *Config) validate() error {
-	defaults, err := c.parseTradingDefaults()
-	if err != nil {
-		return err
-	}
-
-	if err := c.validateSymbols(&defaults); err != nil {
+	if err := c.validateAccounts(); err != nil {
 		return err
 	}
 
 	validate := newValidator()
 
+	if err := c.validateAccountSymbols(validate); err != nil {
+		return err
+	}
+
+	if err := c.validateAccountReversions(validate); err != nil {
+		return err
+	}
+
 	if err := validate.Struct(c); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
+	return nil
+}
+
+func (c *Config) validateAccounts() error {
+	if len(c.Accounts) == 0 {
+		return fmt.Errorf("at least one account must be configured")
+	}
+	for accID, acc := range c.Accounts {
+		if strings.TrimSpace(accID) == "" {
+			return fmt.Errorf("account ID cannot be empty")
+		}
+		if acc == nil {
+			return fmt.Errorf("account %q config cannot be nil", accID)
+		}
+		if strings.TrimSpace(acc.Account.ID) == "" {
+			return fmt.Errorf("account %q: account.id is required", accID)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateAccountSymbols(validate *validator.Validate) error {
+	for accID, acc := range c.Accounts {
+		if acc == nil || acc.Reversion == nil {
+			continue
+		}
+		defaults := acc.Reversion.RawFundingReversionConfig
+		for i := range acc.Symbols {
+			sc := &acc.Symbols[i]
+			if sc.AccountID == "" {
+				sc.AccountID = accID
+			}
+			sc.Exchange = strings.ToLower(strings.TrimSpace(sc.Exchange))
+			if sc.Exchange == "" {
+				return fmt.Errorf("account %q: symbols[%d].exchange is required", accID, i)
+			}
+			if !c.exchangeConfigured(sc.Exchange) {
+				return fmt.Errorf("account %q: symbols[%d].exchange %q is not configured", accID, i, sc.Exchange)
+			}
+			c.applyAccountDefaults(sc, &defaults, acc.Reversion)
+			c.normalizeSymbolMetrics(sc)
+			c.defaultSymbolModes(sc)
+			if err := validate.Struct(sc); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateAccountReversions(validate *validator.Validate) error {
+	for accID, acc := range c.Accounts {
+		if acc != nil && acc.Reversion != nil {
+			if err := validate.Struct(acc.Reversion); err != nil {
+				return fmt.Errorf("account %q reversion validation failed: %w", accID, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -180,17 +462,10 @@ func (c *Config) exchangeConfigured(name string) bool {
 		return cfg.IsEnabled()
 	}
 	baseName := strings.TrimSuffix(strings.TrimSuffix(name, "_spot"), "_futures")
-	apiCfg, ok := c.System.ExchangeConfig[baseName]
-	if !ok {
-		return false
+	if apiCfg, ok := c.System.ExchangeConfig[baseName]; ok {
+		return apiCfg.IsEnabled()
 	}
-	if strings.HasSuffix(name, "_futures") {
-		return apiCfg.Future != nil && apiCfg.Future.Enable
-	}
-	if strings.HasSuffix(name, "_spot") {
-		return apiCfg.Spot != nil && apiCfg.Spot.Enable
-	}
-	return apiCfg.IsEnabled()
+	return false
 }
 
 func newValidator() *validator.Validate {
@@ -288,7 +563,7 @@ func mergeDynamicTP(dest *ExchangeReversionConfig, src ExchangeReversionConfig) 
 	}
 }
 
-func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
+func (c *Config) applyAccountDefaults(sc *SymbolConfig, d *RawFundingReversionConfig, revCfg *ReversionConfig) {
 	// Merge exchange-specific configs with strategy defaults.
 	exchName := sc.Exchange
 	exchConfig := d.Default // Start with defaults
@@ -298,8 +573,8 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 		MergeExchangeReversionConfig(&exchConfig, specific)
 	}
 
-	if sc.MaxPriceDiffPercent == 0 {
-		sc.MaxPriceDiffPercent = c.Reversion.Safety.MaxPriceDiffPercent
+	if sc.MaxPriceDiffPercent == 0 && revCfg != nil {
+		sc.MaxPriceDiffPercent = revCfg.Safety.MaxPriceDiffPercent
 	}
 	if sc.MinFundingRate == 0 {
 		sc.MinFundingRate = exchConfig.MinFundingRate
@@ -323,13 +598,18 @@ func (c *Config) applyDefaults(sc *SymbolConfig, d *RawFundingReversionConfig) {
 		sc.PositionMode = PositionMode(d.PositionMode)
 	}
 
-	c.mergeFundingReversion(sc, d, &exchConfig)
+	c.mergeFundingReversion(sc, d, &exchConfig, revCfg)
 }
 
-func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionConfig, exchConfig *ExchangeReversionConfig) {
+func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionConfig, exchConfig *ExchangeReversionConfig, revCfg *ReversionConfig) {
+	var maxLatency types.Duration
+	if revCfg != nil {
+		maxLatency = revCfg.Safety.MaxLatency
+	}
+
 	if !sc.FundingReversion.Enabled && d.Enabled {
 		sc.FundingReversion.Enabled = true
-		sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
+		sc.FundingReversion.MaxLatency = maxLatency
 		sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
 		sc.FundingReversion.StopLossPct = exchConfig.StopLossPct
 		sc.FundingReversion.BufferTime = exchConfig.BufferTime
@@ -338,7 +618,7 @@ func (c *Config) mergeFundingReversion(sc *SymbolConfig, d *RawFundingReversionC
 		sc.FundingReversion.DynamicTP = exchConfig.DynamicTP
 	} else if sc.FundingReversion.Enabled {
 		if sc.FundingReversion.MaxLatency == 0 {
-			sc.FundingReversion.MaxLatency = c.Reversion.Safety.MaxLatency
+			sc.FundingReversion.MaxLatency = maxLatency
 		}
 		if sc.FundingReversion.TakeProfitPct == 0 {
 			sc.FundingReversion.TakeProfitPct = exchConfig.TakeProfitPct
@@ -453,18 +733,24 @@ func normalizeFundingRateThreshold(v float64) float64 {
 	return v / 100
 }
 
-func (c *Config) NewSymbolConfig(exchangeName, symbol string) (SymbolConfig, error) {
-	defaults, err := c.parseTradingDefaults()
+// NewAccountSymbolConfig creates a new SymbolConfig for a specific account and resolves its strategy defaults.
+func (c *Config) NewAccountSymbolConfig(accountID, exchangeName, symbol string) (SymbolConfig, error) {
+	if c == nil {
+		return SymbolConfig{}, fmt.Errorf("config is nil")
+	}
+	revCfg, err := c.ReversionForAccount(accountID)
 	if err != nil {
-		return SymbolConfig{}, err
+		return SymbolConfig{}, fmt.Errorf("account %q: %w", accountID, err)
 	}
 
+	defaults := revCfg.RawFundingReversionConfig
 	sc := SymbolConfig{
-		Symbol:   symbol,
-		Exchange: exchangeName,
+		AccountID: accountID,
+		Symbol:    symbol,
+		Exchange:  exchangeName,
 	}
 
-	c.applyDefaults(&sc, &defaults)
+	c.applyAccountDefaults(&sc, &defaults, revCfg)
 	c.normalizeSymbolMetrics(&sc)
 	c.defaultSymbolModes(&sc)
 

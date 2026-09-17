@@ -77,7 +77,7 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	},
 }
 ```
-*Note: The system automatically derives `SupportedExchanges` from the keys of `ExchangeSpecs`. Credentials injection, Bitwarden loading, and standard validations are automated from this spec registry.*
+*Note: The system automatically derives `SupportedExchanges` from the keys of `ExchangeSpecs`. Credentials injection and standard validations are automated from this spec registry.*
 
 ---
 
@@ -141,7 +141,7 @@ To minimize friction and verify connectivity early, always follow a **two-phase 
 2. **Phase 2: Private Features & Signing Logic**
    - After confirming that public tickers, contract details, and public WS data streams parse correctly, implement private REST operations, HTTP request signing, and private WS auth hooks.
    - **Discovering & Defining Private Structs:** To populate and replace your empty placeholder structs, you can discover the private API payload schemas using two options:
-     - **Option A (Live CLI Script):** Use `tools/spec_helper/main.go` in `private-rest` or `private-ws` mode to execute signed queries using configured credentials (e.g. env variables/Bitwarden) and auto-generate the Go structs.
+     - **Option A (Live CLI Script):** Use `tools/spec_helper/main.go` in `private-rest` or `private-ws` mode to execute signed queries using configured environment credentials and auto-generate the Go structs.
      - **Option B (Docs & Static JSON):** If credentials are not yet configured, look up the exchange's official developer API documentation or logs for sample JSON payloads of private endpoints/messages, and generate Go structs directly using the spec helper's `json` mode:
        ```bash
        go run tools/spec_helper/main.go json '<raw_json_string>'
@@ -412,7 +412,7 @@ go run tools/spec_helper/main.go ws wss://contract.mexc.com/edge '{"method":"sub
 ```
 
 #### Generating Structs from a Private/Authenticated REST Endpoint:
-If you need to test signed/authenticated private endpoints using credentials configured in your environment or Bitwarden, use the `private-rest` mode. It instantiates the actual exchange client registered in the provider factory and calls the corresponding raw methods:
+If you need to test signed/authenticated private endpoints using credentials configured in your environment, use the `private-rest` mode. It instantiates the actual exchange client registered in the provider factory and calls the corresponding raw methods:
 ```bash
 go run tools/spec_helper/main.go private-rest <exchange> <method> [key=val ...]
 ```

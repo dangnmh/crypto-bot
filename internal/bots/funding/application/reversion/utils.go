@@ -13,6 +13,7 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
+	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/notifier"
 	infrawatcher "crypto-bot/internal/infrastructure/watcher"
 	infraws "crypto-bot/internal/infrastructure/ws"
@@ -25,12 +26,13 @@ import (
 
 // Strategy implements strategy.BackgroundStrategy interface in a lightweight, stateless manner.
 type Strategy struct {
-	engine   *app.Engine
-	global   *config.Config
-	notifier notifier.Notifier
-	log      *slog.Logger
-	stores   map[string]strategy.FundingStoreSet
-	cache    *cache.Cache
+	accountID string
+	engine    *app.Engine
+	global    *config.Config
+	notifier  notifier.Notifier
+	log       *slog.Logger
+	stores    map[string]strategy.FundingStoreSet
+	cache     *cache.Cache
 
 	// Test fallbacks
 	clock         shared.Clock
@@ -61,6 +63,14 @@ func (s *Strategy) Flow() string {
 	return FlowIDFundingReversion
 }
 
+func (s *Strategy) SetAccountID(accountID string) {
+	s.accountID = accountID
+}
+
+func (s *Strategy) AccountID() string {
+	return s.accountID
+}
+
 func (s *Strategy) Enabled(cfg config.SymbolConfig) bool {
 	return cfg.FundingReversion.Enabled
 }
@@ -69,6 +79,7 @@ func (s *Strategy) Start(ctx context.Context, stores map[string]strategy.Funding
 	s.stores = stores
 
 	runner := &StatelessRunner{
+		accountID: s.accountID,
 		globalCfg: s.global,
 		bus:       s.engine.Bus,
 		log:       s.log,
@@ -98,6 +109,7 @@ func (s *Strategy) Stop(ctx context.Context) error {
 
 // StatelessRunner handles global, single-instance reversion event subscriptions.
 type StatelessRunner struct {
+	accountID string
 	deps      strategy.Deps
 	globalCfg *config.Config
 	bus       *eventbus.Bus
@@ -118,41 +130,65 @@ type StatelessRunner struct {
 	wsSub         infraws.ExchangeManagerAdapterSubscriber
 }
 
-func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
+func (r *StatelessRunner) resolveRunnerComponents(exch, accountID string) (exchange.Client, infraws.ExchangeManagerAdapterSubscriber, infrawatcher.OrderNotifier, shared.Clock) {
+	var client exchange.Client
+	var wsSub infraws.ExchangeManagerAdapterSubscriber
+	var orderNotifier infrawatcher.OrderNotifier
+	var clock shared.Clock
+
+	if prov, err := r.engine.GetProvider(exch); err == nil && prov != nil {
+		client = prov.Client
+		wsSub = prov.Adapter
+		orderNotifier = prov.Watcher
+		clock = prov.TimeSync
+	}
+
+	if accProv, accErr := r.engine.GetAccountProvider(accountID); accErr == nil && accProv != nil {
+		if accProv.Client != nil {
+			client = accProv.Client
+		}
+		if accProv.Adapter != nil {
+			wsSub = accProv.Adapter
+		}
+		if accProv.Watcher != nil {
+			orderNotifier = accProv.Watcher
+		}
+	}
+
+	return client, wsSub, orderNotifier, clock
+}
+
+func (r *StatelessRunner) clone(accountID, exch, reqID, symbol string) *StatelessRunner {
 	local := *r
+	local.accountID = accountID
 	local.exchange = exch
 	local.symbol = symbol
-	clonedLog := r.log.With("exchange", exch, "req", reqID, "symbol", symbol)
-	local.log = clonedLog
+	local.log = r.log.With("exchange", exch, "req", reqID, "symbol", symbol, "account_id", accountID)
 
-	prov, err := r.engine.GetProvider(exch)
-	if err != nil {
-		r.log.Error("Failed to locate exchange provider for clone", slog.String("exchange", exch), slog.Any("error", err))
+	client, wsSub, orderNotifier, clock := r.resolveRunnerComponents(exch, local.accountID)
+	if client == nil {
+		r.log.Error("Failed to locate client for clone", slog.String("exchange", exch), slog.String("account_id", local.accountID))
 		return r
 	}
+
 	stores := r.stores[exch]
 	if stores == nil {
 		r.log.Error("Failed to locate stores for clone", slog.String("exchange", exch))
 		return r
 	}
 
-	var clock shared.Clock = prov.TimeSync
 	if r.clock != nil {
 		clock = r.clock
 	}
-
-	var orderNotifier = prov.Watcher
 	if r.orderNotifier != nil {
 		orderNotifier = r.orderNotifier
 	}
-
-	var wsSub infraws.ExchangeManagerAdapterSubscriber = prov.Adapter
 	if r.wsSub != nil {
 		wsSub = r.wsSub
 	}
 
 	local.deps = strategy.Deps{
-		Client:        prov.Client,
+		Client:        client,
 		WsSub:         wsSub,
 		OrderNotifier: orderNotifier,
 		TickerStore:   stores.Ticker(),
@@ -161,11 +197,23 @@ func (r *StatelessRunner) clone(exch, reqID, symbol string) *StatelessRunner {
 		FundingStore:  stores.Funding(),
 		DepthStore:    stores.Depth(),
 		Clock:         clock,
-		Log:           clonedLog,
+		Log:           local.log,
 		Notifier:      r.notifier,
 		EventBus:      r.engine.Bus,
 	}
 	return &local
+}
+
+func (r *StatelessRunner) getReversionConfig() *config.ReversionConfig {
+	if r.globalCfg == nil {
+		return nil
+	}
+	rev, err := r.globalCfg.ReversionForAccount(r.accountID)
+	if err != nil {
+		r.log.Error("Failed to get reversion config for account", slog.String("account_id", r.accountID), slog.Any("error", err))
+		return nil
+	}
+	return rev
 }
 
 func (r *StatelessRunner) publishEvent(ctx context.Context, topic string, payload any) error {
@@ -334,13 +382,14 @@ func formatReversionNotification(topic string, revEvt ReversionEvent) string {
 	status := topicToStatusTag(topic)
 	header := fmt.Sprintf("%s [FUNDING_REVERSION] [%s] [%s]", emoji, exch, status)
 
+	var msg string
 	switch e := revEvt.(type) {
 	case CandidateFoundEvent:
 		side := e.Candidate.Side
 		if side == shared.SideUnknown {
 			side = e.Side
 		}
-		return formatCandidateNotification(
+		msg = formatCandidateNotification(
 			header, e.Symbol, side, e.Candidate.Config,
 			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.ContractSize, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
 			e.OrderID, e.ExternalID, e.ReqID, "",
@@ -351,7 +400,7 @@ func formatReversionNotification(topic string, revEvt ReversionEvent) string {
 		if side == shared.SideUnknown {
 			side = e.Side
 		}
-		return formatCandidateNotification(
+		msg = formatCandidateNotification(
 			header, e.Symbol, side, e.Candidate.Config,
 			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.ContractSize, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
 			e.OrderID, e.ExternalID, e.ReqID, "",
@@ -362,18 +411,23 @@ func formatReversionNotification(topic string, revEvt ReversionEvent) string {
 		if side == shared.SideUnknown {
 			side = e.Side
 		}
-		return formatCandidateNotification(
+		msg = formatCandidateNotification(
 			header, e.Symbol, side, e.Candidate.Config,
 			e.Candidate.LastPrice, e.Candidate.Volume, e.Candidate.ContractSize, e.Candidate.FundingRate, e.Candidate.Vol24USDT,
 			e.OrderID, e.ExternalID, e.ReqID, "",
 		)
 
 	case AbortEvent:
-		return formatAbortNotification(header, e)
+		msg = formatAbortNotification(header, e)
 
 	default:
-		return formatDefaultNotification(header, revEvt)
+		msg = formatDefaultNotification(header, revEvt)
 	}
+
+	if accountID := revEvt.GetAccountID(); accountID != "" {
+		msg += fmt.Sprintf("\n• Account ID: %s", accountID)
+	}
+	return msg
 }
 
 func stampEventTrace(topic string, payload any) any {
@@ -434,6 +488,7 @@ func nextReversionBase(prev BaseReversionEvent, symbol string, timestamp time.Ti
 	return BaseReversionEvent{
 		Flow:          FlowIDFundingReversion,
 		ReqID:         prev.ReqID,
+		AccountID:     prev.AccountID,
 		Symbol:        symbol,
 		Exchange:      prev.Exchange,
 		OrderID:       prev.OrderID,

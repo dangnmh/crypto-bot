@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	shared "crypto-bot/internal/domain"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/trading/ordermanager/futures"
 )
 
@@ -37,12 +37,20 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 	if spec == nil {
 		return fmt.Errorf("dilution spec cannot be nil")
 	}
+	if strings.TrimSpace(spec.ReqID) == "" {
+		return fmt.Errorf("dilution spec ReqID cannot be empty")
+	}
+	if strings.TrimSpace(spec.ClientOrderID) == "" {
+		return fmt.Errorf("dilution spec ClientOrderID cannot be empty")
+	}
 
 	now := r.clock.Now()
-	reqID := exchange.ExternalUniqueID(spec.Symbol, now, spec.Exchange) + string(futures.StrategyDilution)
+	reqID := spec.ReqID
+	clientOrderID := spec.ClientOrderID
 
 	r.logger.InfoContext(ctx, "💧 Executing PostOnly dilution maker quote",
 		slog.String("req_id", reqID),
+		slog.String("client_order_id", clientOrderID),
 		slog.String("exchange", spec.Exchange),
 		slog.String("symbol", spec.Symbol),
 		slog.String("side", spec.Side.String()),
@@ -63,6 +71,7 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 	intentEvt := futures.OrderIntentEvent{
 		ReqID:                 reqID,
 		RefID:                 reqID,
+		AccountID:             spec.AccountID,
 		Symbol:                spec.Symbol,
 		Exchange:              spec.Exchange,
 		MarketType:            futures.MarketTypeFuture,
@@ -70,7 +79,7 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 		PreTopic:              "",
 		NextTopic:             futures.TopicOrderIntent,
 		Timestamp:             now,
-		ClientOrderID:         exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
+		ClientOrderID:         clientOrderID,
 		Side:                  spec.Side,
 		OrderType:             orderType,
 		Price:                 spec.Price,
@@ -97,7 +106,7 @@ func (r *DilutionRunner) Execute(ctx context.Context, spec *DilutionSpec) error 
 	return r.dispatcher.Dispatch(ctx, intentEvt)
 }
 
-// CancelOpenOrders cancels all open orders for a symbol on an exchange via OrderManager.
-func (r *DilutionRunner) CancelOpenOrders(ctx context.Context, exchangeName, symbol string) error {
-	return r.dispatcher.CancelOpenOrders(ctx, exchangeName, symbol)
+// CancelOpenOrders cancels all open orders for a symbol on an exchange via OrderManager for an account.
+func (r *DilutionRunner) CancelOpenOrders(ctx context.Context, accountID, exchangeName, symbol string) error {
+	return r.dispatcher.CancelOpenOrders(ctx, accountID, exchangeName, symbol)
 }

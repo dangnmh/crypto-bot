@@ -1,0 +1,17 @@
+{
+  // Background Volume Dilution Configuration (Zero-Fee Maker Ambient Strategy)
+  // Generates continuous, non-intrusive PostOnly Maker orders on high-liquidity pairs (BTC/ETH).
+  // Dilutes funding volume ratio down to < 15-20%, protecting account from surveillance flags.
+  "enabled": false,
+  "pollInterval": "30m",
+  "jitter": "2m",
+  "symbol": "BTC-SWAP-USDT",
+  "maxPositionUSD": 2000,
+  "leverage": 10,
+  "marginUSD": 100,
+  "unfilledCancelTimeout": "20m",
+  "positionCloseTimeout": "10m",
+  "takeProfitPct": 0.2,
+  "stopLossPct": 0.5,
+  "spreadOffsetTicks": 0
+}

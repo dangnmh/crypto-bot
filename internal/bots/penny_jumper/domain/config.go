@@ -194,13 +194,13 @@ func (c *PennyJumperConfig) Validate() error {
 	}
 	if c.WallJudge.Mode == WallJudgeModeModel || c.WallJudge.Mode == WallJudgeModeDual {
 		if strings.TrimSpace(c.WallJudge.Endpoint) == "" {
-			return fmt.Errorf("AI_PROXY_URL is required when wallJudge mode is '%s' (set via env or Bitwarden)", c.WallJudge.Mode)
+			return fmt.Errorf("AI_PROXY_URL is required when wallJudge mode is '%s' (set via env)", c.WallJudge.Mode)
 		}
 		if strings.TrimSpace(c.WallJudge.ApiKey) == "" {
-			return fmt.Errorf("AI_PROXY_API_KEY is required when wallJudge mode is '%s' (set via env or Bitwarden)", c.WallJudge.Mode)
+			return fmt.Errorf("AI_PROXY_API_KEY is required when wallJudge mode is '%s' (set via env)", c.WallJudge.Mode)
 		}
 		if strings.TrimSpace(c.WallJudge.ModelName) == "" {
-			return fmt.Errorf("AI_PROXY_MODEL is required when wallJudge mode is '%s' (set via env or Bitwarden)", c.WallJudge.Mode)
+			return fmt.Errorf("AI_PROXY_MODEL is required when wallJudge mode is '%s' (set via env)", c.WallJudge.Mode)
 		}
 	}
 	return nil

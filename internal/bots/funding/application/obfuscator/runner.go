@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	shared "crypto-bot/internal/domain"
-	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/trading/ordermanager/futures"
 )
 
@@ -37,13 +37,21 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 	if spec == nil {
 		return fmt.Errorf("obfuscation spec cannot be nil")
 	}
+	if strings.TrimSpace(spec.ReqID) == "" {
+		return fmt.Errorf("obfuscation spec ReqID cannot be empty")
+	}
+	if strings.TrimSpace(spec.ClientOrderID) == "" {
+		return fmt.Errorf("obfuscation spec ClientOrderID cannot be empty")
+	}
 
 	now := r.clock.Now()
 
-	reqID := exchange.ExternalUniqueID(spec.Symbol, now, spec.Exchange) + string(futures.StrategyObfuscator)
+	reqID := spec.ReqID
+	clientOrderID := spec.ClientOrderID
 
 	r.logger.InfoContext(ctx, "🛡️ Executing obfuscation order via OrderManager",
 		slog.String("req_id", reqID),
+		slog.String("client_order_id", clientOrderID),
 		slog.String("origin_req_id", spec.OriginReqID),
 		slog.String("exchange", spec.Exchange),
 		slog.String("symbol", spec.Symbol),
@@ -66,6 +74,7 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 	intentEvt := futures.OrderIntentEvent{
 		ReqID:                reqID,
 		RefID:                spec.OriginReqID,
+		AccountID:            spec.AccountID,
 		Symbol:               spec.Symbol,
 		Exchange:             spec.Exchange,
 		MarketType:           futures.MarketTypeFuture,
@@ -73,7 +82,7 @@ func (r *ObfuscatorRunner) Execute(ctx context.Context, spec *ObfuscationSpec) e
 		PreTopic:             "",
 		NextTopic:            futures.TopicOrderIntent,
 		Timestamp:            now,
-		ClientOrderID:        exchange.ExternalOrderID(spec.Symbol, now, spec.Exchange),
+		ClientOrderID:        clientOrderID,
 		Side:                 spec.Side,
 		OrderType:            orderType,
 		Price:                spec.Price,

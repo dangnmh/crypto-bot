@@ -73,7 +73,7 @@ func TestStatelessRunnerAbortLifecycle(t *testing.T) {
 			Clock:    clock,
 			Notifier: n,
 		},
-		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{Symbol: "BTC_USDT"}}},
+		globalCfg: config.NewTestConfig(nil, config.SymbolConfig{Symbol: "BTC_USDT"}),
 		bus:       bus,
 		log:       reversionTestLogger(),
 		cache:     cache.New(5*time.Minute, 10*time.Minute),
@@ -97,7 +97,7 @@ func TestStatelessRunnerGetSymbolAndWaitUntilBranches(t *testing.T) {
 
 	runner := &StatelessRunner{
 		deps:      strategy.Deps{Clock: clock, Notifier: testCaptureNotifier()},
-		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{Symbol: "BTC_USDT"}}},
+		globalCfg: config.NewTestConfig(nil, config.SymbolConfig{Symbol: "BTC_USDT"}),
 		log:       reversionTestLogger(),
 	}
 
@@ -256,12 +256,12 @@ func TestFirePlanCheckedDispatchesOrderManagerIntent(t *testing.T) {
 			Notifier: mockNotifier,
 		},
 		notifier: mockNotifier,
-		globalCfg: &config.Config{Symbols: []config.SymbolConfig{{
+		globalCfg: config.NewTestConfig(nil, config.SymbolConfig{
 			Symbol: "BTC_USDT",
 			FundingReversion: fundingdomain.FundingReversionConfig{
 				PostSettleTimeout: 10_000_000_000,
 			},
-		}}},
+		}),
 		bus:   bus,
 		log:   reversionTestLogger(),
 		cache: cache.New(5*time.Minute, 10*time.Minute),
@@ -581,15 +581,11 @@ func TestStatelessRunnerSyncNowInvocation(t *testing.T) {
 			PriceStore: priceStore,
 			Notifier:   testCaptureNotifier(),
 		},
-		globalCfg: &config.Config{
-			Symbols: []config.SymbolConfig{
-				{
-					Symbol:         "BTC_USDT",
-					Exchange:       "mexc",
-					MinFundingRate: 0.001,
-				},
-			},
-		},
+		globalCfg: config.NewTestConfig(nil, config.SymbolConfig{
+			Symbol:         "BTC_USDT",
+			Exchange:       "mexc",
+			MinFundingRate: 0.001,
+		}),
 		bus: bus,
 		log: reversionTestLogger(),
 	}

@@ -474,20 +474,15 @@ func loadConfigForExchange(exchangeName string) (*sysconfig.SystemConfig, error)
 	if err != nil {
 		return nil, err
 	}
-	exchCfg, err := pkgconfig.Load[sysconfig.SystemConfig]("configs/funding/local/exchange.jsonc")
+	exchCfg, err := pkgconfig.Load[sysconfig.ExchangeConfig]("configs/funding/local/exchange.jsonc")
 	if err != nil {
 		return nil, err
 	}
-	cfg.ExchangeConfig = exchCfg.ExchangeConfig
+	cfg.ExchangeConfig = *exchCfg
 
 	// Force enable the target exchange endpoints so InitializeBase processes its credentials
 	apiCfg := cfg.ExchangeConfig[exchangeName]
-	if apiCfg.Spot != nil {
-		apiCfg.Spot.Enable = true
-	}
-	if apiCfg.Future != nil {
-		apiCfg.Future.Enable = true
-	}
+	apiCfg.Enable = true
 	cfg.ExchangeConfig[exchangeName] = apiCfg
 
 	if err := sysconfig.InitializeBase(cfg); err != nil {

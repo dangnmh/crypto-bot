@@ -121,6 +121,7 @@ type TradeRepository interface {
 type OrderEvent interface {
 	GetReqID() string
 	GetClientOrderID() string
+	GetAccountID() string
 	GetSymbol() string
 	GetExchange() string
 	GetMarketType() MarketType
@@ -138,6 +139,7 @@ type OrderEvent interface {
 type BaseOrderEvent struct {
 	ReqID         string       `json:"req_id"`
 	ClientOrderID string       `json:"client_order_id"`
+	AccountID     string       `json:"account_id,omitempty"`
 	Symbol        string       `json:"symbol"`
 	Exchange      string       `json:"exchange"`
 	MarketType    MarketType   `json:"market_type"`
@@ -149,6 +151,7 @@ type BaseOrderEvent struct {
 
 func (e BaseOrderEvent) GetReqID() string              { return e.ReqID }
 func (e BaseOrderEvent) GetClientOrderID() string      { return e.ClientOrderID }
+func (e BaseOrderEvent) GetAccountID() string          { return e.AccountID }
 func (e BaseOrderEvent) GetSymbol() string             { return e.Symbol }
 func (e BaseOrderEvent) GetExchange() string           { return e.Exchange }
 func (e BaseOrderEvent) GetMarketType() MarketType     { return e.MarketType }

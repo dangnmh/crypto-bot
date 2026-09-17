@@ -112,6 +112,7 @@ func (c *CombatModeCoordinator) RegisterTargetTime(targetTime time.Time) {
 
 	c.log.Info("Scheduled combat window",
 		slog.String("exchange", "system"),
+		slog.String("account_id", "system"),
 		slog.Time("target_time", targetTime),
 		slog.Time("window_start", windowStart),
 		slog.Time("window_end", windowEnd),
@@ -134,6 +135,7 @@ func (c *CombatModeCoordinator) enterLocked(targetTime, windowEnd time.Time) {
 		c.isActive = true
 		c.log.Info("⚔️ Entering COMBAT MODE: suppressing GC and entering high-priority execution window",
 			slog.String("exchange", "system"),
+			slog.String("account_id", "system"),
 			slog.Time("target_time", targetTime),
 			slog.Time("active_until", c.activeUntil),
 		)
@@ -196,6 +198,7 @@ func (c *CombatModeCoordinator) exitLocked() {
 	c.isActive = false
 	c.log.Info("🛡️ Exiting COMBAT MODE: restoring GC and reclaiming window memory",
 		slog.String("exchange", "system"),
+		slog.String("account_id", "system"),
 		slog.Int("restored_gc_percent", c.originalGCPercent),
 	)
 

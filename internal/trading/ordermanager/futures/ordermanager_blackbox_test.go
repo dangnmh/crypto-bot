@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -222,6 +223,7 @@ func TestBlackBox_CompleteOrderLifecycle(t *testing.T) {
 		ReqID:         "req-bb-001",
 		ClientOrderID: "client-bb-001",
 		Symbol:        "BTCUSDT",
+		AccountID:     "bybit",
 		Exchange:      "bybit",
 		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
@@ -345,6 +347,7 @@ func TestBlackBox_OutcomeWatcherFill(t *testing.T) {
 	submittedEvt := futures.OrderSubmittedEvent{
 		ReqID:         "req-ws-001",
 		ClientOrderID: "client-ws-001",
+		AccountID:     "mexc",
 		Symbol:        "ETHUSDT",
 		Exchange:      "mexc",
 		StrategyType:  futures.StrategyFundingReversion,
@@ -404,6 +407,13 @@ func TestBlackBox_EmergencyBailoutRetryLoop(t *testing.T) {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
 
+	agg := mgr.GetAggregate("req-bailout-bb-001")
+	_ = agg.Record(futures.OrderIntentEvent{
+		ReqID:     "req-bailout-bb-001",
+		AccountID: "bybit",
+		Exchange:  "bybit",
+	})
+
 	bailoutEvt, err := mgr.HandleExecuteBailout(ctx, "req-bailout-bb-001", "bybit", "BTCUSDT", shared.SideOpenLong, 1.5, "timeout_expired")
 	if err != nil {
 		t.Fatalf("HandleExecuteBailout failed: %v", err)
@@ -449,6 +459,13 @@ func TestBlackBox_EmergencyBailoutRetryLoop_ContextCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create order manager: %v", err)
 	}
+
+	agg := mgr.GetAggregate("req-bailout-bb-002")
+	_ = agg.Record(futures.OrderIntentEvent{
+		ReqID:     "req-bailout-bb-002",
+		AccountID: "bybit",
+		Exchange:  "bybit",
+	})
 
 	_, err = mgr.HandleExecuteBailout(ctx, "req-bailout-bb-002", "bybit", "BTCUSDT", shared.SideOpenLong, 1.5, "timeout_expired")
 	if err == nil {
@@ -537,8 +554,9 @@ func TestBlackBox_TimeoutGuardCancellation(t *testing.T) {
 
 	agg := mgr.GetAggregate("req-tg-001")
 	_ = agg.Record(futures.OrderIntentEvent{
-		ReqID:    "req-tg-001",
-		Exchange: "bybit",
+		ReqID:     "req-tg-001",
+		AccountID: "bybit",
+		Exchange:  "bybit",
 	})
 
 	timerFired := false
@@ -613,6 +631,7 @@ func TestBlackBox_ConcurrentRequestsThreadSafety(t *testing.T) {
 				ReqID:         reqID,
 				ClientOrderID: clientOID,
 				Symbol:        "BTCUSDT",
+				AccountID:     "bybit",
 				Exchange:      "bybit",
 				StrategyType:  futures.StrategyFundingArbitrage,
 				Timestamp:     clock.Now(),
@@ -695,6 +714,7 @@ func TestBlackBox_OrderCanceledNoFill_CompletesImmediately(t *testing.T) {
 		ReqID:         "req-canceled-001",
 		ClientOrderID: "client-canceled-001",
 		Symbol:        "BTCUSDT",
+		AccountID:     "bybit",
 		Exchange:      "bybit",
 		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
@@ -765,6 +785,7 @@ func TestBlackBox_OrderFilled_WaitsForPositionClose(t *testing.T) {
 		ReqID:         "req-filled-wait-001",
 		ClientOrderID: "client-filled-wait-001",
 		Symbol:        "BTCUSDT",
+		AccountID:     "bybit",
 		Exchange:      "bybit",
 		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     clock.Now(),
@@ -856,6 +877,7 @@ func TestBlackBox_MakerPostOnly_RestingAndFillLifecycle(t *testing.T) {
 		ReqID:                "req-maker-resting-001",
 		ClientOrderID:        "client-maker-resting-001",
 		Symbol:               "BTCUSDT",
+		AccountID:            "mexc",
 		Exchange:             "mexc",
 		StrategyType:         futures.StrategyDilution,
 		Timestamp:            clock.Now(),
@@ -959,6 +981,7 @@ func TestBlackBox_CloseOrderFilled_EmitsCompleted(t *testing.T) {
 		ReqID:                "req-close-fill-001",
 		ClientOrderID:        "client-close-fill-001",
 		Symbol:               "BTC-SWAP-USDT",
+		AccountID:            "toobit",
 		Exchange:             "toobit",
 		MarketType:           futures.MarketTypeFuture,
 		StrategyType:         futures.StrategyDilution,
@@ -1034,6 +1057,7 @@ func TestBlackBox_Abort_EmitsCriticalNotification(t *testing.T) {
 		ReqID:         "req-abort-test-001",
 		ClientOrderID: "client-abort-test-001",
 		Symbol:        "BTC-SWAP-USDT",
+		AccountID:     "toobit",
 		Exchange:      "toobit",
 		MarketType:    futures.MarketTypeFuture,
 		StrategyType:  futures.StrategyFundingReversion,
@@ -1071,5 +1095,174 @@ func TestBlackBox_Abort_EmitsCriticalNotification(t *testing.T) {
 	}
 	if criticalNotif.Level != notifier.LevelCritical {
 		t.Errorf("expected level %s, got %s", notifier.LevelCritical, criticalNotif.Level)
+	}
+	if !strings.Contains(criticalNotif.Message, "• Account ID: toobit") {
+		t.Errorf("expected message to contain '• Account ID: toobit', got %s", criticalNotif.Message)
+	}
+}
+
+// Test: TimeoutPositionChecked with HoldVol <= 0 completes the order and unsubscribes.
+func TestBlackBox_TimeoutPositionChecked_ZeroHoldVol_CompletesOrder(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		openPositions: []exchange.Position{},
+	}
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+
+	// Create and register aggregate in submitted state
+	intent := futures.OrderIntentEvent{
+		ReqID:        "req-timeout-zero-001",
+		AccountID:    "mexc_main",
+		Symbol:       "AVA_USDT",
+		Exchange:     "mexc",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Volume:       1.0,
+	}
+	_, err = mgr.HandlePreFlight(ctx, intent)
+	if err != nil {
+		t.Fatalf("preflight failed: %v", err)
+	}
+
+	completedCh := make(chan futures.OrderCompletedEvent, 1)
+	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt futures.OrderCompletedEvent) {
+		if evt.GetReqID() == "req-timeout-zero-001" {
+			completedCh <- evt
+		}
+	})
+
+	// Publish timeout position checked with 0 hold vol
+	checkedEvt := futures.OrderTimeoutPositionCheckedEvent{
+		ReqID:         "req-timeout-zero-001",
+		ClientOrderID: "client-timeout-zero-001",
+		AccountID:     "mexc_main",
+		Symbol:        "AVA_USDT",
+		Exchange:      "mexc",
+		StrategyType:  futures.StrategyFundingReversion,
+		HoldVol:       0,
+	}
+
+	err = bus.Publish(futures.TopicOrderTimeoutPositionChecked, checkedEvt)
+	if err != nil {
+		t.Fatalf("failed to publish timeout checked event: %v", err)
+	}
+
+	select {
+	case completed := <-completedCh:
+		if completed.Outcome != futures.OutcomeCanceledNoFill {
+			t.Errorf("expected outcome %s, got %s", futures.OutcomeCanceledNoFill, completed.Outcome)
+		}
+		if completed.Reason != "timeout_no_position" {
+			t.Errorf("expected reason timeout_no_position, got %s", completed.Reason)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for OrderCompletedEvent on zero hold vol timeout check")
+	}
+}
+
+// Test: TimeoutPositionChecked with HoldVol > 0 executes bailout and completes order with OutcomeBailout.
+func TestBlackBox_TimeoutPositionChecked_WithHoldVol_ExecutesBailout(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		openPositions: []exchange.Position{
+			{Symbol: "AVA_USDT", HoldVolContract: 2.0},
+		},
+	}
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+
+	// Create aggregate in filled state
+	intent := futures.OrderIntentEvent{
+		ReqID:        "req-timeout-bailout-001",
+		AccountID:    "mexc_main",
+		Symbol:       "AVA_USDT",
+		Exchange:     "mexc",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Volume:       2.0,
+	}
+	_, err = mgr.HandlePreFlight(ctx, intent)
+	if err != nil {
+		t.Fatalf("preflight failed: %v", err)
+	}
+
+	completedCh := make(chan futures.OrderCompletedEvent, 1)
+	mgr.RegisterOnCompletedCallback(func(ctx context.Context, evt futures.OrderCompletedEvent) {
+		if evt.GetReqID() == "req-timeout-bailout-001" {
+			completedCh <- evt
+		}
+	})
+
+	// Publish timeout position checked with 2.0 hold vol
+	checkedEvt := futures.OrderTimeoutPositionCheckedEvent{
+		ReqID:         "req-timeout-bailout-001",
+		ClientOrderID: "client-timeout-bailout-001",
+		AccountID:     "mexc_main",
+		Symbol:        "AVA_USDT",
+		Exchange:      "mexc",
+		StrategyType:  futures.StrategyFundingReversion,
+		HoldVol:       2.0,
+	}
+
+	err = bus.Publish(futures.TopicOrderTimeoutPositionChecked, checkedEvt)
+	if err != nil {
+		t.Fatalf("failed to publish timeout checked event: %v", err)
+	}
+
+	select {
+	case completed := <-completedCh:
+		if completed.Outcome != futures.OutcomeBailout {
+			t.Errorf("expected outcome %s, got %s", futures.OutcomeBailout, completed.Outcome)
+		}
+		if client.closeAllCalls.Load() == 0 && client.closePositionCalls.Load() == 0 {
+			t.Errorf("expected CloseAllPositions or ClosePosition to be called during bailout")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for OrderCompletedEvent on bailout")
 	}
 }

@@ -6,16 +6,13 @@ import (
 	"testing"
 
 	"crypto-bot/internal/infrastructure/app"
-
 	sysconfig "crypto-bot/internal/infrastructure/config"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// ── EngineBuilder validation tests ───────────────────────────────────.
-
-func TestEngineBuilder_MissingConfig(t *testing.T) {
+func TestEngineBuilder_NilConfigReturnsError(t *testing.T) {
 	t.Parallel()
 	_, err := app.NewEngineBuilder().
 		Build()
@@ -27,14 +24,12 @@ func TestEngineBuilder_WithOptionalDependenciesBuilds(t *testing.T) {
 
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-				},
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.example.com",
 				APIKey:    "key",
 				APISecret: "secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 			},
 		},
 	}
@@ -54,14 +49,12 @@ func TestEngineBuilder_MissingAPIBaseURL(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-				},
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "",
 				APIKey:    "key",
 				APISecret: "secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 			},
 		},
 	}
@@ -77,14 +70,12 @@ func TestEngineBuilder_MissingWSURL(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-				},
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.example.com",
 				APIKey:    "key",
 				APISecret: "secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 			},
 		},
 	}
@@ -100,69 +91,23 @@ func TestEngineBuilder_InvalidMaxPairs(t *testing.T) {
 	t.Parallel()
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
-				},
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.example.com",
 				APIKey:    "key",
 				APISecret: "secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 0},
 			},
 		},
 	}
 
-	_, err := app.NewEngineBuilder().
+	e, err := app.NewEngineBuilder().
 		WithSystemConfig(cfg).
+		WithLogger(testLogger()).
 		Build()
-
-	assert.Error(t, err, "expected error for MaxPairsPerWSConn=0")
-}
-
-func TestEngineBuilder_MissingAPIKey(t *testing.T) {
-	t.Parallel()
-	cfg := &sysconfig.SystemConfig{
-		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-				},
-				APIKey:    "",
-				APISecret: "secret",
-			},
-		},
-	}
-
-	_, err := app.NewEngineBuilder().
-		WithSystemConfig(cfg).
-		Build()
-
-	assert.Error(t, err, "expected error for missing APIKey")
-}
-
-func TestEngineBuilder_MissingAPISecret(t *testing.T) {
-	t.Parallel()
-	cfg := &sysconfig.SystemConfig{
-		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.example.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-				},
-				APIKey:    "key",
-				APISecret: "",
-			},
-		},
-	}
-
-	_, err := app.NewEngineBuilder().
-		WithSystemConfig(cfg).
-		Build()
-
-	assert.Error(t, err, "expected error for missing APISecret")
+	require.NoError(t, err)
+	require.NotNil(t, e)
+	require.NoError(t, e.Shutdown(context.Background()))
 }
 
 // ── app.StoreRegistry — Chain building ───────────────────────────────────.

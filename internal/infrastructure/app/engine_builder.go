@@ -15,6 +15,7 @@ type EngineBuilder struct {
 	httpClient      *http.Client
 	orderHTTPClient *http.Client
 	logger          *slog.Logger
+	accounts        []sysconfig.AccountConfig
 	errors          []string
 }
 
@@ -47,6 +48,12 @@ func (b *EngineBuilder) WithLogger(logger *slog.Logger) *EngineBuilder {
 	return b
 }
 
+// WithAccounts sets the accounts for multi-account initialization (optional).
+func (b *EngineBuilder) WithAccounts(accounts []sysconfig.AccountConfig) *EngineBuilder {
+	b.accounts = accounts
+	return b
+}
+
 // Build validates all required fields and returns a configured Engine.
 func (b *EngineBuilder) Build() (*Engine, error) {
 	b.errors = nil
@@ -69,6 +76,7 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 		HTTPClient:      b.httpClient,
 		OrderHTTPClient: b.orderHTTPClient,
 		Logger:          b.logger,
+		Accounts:        b.accounts,
 	})
 }
 

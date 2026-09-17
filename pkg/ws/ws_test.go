@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1656,4 +1657,40 @@ func TestClient_PingPong_LatencyTracking(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		return c.LatencyMs() >= 0
 	}, time.Second, 10*time.Millisecond)
+}
+
+func TestClient_WithCustomDialer(t *testing.T) {
+	t.Parallel()
+
+	srv := startTestWS(t, func(conn *websocket.Conn) {
+		for {
+			mt, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			_ = conn.WriteMessage(mt, data)
+		}
+	})
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var dialed atomic.Bool
+	netDialer := &net.Dialer{}
+	customDialer := &websocket.Dialer{
+		NetDialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialed.Store(true)
+			return netDialer.DialContext(ctx, network, addr)
+		},
+	}
+
+	c := ws.NewClient(wsURL(srv), slog.Default(),
+		ws.WithDialer(customDialer),
+	)
+	defer c.Close()
+
+	go c.Connect(ctx)
+	require.NoError(t, c.WaitReady(ctx))
+	assert.True(t, dialed.Load(), "custom dialer NetDialContext must be invoked")
 }

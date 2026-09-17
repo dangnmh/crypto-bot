@@ -4,20 +4,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
+
+	pkgconfig "crypto-bot/pkg/config"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 )
-
-type bitwardenSecretLoader interface {
-	GetSecret(secretKey string) (string, error)
-}
-
-var newBitwardenSecretLoader = func() (bitwardenSecretLoader, error) {
-	return NewBitwardenLoader()
-}
 
 // InitializeBase loads environment variables, injects credentials,
 // and applies universal default values to the core SystemConfig.
@@ -28,37 +21,10 @@ func InitializeBase(c *SystemConfig) error {
 	if c.ExchangeConfig == nil {
 		c.ExchangeConfig = make(ExchangeConfig)
 	}
-	// Pre-populate missing supported exchanges to ensure they exist
-	for _, exch := range SupportedExchanges {
-		if _, ok := c.ExchangeConfig[exch]; !ok {
-			c.ExchangeConfig[exch] = APIConfig{}
-		}
-	}
-
-	// Load credentials dynamically from environment variables
-	for _, exch := range SupportedExchanges {
-		apiCfg := c.ExchangeConfig[exch]
-		upperExch := strings.ToUpper(exch)
-
-		if key := strings.TrimSpace(os.Getenv(upperExch + "_API_KEY")); key != "" {
-			apiCfg.APIKey = key
-		}
-		if secret := strings.TrimSpace(os.Getenv(upperExch + "_API_SECRET")); secret != "" {
-			apiCfg.APISecret = secret
-		}
-		if passphrase := strings.TrimSpace(os.Getenv(upperExch + "_API_PASSPHRASE")); passphrase != "" {
-			apiCfg.APIPassphrase = passphrase
-		}
-		c.ExchangeConfig[exch] = apiCfg
-	}
 
 	c.NotiConfig.TelegramChatID = strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
 	c.NotiConfig.TelegramCriticalChatID = strings.TrimSpace(os.Getenv("TELEGRAM_CRITICAL_CHAT_ID"))
 	c.NotiConfig.TelegramBotToken = strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-
-	if err := applyBitwardenFallback(c); err != nil {
-		return err
-	}
 
 	applySystemDefaults(c)
 
@@ -80,112 +46,6 @@ func InitializeBase(c *SystemConfig) error {
 	return nil
 }
 
-// HasEnabledExchange checks if at least one exchange configuration is enabled.
-func (c *SystemConfig) HasEnabledExchange() bool {
-	for name := range c.ExchangeConfig {
-		if c.ExchangeConfig[name].IsEnabled() {
-			return true
-		}
-	}
-	return false
-}
-
-func fallbackExchangeSecrets(c *SystemConfig, loader bitwardenSecretLoader) {
-	for _, exch := range SupportedExchanges {
-		apiCfg := c.ExchangeConfig[exch]
-		if apiCfg.IsEnabled() {
-			fallbackSingleExchangeSecret(exch, &apiCfg, loader)
-			c.ExchangeConfig[exch] = apiCfg
-		}
-	}
-}
-
-func fallbackSingleExchangeSecret(name string, apiCfg *APIConfig, loader bitwardenSecretLoader) {
-	upperName := strings.ToUpper(name)
-	if apiCfg.APIKey == "" {
-		if val, err := loader.GetSecret(upperName + "_API_KEY"); err == nil && val != "" {
-			apiCfg.APIKey = strings.TrimSpace(val)
-		}
-	}
-	if apiCfg.APISecret == "" {
-		if val, err := loader.GetSecret(upperName + "_API_SECRET"); err == nil && val != "" {
-			apiCfg.APISecret = strings.TrimSpace(val)
-		}
-	}
-	spec := ExchangeSpecs[name]
-	if spec.RequiresPassphrase && apiCfg.APIPassphrase == "" {
-		if val, err := loader.GetSecret(upperName + "_API_PASSPHRASE"); err == nil && val != "" {
-			apiCfg.APIPassphrase = strings.TrimSpace(val)
-		}
-	}
-}
-
-func applyBitwardenFallback(c *SystemConfig) error {
-	if bitwardenFallbackNotNeeded(c) {
-		return nil
-	}
-
-	if !HasBitwardenConfig() {
-		return nil
-	}
-
-	loader, err := newBitwardenSecretLoader()
-	if err != nil {
-		return fmt.Errorf("bitwarden fallback failed: %w", err)
-	}
-
-	fallbackExchangeSecrets(c, loader)
-
-	if c.NotiConfig.TelegramChatID == "" {
-		if val, err := loader.GetSecret("TELEGRAM_CHAT_ID"); err == nil && val != "" {
-			c.NotiConfig.TelegramChatID = strings.TrimSpace(val)
-		}
-	}
-	if c.NotiConfig.TelegramCriticalChatID == "" {
-		if val, err := loader.GetSecret("TELEGRAM_CRITICAL_CHAT_ID"); err == nil && val != "" {
-			c.NotiConfig.TelegramCriticalChatID = strings.TrimSpace(val)
-		}
-	}
-	if c.NotiConfig.TelegramBotToken == "" {
-		if val, err := loader.GetSecret("TELEGRAM_BOT_TOKEN"); err == nil && val != "" {
-			c.NotiConfig.TelegramBotToken = strings.TrimSpace(val)
-		}
-	}
-
-	return nil
-}
-
-func bitwardenFallbackNotNeeded(c *SystemConfig) bool {
-	for name := range c.ExchangeConfig {
-		if !exchangeCredentialsComplete(name, c.ExchangeConfig[name]) {
-			return false
-		}
-	}
-	return notificationCredentialsComplete(c.NotiConfig)
-}
-
-func exchangeCredentialsComplete(name string, c APIConfig) bool {
-	if !c.IsEnabled() {
-		return true
-	}
-	spec := ExchangeSpecs[name]
-	if spec.RequiresPassphrase && c.APIPassphrase == "" {
-		return false
-	}
-	return c.APIKey != "" && c.APISecret != ""
-}
-
-func notificationCredentialsComplete(c NotiConfig) bool {
-	return c.TelegramChatID != "" && c.TelegramBotToken != ""
-}
-
-// HasBitwardenConfig checks if Bitwarden environment variables are set.
-func HasBitwardenConfig() bool {
-	return os.Getenv("BITWARDEN_ACCESS_TOKEN") != "" &&
-		os.Getenv("BITWARDEN_ORGANIZATION_ID") != "" &&
-		os.Getenv("BITWARDEN_PROJECT_NAME") != ""
-}
-
 // ValidateAPIConfigField is a stub for the legacy api_config tag validator.
 func ValidateAPIConfigField(fl validator.FieldLevel) bool {
 	return true
@@ -194,48 +54,28 @@ func ValidateAPIConfigField(fl validator.FieldLevel) bool {
 // ValidateExchangeConfig checks the validity of each enabled exchange configuration in the map.
 func ValidateExchangeConfig(m ExchangeConfig) error {
 	for name := range m {
-		cfg := m[name]
-		spec, supported := ExchangeSpecs[name]
-		if !supported {
+		ep := m[name]
+		if !IsSupportedExchange(name) {
 			return fmt.Errorf("unsupported exchange configured: %s", name)
 		}
-		if !cfg.IsEnabled() {
+		if !ep.IsEnabled() {
 			continue
 		}
-		if err := validateSingleExchangeConfig(name, cfg, spec); err != nil {
+		spec, _ := GetExchangeSpec(name)
+		if err := validateSingleExchangeConfig(name, ep, spec); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateSingleExchangeConfig(name string, cfg APIConfig, spec ExchangeSpec) error {
-	if spec.RequiresPassphrase && cfg.APIPassphrase == "" {
-		return fmt.Errorf("%s: API passphrase is required", name)
-	}
+func validateSingleExchangeConfig(name string, ep EndpointConfig, spec ExchangeSpec) error {
 	if spec.Validate != nil {
-		if err := spec.Validate(cfg); err != nil {
+		if err := spec.Validate(ep); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 	}
-
-	futureEP := cfg.GetFutureEndpoint()
-	spotEP := cfg.GetSpotEndpoint()
-
-	if cfg.Future != nil && (cfg.Future.Enable || cfg.Spot == nil) {
-		if err := validateEndpoint(name, futureEP); err != nil {
-			return err
-		}
-	}
-	if cfg.Spot != nil && (cfg.Spot.Enable || cfg.Future == nil) {
-		if err := validateEndpoint(name, spotEP); err != nil {
-			return err
-		}
-	}
-	if cfg.APIKey == "" || cfg.APISecret == "" {
-		return fmt.Errorf("%s: API key and secret are required", name)
-	}
-	return nil
+	return validateEndpoint(name, ep)
 }
 
 func validateEndpoint(name string, ep EndpointConfig) error {
@@ -268,14 +108,6 @@ func validateEndpoint(name string, ep EndpointConfig) error {
 	return nil
 }
 
-func IsSupportedExchange(name string) bool {
-	if slices.Contains(SupportedExchanges, name) {
-		return true
-	}
-	baseName := strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(name), "_spot"), "_futures")
-	return slices.Contains(SupportedExchanges, baseName)
-}
-
 func isValidURL(rawURL string) bool {
 	if rawURL == "" {
 		return false
@@ -286,9 +118,9 @@ func isValidURL(rawURL string) bool {
 
 func applySystemDefaults(c *SystemConfig) {
 	for name := range c.ExchangeConfig {
-		apiCfg := c.ExchangeConfig[name]
-		applyExchangeWSDefaults(&apiCfg)
-		c.ExchangeConfig[name] = apiCfg
+		ep := c.ExchangeConfig[name]
+		applyEndpointWSDefaults(&ep)
+		c.ExchangeConfig[name] = ep
 	}
 	if c.Env == "" {
 		c.Env = "dev"
@@ -301,15 +133,6 @@ func applySystemDefaults(c *SystemConfig) {
 	}
 	if c.APIServer.Host == "" {
 		c.APIServer.Host = "0.0.0.0"
-	}
-}
-
-func applyExchangeWSDefaults(cfg *APIConfig) {
-	if cfg.Future != nil {
-		applyEndpointWSDefaults(cfg.Future)
-	}
-	if cfg.Spot != nil {
-		applyEndpointWSDefaults(cfg.Spot)
 	}
 }
 
@@ -326,4 +149,72 @@ func applyEndpointWSDefaults(ep *EndpointConfig) {
 	if ep.BaseURL != "" && ep.WebSocket.MaxPairsPerWSConn <= 0 {
 		ep.WebSocket.MaxPairsPerWSConn = 30
 	}
+}
+
+// LoadAccountCredentials resolves and injects environment variables into the given AccountConfig.
+func LoadAccountCredentials(account *AccountConfig) error {
+	if account == nil {
+		return fmt.Errorf("account config is nil")
+	}
+	if !account.Enabled {
+		return nil
+	}
+
+	if account.Env.APIKey == "" {
+		return fmt.Errorf("account %q: missing env.apiKey mapping", account.ID)
+	}
+	if account.Env.APISecret == "" {
+		return fmt.Errorf("account %q: missing env.apiSecret mapping", account.ID)
+	}
+
+	apiKey := strings.TrimSpace(os.Getenv(account.Env.APIKey))
+	if apiKey == "" {
+		return fmt.Errorf("account %q: environment variable %q is not set or empty", account.ID, account.Env.APIKey)
+	}
+	apiSecret := strings.TrimSpace(os.Getenv(account.Env.APISecret))
+	if apiSecret == "" {
+		return fmt.Errorf("account %q: environment variable %q is not set or empty", account.ID, account.Env.APISecret)
+	}
+
+	account.APIKey = apiKey
+	account.APISecret = apiSecret
+
+	if account.Env.Passphrase != "" {
+		account.APIPassphrase = strings.TrimSpace(os.Getenv(account.Env.Passphrase))
+	}
+
+	spec, ok := GetExchangeSpec(account.Exchange)
+	if ok && spec.RequiresPassphrase && account.APIPassphrase == "" {
+		return fmt.Errorf("account %q: exchange %q requires passphrase, but passphrase is empty (checked env %q)", account.ID, account.Exchange, account.Env.Passphrase)
+	}
+
+	return nil
+}
+
+// LoadAccountsManifest loads an accounts manifest from a JSON/JSONC file and resolves credentials for all enabled accounts.
+func LoadAccountsManifest(path string) (*AccountsManifest, error) {
+	manifest, err := pkgconfig.Load[AccountsManifest](path)
+	if err != nil {
+		return nil, fmt.Errorf("load accounts manifest %s: %w", path, err)
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(manifest); err != nil {
+		return nil, fmt.Errorf("validate accounts manifest: %w", err)
+	}
+
+	seenIDs := make(map[string]bool)
+	for i := range manifest.Accounts {
+		acc := &manifest.Accounts[i]
+		if seenIDs[acc.ID] {
+			return nil, fmt.Errorf("duplicate account ID %q in accounts manifest", acc.ID)
+		}
+		seenIDs[acc.ID] = true
+
+		if err := LoadAccountCredentials(acc); err != nil {
+			return nil, err
+		}
+	}
+
+	return manifest, nil
 }

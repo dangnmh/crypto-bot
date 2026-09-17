@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -19,28 +20,44 @@ var _ strategy.BackgroundStrategy = (*DilutionJob)(nil)
 
 // DilutionJob manages background scheduled PostOnly maker quotes to safely dilute funding trade volume.
 type DilutionJob struct {
-	cfg    *fundingconfig.DilutionConfig
-	engine EngineProviderGetter
-	maker  *DilutionMaker
-	runner *DilutionRunner
-	clock  shared.Clock
-	logger *slog.Logger
-	cancel context.CancelFunc
-	mu     sync.Mutex
+	accountID       string
+	accountExchange string
+	cfg             *fundingconfig.DilutionConfig
+	engine          EngineProviderGetter
+	maker           *DilutionMaker
+	runner          *DilutionRunner
+	clock           shared.Clock
+	logger          *slog.Logger
+	cancel          context.CancelFunc
+	mu              sync.Mutex
 }
 
-// NewDilutionJob creates a new DilutionJob instance.
-func NewDilutionJob(
-	rootCfg *fundingconfig.Config,
+// AccountID returns the target account ID bound to this DilutionJob.
+func (j *DilutionJob) AccountID() string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.accountID
+}
+
+// NewDilutionJobForAccount creates a new DilutionJob instance bound to a specific account.
+func NewDilutionJobForAccount(
+	accountID string,
+	accountExchange string,
+	dilutionCfg *fundingconfig.DilutionConfig,
 	engine EngineProviderGetter,
 	maker *DilutionMaker,
 	runner *DilutionRunner,
 	clock shared.Clock,
 	logger *slog.Logger,
 ) (*DilutionJob, error) {
-	var dilutionCfg *fundingconfig.DilutionConfig
-	if rootCfg != nil {
-		dilutionCfg = rootCfg.Dilution
+	if accountID == "" {
+		return nil, fmt.Errorf("missing required accountID for DilutionJob")
+	}
+	if accountExchange == "" {
+		return nil, fmt.Errorf("missing required accountExchange for DilutionJob (account %q)", accountID)
+	}
+	if dilutionCfg == nil {
+		return nil, fmt.Errorf("missing required dilution config for DilutionJob (account %q)", accountID)
 	}
 	if maker == nil || runner == nil || clock == nil {
 		return nil, fmt.Errorf("missing required dependencies for DilutionJob")
@@ -49,13 +66,56 @@ func NewDilutionJob(
 		logger = slog.Default()
 	}
 	return &DilutionJob{
-		cfg:    dilutionCfg,
-		engine: engine,
-		maker:  maker,
-		runner: runner,
-		clock:  clock,
-		logger: logger.With("component", "DilutionJob"),
+		accountID:       accountID,
+		accountExchange: accountExchange,
+		cfg:             dilutionCfg,
+		engine:          engine,
+		maker:           maker,
+		runner:          runner,
+		clock:           clock,
+		logger:          logger.With("component", "DilutionJob", "account", accountID),
 	}, nil
+}
+
+// NewDilutionJobs creates DilutionJob instances for all accounts configured in rootCfg.
+func NewDilutionJobs(
+	rootCfg *fundingconfig.Config,
+	engine EngineProviderGetter,
+	maker *DilutionMaker,
+	runner *DilutionRunner,
+	clock shared.Clock,
+	logger *slog.Logger,
+) ([]*DilutionJob, error) {
+	if rootCfg == nil {
+		return nil, fmt.Errorf("missing required root config for DilutionJobs")
+	}
+	if len(rootCfg.Accounts) == 0 {
+		return nil, nil
+	}
+	accountIDs := make([]string, 0, len(rootCfg.Accounts))
+	for accID := range rootCfg.Accounts {
+		accountIDs = append(accountIDs, accID)
+	}
+	sort.Strings(accountIDs)
+
+	var jobs []*DilutionJob
+	for _, accID := range accountIDs {
+		accCfg := rootCfg.Accounts[accID]
+		if accCfg == nil || accCfg.Dilution == nil {
+			continue
+		}
+		job, err := NewDilutionJobForAccount(accID, accCfg.Account.Exchange, accCfg.Dilution, engine, maker, runner, clock, logger)
+		if err != nil {
+			return nil, fmt.Errorf("account %q dilution job: %w", accID, err)
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+// Enabled returns true if volume dilution is enabled in config.
+func (j *DilutionJob) Enabled() bool {
+	return j.cfg != nil && j.cfg.Enabled
 }
 
 // Start starts the background dilution scheduler.
@@ -108,13 +168,7 @@ func (j *DilutionJob) Tick(ctx context.Context) error {
 		return nil
 	}
 
-	for exchangeName, exchCfg := range j.cfg.Exchanges {
-		if !exchCfg.Enabled {
-			continue
-		}
-		j.processExchange(ctx, exchangeName, exchCfg)
-	}
-
+	j.processExchange(ctx, j.accountExchange, *j.cfg)
 	return nil
 }
 
@@ -133,7 +187,7 @@ func (j *DilutionJob) processExchange(ctx context.Context, exchangeName string, 
 
 	j.cancelStaleOrders(ctx, exchangeName, exchCfg.Symbol)
 
-	specs, err := j.maker.GenerateQuotes(ctx, exchangeName, exchCfg, posSummary)
+	specs, err := j.maker.GenerateQuotes(ctx, j.accountID, exchangeName, exchCfg, posSummary)
 	if err != nil {
 		j.logger.WarnContext(ctx, "Failed to generate dilution quotes",
 			slog.String("exchange", exchangeName),
@@ -158,7 +212,7 @@ func (j *DilutionJob) cancelStaleOrders(ctx context.Context, exchangeName, symbo
 	if j.runner == nil {
 		return
 	}
-	if err := j.runner.CancelOpenOrders(ctx, exchangeName, symbol); err != nil {
+	if err := j.runner.CancelOpenOrders(ctx, j.accountID, exchangeName, symbol); err != nil {
 		j.logger.WarnContext(ctx, "Failed to cancel stale dilution orders via OrderManager",
 			slog.String("exchange", exchangeName),
 			slog.String("symbol", symbol),
@@ -169,7 +223,7 @@ func (j *DilutionJob) cancelStaleOrders(ctx context.Context, exchangeName, symbo
 
 func (j *DilutionJob) resolvePositionSummary(ctx context.Context, exchangeName, symbol string) PositionSummary {
 	var summary PositionSummary
-	executor := j.getExecutor(exchangeName)
+	executor := j.getExecutor()
 	if executor == nil {
 		return summary
 	}
@@ -206,15 +260,15 @@ func (j *DilutionJob) resolvePositionSummary(ctx context.Context, exchangeName, 
 	return summary
 }
 
-func (j *DilutionJob) getExecutor(exchangeName string) exchange.OrderExecutor {
+func (j *DilutionJob) getExecutor() exchange.OrderExecutor {
 	if j.engine == nil {
 		return nil
 	}
-	prov, err := j.engine.GetProvider(exchangeName)
-	if err != nil || prov == nil || prov.Client == nil {
+	accProv, err := j.engine.GetAccountProvider(j.accountID)
+	if err != nil || accProv == nil || accProv.Client == nil {
 		return nil
 	}
-	executor, ok := prov.Client.(exchange.OrderExecutor)
+	executor, ok := accProv.Client.(exchange.OrderExecutor)
 	if !ok {
 		return nil
 	}
@@ -223,7 +277,7 @@ func (j *DilutionJob) getExecutor(exchangeName string) exchange.OrderExecutor {
 
 func (j *DilutionJob) getContractSize(ctx context.Context, exchangeName, symbol string) float64 {
 	if j.maker != nil {
-		mInfo := j.maker.resolveMarketInfo(ctx, exchangeName, symbol)
+		mInfo := j.maker.resolveMarketInfo(ctx, j.accountID, exchangeName, symbol)
 		if mInfo.ContractSize > 0 {
 			return mInfo.ContractSize
 		}

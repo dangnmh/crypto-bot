@@ -40,15 +40,16 @@ func LoadSystemConfig(systemPath, exchangePath string) (*SystemConfig, error) {
 		return nil, fmt.Errorf("load system config: %w", err)
 	}
 
-	exchRaw, err := pkgconfig.Load[sysconfig.SystemConfig](exchangePath)
+	exchRaw, err := pkgconfig.Load[sysconfig.ExchangeConfig](exchangePath)
 	if err != nil {
 		return nil, fmt.Errorf("load exchange config: %w", err)
 	}
-	sysRaw.ExchangeConfig = exchRaw.ExchangeConfig
+	sysRaw.ExchangeConfig = *exchRaw
 
 	// Penny Jumper operates on public data streams and does not require private API credentials.
 	// Populate placeholder credentials for any enabled exchanges where credentials were not supplied.
-	for exch, apiCfg := range sysRaw.ExchangeConfig {
+	for exch := range sysRaw.ExchangeConfig {
+		apiCfg := sysRaw.ExchangeConfig[exch]
 		if apiCfg.APIKey == "" {
 			apiCfg.APIKey = "public_key"
 		}
@@ -99,7 +100,7 @@ func injectAIProxyCredentials(cfg *pjdomain.PennyJumperConfig) error {
 	}
 
 	injectFromEnv(&cfg.WallJudge)
-	return fallbackFromBitwarden(&cfg.WallJudge)
+	return nil
 }
 
 func injectFromEnv(wj *pjdomain.WallJudgeConfig) {
@@ -112,28 +113,4 @@ func injectFromEnv(wj *pjdomain.WallJudgeConfig) {
 	if model := strings.TrimSpace(os.Getenv("AI_PROXY_MODEL")); model != "" {
 		wj.ModelName = model
 	}
-}
-
-func fallbackFromBitwarden(wj *pjdomain.WallJudgeConfig) error {
-	if (wj.Endpoint != "" && wj.ApiKey != "" && wj.ModelName != "") || !sysconfig.HasBitwardenConfig() {
-		return nil
-	}
-
-	loader, err := sysconfig.NewBitwardenLoader()
-	if err != nil {
-		return fmt.Errorf("bitwarden fallback failed: %w", err)
-	}
-
-	fetchSecret := func(target *string, key string) {
-		if *target == "" {
-			if val, err := loader.GetSecret(key); err == nil && val != "" {
-				*target = strings.TrimSpace(val)
-			}
-		}
-	}
-
-	fetchSecret(&wj.Endpoint, "AI_PROXY_URL")
-	fetchSecret(&wj.ApiKey, "AI_PROXY_API_KEY")
-	fetchSecret(&wj.ModelName, "AI_PROXY_MODEL")
-	return nil
 }

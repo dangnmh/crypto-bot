@@ -6,11 +6,14 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/google/uuid"
+
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/trading/ordermanager/futures"
+	"crypto-bot/pkg/idutil"
 	"crypto-bot/pkg/tradecalc"
 
 	cache "github.com/patrickmn/go-cache"
@@ -36,6 +39,7 @@ func NewOrderGenerator(engine EngineProviderGetter) (*OrderGenerator, error) {
 // GenerateSpec constructs an ObfuscationSpec for a symbol based on remaining loss budget or target sizing.
 func (g *OrderGenerator) GenerateSpec(
 	ctx context.Context,
+	accountID string,
 	cfg fundingconfig.ExchangeObfuscationCfg,
 	exchangeName, symbol string,
 	targetLossUSD float64,
@@ -54,7 +58,12 @@ func (g *OrderGenerator) GenerateSpec(
 	tpPrice, slPrice := computeTPSLPrices(side, iocPrice, cfg, marketInfo)
 	holdDuration := computeHoldDuration(cfg)
 
+	maxLen := exchange.MaxClientOrderIDLength(exchangeName)
+
 	return &ObfuscationSpec{
+		ReqID:           uuid.NewString(),
+		ClientOrderID:   idutil.NanoID(maxLen),
+		AccountID:       accountID,
 		OriginReqID:     originReqID,
 		Exchange:        exchangeName,
 		Symbol:          symbol,
@@ -79,12 +88,13 @@ func (g *OrderGenerator) GenerateSpec(
 // GenerateSpecForSymbol is an alias to GenerateSpec.
 func (g *OrderGenerator) GenerateSpecForSymbol(
 	ctx context.Context,
+	accountID string,
 	cfg fundingconfig.ExchangeObfuscationCfg,
 	exchangeName, symbol string,
 	targetLossUSD float64,
 	originReqID string,
 ) (*ObfuscationSpec, error) {
-	return g.GenerateSpec(ctx, cfg, exchangeName, symbol, targetLossUSD, originReqID)
+	return g.GenerateSpec(ctx, accountID, cfg, exchangeName, symbol, targetLossUSD, originReqID)
 }
 
 func (g *OrderGenerator) resolveMarketInfo(ctx context.Context, exchangeName, symbol string, prevSide shared.Side) MarketInfo {

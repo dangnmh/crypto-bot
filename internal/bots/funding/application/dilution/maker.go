@@ -6,12 +6,15 @@ import (
 	"math"
 	"time"
 
+	"github.com/google/uuid"
+
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/trading/ordermanager/futures"
 	"crypto-bot/pkg/decmath"
+	"crypto-bot/pkg/idutil"
 	"crypto-bot/pkg/tradecalc"
 
 	cache "github.com/patrickmn/go-cache"
@@ -37,11 +40,12 @@ func NewDilutionMaker(engine EngineProviderGetter) (*DilutionMaker, error) {
 // GenerateQuotes creates 1 or 2 PostOnly maker quotes based on current position breakdown and market depth.
 func (m *DilutionMaker) GenerateQuotes(
 	ctx context.Context,
+	accountID string,
 	exchangeName string,
 	cfg fundingconfig.ExchangeDilutionCfg,
 	pos PositionSummary,
 ) ([]*DilutionSpec, error) {
-	marketInfo := m.resolveMarketInfo(ctx, exchangeName, cfg.Symbol)
+	marketInfo := m.resolveMarketInfo(ctx, accountID, exchangeName, cfg.Symbol)
 	if marketInfo.BestBid <= 0 || marketInfo.BestAsk <= 0 {
 		return nil, fmt.Errorf("invalid BBO price for %s:%s (bid=%.4f, ask=%.4f)", exchangeName, cfg.Symbol, marketInfo.BestBid, marketInfo.BestAsk)
 	}
@@ -55,6 +59,7 @@ func (m *DilutionMaker) GenerateQuotes(
 	marginUSDT := orderNotional / float64(leverage)
 
 	params := quoteParams{
+		accountID:    accountID,
 		exchangeName: exchangeName,
 		cfg:          cfg,
 		pos:          pos,
@@ -69,6 +74,7 @@ func (m *DilutionMaker) GenerateQuotes(
 }
 
 type quoteParams struct {
+	accountID    string
 	exchangeName string
 	cfg          fundingconfig.ExchangeDilutionCfg
 	pos          PositionSummary
@@ -188,7 +194,12 @@ func (m *DilutionMaker) makeSpec(p quoteParams, side shared.Side, price, vol flo
 		}
 	}
 
+	maxLen := exchange.MaxClientOrderIDLength(p.exchangeName)
+
 	return &DilutionSpec{
+		ReqID:                 uuid.NewString(),
+		ClientOrderID:         idutil.NanoID(maxLen),
+		AccountID:             p.accountID,
 		Exchange:              p.exchangeName,
 		Symbol:                p.cfg.Symbol,
 		Side:                  side,
@@ -207,13 +218,13 @@ func (m *DilutionMaker) makeSpec(p quoteParams, side shared.Side, price, vol flo
 	}
 }
 
-func (m *DilutionMaker) resolveMarketInfo(ctx context.Context, exchangeName, symbol string) MarketInfo {
+func (m *DilutionMaker) resolveMarketInfo(ctx context.Context, accountID, exchangeName, symbol string) MarketInfo {
 	info := MarketInfo{
 		ContractSize: 1.0,
 		PriceUnit:    0.01,
 	}
 
-	prov, err := m.engine.GetProvider(exchangeName)
+	prov, err := m.engine.GetAccountProvider(accountID)
 	if err != nil || prov == nil || prov.Client == nil {
 		return info
 	}
@@ -224,7 +235,7 @@ func (m *DilutionMaker) resolveMarketInfo(ctx context.Context, exchangeName, sym
 	return info
 }
 
-func (m *DilutionMaker) applyTicker(ctx context.Context, prov *infraapp.ExchangeProvider, symbol string, info MarketInfo) MarketInfo {
+func (m *DilutionMaker) applyTicker(ctx context.Context, prov *infraapp.AccountProvider, symbol string, info MarketInfo) MarketInfo {
 	mdp, ok := prov.Client.(exchange.MarketDataProvider)
 	if !ok {
 		return info
@@ -263,7 +274,7 @@ func (m *DilutionMaker) applyTicker(ctx context.Context, prov *infraapp.Exchange
 	return info
 }
 
-func (m *DilutionMaker) applyContractSpec(ctx context.Context, prov *infraapp.ExchangeProvider, exchangeName, symbol string, info MarketInfo) MarketInfo {
+func (m *DilutionMaker) applyContractSpec(ctx context.Context, prov *infraapp.AccountProvider, exchangeName, symbol string, info MarketInfo) MarketInfo {
 	detail, err := m.getContractDetail(ctx, prov, exchangeName, symbol)
 	if err != nil || detail == nil {
 		return info
@@ -280,7 +291,7 @@ func (m *DilutionMaker) applyContractSpec(ctx context.Context, prov *infraapp.Ex
 	return info
 }
 
-func (m *DilutionMaker) getContractDetail(ctx context.Context, prov *infraapp.ExchangeProvider, exchangeName, symbol string) (*exchange.ContractDetail, error) {
+func (m *DilutionMaker) getContractDetail(ctx context.Context, prov *infraapp.AccountProvider, exchangeName, symbol string) (*exchange.ContractDetail, error) {
 	cacheKey := exchangeName + ":" + symbol
 	if val, found := m.contractsCache.Get(cacheKey); found {
 		if detail, ok := val.(*exchange.ContractDetail); ok {

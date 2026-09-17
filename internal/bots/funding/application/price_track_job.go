@@ -32,10 +32,10 @@ type PriceTrackJob struct {
 }
 
 func isPriceTrackerEnabled(cfg *fundingconfig.Config) bool {
-	if cfg == nil || cfg.Reversion == nil {
+	if cfg == nil || cfg.CommonReversion == nil {
 		return false
 	}
-	return cfg.Reversion.PriceTracker.Enabled
+	return cfg.CommonReversion.PriceTracker.Enabled
 }
 
 // NewPriceTrackJob creates a new PriceTrackJob.
@@ -274,12 +274,12 @@ func (j *PriceTrackJob) FetchHistoryTicksRange(ctx context.Context, rep *domain.
 //
 //nolint:contextcheck // Caller context is correctly propagated
 func (j *PriceTrackJob) buildClient(ctx context.Context, exchangeName string) (exchange.KlineProvider, error) {
-	if strings.EqualFold(exchangeName, "orangex") {
-		apiCfg, ok := j.sysCfg.ExchangeConfig["orangex"]
+	if strings.EqualFold(exchangeName, "orangex_futures") {
+		apiCfg, ok := j.sysCfg.ExchangeConfig["orangex_futures"]
 		if ok {
 			c := orangex.NewClient(
 				j.httpClient,
-				apiCfg.Future.BaseURL,
+				apiCfg.BaseURL,
 				apiCfg.APIKey,
 				apiCfg.APISecret,
 				j.sysCfg.Logging,

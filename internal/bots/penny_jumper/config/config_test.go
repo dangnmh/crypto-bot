@@ -34,7 +34,6 @@ func TestLoadPennyJumperConfig_MissingAIProxyCredentials(t *testing.T) {
 	t.Setenv("AI_PROXY_URL", "")
 	t.Setenv("AI_PROXY_API_KEY", "")
 	t.Setenv("AI_PROXY_MODEL", "")
-	t.Setenv("BITWARDEN_ACCESS_TOKEN", "")
 
 	botPath := filepath.Join("..", "..", "..", "..", "configs", "penny_jumper", "local", "penny_jumper.jsonc")
 	blacklistPath := filepath.Join("..", "..", "..", "..", "configs", "penny_jumper", "local", "blacklist.jsonc")

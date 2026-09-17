@@ -22,6 +22,7 @@ import (
 	"crypto-bot/pkg/decmath"
 
 	"github.com/ThreeDotsLabs/watermill"
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 )
 
@@ -63,8 +64,8 @@ func NewScannerJob(
 	cfg *config.Config,
 	log *slog.Logger,
 ) (*ScannerJob, error) {
-	if cfg == nil || cfg.Reversion == nil {
-		return nil, fmt.Errorf("scanner_job: config and reversion config cannot be nil")
+	if cfg == nil || len(cfg.Accounts) == 0 {
+		return nil, fmt.Errorf("scanner_job: config cannot be nil and must contain accounts")
 	}
 	if log == nil {
 		return nil, fmt.Errorf("scanner_job: logger cannot be nil")
@@ -191,7 +192,7 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 		return false
 	}
 
-	key := c.Config.Exchange + ":" + c.Symbol
+	key := c.Config.AccountID + ":" + c.Config.Exchange + ":" + c.Symbol
 	state, exists := j.states[key]
 	if !exists {
 		state = &symbolState{}
@@ -207,7 +208,7 @@ func (j *ScannerJob) shouldTrigger(c domain.Candidate, settle time.Time) bool {
 }
 
 func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
-	externalID := orders.ExternalOrderID(candidate.Symbol, settle, candidate.Config.Exchange)
+	externalID := orders.GenerateClientOrderID(candidate.Config.Exchange)
 	candidate.ExternalID = externalID
 
 	j.log.Info("Opportunity found! Triggering reversion event flow",
@@ -224,7 +225,8 @@ func (j *ScannerJob) trigger(candidate domain.Candidate, settle time.Time) {
 
 	startEvt := reversion.CandidateFoundEvent{
 		Flow:         reversion.FlowIDFundingReversion,
-		ReqID:        orders.ExternalUniqueID(candidate.Symbol, settle, candidate.Config.Exchange) + strings.ToUpper(reversion.FlowIDFundingReversion),
+		ReqID:        uuid.NewString(),
+		AccountID:    candidate.Config.AccountID,
 		Symbol:       candidate.Symbol,
 		Exchange:     candidate.Config.Exchange,
 		Timestamp:    eventTimestamp,
@@ -268,8 +270,8 @@ func NewConfiguredScanner(
 	log *slog.Logger,
 	disabledReason func(string) (string, bool),
 ) (*ConfiguredScanner, error) {
-	if cfg == nil || cfg.Reversion == nil {
-		return nil, fmt.Errorf("configured_scanner: config and reversion config cannot be nil")
+	if cfg == nil || len(cfg.Accounts) == 0 {
+		return nil, fmt.Errorf("configured_scanner: config cannot be nil and must contain accounts")
 	}
 	if log == nil {
 		return nil, fmt.Errorf("configured_scanner: logger cannot be nil")
@@ -296,10 +298,16 @@ func (s *ConfiguredScanner) getStoreSet(exchangeName string) (strategy.FundingSt
 func (s *ConfiguredScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 	var opportunities []ScanOpportunity
 
-	for i := range s.cfg.Symbols {
-		if storeSet, ok := s.resolveStoreSet(ctx, s.cfg.Symbols[i]); ok {
-			if opp, ok := s.fetchCandidate(ctx, s.cfg.Symbols[i], storeSet); ok {
-				opportunities = append(opportunities, opp)
+	for _, acc := range s.cfg.Accounts {
+		if acc == nil || !acc.Account.Enabled || !acc.Account.Scanners.Configured {
+			continue
+		}
+		for i := range acc.Symbols {
+			sym := acc.Symbols[i]
+			if storeSet, ok := s.resolveStoreSet(ctx, sym); ok {
+				if opp, ok := s.fetchCandidate(ctx, sym, storeSet); ok {
+					opportunities = append(opportunities, opp)
+				}
 			}
 		}
 	}
@@ -353,12 +361,21 @@ func (s *ConfiguredScanner) fetchCandidate(ctx context.Context, symCfg config.Sy
 
 	candidate := s.buildCandidate(symCfg, td, fd.FundingRate)
 
-	if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
+	rev, err := s.cfg.ReversionForAccount(symCfg.AccountID)
+	if err != nil {
+		s.log.WarnContext(ctx, "Skipping candidate: failed to get reversion config for account",
+			slog.String("accountID", symCfg.AccountID),
+			slog.String("symbol", symCfg.Symbol),
+			slog.Any("error", err),
+		)
+		return ScanOpportunity{}, false
+	}
+	if !matchTradeSide(rev.TradeSide, candidate.Side) {
 		s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
 			slog.String("exchange", candidate.Config.Exchange),
 			slog.String("symbol", candidate.Symbol),
 			slog.String("side", candidate.Side.String()),
-			slog.String("configSide", s.cfg.Reversion.TradeSide),
+			slog.String("configSide", rev.TradeSide),
 		)
 		return ScanOpportunity{}, false
 	}
@@ -369,7 +386,7 @@ func (s *ConfiguredScanner) fetchCandidate(ctx context.Context, symCfg config.Sy
 		return ScanOpportunity{}, false
 	}
 
-	client := s.resolveClient(symCfg.Exchange)
+	client := s.resolveClient(symCfg.AccountID, symCfg.Exchange)
 	candidate.Config.Leverage = domain.DetermineCandidateLeverage(ctx, client, &candidate, s.log)
 	if cd, err := storeSet.Contract().GetContract(ctx, candidate.Symbol); err == nil && cd != nil {
 		updateMaxVolForLeverage(cd.MaxVol, cd.GetMaxVolForLeverage, &candidate)
@@ -382,9 +399,14 @@ func (s *ConfiguredScanner) fetchCandidate(ctx context.Context, symCfg config.Sy
 	}, true
 }
 
-func (s *ConfiguredScanner) resolveClient(exchangeName string) exchange.Client {
+func (s *ConfiguredScanner) resolveClient(accountID, exchangeName string) exchange.Client {
 	if s.engine == nil {
 		return nil
+	}
+	if accountID != "" {
+		if accProv, err := s.engine.GetAccountProvider(accountID); err == nil && accProv != nil {
+			return accProv.Client
+		}
 	}
 	prov, err := s.engine.GetProvider(exchangeName)
 	if err != nil || prov == nil {
@@ -463,6 +485,7 @@ func updateMaxVolForLeverage(defaultMaxVol int, getVolFn func(leverage int, refP
 // ToTradeConfig converts config.SymbolConfig to domain.TradeConfig.
 func ToTradeConfig(sc config.SymbolConfig) domain.TradeConfig {
 	return domain.TradeConfig{
+		AccountID:           sc.AccountID,
 		Symbol:              sc.Symbol,
 		Exchange:            sc.Exchange,
 		SimulateSettle:      sc.SimulateSettle,
@@ -484,6 +507,7 @@ type TimeProvider interface {
 
 // ScheduleScanner scans for high-funding opportunities dynamically.
 type ScheduleScanner struct {
+	accountID      string
 	exchange       string
 	cfg            *config.Config
 	client         exchange.Client
@@ -506,17 +530,24 @@ func (s *ScheduleScanner) now() time.Time {
 
 // NewScheduleScanner creates a new ScheduleScanner.
 func NewScheduleScanner(
+	accountID string,
 	exchangeName string,
 	cfg *config.Config,
 	client exchange.Client,
 	log *slog.Logger,
 	disabledReason func(string) (string, bool),
 ) (*ScheduleScanner, error) {
+	if strings.TrimSpace(accountID) == "" {
+		return nil, fmt.Errorf("schedule_scanner: accountID cannot be empty")
+	}
 	if strings.TrimSpace(exchangeName) == "" {
 		return nil, fmt.Errorf("schedule_scanner: exchangeName cannot be empty")
 	}
-	if cfg == nil || cfg.Reversion == nil {
-		return nil, fmt.Errorf("schedule_scanner: config and reversion config cannot be nil")
+	if cfg == nil {
+		return nil, fmt.Errorf("schedule_scanner: config cannot be nil")
+	}
+	if _, err := cfg.ReversionForAccount(accountID); err != nil {
+		return nil, fmt.Errorf("schedule_scanner: %w", err)
 	}
 	if client == nil {
 		return nil, fmt.Errorf("schedule_scanner: exchange client cannot be nil")
@@ -529,19 +560,21 @@ func NewScheduleScanner(
 	}
 
 	return &ScheduleScanner{
+		accountID:      accountID,
 		exchange:       exchangeName,
 		cfg:            cfg,
 		client:         client,
-		log:            log.With("component", "schedule_scanner", "exchange", exchangeName),
+		log:            log.With("component", "schedule_scanner", "account_id", accountID, "exchange", exchangeName),
 		disabledReason: disabledReason,
 	}, nil
 }
 
 func (s *ScheduleScanner) resolveExchangeReversionConfig(exchangeName string) (config.ExchangeReversionConfig, bool) {
-	if s.cfg == nil || s.cfg.Reversion == nil || s.cfg.Reversion.Exchanges == nil {
+	rev, err := s.cfg.ReversionForAccount(s.accountID)
+	if err != nil || rev == nil || rev.Exchanges == nil {
 		return config.ExchangeReversionConfig{}, false
 	}
-	cfg, ok := s.cfg.Reversion.Exchanges[exchangeName]
+	cfg, ok := rev.Exchanges[exchangeName]
 	return cfg, ok
 }
 
@@ -608,7 +641,11 @@ func (s *ScheduleScanner) Scan(ctx context.Context) ([]ScanOpportunity, error) {
 }
 
 func (s *ScheduleScanner) resolveTotalMarginAndMaxCandidate() (float64, int, float64) {
-	exchConfig := s.cfg.Reversion.Default
+	rev, err := s.cfg.ReversionForAccount(s.accountID)
+	if err != nil || rev == nil {
+		return 0, 0, 0
+	}
+	exchConfig := rev.Default
 	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
 		config.MergeExchangeReversionConfig(&exchConfig, specific)
 	}
@@ -617,7 +654,11 @@ func (s *ScheduleScanner) resolveTotalMarginAndMaxCandidate() (float64, int, flo
 }
 
 func (s *ScheduleScanner) resolveMaxImpactRatio() float64 {
-	return s.cfg.Reversion.Safety.MaxImpactRatio
+	rev, err := s.cfg.ReversionForAccount(s.accountID)
+	if err != nil || rev == nil {
+		return 0
+	}
+	return rev.Safety.MaxImpactRatio
 }
 
 func (s *ScheduleScanner) allocateCandidateMargins(
@@ -665,7 +706,11 @@ func (s *ScheduleScanner) allocateCandidateMargins(
 }
 
 func (s *ScheduleScanner) resolveScoringWeights() (float64, float64, float64) {
-	exchConfig := s.cfg.Reversion.Default
+	rev, err := s.cfg.ReversionForAccount(s.accountID)
+	if err != nil || rev == nil {
+		return 0, 0, 0
+	}
+	exchConfig := rev.Default
 	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
 		config.MergeExchangeReversionConfig(&exchConfig, specific)
 	}
@@ -729,10 +774,13 @@ func (s *ScheduleScanner) processResult(
 		return ScanOpportunity{}, false, nil
 	}
 
-	symCfg, err := s.cfg.NewSymbolConfig(s.exchange, r.Symbol)
+	symCfg, err := s.cfg.NewAccountSymbolConfig(s.accountID, s.exchange, r.Symbol)
 	if err != nil {
 		s.log.WarnContext(ctx, "Failed to resolve symbol config",
-			slog.String("symbol", r.Symbol), slog.Any("error", err))
+			slog.String("accountID", s.accountID),
+			slog.String("symbol", r.Symbol),
+			slog.Any("error", err),
+		)
 		return ScanOpportunity{}, false, nil
 	}
 
@@ -756,11 +804,15 @@ func (s *ScheduleScanner) processResult(
 
 	candidate := s.buildCandidate(symCfg, td, r.Rate)
 
-	if !matchTradeSide(s.cfg.Reversion.TradeSide, candidate.Side) {
+	tradeSide := ""
+	if rev, err := s.cfg.ReversionForAccount(s.accountID); err == nil && rev != nil {
+		tradeSide = rev.TradeSide
+	}
+	if !matchTradeSide(tradeSide, candidate.Side) {
 		s.log.DebugContext(ctx, "Skipping candidate: side does not match tradeSide config",
 			slog.String("symbol", candidate.Symbol),
 			slog.String("side", candidate.Side.String()),
-			slog.String("configSide", s.cfg.Reversion.TradeSide),
+			slog.String("configSide", tradeSide),
 		)
 		return ScanOpportunity{}, false, nil
 	}
@@ -818,8 +870,10 @@ func (s *ScheduleScanner) buildCandidate(sc config.SymbolConfig, td exchange.Tic
 
 func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 	maxPrice := 0.0
-	if j.cfg != nil && j.cfg.Reversion != nil {
-		maxPrice = j.cfg.Reversion.Safety.MaxSymbolUSDTPrice
+	if j.cfg != nil {
+		if rev, err := j.cfg.ReversionForAccount(c.Config.AccountID); err == nil && rev != nil {
+			maxPrice = rev.Safety.MaxSymbolUSDTPrice
+		}
 	}
 	now := time.Now()
 	if prov, err := j.getEngineProvider(c.Config.Exchange); err == nil && prov.TimeSync != nil {
@@ -829,10 +883,11 @@ func (j *ScannerJob) checkSafetyLimits(c domain.Candidate) bool {
 }
 
 func (s *ScheduleScanner) resolveMinVol24USD() float64 {
-	if s.cfg == nil || s.cfg.Reversion == nil {
+	rev, err := s.cfg.ReversionForAccount(s.accountID)
+	if err != nil || rev == nil {
 		return 0
 	}
-	minVol := s.cfg.Reversion.Default.MinVol24USD
+	minVol := rev.Default.MinVol24USD
 	if specific, exists := s.resolveExchangeReversionConfig(s.exchange); exists {
 		if specific.MinVol24USD > 0 {
 			minVol = specific.MinVol24USD
@@ -847,8 +902,8 @@ func (s *ScheduleScanner) isValidCandidate(c *domain.Candidate) bool {
 	}
 	minVol := s.resolveMinVol24USD()
 	maxPrice := 0.0
-	if s.cfg != nil && s.cfg.Reversion != nil {
-		maxPrice = s.cfg.Reversion.Safety.MaxSymbolUSDTPrice
+	if rev, err := s.cfg.ReversionForAccount(s.accountID); err == nil && rev != nil {
+		maxPrice = rev.Safety.MaxSymbolUSDTPrice
 	}
 	return checkCandidatePreAllocationSafetyLimits(*c, minVol, maxPrice, s.now(), s.log)
 }

@@ -183,13 +183,11 @@ func TestStatsReportJob_Tick(t *testing.T) {
 
 func TestStatsReportJob_Disabled(t *testing.T) {
 	t.Parallel()
-	cfg := &fundingconfig.Config{
-		Reversion: &fundingconfig.ReversionConfig{
-			StatsReporter: fundingconfig.StatsReporterConfig{
-				Enabled: false,
-			},
+	cfg := fundingconfig.NewTestConfig(&fundingconfig.ReversionConfig{
+		StatsReporter: fundingconfig.StatsReporterConfig{
+			Enabled: false,
 		},
-	}
+	})
 	job := application.NewStatsReportJob(
 		cfg,
 		&fundingconfig.SystemConfig{},

@@ -118,6 +118,12 @@ vault write auth/kubernetes/role/crypto-bot-role \
 vault kv put secret/crypto-bot \
   MEXC_API_KEY="mexc_api_key_from_vault" \
   MEXC_API_SECRET="mexc_api_secret_from_vault" \
+  MEXC_MAIN_API_KEY="mexc_api_key_from_vault" \
+  MEXC_MAIN_API_SECRET="mexc_api_secret_from_vault" \
+  MEXC_MAIN_OUTBOUND_IP="" \
+  MEXC_SUB1_API_KEY="mexc_sub1_api_key_from_vault" \
+  MEXC_SUB1_API_SECRET="mexc_sub1_api_secret_from_vault" \
+  MEXC_SUB1_OUTBOUND_IP="" \
   GATE_API_KEY="gate_api_key_from_vault" \
   GATE_API_SECRET="gate_api_secret_from_vault" \
   OKX_API_KEY="okx_api_key_from_vault" \

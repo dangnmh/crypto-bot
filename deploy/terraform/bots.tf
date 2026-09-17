@@ -22,7 +22,7 @@ resource "kubernetes_config_map_v1" "bot_configs" {
   data = {
     for f in fileset(
       startswith(each.value.config_dir, "/") ? each.value.config_dir : "${path.module}/${each.value.config_dir}",
-      "*.jsonc"
+      "**/*.jsonc"
     ) : f => file("${startswith(each.value.config_dir, "/") ? each.value.config_dir : "${path.module}/${each.value.config_dir}"}/${f}")
   }
 }
@@ -97,13 +97,11 @@ resource "kubernetes_deployment_v1" "bot" {
 
           args = length(coalesce(each.value.command_args, [])) > 0 ? each.value.command_args : (
             each.value.bot_type == "funding" ? [
+              "-accounts", "/app/configs/accounts.jsonc",
               "-sys", "/app/configs/system.jsonc",
               "-exch", "/app/configs/exchange.jsonc",
-              "-bot", "/app/configs/funding.jsonc",
               "-blacklist", "/app/configs/blacklist.jsonc",
-              "-reversion", "/app/configs/reversion.jsonc",
-              "-obfuscator", "/app/configs/obfuscator.jsonc",
-              "-dilution", "/app/configs/dilution.jsonc"
+              "-reversion", "/app/configs/reversion.jsonc"
             ] : [
               "-sys", "/app/configs/system.jsonc",
               "-exch", "/app/configs/exchange.jsonc",

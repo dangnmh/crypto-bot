@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +34,85 @@ type FundingBot struct {
 	bgWg           sync.WaitGroup
 }
 
+func buildOrderWatchers(engine *app.Engine) map[string]watcher.OrderNotifier {
+	orderWatchers := make(map[string]watcher.OrderNotifier)
+	if engine == nil {
+		return orderWatchers
+	}
+	for name, prov := range engine.Providers {
+		orderWatchers[name] = prov.Watcher
+	}
+	for id, accProv := range engine.AccountProviders {
+		orderWatchers[id] = accProv.Watcher
+	}
+	return orderWatchers
+}
+
+type exchangeStoreSettings struct {
+	scheduleEnabled     bool
+	tickerDuration      time.Duration
+	contractDuration    time.Duration
+	fundingSyncDuration time.Duration
+}
+
+func minDuration(curr, next time.Duration) time.Duration {
+	if next <= 0 {
+		return curr
+	}
+	if curr <= 0 || next < curr {
+		return next
+	}
+	return curr
+}
+
+func resolveExchangeStoreSettings(cfg *config.Config, exchangeName string) exchangeStoreSettings {
+	var s exchangeStoreSettings
+	if cfg == nil {
+		return s
+	}
+	for _, acc := range cfg.Accounts {
+		if acc == nil || !acc.Account.Enabled || !strings.EqualFold(acc.Account.Exchange, exchangeName) {
+			continue
+		}
+		if acc.Account.Scanners.Schedule {
+			s.scheduleEnabled = true
+		}
+		if acc.Reversion != nil {
+			s.tickerDuration = minDuration(s.tickerDuration, time.Duration(acc.Reversion.Sync.Ticker))
+			s.contractDuration = minDuration(s.contractDuration, time.Duration(acc.Reversion.Sync.Contract))
+			s.fundingSyncDuration = minDuration(s.fundingSyncDuration, time.Duration(acc.Reversion.Sync.FundingSync))
+		}
+	}
+	return s
+}
+
+func buildExchangeStores(cfg *config.Config, engine *app.Engine, log *slog.Logger) map[string]strategy.FundingStoreSet {
+	storesMap := make(map[string]strategy.FundingStoreSet)
+	if engine == nil {
+		return storesMap
+	}
+	for name, prov := range engine.Providers {
+		symbols := getActiveSymbols(cfg, name)
+		settings := resolveExchangeStoreSettings(cfg, name)
+
+		if len(symbols) > 0 || settings.scheduleEnabled {
+			opts := []app.StoreOption{
+				app.WithLogger(log.With("exchange", name)),
+				app.WithTicker(prov.Client, settings.tickerDuration),
+				app.WithContract(prov.Client, settings.contractDuration),
+				app.WithPrice(),
+				app.WithDepth(),
+				app.WithKline(),
+			}
+			if len(symbols) > 0 {
+				opts = append(opts, app.WithFunding(prov.Client, settings.fundingSyncDuration, symbols))
+			}
+			storesMap[name] = app.NewCentralStore(opts...)
+		}
+	}
+	return storesMap
+}
+
 // NewFundingBot creates a new FundingBot instance.
 func NewFundingBot(
 	cfg *config.Config,
@@ -42,52 +122,12 @@ func NewFundingBot(
 	strategies []strategy.BackgroundStrategy,
 	log *slog.Logger,
 ) *FundingBot {
-	orderWatchers := make(map[string]watcher.OrderNotifier)
-	for name, prov := range engine.Providers {
-		orderWatchers[name] = prov.Watcher
-	}
-
-	// Build map of stores per active exchange
-	storesMap := make(map[string]strategy.FundingStoreSet)
-
-	for name, prov := range engine.Providers {
-		symbols := getActiveSymbols(cfg, name)
-
-		var scheduleEnabled bool
-		var tickerDuration time.Duration
-		var contractDuration time.Duration
-		var fundingSyncDuration time.Duration
-
-		if cfg.Reversion != nil {
-			scheduleEnabled = cfg.Reversion.Scanners.Schedule[name]
-			tickerDuration = time.Duration(cfg.Reversion.Sync.Ticker)
-			contractDuration = time.Duration(cfg.Reversion.Sync.Contract)
-			fundingSyncDuration = time.Duration(cfg.Reversion.Sync.FundingSync)
-		}
-
-		if len(symbols) > 0 || scheduleEnabled {
-			opts := []app.StoreOption{
-				app.WithLogger(log.With("exchange", name)),
-				app.WithTicker(prov.Client, tickerDuration),
-				app.WithContract(prov.Client, contractDuration),
-				app.WithPrice(),
-				app.WithDepth(),
-				app.WithKline(),
-			}
-			if len(symbols) > 0 {
-				opts = append(opts, app.WithFunding(prov.Client, fundingSyncDuration, symbols))
-			}
-			storeSet := app.NewCentralStore(opts...)
-			storesMap[name] = storeSet
-		}
-	}
-
 	return &FundingBot{
 		cfg:            cfg,
 		sysCfg:         sysCfg,
 		engine:         engine,
-		orderNotifiers: orderWatchers,
-		stores:         storesMap,
+		orderNotifiers: buildOrderWatchers(engine),
+		stores:         buildExchangeStores(cfg, engine, log),
 		notifier:       n,
 		disabled:       make(map[string]string),
 		strategies:     strategies,
@@ -95,62 +135,105 @@ func NewFundingBot(
 	}
 }
 
+func (s *FundingBot) startExchangeProvider(ctx context.Context, name string, prov *app.ExchangeProvider) error {
+	provLogger := s.log.With("exchange", name)
+	provLogger.InfoContext(ctx, "🔗 Starting background services...")
+
+	// 1. WarmUp + TimeSync.
+	s.bgWg.Add(1)
+	go func(p *app.ExchangeProvider) {
+		defer s.bgWg.Done()
+		p.Client.WarmUp(ctx, 4*time.Second)
+	}(prov)
+
+	if runner, ok := prov.Client.(exchange.BackgroundTaskRunner); ok {
+		runner.StartBackgroundTasks(ctx)
+	}
+
+	s.bgWg.Add(1)
+	go func(p *app.ExchangeProvider) {
+		defer s.bgWg.Done()
+		p.TimeSync.Start(ctx)
+	}(prov)
+
+	if err := prov.TimeSync.WaitReady(ctx); err != nil {
+		return err
+	}
+
+	stores, hasStore := s.stores[name]
+	if hasStore {
+		// 2. Start stores + wait for initial data.
+		stores.Start(ctx)
+		if err := stores.WaitReady(ctx); err != nil {
+			return err
+		}
+	}
+
+	// 3. Connect WS + subscribe personal channels.
+	prov.WSPool.Connect(ctx)
+
+	if err := prov.WSPool.WaitReady(ctx); err != nil {
+		return err
+	}
+
+	// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
+	if hasStore {
+		stores.WireWS(prov.WSPool, prov.Adapter)
+	}
+	prov.WirePersonalWS(ctx, s.log)
+
+	if prov.Adapter != nil {
+		if err := prov.Adapter.SubscribePersonal(ctx, reversion.FlowIDFundingReversion); err != nil {
+			provLogger.WarnContext(ctx, "⚠️ Failed to subscribe personal channels", slog.Any("error", err))
+		}
+	}
+
+	provLogger.InfoContext(ctx, "🟢 Exchange Background Services Ready")
+	return nil
+}
+
+func (s *FundingBot) startAccountProvider(ctx context.Context, accID string, accProv *app.AccountProvider) error {
+	accLogger := s.log.With("account_id", accID, "exchange", accProv.ExchangeName)
+	accLogger.InfoContext(ctx, "🔗 Starting account background services...")
+
+	s.bgWg.Add(1)
+	go func(p *app.AccountProvider) {
+		defer s.bgWg.Done()
+		p.Client.WarmUp(ctx, 4*time.Second)
+	}(accProv)
+
+	if runner, ok := accProv.Client.(exchange.BackgroundTaskRunner); ok {
+		runner.StartBackgroundTasks(ctx)
+	}
+
+	if accProv.WSPool != nil {
+		accProv.WSPool.Connect(ctx)
+		if err := accProv.WSPool.WaitReady(ctx); err != nil {
+			return err
+		}
+		accProv.WirePersonalWS(ctx, s.log)
+		if accProv.Adapter != nil {
+			if err := accProv.Adapter.SubscribePersonal(ctx, reversion.FlowIDFundingReversion); err != nil {
+				accLogger.WarnContext(ctx, "⚠️ Failed to subscribe personal channels", slog.Any("error", err))
+			}
+		}
+	}
+	accLogger.InfoContext(ctx, "🟢 Account Background Services Ready")
+	return nil
+}
+
 // RunAsBackground launches all required sync and connection routines for all active exchanges.
 func (s *FundingBot) RunAsBackground(ctx context.Context) error {
 	for name, prov := range s.engine.Providers {
-		provLogger := s.log.With("exchange", name)
-		provLogger.InfoContext(ctx, "🔗 Starting background services...")
-
-		// 1. WarmUp + TimeSync.
-		s.bgWg.Add(1)
-		go func(p *app.ExchangeProvider) {
-			defer s.bgWg.Done()
-			p.Client.WarmUp(ctx, 4*time.Second)
-		}(prov)
-
-		if runner, ok := prov.Client.(exchange.BackgroundTaskRunner); ok {
-			runner.StartBackgroundTasks(ctx)
-		}
-
-		s.bgWg.Add(1)
-		go func(p *app.ExchangeProvider) {
-			defer s.bgWg.Done()
-			p.TimeSync.Start(ctx)
-		}(prov)
-
-		if err := prov.TimeSync.WaitReady(ctx); err != nil {
+		if err := s.startExchangeProvider(ctx, name, prov); err != nil {
 			return err
 		}
+	}
 
-		stores, hasStore := s.stores[name]
-		if hasStore {
-			// 2. Start stores + wait for initial data.
-			stores.Start(ctx)
-			if err := stores.WaitReady(ctx); err != nil {
-				return err
-			}
-		}
-
-		// 3. Connect WS + subscribe personal channels.
-		prov.WSPool.Connect(ctx)
-
-		if err := prov.WSPool.WaitReady(ctx); err != nil {
+	for accID, accProv := range s.engine.AccountProviders {
+		if err := s.startAccountProvider(ctx, accID, accProv); err != nil {
 			return err
 		}
-
-		// 4. Wire WS streams to stores (auto-routes ticker/depth/kline).
-		if hasStore {
-			stores.WireWS(prov.WSPool, prov.Adapter)
-		}
-		prov.WirePersonalWS(ctx, s.log)
-
-		if prov.Adapter != nil {
-			if err := prov.Adapter.SubscribePersonal(ctx, reversion.FlowIDFundingReversion); err != nil {
-				provLogger.WarnContext(ctx, "⚠️ Failed to subscribe personal channels", slog.Any("error", err))
-			}
-		}
-
-		provLogger.InfoContext(ctx, "🟢 Exchange Background Services Ready")
 	}
 
 	// Initialize all background strategies globally exactly once
@@ -202,10 +285,62 @@ func (s *FundingBot) Run(ctx context.Context) error {
 	return nil
 }
 
+func (s *FundingBot) initScheduleScanners(ctx context.Context) ([]Scanner, error) {
+	var scanners []Scanner
+	for accID, acc := range s.cfg.Accounts {
+		if acc == nil || !acc.Account.Enabled || !acc.Account.Scanners.Schedule {
+			continue
+		}
+		exch := acc.Account.Exchange
+
+		exchangeProvider, err := s.engine.GetProvider(exch)
+		if err != nil || exchangeProvider == nil {
+			s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.",
+				slog.String("account_id", accID),
+				slog.String("exchange", exch),
+			)
+			continue
+		}
+
+		client := exchangeProvider.Client
+		if accProv, accErr := s.engine.GetAccountProvider(accID); accErr == nil && accProv != nil && accProv.Client != nil {
+			client = accProv.Client
+		}
+
+		scheduleScanner, err := NewScheduleScanner(
+			accID,
+			exch,
+			s.cfg,
+			client,
+			s.log,
+			s.disabledReason,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create schedule scanner for account %s, exchange %s: %w", accID, exch, err)
+		}
+		if exchangeProvider.TimeSync != nil {
+			scheduleScanner.SetTimeSync(exchangeProvider.TimeSync)
+		}
+		scanners = append(scanners, scheduleScanner)
+		s.log.InfoContext(ctx, "Registered ScheduleScanner for account",
+			slog.String("account_id", accID),
+			slog.String("exchange", exch),
+		)
+	}
+	return scanners, nil
+}
+
 func (s *FundingBot) initScanners(ctx context.Context) ([]Scanner, error) {
 	var scanners []Scanner
 
-	if s.cfg.Reversion != nil && s.cfg.Reversion.Scanners.Configured {
+	hasConfigured := false
+	for _, acc := range s.cfg.Accounts {
+		if acc != nil && acc.Account.Enabled && acc.Account.Scanners.Configured {
+			hasConfigured = true
+			break
+		}
+	}
+	if hasConfigured {
 		configuredScanner, err := NewConfiguredScanner(
 			s.cfg,
 			s.engine,
@@ -220,33 +355,11 @@ func (s *FundingBot) initScanners(ctx context.Context) ([]Scanner, error) {
 		s.log.InfoContext(ctx, "Registered ConfiguredScanner")
 	}
 
-	if s.cfg.Reversion != nil {
-		for exch, enabled := range s.cfg.Reversion.Scanners.Schedule {
-			if !enabled {
-				continue
-			}
-
-			if exchangeProvider, ok := s.engine.Providers[exch]; ok {
-				scheduleScanner, err := NewScheduleScanner(
-					exch,
-					s.cfg,
-					exchangeProvider.Client,
-					s.log,
-					s.disabledReason,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create schedule scanner for %s: %w", exch, err)
-				}
-				if exchangeProvider.TimeSync != nil {
-					scheduleScanner.SetTimeSync(exchangeProvider.TimeSync)
-				}
-				scanners = append(scanners, scheduleScanner)
-				s.log.InfoContext(ctx, "Registered ScheduleScanner for exchange", slog.String("exchange", exch))
-			} else {
-				s.log.WarnContext(ctx, "provider not found. ScheduleScanner is disabled.", slog.String("exchange", exch))
-			}
-		}
+	scheduleScanners, err := s.initScheduleScanners(ctx)
+	if err != nil {
+		return nil, err
 	}
+	scanners = append(scanners, scheduleScanners...)
 
 	if len(scanners) == 0 {
 		s.log.WarnContext(ctx, "⚠️ No scanners are enabled. Background scanner job will run idle.")
@@ -277,13 +390,19 @@ func (s *FundingBot) disabledReason(symbol string) (string, bool) {
 }
 
 func getActiveSymbols(cfg *config.Config, exchangeName string) []string {
-	if cfg.Reversion == nil || !cfg.Reversion.Scanners.Configured {
+	if cfg == nil {
 		return nil
 	}
 	var symbols []string
-	for i := range cfg.Symbols {
-		sym := cfg.Symbols[i]
-		if sym.Exchange == exchangeName {
+	for _, acc := range cfg.Accounts {
+		if acc == nil || !acc.Account.Enabled || !acc.Account.Scanners.Configured {
+			continue
+		}
+		for i := range acc.Symbols {
+			sym := acc.Symbols[i]
+			if !strings.EqualFold(sym.Exchange, exchangeName) {
+				continue
+			}
 			if cfg.Blacklist != nil && cfg.Blacklist.IsBlacklisted(exchangeName, sym.Symbol) {
 				continue
 			}

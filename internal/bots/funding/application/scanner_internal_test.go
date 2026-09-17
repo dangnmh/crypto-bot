@@ -26,12 +26,9 @@ import (
 func TestConfiguredScanner_Scan_MissingStore(t *testing.T) {
 	t.Parallel()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -54,12 +51,9 @@ func TestConfiguredScanner_Scan_NilTicker(t *testing.T) {
 	fundings := mocks.NewMockFundingReader(ctrl)
 	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -90,12 +84,9 @@ func TestConfiguredScanner_Scan_GetTickerError(t *testing.T) {
 	fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
 	tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(nil, errors.New("ticker error")).AnyTimes()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -132,12 +123,9 @@ func TestConfiguredScanner_Scan_NilContract(t *testing.T) {
 		FundingRate: -0.01,
 	}, nil).AnyTimes()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -177,12 +165,9 @@ func TestConfiguredScanner_Scan_GetContractError(t *testing.T) {
 	}, nil).AnyTimes()
 	contracts.EXPECT().GetContract(gomock.Any(), "BTC_USDT").Return(nil, errors.New("contract error")).AnyTimes()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -214,7 +199,7 @@ func TestScannerJob_ScanError(t *testing.T) {
 	job, err := NewScannerJob(
 		[]Scanner{mScanner},
 		&app.Engine{Providers: map[string]*app.ExchangeProvider{}},
-		&config.Config{Reversion: &config.ReversionConfig{}},
+		config.NewTestConfig(&config.ReversionConfig{}),
 		sniperTestLogger(),
 	)
 	require.NoError(t, err)
@@ -275,7 +260,7 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 	job, err := NewScannerJob(
 		[]Scanner{mScanner},
 		engine,
-		&config.Config{Reversion: &config.ReversionConfig{}},
+		config.NewTestConfig(&config.ReversionConfig{}),
 		sniperTestLogger(),
 	)
 	require.NoError(t, err)
@@ -316,7 +301,7 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 	job2, err := NewScannerJob(
 		[]Scanner{mScanner2},
 		engine,
-		&config.Config{Reversion: &config.ReversionConfig{}},
+		config.NewTestConfig(&config.ReversionConfig{}),
 		sniperTestLogger(),
 	)
 	require.NoError(t, err)
@@ -327,14 +312,11 @@ func TestScannerJob_DoubleTriggerAndPublishError(t *testing.T) {
 func TestConfiguredScanner_Scan_Blacklisted(t *testing.T) {
 	t.Parallel()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-		Blacklist: &config.BlacklistConfig{
-			"common": []string{"BTC_USDT"},
-		},
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
+	cfg.Blacklist = &config.BlacklistConfig{
+		"common": []string{"BTC_USDT"},
 	}
 
 	scanner, err := NewConfiguredScanner(
@@ -400,20 +382,16 @@ func TestScheduleScanner_Scan(t *testing.T) {
 	}, nil)
 
 	// Setup minimal config
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				MinVol24USD:       1000000,
-				MarginUSD:         5.0,
-				MaxCandidateTrade: 1,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			MinVol24USD:       1000000,
+			MarginUSD:         5.0,
+			MaxCandidateTrade: 1,
 		},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 5.0},
-		},
-	}
+	}, config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 5.0})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -507,21 +485,19 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 				{Symbol: "ETH_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.01},
 			}, nil)
 
-			cfg := &config.Config{
-				Reversion: &config.ReversionConfig{
-					Default: config.ExchangeReversionConfig{
-						MinVol24USD:       1000000,
-						MarginUSD:         15.0,
-						MaxCandidateTrade: 1,
-					},
+			cfg := config.NewTestConfig(&config.ReversionConfig{
+				Default: config.ExchangeReversionConfig{
+					MinVol24USD:       1000000,
+					MarginUSD:         15.0,
+					MaxCandidateTrade: 1,
 				},
-				Symbols: []config.SymbolConfig{
-					{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 5.0},
-					{Symbol: "ETH_USDT", Exchange: "mexc", MarginUSDT: 10.0},
-				},
-			}
+			},
+				config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc", MarginUSDT: 5.0},
+				config.SymbolConfig{Symbol: "ETH_USDT", Exchange: "mexc", MarginUSDT: 10.0},
+			)
 
 			scanner, err := NewScheduleScanner(
+				config.DefaultAccountID,
 				"mexc",
 				cfg,
 				client,
@@ -545,11 +521,9 @@ func TestScheduleScanner_Scan_BestOpportunityFiltering(t *testing.T) {
 func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	t.Parallel()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Blacklist: &config.BlacklistConfig{
-			"mexc": []string{"XRP_USDT"},
-		},
+	cfg := config.NewTestConfig(&config.ReversionConfig{})
+	cfg.Blacklist = &config.BlacklistConfig{
+		"mexc": []string{"XRP_USDT"},
 	}
 
 	engine := &app.Engine{Providers: map[string]*app.ExchangeProvider{}}
@@ -559,6 +533,7 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	// Candidate meets all thresholds
 	candOk := domain.Candidate{
 		Config: domain.TradeConfig{
+			AccountID:      "acc_0",
 			Exchange:       "mexc",
 			Symbol:         "BTC_USDT",
 			MinFundingRate: 0.001,
@@ -585,6 +560,17 @@ func TestScannerJob_ShouldTrigger_Filters(t *testing.T) {
 	candBlacklisted.Symbol = "XRP_USDT"
 	candBlacklisted.Config.Symbol = "XRP_USDT"
 	assert.False(t, job.shouldTrigger(candBlacklisted, time.Now().Add(10*time.Minute)))
+
+	// Multi-account same symbol and settle time isolation
+	settleTime := time.Now().Add(10 * time.Minute)
+	candAcc1 := candOk
+	candAcc1.Config.AccountID = "acc_1"
+	candAcc2 := candOk
+	candAcc2.Config.AccountID = "acc_2"
+
+	assert.True(t, job.shouldTrigger(candAcc1, settleTime))
+	assert.False(t, job.shouldTrigger(candAcc1, settleTime), "same account same settle time should not re-trigger")
+	assert.True(t, job.shouldTrigger(candAcc2, settleTime), "different account should trigger independently for same symbol and settle time")
 }
 
 func TestConfiguredScanner_BuildCandidate_FundingRateRounding(t *testing.T) {
@@ -646,15 +632,9 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 			Symbol: "BTC_USDT",
 		}, nil).AnyTimes()
 
-		// Config with tradeSide set to "long" (so SHORT candidate should be skipped)
-		cfg := &config.Config{
-			Reversion: &config.ReversionConfig{
-				TradeSide: "long",
-			},
-			Symbols: []config.SymbolConfig{
-				{Symbol: "BTC_USDT", Exchange: "mexc"},
-			},
-		}
+		cfg := config.NewTestConfig(&config.ReversionConfig{
+			TradeSide: "long",
+		}, config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"})
 
 		scanner, err := NewConfiguredScanner(
 			cfg,
@@ -674,6 +654,41 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 		opportunities, err := scanner.Scan(context.Background())
 		require.NoError(t, err)
 		assert.Empty(t, opportunities) // Skipped because it's a SHORT candidate and we only want LONG
+	})
+
+	t.Run("ConfiguredScanner missing account", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		tickers := mocks.NewMockTickerReader(ctrl)
+		fundings := mocks.NewMockFundingReader(ctrl)
+
+		fundings.EXPECT().GetSettleTime(gomock.Any(), "BTC_USDT").Return(time.Now().Add(30*time.Second), nil).AnyTimes()
+		tickers.EXPECT().GetTicker(gomock.Any(), "BTC_USDT").Return(&store.TickerData{Symbol: "BTC_USDT"}, nil).AnyTimes()
+		fundings.EXPECT().GetFunding(gomock.Any(), "BTC_USDT").Return(&store.FundingData{Symbol: "BTC_USDT", FundingRate: -0.01}, nil).AnyTimes()
+
+		cfg := config.NewTestConfig(&config.ReversionConfig{TradeSide: "all"}, config.SymbolConfig{
+			AccountID: "non_existent_account",
+			Symbol:    "BTC_USDT",
+			Exchange:  "mexc",
+		})
+
+		scanner, err := NewConfiguredScanner(
+			cfg,
+			nil,
+			map[string]strategy.FundingStoreSet{
+				"mexc": fakeFundingStoreSet{
+					funding: fundings,
+					ticker:  tickers,
+				},
+			},
+			sniperTestLogger(),
+			func(string) (string, bool) { return "", false },
+		)
+		require.NoError(t, err)
+
+		opportunities, err := scanner.Scan(context.Background())
+		require.NoError(t, err)
+		assert.Empty(t, opportunities)
 	})
 
 	// 2. Test ScheduleScanner filtering
@@ -709,17 +724,15 @@ func TestScanner_TradeSideFilter(t *testing.T) {
 			{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, PriceScale: 1, VolScale: 0, ContractSize: 0.001},
 		}, nil)
 
-		// Config with tradeSide = "long"
-		cfg := &config.Config{
-			Reversion: &config.ReversionConfig{
-				TradeSide: "long",
-				Default: config.ExchangeReversionConfig{
-					MinVol24USD: 1000000,
-				},
+		cfg := config.NewTestConfig(&config.ReversionConfig{
+			TradeSide: "long",
+			Default: config.ExchangeReversionConfig{
+				MinVol24USD: 1000000,
 			},
-		}
+		})
 
 		scanner, err := NewScheduleScanner(
+			config.DefaultAccountID,
 			"mexc",
 			cfg,
 			client,
@@ -764,19 +777,17 @@ func TestScheduleScanner_MaxCandidateTrade(t *testing.T) {
 		{Symbol: "SOL_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, ContractSize: 1.0, VolScale: 3},
 	}, nil)
 
-	// Configure total marginUSD = 11 and maxCandidateTrade = 2
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				MinVol24USD:             1000000,
-				MarginUSD:               11.0,
-				MaxCandidateTrade:       2,
-				MaxMarginUSDOfCandidate: 5.5,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			MinVol24USD:             1000000,
+			MarginUSD:               11.0,
+			MaxCandidateTrade:       2,
+			MaxMarginUSDOfCandidate: 5.5,
 		},
-	}
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -822,18 +833,17 @@ func TestScheduleScanner_LeverageAndVolumePreDetermined(t *testing.T) {
 		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, MaxLeverage: 5, ContractSize: 0.001, VolScale: 3},
 	}, nil)
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				Leverage:          20,
-				MinVol24USD:       100000,
-				MarginUSD:         100.0,
-				MaxCandidateTrade: 1,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			Leverage:          20,
+			MinVol24USD:       100000,
+			MarginUSD:         100.0,
+			MaxCandidateTrade: 1,
 		},
-	}
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -877,20 +887,18 @@ func TestScheduleScanner_MaxMarginUSDOfCandidateCapping(t *testing.T) {
 		{Symbol: "BTC_USDT", PriceUnit: 0.1, VolUnit: 1, MinVol: 1, MaxLeverage: 10, ContractSize: 0.001, VolScale: 3},
 	}, nil)
 
-	// marginUSD = 100, maxCandidateTrade = 1 (uncapped allocatedMargin would be 100), but maxMarginUSDOfCandidate = 15.0
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				Leverage:                10,
-				MinVol24USD:             100000,
-				MarginUSD:               100.0,
-				MaxCandidateTrade:       1,
-				MaxMarginUSDOfCandidate: 15.0,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			Leverage:                10,
+			MinVol24USD:             100000,
+			MarginUSD:               100.0,
+			MaxCandidateTrade:       1,
+			MaxMarginUSDOfCandidate: 15.0,
 		},
-	}
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -916,22 +924,25 @@ func TestScannerConstructors_Validation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := mocks.NewMockClient(ctrl)
 	log := sniperTestLogger()
-	validCfg := &config.Config{Reversion: &config.ReversionConfig{}}
+	validCfg := config.NewTestConfig(&config.ReversionConfig{})
 
 	// NewScheduleScanner validation
-	_, err := NewScheduleScanner("", validCfg, client, log, nil)
+	_, err := NewScheduleScanner("", "mexc", validCfg, client, log, nil)
 	assert.Error(t, err)
 
-	_, err = NewScheduleScanner("mexc", nil, client, log, nil)
+	_, err = NewScheduleScanner(config.DefaultAccountID, "", validCfg, client, log, nil)
 	assert.Error(t, err)
 
-	_, err = NewScheduleScanner("mexc", &config.Config{}, client, log, nil)
+	_, err = NewScheduleScanner(config.DefaultAccountID, "mexc", nil, client, log, nil)
 	assert.Error(t, err)
 
-	_, err = NewScheduleScanner("mexc", validCfg, nil, log, nil)
+	_, err = NewScheduleScanner(config.DefaultAccountID, "mexc", &config.Config{}, client, log, nil)
 	assert.Error(t, err)
 
-	_, err = NewScheduleScanner("mexc", validCfg, client, nil, nil)
+	_, err = NewScheduleScanner(config.DefaultAccountID, "mexc", validCfg, nil, log, nil)
+	assert.Error(t, err)
+
+	_, err = NewScheduleScanner(config.DefaultAccountID, "mexc", validCfg, client, nil, nil)
 	assert.Error(t, err)
 
 	// NewConfiguredScanner validation
@@ -984,21 +995,20 @@ func TestScheduleScanner_ImpactRatioSurplusRedistribution(t *testing.T) {
 	// maxImpactRatio = 5% (0.05).
 	// Candidate 1 (BTC_USDT): maxSafeNotional = 50 USDT. At 10x lev -> marginCap = 5 USDT. Surplus = 45 USDT.
 	// Candidate 2 (ETH_USDT): receives initial 50 USDT + 45 USDT surplus = 95 USDT margin. At 20x lev -> 1900 USDT notional <= 5000 USDT maxSafeNotional.
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 0.05,
-			},
-			Default: config.ExchangeReversionConfig{
-				Leverage:          20,
-				MinVol24USD:       100000,
-				MarginUSD:         100.0,
-				MaxCandidateTrade: 2,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 0.05,
 		},
-	}
+		Default: config.ExchangeReversionConfig{
+			Leverage:          20,
+			MinVol24USD:       100000,
+			MarginUSD:         100.0,
+			MaxCandidateTrade: 2,
+		},
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -1048,22 +1058,21 @@ func TestScheduleScanner_Scan_PreFilterInvalidCandidates(t *testing.T) {
 		{Symbol: "VALID_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
 	}, nil)
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MaxImpactRatio:     1.0,
-				MaxSymbolUSDTPrice: 50.0, // MaxSymbolUSDTPrice = 50.0
-			},
-			Default: config.ExchangeReversionConfig{
-				Leverage:          10,
-				MinVol24USD:       100000,
-				MarginUSD:         5.0,
-				MaxCandidateTrade: 1, // Max candidate trade is 1
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio:     1.0,
+			MaxSymbolUSDTPrice: 50.0, // MaxSymbolUSDTPrice = 50.0
 		},
-	}
+		Default: config.ExchangeReversionConfig{
+			Leverage:          10,
+			MinVol24USD:       100000,
+			MarginUSD:         5.0,
+			MaxCandidateTrade: 1, // Max candidate trade is 1
+		},
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -1109,21 +1118,20 @@ func TestScheduleScanner_Scan_PreFilterInvalidSettleTime(t *testing.T) {
 		{Symbol: "VALID_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
 	}, nil)
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
-			Default: config.ExchangeReversionConfig{
-				Leverage:          10,
-				MinVol24USD:       100000,
-				MarginUSD:         5.0,
-				MaxCandidateTrade: 1,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
 		},
-	}
+		Default: config.ExchangeReversionConfig{
+			Leverage:          10,
+			MinVol24USD:       100000,
+			MarginUSD:         5.0,
+			MaxCandidateTrade: 1,
+		},
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,
@@ -1161,21 +1169,20 @@ func TestScheduleScanner_Scan_ZeroSettleTime(t *testing.T) {
 		{Symbol: "ZERO_SETTLE_USDT", PriceUnit: 0.01, VolUnit: 1, MinVol: 1, PriceScale: 2, VolScale: 0, ContractSize: 0.1},
 	}, nil)
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
-			Default: config.ExchangeReversionConfig{
-				Leverage:          10,
-				MinVol24USD:       100000,
-				MarginUSD:         5.0,
-				MaxCandidateTrade: 1,
-			},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
 		},
-	}
+		Default: config.ExchangeReversionConfig{
+			Leverage:          10,
+			MinVol24USD:       100000,
+			MarginUSD:         5.0,
+			MaxCandidateTrade: 1,
+		},
+	})
 
 	scanner, err := NewScheduleScanner(
+		config.DefaultAccountID,
 		"mexc",
 		cfg,
 		client,

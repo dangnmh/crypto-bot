@@ -5,6 +5,7 @@ metadata:
   namespace: default
   labels:
     app: crypto-bot
+    bot_type: funding
 spec:
   replicas: 1
   strategy:
@@ -16,6 +17,7 @@ spec:
     metadata:
       labels:
         app: crypto-bot
+        bot_type: funding
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/path: "/metrics"
@@ -37,20 +39,16 @@ spec:
           image: crypto-bot:latest
           imagePullPolicy: Never # Instructs local cluster (K3d/Minikube) to use local image
           args:
+            - "-accounts"
+            - "/app/configs/accounts.jsonc"
             - "-sys"
-            - "/app/configs/funding/prod/system.jsonc"
+            - "/app/configs/system.jsonc"
             - "-exch"
-            - "/app/configs/funding/prod/exchange.jsonc"
-            - "-bot"
-            - "/app/configs/funding/prod/funding.jsonc"
+            - "/app/configs/exchange.jsonc"
             - "-blacklist"
-            - "/app/configs/funding/prod/blacklist.jsonc"
+            - "/app/configs/blacklist.jsonc"
             - "-reversion"
-            - "/app/configs/funding/prod/reversion.jsonc"
-            - "-obfuscator"
-            - "/app/configs/funding/prod/obfuscator.jsonc"
-            - "-dilution"
-            - "/app/configs/funding/prod/dilution.jsonc"
+            - "/app/configs/reversion.jsonc"
           env:
             - name: GOGC
               value: "200"
@@ -74,12 +72,12 @@ spec:
                 - ALL
           volumeMounts:
             - name: configs
-              mountPath: /app/configs/funding/prod
+              mountPath: /app/configs
               readOnly: true
       volumes:
         - name: configs
           configMap:
-            name: crypto-bot-configs
+            name: funding-configs
 ---
 apiVersion: v1
 kind: Service

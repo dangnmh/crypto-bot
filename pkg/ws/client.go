@@ -57,6 +57,7 @@ type Client struct {
 	headersFunc       func() (http.Header, error)
 	customPingHandler func(*websocket.Conn, []byte) bool
 	pongDetector      func([]byte) bool
+	dialer            *websocket.Dialer
 
 	// Latency metrics
 	lastPingSent atomic.Int64
@@ -146,6 +147,13 @@ func WithPreprocessor(preprocessor func([]byte) ([]byte, error)) ClientOption {
 func WithHeadersFunc(headersFunc func() (http.Header, error)) ClientOption {
 	return func(c *Client) {
 		c.headersFunc = headersFunc
+	}
+}
+
+// WithDialer sets a custom websocket.Dialer for establishing WebSocket connections.
+func WithDialer(dialer *websocket.Dialer) ClientOption {
+	return func(c *Client) {
+		c.dialer = dialer
 	}
 }
 
@@ -267,7 +275,11 @@ func (c *Client) dial() error {
 		}
 		headers = h
 	}
-	conn, resp, err := websocket.DefaultDialer.Dial(c.url, headers)
+	dialer := c.dialer
+	if dialer == nil {
+		dialer = websocket.DefaultDialer
+	}
+	conn, resp, err := dialer.Dial(c.url, headers)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}

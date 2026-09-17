@@ -4,13 +4,9 @@ import (
 	"fmt"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
+	pkgconfig "crypto-bot/pkg/config"
 	"crypto-bot/pkg/types"
 )
-
-type ScannersConfig struct {
-	Configured bool            `json:"configured"`
-	Schedule   map[string]bool `json:"schedule"`
-}
 
 // SystemConfig represents the system configuration for the Funding Reversion bot.
 type SystemConfig struct {
@@ -37,12 +33,12 @@ func LoadSystemConfig(systemPath, exchangePath string) (*SystemConfig, error) {
 		return nil, fmt.Errorf("load system config: %w", err)
 	}
 
-	exchRaw, err := LoadAndValidate[sysconfig.SystemConfig](exchangePath)
+	exchRaw, err := pkgconfig.Load[sysconfig.ExchangeConfig](exchangePath)
 	if err != nil {
 		return nil, fmt.Errorf("load exchange config: %w", err)
 	}
 
-	sysRaw.ExchangeConfig = exchRaw.ExchangeConfig
+	sysRaw.ExchangeConfig = *exchRaw
 
 	if err := sysconfig.InitializeBase(sysRaw); err != nil {
 		return nil, fmt.Errorf("initialize base config: %w", err)
@@ -58,7 +54,7 @@ func LoadSystemConfig(systemPath, exchangePath string) (*SystemConfig, error) {
 
 func (c *SystemConfig) validate() error {
 	if c.NotiConfig.Enabled && c.NotiConfig.TelegramChatID == "" {
-		return fmt.Errorf("notifier is enabled but chatId is missing (set TELEGRAM_CHAT_ID in .env or Bitwarden)")
+		return fmt.Errorf("notifier is enabled but chatId is missing (set TELEGRAM_CHAT_ID in environment or .env)")
 	}
 
 	return nil

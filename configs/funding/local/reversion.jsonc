@@ -1,5 +1,5 @@
 {
-  // Funding Reversion (Dao chieu sau Funding)
+  // Common Funding Reversion Configuration (Local)
   "enabled": true,
   "openType": "ISOLATED",
   "positionMode": "HEDGE",
@@ -50,28 +50,5 @@
   },
   "priceTracker": {
     "enable": false
-  },
-  "scanners": {
-    "configured": true,
-    "schedule": {
-      "mexc_futures": false,
-      "toobit_futures": false
-    }
-  },
-  "exchanges": {
-    "mexc_futures": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "-52ms",
-      "postSettleTimeout": "300s" // Force close if reversion lifecycle does not terminally close
-      // "minVol24USD": 1000000,
-      // "minFundingRate": 0.3
-    },
-    "bybit_futures": {
-      "takeProfitPct": 1,
-      "stopLossPct": 2,
-      "bufferTime": "15ms",
-      "postSettleTimeout": "300s"
-    }
   }
 }

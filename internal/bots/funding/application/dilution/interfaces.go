@@ -11,18 +11,20 @@ import (
 
 // EngineProviderGetter decouples exchange client resolution from the full engine.
 type EngineProviderGetter interface {
-	GetProvider(name string) (*infraapp.ExchangeProvider, error)
+	GetAccountProvider(accountID string) (*infraapp.AccountProvider, error)
 }
 
 // OrderManagerDispatcher sends order events and cancellation requests to the trading OrderManager.
 type OrderManagerDispatcher interface {
 	Dispatch(ctx context.Context, event futures.OrderEvent) error
-	CancelOpenOrders(ctx context.Context, exchangeName, symbol string) error
+	CancelOpenOrders(ctx context.Context, accountID, exchangeName, symbol string) error
 }
 
 // DilutionSpec defines the specifications for an ambient PostOnly maker quote order.
 type DilutionSpec struct {
+	AccountID             string
 	ReqID                 string
+	ClientOrderID         string
 	Exchange              string
 	Symbol                string
 	Side                  shared.Side

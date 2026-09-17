@@ -154,6 +154,16 @@ func TestCandidateFoundEvent_DeduplicateKeyInherited(t *testing.T) {
 		Topic:      "funding.reversion.candidate",
 	}
 	assert.Equal(t, "client_id_123funding.reversion.candidate", evt.DeduplicateKey())
+
+	t.Run("uses ReqID-Topic when ReqID present", func(t *testing.T) {
+		t.Parallel()
+		evtWithReqID := reversion.CandidateFoundEvent{
+			ReqID:      "uuid-acc1-trade",
+			ExternalID: "client_id_123",
+			Topic:      "funding.reversion.candidate",
+		}
+		assert.Equal(t, "uuid-acc1-trade-funding.reversion.candidate", evtWithReqID.DeduplicateKey())
+	})
 }
 
 func TestReversionEvents_EventBusDeduplication(t *testing.T) {
@@ -213,4 +223,56 @@ func TestReversionEvents_EventBusDeduplication(t *testing.T) {
 
 	assert.Len(t, received, 1)
 	assert.Equal(t, 1.0, received[0])
+}
+
+func TestReversionEvents_MultiAccountEventBusDelivery(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New(slog.Default())
+	defer func() { _ = bus.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	topic := reversion.TopicReversionArmed
+	msgs, err := bus.Subscribe(ctx, topic)
+	require.NoError(t, err)
+
+	// Account 1 and Account 2 have the same symbol/settle externalID, but different ReqIDs
+	evt1 := reversion.ArmedEvent{
+		ReqID:      "uuid-acc-1",
+		AccountID:  "acc-1",
+		ExternalID: "same_symbol_settle_ext_id",
+		Topic:      topic,
+		Candidate:  fundingdomain.Candidate{Symbol: "BTC_USDT", Volume: 1},
+	}
+	evt2 := reversion.ArmedEvent{
+		ReqID:      "uuid-acc-2",
+		AccountID:  "acc-2",
+		ExternalID: "same_symbol_settle_ext_id",
+		Topic:      topic,
+		Candidate:  fundingdomain.Candidate{Symbol: "BTC_USDT", Volume: 2},
+	}
+
+	err = bus.Publish(topic, evt1)
+	require.NoError(t, err)
+
+	err = bus.Publish(topic, evt2)
+	require.NoError(t, err)
+
+	// Both accounts must receive their events without being dropped as duplicate
+	var received []string
+	for i := range 2 {
+		select {
+		case msg := <-msgs:
+			var rec reversion.ArmedEvent
+			require.NoError(t, json.Unmarshal(msg.Payload, &rec))
+			received = append(received, rec.AccountID)
+			msg.Ack()
+		case <-ctx.Done():
+			t.Fatalf("timeout waiting for event %d", i+1)
+		}
+	}
+
+	assert.ElementsMatch(t, []string{"acc-1", "acc-2"}, received)
 }

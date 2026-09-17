@@ -98,23 +98,19 @@ func TestNewEngine_Success(t *testing.T) {
 
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.mexc.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
-				},
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.mexc.com",
 				APIKey:    "mexc-key",
 				APISecret: "mexc-secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
 			},
-			"gate": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.gate.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.gate.com", PrivateURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
-				},
+			"gate_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.gate.com",
 				APIKey:    "gate-key",
 				APISecret: "gate-secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.gate.com", PrivateURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
 			},
 		},
 		Logging: sysconfig.LoggingConfig{Level: "debug"},
@@ -254,12 +250,10 @@ func TestNewEngine_OnlyMexc(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeMexc, sysconfig.ExchangeConfig{
-		"mexc": sysconfig.APIConfig{
-			Future: &sysconfig.RESTConfig{
-				Enable:    true,
-				BaseURL:   "https://api.example.com",
-				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-			},
+		"mexc_futures": sysconfig.EndpointConfig{
+			Enable:    true,
+			BaseURL:   "https://api.example.com",
+			WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 		},
 	})
 }
@@ -268,12 +262,10 @@ func TestNewEngine_OnlyGate(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeGate, sysconfig.ExchangeConfig{
-		"gate": sysconfig.APIConfig{
-			Future: &sysconfig.RESTConfig{
-				Enable:    true,
-				BaseURL:   "https://api.example.com",
-				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
-			},
+		"gate_futures": sysconfig.EndpointConfig{
+			Enable:    true,
+			BaseURL:   "https://api.example.com",
+			WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.example.com", PrivateURL: "wss://ws.example.com", MaxPairsPerWSConn: 10},
 		},
 	})
 }
@@ -282,15 +274,13 @@ func TestNewEngine_BybitAccountTypeNormalization(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeBybit, sysconfig.ExchangeConfig{
-		"bybit": sysconfig.APIConfig{
+		"bybit_futures": sysconfig.EndpointConfig{
 			AccountType: "UNIFIED",
-			Future: &sysconfig.RESTConfig{
-				Enable:  true,
-				BaseURL: "https://api.bybit.com",
-				WebSocket: sysconfig.WebSocketConfig{
-					PublicURL:  "wss://stream.bybit.com/v5/public/linear",
-					PrivateURL: "wss://stream.bybit.com/v5/private",
-				},
+			Enable:      true,
+			BaseURL:     "https://api.bybit.com",
+			WebSocket: sysconfig.WebSocketConfig{
+				PublicURL:  "wss://stream.bybit.com/v5/public/linear",
+				PrivateURL: "wss://stream.bybit.com/v5/private",
 			},
 		},
 	})
@@ -300,15 +290,13 @@ func TestNewEngine_GateAccountTypeNormalization(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeGate, sysconfig.ExchangeConfig{
-		"gate": sysconfig.APIConfig{
+		"gate_futures": sysconfig.EndpointConfig{
 			AccountType: "portfolio",
-			Future: &sysconfig.RESTConfig{
-				Enable:  true,
-				BaseURL: "https://api.gateio.ws",
-				WebSocket: sysconfig.WebSocketConfig{
-					PublicURL:  "wss://fx-ws.gateio.ws/v4/ws/usdt",
-					PrivateURL: "wss://fx-ws.gateio.ws/v4/ws/usdt",
-				},
+			Enable:      true,
+			BaseURL:     "https://api.gateio.ws",
+			WebSocket: sysconfig.WebSocketConfig{
+				PublicURL:  "wss://fx-ws.gateio.ws/v4/ws/usdt",
+				PrivateURL: "wss://fx-ws.gateio.ws/v4/ws/usdt",
 			},
 		},
 	})
@@ -318,15 +306,13 @@ func TestNewEngine_BitgetAccountTypeNormalization(t *testing.T) {
 	t.Parallel()
 
 	assertSingleProviderEngine(t, exchange.ExchangeBitget, sysconfig.ExchangeConfig{
-		"bitget": sysconfig.APIConfig{
+		"bitget_futures": sysconfig.EndpointConfig{
 			AccountType: "UTA",
-			Future: &sysconfig.RESTConfig{
-				Enable:  true,
-				BaseURL: "https://api.bitget.com",
-				WebSocket: sysconfig.WebSocketConfig{
-					PublicURL:  "wss://ws.bitget.com/v2/ws/public",
-					PrivateURL: "wss://ws.bitget.com/v2/ws/private",
-				},
+			Enable:      true,
+			BaseURL:     "https://api.bitget.com",
+			WebSocket: sysconfig.WebSocketConfig{
+				PublicURL:  "wss://ws.bitget.com/v2/ws/public",
+				PrivateURL: "wss://ws.bitget.com/v2/ws/private",
 			},
 		},
 	})
@@ -337,19 +323,15 @@ func TestNewEngine_UnconfiguredExchangeInActiveListIgnored(t *testing.T) {
 
 	cfg := &sysconfig.SystemConfig{
 		ExchangeConfig: sysconfig.ExchangeConfig{
-			"mexc": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.mexc.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
-				},
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.mexc.com",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
 			},
-			"gate": sysconfig.APIConfig{
-				Future: &sysconfig.RESTConfig{
-					Enable:    true,
-					BaseURL:   "https://api.gate.com",
-					WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.gate.com", PrivateURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
-				},
+			"gate_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.gate.com",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.gate.com", PrivateURL: "wss://ws.gate.com", MaxPairsPerWSConn: 5},
 			},
 		},
 	}
@@ -396,4 +378,84 @@ func TestEngine_Shutdown_NilWS(t *testing.T) {
 	assert.NotPanics(t, func() {
 		_ = e.Shutdown(context.Background())
 	})
+}
+
+func TestNewEngine_WithAccountProxyAndDialer(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.mexc.com",
+				APIKey:    "mexc-key",
+				APISecret: "mexc-secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
+			},
+		},
+		Logging: sysconfig.LoggingConfig{Level: "debug"},
+	}
+
+	engineCfg := app.EngineConfig{
+		SystemConfig: cfg,
+		Logger:       testLogger(),
+		Accounts: []sysconfig.AccountConfig{
+			{
+				ID:        "acc-proxy",
+				Exchange:  "mexc_futures",
+				Enabled:   true,
+				APIKey:    "key-1",
+				APISecret: "secret-1",
+				ProxyURL:  "http://127.0.0.1:8080",
+			},
+		},
+	}
+
+	e, err := app.NewEngine(context.Background(), engineCfg)
+	require.NoError(t, err)
+	require.NotNil(t, e)
+
+	accProv, err := e.GetAccountProvider("acc-proxy")
+	require.NoError(t, err)
+	assert.Equal(t, "acc-proxy", accProv.AccountID)
+	assert.Equal(t, "mexc_futures", accProv.ExchangeName)
+	assert.NotNil(t, accProv.WSPool)
+	assert.NotNil(t, accProv.Client)
+
+	_ = e.Shutdown(context.Background())
+}
+
+func TestNewEngine_WithInvalidAccountProxy(t *testing.T) {
+	t.Parallel()
+
+	cfg := &sysconfig.SystemConfig{
+		ExchangeConfig: sysconfig.ExchangeConfig{
+			"mexc_futures": sysconfig.EndpointConfig{
+				Enable:    true,
+				BaseURL:   "https://api.mexc.com",
+				APIKey:    "mexc-key",
+				APISecret: "mexc-secret",
+				WebSocket: sysconfig.WebSocketConfig{PublicURL: "wss://ws.mexc.com", PrivateURL: "wss://ws.mexc.com", MaxPairsPerWSConn: 10},
+			},
+		},
+		Logging: sysconfig.LoggingConfig{Level: "debug"},
+	}
+
+	engineCfg := app.EngineConfig{
+		SystemConfig: cfg,
+		Logger:       testLogger(),
+		Accounts: []sysconfig.AccountConfig{
+			{
+				ID:        "acc-invalid",
+				Exchange:  "mexc_futures",
+				Enabled:   true,
+				APIKey:    "key-1",
+				APISecret: "secret-1",
+				ProxyURL:  "://bad-url",
+			},
+		},
+	}
+
+	_, err := app.NewEngine(context.Background(), engineCfg)
+	assert.Error(t, err)
 }

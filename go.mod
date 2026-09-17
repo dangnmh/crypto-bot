@@ -1,6 +1,6 @@
 module crypto-bot
 
-go 1.27.0
+go 1.27.1
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -11,7 +11,6 @@ tool (
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.3
-	github.com/bitwarden/sdk-go/v2 v2.1.0
 	github.com/buger/jsonparser v1.6.1
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/dangnmh/transport v0.0.0-20260708094721-f5655124423b
@@ -28,7 +27,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.53.0
 	github.com/shopspring/decimal v1.4.0
-	github.com/sonirico/go-hyperliquid v0.45.0
+	github.com/sonirico/go-hyperliquid v0.46.0
 	github.com/stretchr/testify v1.12.1
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	github.com/uptrace/opentelemetry-go-extra/otelgorm v0.3.2
@@ -44,7 +43,7 @@ require (
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12
 	gorm.io/datatypes v1.2.7
-	gorm.io/driver/postgres v1.6.2
+	gorm.io/driver/postgres v1.6.3
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )

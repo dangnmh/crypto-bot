@@ -28,6 +28,7 @@ const (
 type ReversionEvent interface {
 	GetFlow() string
 	GetReqID() string
+	GetAccountID() string
 	GetSymbol() string
 	GetExchange() string
 	GetOrderID() string
@@ -37,6 +38,7 @@ type ReversionEvent interface {
 type BaseReversionEvent struct {
 	Flow          string      `json:"flow,omitempty"`
 	ReqID         string      `json:"req_id,omitempty"`
+	AccountID     string      `json:"account_id,omitempty"`
 	Symbol        string      `json:"symbol"`
 	Exchange      string      `json:"exchange,omitempty"`
 	OrderID       string      `json:"order_id,omitempty"`
@@ -55,12 +57,16 @@ type BaseReversionEvent struct {
 
 func (b BaseReversionEvent) GetFlow() string       { return b.Flow }
 func (b BaseReversionEvent) GetReqID() string      { return b.ReqID }
+func (b BaseReversionEvent) GetAccountID() string  { return b.AccountID }
 func (b BaseReversionEvent) GetSymbol() string     { return b.Symbol }
 func (b BaseReversionEvent) GetExchange() string   { return b.Exchange }
 func (b BaseReversionEvent) GetOrderID() string    { return b.OrderID }
 func (b BaseReversionEvent) GetExternalID() string { return b.ExternalID }
 
 func (b BaseReversionEvent) DeduplicateKey() string {
+	if b.ReqID != "" && b.Topic != "" {
+		return b.ReqID + "-" + b.Topic
+	}
 	if b.ExternalID == "" || b.Topic == "" {
 		return ""
 	}

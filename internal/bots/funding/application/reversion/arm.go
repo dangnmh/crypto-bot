@@ -82,9 +82,12 @@ func (r *StatelessRunner) handleArmMarketReady(ctx context.Context, evt ArmMarke
 
 func (r *StatelessRunner) handleArmPlanCalculated(ctx context.Context, evt ArmPlanCalculatedEvent) error {
 	c := evt.Candidate
-	safety := r.globalCfg.Reversion.Safety
+	maxImpact := 0.0
+	if revCfg := r.getReversionConfig(); revCfg != nil {
+		maxImpact = revCfg.Safety.MaxImpactRatio
+	}
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
-		MaxImpactRatio: safety.MaxImpactRatio,
+		MaxImpactRatio: maxImpact,
 		MinVol24USD:    c.Config.MinVol24USD,
 	})
 

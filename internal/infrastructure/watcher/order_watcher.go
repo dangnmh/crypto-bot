@@ -24,6 +24,7 @@ type OrderWatcher struct {
 	broker       *eventbus.Bus
 	logger       *slog.Logger
 	exchangeName string
+	accountID    string
 }
 
 // NewOrderWatcher creates a new OrderWatcher wrapping a shared event bus.
@@ -31,6 +32,17 @@ func NewOrderWatcher(bus *eventbus.Bus, exchangeName string, logger *slog.Logger
 	return &OrderWatcher{
 		broker:       bus,
 		exchangeName: exchangeName,
+		logger:       logger,
+	}
+}
+
+// NewAccountOrderWatcher creates a new OrderWatcher with explicit exchangeName and accountID scopes.
+// Position updates are scoped to the accountID, while public trades remain scoped to the exchangeName.
+func NewAccountOrderWatcher(bus *eventbus.Bus, exchangeName, accountID string, logger *slog.Logger) *OrderWatcher {
+	return &OrderWatcher{
+		broker:       bus,
+		exchangeName: exchangeName,
+		accountID:    accountID,
 		logger:       logger,
 	}
 }
@@ -127,8 +139,12 @@ func subscribe[T any](
 }
 
 func (w *OrderWatcher) positionTopic(symbol string) string {
-	if w.exchangeName != "" {
-		return "position:" + w.exchangeName + ":" + symbol
+	scope := w.accountID
+	if scope == "" {
+		scope = w.exchangeName
+	}
+	if scope != "" {
+		return "position:" + scope + ":" + symbol
 	}
 	return "position:" + symbol
 }

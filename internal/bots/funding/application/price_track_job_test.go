@@ -273,13 +273,11 @@ func TestPriceTrackJob_TrackAfterPrices_Success(t *testing.T) {
 
 func TestPriceTrackJob_Disabled(t *testing.T) {
 	t.Parallel()
-	cfg := &fundingconfig.Config{
-		Reversion: &fundingconfig.ReversionConfig{
-			PriceTracker: fundingconfig.PriceTrackerConfig{
-				Enabled: false,
-			},
+	cfg := fundingconfig.NewTestConfig(&fundingconfig.ReversionConfig{
+		PriceTracker: fundingconfig.PriceTrackerConfig{
+			Enabled: false,
 		},
-	}
+	})
 	job := application.NewPriceTrackJob(nil, cfg, &fundingconfig.SystemConfig{}, nil, nil, nil, slog.Default())
 	err := job.Start(context.Background(), nil)
 	assert.NoError(t, err)

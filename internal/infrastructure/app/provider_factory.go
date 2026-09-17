@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	sysconfig "crypto-bot/internal/infrastructure/config"
@@ -31,10 +32,12 @@ import (
 	toobitspot "crypto-bot/internal/infrastructure/exchange/toobit/spot"
 	"crypto-bot/internal/infrastructure/exchange/weex"
 	"crypto-bot/internal/infrastructure/exchange/xt"
+	"crypto-bot/internal/infrastructure/network"
 	"crypto-bot/internal/infrastructure/timesync"
 	"crypto-bot/internal/infrastructure/watcher"
 	"crypto-bot/internal/infrastructure/ws"
 	"crypto-bot/pkg/eventbus"
+	"crypto-bot/pkg/httpclient"
 	pkgws "crypto-bot/pkg/ws"
 
 	"github.com/gorilla/websocket"
@@ -79,218 +82,260 @@ func (s SimpleProviderFactory) Build(ctx context.Context, cfg ProviderFactoryCon
 	return s.buildFunc(ctx, cfg)
 }
 
-// DefaultProviderFactories returns the exchange factories supported by the app layer.
-//
-//nolint:gocognit,cyclop // Factory method registers all exchange providers
-func DefaultProviderFactories() []ProviderFactory {
-	mexcFactories := newExchangeFactories(exchange.ExchangeMexc, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
-		if isFutures {
-			mexcClient := mexcfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-			if cfg.OrderHTTPClient != nil {
-				mexcClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
-			}
-			mexcAdapter := mexcfutures.NewWsAdapter()
-			return mexcClient, mexcAdapter
-		}
-		mexcClient := mexcspot.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-		mexcAdapter := mexcspot.NewWsAdapter()
-		return mexcClient, mexcAdapter
-	})
+// ClientCreator defines a function that constructs an exchange.Client and ws.ExchangeAdapter.
+type ClientCreator func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter)
 
-	toobitFactories := newExchangeFactories(exchange.ExchangeToobit, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
-		if isFutures {
-			toobitClient := toobitfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-			adapter := toobitfutures.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
+// DefaultClientCreators returns client constructors mapped by exchange name.
+//
+//nolint:gocognit,cyclop // exchange creator dispatch table registers all exchange client constructors
+func DefaultClientCreators() map[string]ClientCreator {
+	return map[string]ClientCreator{
+		exchange.ExchangeMexc: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
+			if isFutures {
+				mexcClient := mexcfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+				if cfg.OrderHTTPClient != nil {
+					mexcClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
+				}
+				mexcAdapter := mexcfutures.NewWsAdapter()
+				return mexcClient, mexcAdapter
+			}
+			mexcClient := mexcspot.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+			mexcAdapter := mexcspot.NewWsAdapter()
+			return mexcClient, mexcAdapter
+		},
+		exchange.ExchangeToobit: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
+			if isFutures {
+				toobitClient := toobitfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+				adapter := toobitfutures.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
+				adapter.SetClient(toobitClient)
+				return toobitClient, adapter
+			}
+			toobitClient := toobitspot.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+			adapter := toobitspot.NewWsAdapter()
 			adapter.SetClient(toobitClient)
 			return toobitClient, adapter
-		}
-		toobitClient := toobitspot.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-		adapter := toobitspot.NewWsAdapter()
-		adapter.SetClient(toobitClient)
-		return toobitClient, adapter
-	})
+		},
+		exchange.ExchangeOrangex: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := orangex.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+			return client, orangex.NewWsAdapter(client)
+		},
+		exchange.ExchangePionex: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := pionex.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+			return client, pionex.NewWsAdapter(client, ep.WebSocket.PrivateURL)
+		},
+		exchange.ExchangeBitunix: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(bitunix.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+			return client, bitunix.NewWsAdapter()
+		},
+		exchange.ExchangeGate: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(gate.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+			return client, gate.NewWsAdapter()
+		},
+		exchange.ExchangeBybit: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
+			bybitClient := bybit.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, accountType, cfg.SystemConfig.Logging)
+			if cfg.OrderHTTPClient != nil {
+				bybitClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
+			}
 
-	orangexFactories := newExchangeFactories(exchange.ExchangeOrangex, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := orangex.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-		return client, orangex.NewWsAdapter(client)
-	})
+			tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
+			bybitClient.SetTradeMode(tradeMode)
 
-	pionexFactories := newExchangeFactories(exchange.ExchangePionex, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := pionex.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-		return client, pionex.NewWsAdapter(client, ep.WebSocket.PrivateURL)
-	})
+			if tradeMode == exchange.TradeModeWS {
+				tradeURL := ep.TradeEndpoint()
+				wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBybit, "subsystem", "trade_ws")
+				tradeWS := bybit.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, bybitClient.BaseClient().Clock(), wsLogger)
+				bybitClient.SetWSTradeExecutor(tradeWS)
+				go tradeWS.Start(ctx)
+			}
 
-	bitunixFactories := newExchangeFactories(exchange.ExchangeBitunix, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(bitunix.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
-		return client, bitunix.NewWsAdapter()
-	})
+			return bybitClient, bybit.NewWsAdapter()
+		},
+		exchange.ExchangeBinance: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			binanceClient := binance.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
+			if cfg.OrderHTTPClient != nil {
+				binanceClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
+			}
 
-	gateFactories := newExchangeFactories(exchange.ExchangeGate, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(gate.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
-		return client, gate.NewWsAdapter()
-	})
+			tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
+			binanceClient.SetTradeMode(tradeMode)
 
-	bybitFactories := newExchangeFactories(exchange.ExchangeBybit, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		accountType := sysconfig.NormalizeBybitAccountType(apiCfg.AccountType)
-		bybitClient := bybit.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, accountType, cfg.SystemConfig.Logging)
-		if cfg.OrderHTTPClient != nil {
-			bybitClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
-		}
+			if tradeMode == exchange.TradeModeWS {
+				tradeURL := ep.TradeEndpoint()
+				wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBinance, "subsystem", "trade_ws")
+				tradeWS := binance.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, binanceClient.Clock(), wsLogger)
+				binanceClient.SetWSTradeExecutor(tradeWS)
+				go tradeWS.Start(ctx)
+			}
 
-		tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
-		bybitClient.SetTradeMode(tradeMode)
-
-		if tradeMode == exchange.TradeModeWS {
-			tradeURL := ep.TradeEndpoint()
-			wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBybit, "subsystem", "trade_ws")
-			tradeWS := bybit.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, bybitClient.BaseClient().Clock(), wsLogger)
-			bybitClient.SetWSTradeExecutor(tradeWS)
-			go tradeWS.Start(ctx)
-		}
-
-		return bybitClient, bybit.NewWsAdapter()
-	})
-
-	binanceFactories := newExchangeFactories(exchange.ExchangeBinance, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		binanceClient := binance.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging)
-		if cfg.OrderHTTPClient != nil {
-			binanceClient.SetOrderHTTPClient(cfg.OrderHTTPClient)
-		}
-
-		tradeMode := exchange.NormalizeTradeMode(ep.TradeMode)
-		binanceClient.SetTradeMode(tradeMode)
-
-		if tradeMode == exchange.TradeModeWS {
-			tradeURL := ep.TradeEndpoint()
-			wsLogger := cfg.Logger.With("exchange", exchange.ExchangeBinance, "subsystem", "trade_ws")
-			tradeWS := binance.NewTradeWSClient(tradeURL, apiCfg.APIKey, apiCfg.APISecret, binanceClient.Clock(), wsLogger)
-			binanceClient.SetWSTradeExecutor(tradeWS)
-			go tradeWS.Start(ctx)
-		}
-
-		adapter := binance.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
-		adapter.SetURLs(ep.WebSocket.PublicEndpoint(), ep.WebSocket.MarketEndpoint())
-		adapter.SetClient(binanceClient)
-		return binanceClient, adapter
-	})
-
-	okxFactories := newExchangeFactories(exchange.ExchangeOkx, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(okx.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
-		adapter := okx.NewWsAdapter(apiCfg.APIPassphrase)
-		return client, adapter
-	})
-
-	hyperliquidFactories := newExchangeFactories(exchange.ExchangeHyperliquid, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(hyperliquid.NewClient(ctx, cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
-		adapter := hyperliquid.NewWsAdapter()
-		return client, adapter
-	})
-
-	bitgetFactories := newExchangeFactories(exchange.ExchangeBitget, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(bitget.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
-		adapter := bitget.NewWsAdapter(apiCfg.APIPassphrase)
-		return client, adapter
-	})
-
-	bingxFactories := newExchangeFactories(exchange.ExchangeBingx, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(bingx.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
-		adapter := bingx.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
-		if concreteClient, ok := client.(*bingx.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	kucoinFactories := newExchangeFactories(exchange.ExchangeKucoin, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
-		if isFutures {
-			kucoinClient := kucoinfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging)
+			adapter := binance.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
+			adapter.SetURLs(ep.WebSocket.PublicEndpoint(), ep.WebSocket.MarketEndpoint())
+			adapter.SetClient(binanceClient)
+			return binanceClient, adapter
+		},
+		exchange.ExchangeOkx: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(okx.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+			adapter := okx.NewWsAdapter(apiCfg.APIPassphrase)
+			return client, adapter
+		},
+		exchange.ExchangeHyperliquid: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(hyperliquid.NewClient(ctx, cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+			adapter := hyperliquid.NewWsAdapter()
+			return client, adapter
+		},
+		exchange.ExchangeBitget: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(bitget.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+			adapter := bitget.NewWsAdapter(apiCfg.APIPassphrase)
+			return client, adapter
+		},
+		exchange.ExchangeBingx: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(bingx.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+			adapter := bingx.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
+			if concreteClient, ok := client.(*bingx.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+		exchange.ExchangeKucoin: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, isFutures bool) (exchange.Client, ws.ExchangeAdapter) {
+			if isFutures {
+				kucoinClient := kucoinfutures.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging)
+				client := exchange.Client(kucoinClient)
+				adapter := kucoinfutures.NewWsAdapter()
+				adapter.SetClient(kucoinClient)
+				return client, adapter
+			}
+			kucoinClient := kucoinspot.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging)
 			client := exchange.Client(kucoinClient)
-			adapter := kucoinfutures.NewWsAdapter()
+			adapter := kucoinspot.NewWsAdapter()
 			adapter.SetClient(kucoinClient)
 			return client, adapter
-		}
-		kucoinClient := kucoinspot.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging)
-		client := exchange.Client(kucoinClient)
-		adapter := kucoinspot.NewWsAdapter()
-		adapter.SetClient(kucoinClient)
-		return client, adapter
-	})
+		},
+		exchange.ExchangeDeepcoin: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(deepcoin.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+			adapter := deepcoin.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
+			if concreteClient, ok := client.(*deepcoin.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+		exchange.ExchangeWeex: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(weex.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+			adapter := weex.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase)
+			if concreteClient, ok := client.(*weex.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+		exchange.ExchangeHotcoin: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(hotcoin.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+			adapter := hotcoin.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret)
+			if concreteClient, ok := client.(*hotcoin.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+		exchange.ExchangeBitmart: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(bitmart.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+			adapter := bitmart.NewWsAdapter(ep.WebSocket.PrivateEndpoint(), apiCfg.APIPassphrase)
+			if concreteClient, ok := client.(*bitmart.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+		exchange.ExchangeXt: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(xt.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
+			adapter := xt.NewWsAdapter()
+			if concreteClient, ok := client.(*xt.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+		exchange.ExchangeAster: func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
+			client := exchange.Client(aster.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
+			adapter := aster.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, ep.WebSocket.PrivateEndpoint())
+			if concreteClient, ok := client.(*aster.Client); ok {
+				adapter.SetClient(concreteClient)
+			}
+			return client, adapter
+		},
+	}
+}
 
-	deepcoinFactories := newExchangeFactories(exchange.ExchangeDeepcoin, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(deepcoin.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
-		adapter := deepcoin.NewWsAdapter(ep.WebSocket.PrivateEndpoint())
-		if concreteClient, ok := client.(*deepcoin.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	weexFactories := newExchangeFactories(exchange.ExchangeWeex, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(weex.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
-		adapter := weex.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase)
-		if concreteClient, ok := client.(*weex.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	hotcoinFactories := newExchangeFactories(exchange.ExchangeHotcoin, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(hotcoin.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
-		adapter := hotcoin.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret)
-		if concreteClient, ok := client.(*hotcoin.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	bitmartFactories := newExchangeFactories(exchange.ExchangeBitmart, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(bitmart.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
-		adapter := bitmart.NewWsAdapter(ep.WebSocket.PrivateEndpoint(), apiCfg.APIPassphrase)
-		if concreteClient, ok := client.(*bitmart.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	xtFactories := newExchangeFactories(exchange.ExchangeXt, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(xt.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, cfg.SystemConfig.Logging))
-		adapter := xt.NewWsAdapter()
-		if concreteClient, ok := client.(*xt.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	asterFactories := newExchangeFactories(exchange.ExchangeAster, func(ctx context.Context, cfg ProviderFactoryConfig, ep sysconfig.EndpointConfig, apiCfg sysconfig.APIConfig, _ bool) (exchange.Client, ws.ExchangeAdapter) {
-		client := exchange.Client(aster.NewClient(cfg.HTTPClient, ep.BaseURL, apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, cfg.SystemConfig.Logging))
-		adapter := aster.NewWsAdapter(apiCfg.APIKey, apiCfg.APISecret, apiCfg.APIPassphrase, ep.WebSocket.PrivateEndpoint())
-		if concreteClient, ok := client.(*aster.Client); ok {
-			adapter.SetClient(concreteClient)
-		}
-		return client, adapter
-	})
-
-	factories := make([]ProviderFactory, 0, 38)
-	factories = append(factories, mexcFactories...)
-	factories = append(factories, toobitFactories...)
-	factories = append(factories, orangexFactories...)
-	factories = append(factories, pionexFactories...)
-	factories = append(factories, bitunixFactories...)
-	factories = append(factories, gateFactories...)
-	factories = append(factories, bybitFactories...)
-	factories = append(factories, binanceFactories...)
-	factories = append(factories, okxFactories...)
-	factories = append(factories, hyperliquidFactories...)
-	factories = append(factories, bitgetFactories...)
-	factories = append(factories, bingxFactories...)
-	factories = append(factories, kucoinFactories...)
-	factories = append(factories, deepcoinFactories...)
-	factories = append(factories, weexFactories...)
-	factories = append(factories, hotcoinFactories...)
-	factories = append(factories, bitmartFactories...)
-	factories = append(factories, xtFactories...)
-	factories = append(factories, asterFactories...)
+// DefaultProviderFactories returns the exchange factories supported by the app layer.
+func DefaultProviderFactories() []ProviderFactory {
+	creators := DefaultClientCreators()
+	factories := make([]ProviderFactory, 0, len(creators)*2)
+	for exch, creator := range creators {
+		factories = append(factories, newExchangeFactories(exch, creator)...)
+	}
 	return factories
+}
+
+// BuildAccountProvider constructs an AccountProvider for a specific AccountConfig.
+func BuildAccountProvider(ctx context.Context, account sysconfig.AccountConfig, cfg ProviderFactoryConfig) (*AccountProvider, error) {
+	exactExch := strings.ToLower(strings.TrimSpace(account.Exchange))
+	baseExch := sysconfig.NormalizeExchangeName(exactExch)
+
+	creators := DefaultClientCreators()
+	clientFunc, ok := creators[baseExch]
+	if !ok {
+		return nil, fmt.Errorf("unsupported exchange %q for account %q", account.Exchange, account.ID)
+	}
+
+	accFactoryCfg := cfg
+	var extraWSOpts []pkgws.ClientOption
+	if account.OutboundIP != "" || account.ProxyURL != "" {
+		httpClient, err := network.NewAccountHTTPClient(account.OutboundIP, account.ProxyURL, httpclient.DefaultPoolConfig())
+		if err != nil {
+			return nil, fmt.Errorf("create account HTTP client for %q: %w", account.ID, err)
+		}
+		orderClient, err := network.NewAccountHTTPClient(account.OutboundIP, account.ProxyURL, httpclient.OrderPoolConfig())
+		if err != nil {
+			return nil, fmt.Errorf("create account order HTTP client for %q: %w", account.ID, err)
+		}
+		accFactoryCfg.HTTPClient = httpClient
+		accFactoryCfg.OrderHTTPClient = orderClient
+
+		wsDialer, err := network.NewAccountWSDialer(account.OutboundIP, account.ProxyURL, 15*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("create account WS dialer for %q: %w", account.ID, err)
+		}
+		extraWSOpts = append(extraWSOpts, pkgws.WithDialer(wsDialer))
+	}
+
+	ep, ok := cfg.SystemConfig.ExchangeConfig[exactExch]
+	if !ok {
+		ep = cfg.SystemConfig.ExchangeConfig[baseExch]
+	}
+	ep.APIKey = account.APIKey
+	ep.APISecret = account.APISecret
+	ep.APIPassphrase = account.APIPassphrase
+	if account.AccountType != "" {
+		ep.AccountType = account.AccountType
+	}
+
+	isFutures := !strings.HasSuffix(exactExch, "_spot")
+
+	client, adapter := clientFunc(ctx, accFactoryCfg, ep, ep, isFutures)
+
+	sysCfg := cfg.SystemConfig
+	if sysCfg.DryRun {
+		client = exchange.NewDryRunClient(client)
+	}
+
+	log := cfg.Logger.With("account", account.ID, "exchange", account.Exchange)
+
+	wsPool := newWSPool(ctx, account.ID, ep, adapter, log, ep.APIKey, ep.APISecret, extraWSOpts...)
+	adapter.SetPool(wsPool)
+
+	return &AccountProvider{
+		AccountID:    account.ID,
+		ExchangeName: account.Exchange,
+		Client:       client,
+		Adapter:      ws.NewExchangeManagerAdapter(adapter),
+		WSPool:       wsPool,
+		Watcher:      watcher.NewAccountOrderWatcher(cfg.Bus, account.Exchange, account.ID, log),
+	}, nil
 }
 
 func buildProvider(
@@ -407,11 +452,15 @@ func newWSPool(
 	logger *slog.Logger,
 	apiKey string,
 	apiSecret string,
+	extraOpts ...pkgws.ClientOption,
 ) *pkgws.Pool {
 	wsLogger := logger.With("subsystem", "websocket", "exchange", exchangeName)
 	commonOpts := buildWSCommonOpts(adapter)
 	publicOpts := append([]pkgws.ClientOption{}, commonOpts...)
 	privateOpts := append([]pkgws.ClientOption{}, commonOpts...)
+
+	publicOpts = append(publicOpts, extraOpts...)
+	privateOpts = append(privateOpts, extraOpts...)
 
 	privateOpts = append(privateOpts, buildWSPrivateOpts(ctx, adapter, wsLogger, apiKey, apiSecret)...)
 
@@ -460,25 +509,18 @@ func newMarketVariantFactory(
 			if c, ok := cfg.ExchangeConfig[variantName]; ok {
 				return c.IsEnabled()
 			}
-			m := cfg.ExchangeConfig[baseExchange]
-			if isFutures {
-				return m.Future != nil && m.Future.Enable
+			if c, ok := cfg.ExchangeConfig[baseExchange]; ok {
+				return c.IsEnabled()
 			}
-			return m.Spot != nil && m.Spot.Enable
+			return false
 		},
 		buildFunc: func(ctx context.Context, cfg ProviderFactoryConfig) (*ExchangeProvider, error) {
-			apiCfg, ok := cfg.SystemConfig.ExchangeConfig[variantName]
+			ep, ok := cfg.SystemConfig.ExchangeConfig[variantName]
 			if !ok {
-				apiCfg = cfg.SystemConfig.ExchangeConfig[baseExchange]
+				ep = cfg.SystemConfig.ExchangeConfig[baseExchange]
 			}
-			var ep sysconfig.EndpointConfig
-			if isFutures {
-				ep = apiCfg.GetFutureEndpoint()
-			} else {
-				ep = apiCfg.GetSpotEndpoint()
-			}
-			client, adapter := clientFunc(ctx, cfg, ep, apiCfg, isFutures)
-			return buildProvider(ctx, variantName, variantName, cfg, ep, apiCfg, client, adapter), nil
+			client, adapter := clientFunc(ctx, cfg, ep, ep, isFutures)
+			return buildProvider(ctx, variantName, variantName, cfg, ep, ep, client, adapter), nil
 		},
 	}
 }

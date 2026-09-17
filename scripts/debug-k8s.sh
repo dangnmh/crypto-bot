@@ -66,10 +66,12 @@ else
 fi
 
 echo -e "\n5. Checking Secrets..."
-if kubectl get secret -n "$NAMESPACE" crypto-bot-secrets &>/dev/null; then
+if kubectl get secret -n "$NAMESPACE" crypto-bot-vault-secrets &>/dev/null; then
+    echo "✅ Secret 'crypto-bot-vault-secrets' is present."
+elif kubectl get secret -n "$NAMESPACE" crypto-bot-secrets &>/dev/null; then
     echo "✅ Secret 'crypto-bot-secrets' is present."
 else
-    echo "❌ Secret 'crypto-bot-secrets' is missing!"
+    echo "❌ Secret 'crypto-bot-vault-secrets' is missing!"
 fi
 
 echo -e "\n6. Checking Local Docker Image..."
@@ -81,6 +83,6 @@ echo "=========================================================="
 echo "💡 General Troubleshooting Tips:"
 echo "----------------------------------------------------------"
 echo "- If stuck on image pulling, import the image: k3d image import crypto-bot:latest -c cryptobot-cluster"
-echo "- If stuck on container crash, check logs above. Bitwarden SDK credentials or configs might be missing or incorrect."
+echo "- If stuck on container crash, check logs above. Vault or environment credentials or configs might be missing or incorrect."
 echo "- If Terraform is hanging, you can cancel 'make tf-apply' with Ctrl+C. Since Terraform is waiting for the deployment to become ready, canceling it won't destroy the resources already created. You can debug the pods, fix the issue, and then run 'make tf-apply' again."
 echo "=========================================================="

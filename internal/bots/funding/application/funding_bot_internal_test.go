@@ -71,19 +71,15 @@ func TestNewFundingBotBuildsExchangeScopedResources(t *testing.T) {
 			},
 		},
 	}
-	cfg := &config.Config{
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-			{Symbol: "ETH_USDT", Exchange: "gate"},
+	cfg := config.NewTestConfig(&config.ReversionConfig{
+		Sync: config.SyncConfig{
+			SyncConfig:  sysconfig.SyncConfig{Ticker: types.Duration(time.Second), Contract: types.Duration(time.Second)},
+			FundingSync: types.Duration(time.Second),
 		},
-		Reversion: &config.ReversionConfig{
-			Scanners: config.ScannersConfig{Configured: true},
-			Sync: config.SyncConfig{
-				SyncConfig:  sysconfig.SyncConfig{Ticker: types.Duration(time.Second), Contract: types.Duration(time.Second)},
-				FundingSync: types.Duration(time.Second),
-			},
-		},
-	}
+	},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+		config.SymbolConfig{Symbol: "ETH_USDT", Exchange: "gate"},
+	)
 	sysCfg := &config.SystemConfig{}
 
 	s := NewFundingBot(
@@ -151,12 +147,9 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -183,12 +176,9 @@ func TestConfiguredScanner_Scan(t *testing.T) {
 func TestConfiguredScanner_disabledSymbol(t *testing.T) {
 	t.Parallel()
 
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{},
-		Symbols: []config.SymbolConfig{
-			{Symbol: "BTC_USDT", Exchange: "mexc"},
-		},
-	}
+	cfg := config.NewTestConfig(&config.ReversionConfig{},
+		config.SymbolConfig{Symbol: "BTC_USDT", Exchange: "mexc"},
+	)
 
 	scanner, err := NewConfiguredScanner(
 		cfg,
@@ -271,7 +261,7 @@ func TestScannerJob_Run(t *testing.T) {
 	job, err := NewScannerJob(
 		[]Scanner{mScanner},
 		engine,
-		&config.Config{Reversion: &config.ReversionConfig{}},
+		config.NewTestConfig(&config.ReversionConfig{}),
 		sniperTestLogger(),
 	)
 	require.NoError(t, err)

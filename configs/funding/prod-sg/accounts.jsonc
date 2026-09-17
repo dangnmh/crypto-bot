@@ -1,0 +1,23 @@
+{
+  "accounts": [
+    {
+      "id": "mexc_main",
+      "exchange": "mexc_futures",
+      "enabled": true,
+      "env": {
+        "apiKey": "MEXC_API_KEY",
+        "apiSecret": "MEXC_API_SECRET"
+      },
+      "configs": {
+        "reversion": "accounts/mexc_main/reversion.jsonc",
+        "obfuscator": "accounts/mexc_main/obfuscator.jsonc",
+        "dilution": "accounts/mexc_main/dilution.jsonc",
+        "funding": "accounts/mexc_main/funding.jsonc"
+      },
+      "scanners": {
+        "configured": false,
+        "schedule": true
+      }
+    }
+  ]
+}

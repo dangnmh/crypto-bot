@@ -32,7 +32,7 @@ The Obfuscator subsystem acts as an automated anti-surveillance camouflage mecha
 
 ```mermaid
 flowchart TD
-    TICK["ObfuscatorJob.Tick()<br/>(Dynamic loop: pollInterval ± jitter)"] --> SCAN["Query Symbol PnL Summaries<br/>(pnlReader.GetSymbolPnLSummaries)"]
+    TICK["ObfuscatorJob.Tick()<br/>(Dynamic loop: pollInterval ± jitter)"] --> SCAN["Query Symbol PnL Summaries<br/>(pnlReader.GetAccountSymbolPnLSummaries)"]
     
     SCAN --> LOOP{"For each Symbol<br/>in Exchange"}
     
@@ -98,7 +98,7 @@ This duration is passed into `PositionCloseTimeout` of `OrderIntentEvent` so `Or
 ## 4. Loss Budget Aggregation & Database Querying
 
 ### A. Aggregated Historical PnL Reader
-The `ObfuscatorJob` invokes `PnLReportReader.GetSymbolPnLSummaries` against the PostgreSQL `trades` table for the configured lookback window (`created_at >= now - lookbackWindow`):
+The `ObfuscatorJob` invokes `PnLReportReader.GetAccountSymbolPnLSummaries` against the PostgreSQL `trades` table for the configured lookback window (`created_at >= now - lookbackWindow`):
 
 ```sql
 SELECT 

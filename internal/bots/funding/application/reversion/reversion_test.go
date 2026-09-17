@@ -15,6 +15,7 @@ import (
 	"crypto-bot/internal/bots/funding/domain"
 	shared "crypto-bot/internal/domain"
 	"crypto-bot/internal/infrastructure/app"
+	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/infrastructure/store"
 	infraws "crypto-bot/internal/infrastructure/ws"
@@ -52,6 +53,25 @@ func (f fakeFundingStoreSet) Funding() store.FundingReader                      
 func (f fakeFundingStoreSet) Depth() store.DepthReader                          { return f.depth }
 func (f fakeFundingStoreSet) Kline() store.KlineReadWriter                      { return f.kline }
 
+func testConfigWithReversion(accountID, exch string, rev *config.ReversionConfig, symbols ...config.SymbolConfig) *config.Config {
+	if accountID == "" {
+		accountID = "mexc_main"
+	}
+	if exch == "" {
+		exch = "mexc"
+	}
+	return &config.Config{
+		System: &config.SystemConfig{},
+		Accounts: map[string]*config.AccountBotConfig{
+			accountID: {
+				Account:   sysconfig.AccountConfig{ID: accountID, Exchange: exch},
+				Reversion: rev,
+				Symbols:   symbols,
+			},
+		},
+	}
+}
+
 type fakeExchangeAdapter struct {
 	*mocks.MockSubscriber
 }
@@ -80,11 +100,12 @@ func (f *fakeExchangeAdapter) UnsubscribePersonal(ctx context.Context) error {
 }
 
 func executeReversionHelper(t *testing.T, bus *eventbus.Bus, reqID string, candidate domain.Candidate, settleTime time.Time) error {
-	candidate.ExternalID = orders.ExternalOrderID(candidate.Symbol, settleTime, candidate.Config.Exchange)
+	candidate.ExternalID = orders.GenerateClientOrderID(candidate.Config.Exchange)
 
 	startEvt := reversion.CandidateFoundEvent{
 		Flow:       reversion.FlowIDFundingReversion,
 		ReqID:      reqID,
+		AccountID:  candidate.Config.AccountID,
 		Symbol:     candidate.Symbol,
 		Exchange:   candidate.Config.Exchange,
 		Timestamp:  time.Now(),
@@ -174,18 +195,14 @@ func TestStrategy_Execute_Success(t *testing.T) {
 		},
 	}
 
-	globalCfg := &config.Config{
-		System: &config.SystemConfig{},
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				MinVol24USD: 10000,
-			},
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
+	globalCfg := testConfigWithReversion("mexc_main", "mexc", &config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			MinVol24USD: 10000,
 		},
-		Symbols: []config.SymbolConfig{cfg},
-	}
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
+		},
+	}, cfg)
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
@@ -340,18 +357,14 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 		},
 	}
 
-	globalCfg := &config.Config{
-		System: &config.SystemConfig{},
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				MinVol24USD: 10000,
-			},
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
+	globalCfg := testConfigWithReversion("mexc_main", "mexc", &config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			MinVol24USD: 10000,
 		},
-		Symbols: []config.SymbolConfig{cfg},
-	}
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
+		},
+	}, cfg)
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
@@ -443,9 +456,7 @@ func TestStrategy_Execute_ExternalID_Propagation(t *testing.T) {
 	}
 
 	assert.NotEmpty(t, candidateEvt.ExternalID)
-	expectedID := orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange)
-	assert.Equal(t, expectedID, candidateEvt.ExternalID)
-	assert.LessOrEqual(t, len(candidateEvt.ExternalID), 32)
+	assert.LessOrEqual(t, len(candidateEvt.ExternalID), exchange.MaxClientOrderIDLength(candidate.Config.Exchange))
 }
 
 func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
@@ -521,18 +532,14 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		},
 	}
 
-	globalCfg := &config.Config{
-		System: &config.SystemConfig{},
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				MinVol24USD: 10000,
-			},
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
+	globalCfg := testConfigWithReversion("bybit_main", "bybit", &config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			MinVol24USD: 10000,
 		},
-		Symbols: []config.SymbolConfig{cfg},
-	}
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
+		},
+	}, cfg)
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
@@ -605,7 +612,7 @@ func TestStrategy_Execute_SkipLeverageChange(t *testing.T) {
 		EventID:    watermill.NewUUID(),
 		Seq:        1,
 		Topic:      reversion.TopicReversionCandidate,
-		ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
+		ExternalID: orders.GenerateClientOrderID(candidate.Config.Exchange),
 		SettleTime: now.Add(10 * time.Second),
 		Candidate:  candidate,
 	}
@@ -713,18 +720,14 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		},
 	}
 
-	globalCfg := &config.Config{
-		System: &config.SystemConfig{},
-		Reversion: &config.ReversionConfig{
-			Default: config.ExchangeReversionConfig{
-				MinVol24USD: 10000,
-			},
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
+	globalCfg := testConfigWithReversion("bybit_main", "bybit", &config.ReversionConfig{
+		Default: config.ExchangeReversionConfig{
+			MinVol24USD: 10000,
 		},
-		Symbols: []config.SymbolConfig{cfg},
-	}
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
+		},
+	}, cfg)
 
 	candidate := domain.Candidate{
 		Config: domain.TradeConfig{
@@ -805,7 +808,7 @@ func TestStrategy_Execute_LeverageCapping(t *testing.T) {
 		EventID:    watermill.NewUUID(),
 		Seq:        1,
 		Topic:      reversion.TopicReversionCandidate,
-		ExternalID: orders.ExternalOrderID(candidate.Symbol, now.Add(10*time.Second), candidate.Config.Exchange),
+		ExternalID: orders.GenerateClientOrderID(candidate.Config.Exchange),
 		SettleTime: now.Add(10 * time.Second),
 		Candidate:  candidate,
 	}
@@ -884,13 +887,11 @@ func TestReversion_OrderManager_DispatchesOrderIntent(t *testing.T) {
 			},
 		},
 	}
-	cfg := &config.Config{
-		Reversion: &config.ReversionConfig{
-			Safety: config.SafetyConfig{
-				MaxImpactRatio: 1.0,
-			},
+	cfg := testConfigWithReversion("mexc_main", "mexc", &config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
 		},
-	}
+	})
 	strategyInst := reversion.NewStrategy(engine, cfg, nil, nil, slog.Default())
 
 	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
@@ -932,6 +933,114 @@ func TestReversion_OrderManager_DispatchesOrderIntent(t *testing.T) {
 		assert.Equal(t, "BTC_USDT", receivedIntent.Symbol)
 		assert.Equal(t, futures.StrategyFundingReversion, receivedIntent.StrategyType)
 		assert.Greater(t, receivedIntent.Price, 0.0)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Timeout waiting for OrderIntentEvent on futures.TopicOrderIntent")
+	}
+}
+
+func TestStrategy_OrderManagerIntent_MultiAccountRouting(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	bus := eventbus.New(slog.Default())
+	t.Cleanup(func() { _ = bus.Close() })
+
+	intentSub, err := bus.Subscribe(context.Background(), futures.TopicOrderIntent)
+	require.NoError(t, err)
+
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	cand := domain.Candidate{
+		Config: domain.TradeConfig{
+			AccountID: "mexc_sub1",
+			Symbol:    "ETH_USDT",
+			Exchange:  "mexc",
+			FundingReversion: domain.FundingReversionConfig{
+				Enabled:       true,
+				TakeProfitPct: 0.01,
+				StopLossPct:   0.02,
+			},
+		},
+		Symbol:       "ETH_USDT",
+		Side:         shared.SideOpenLong,
+		PriceUnit:    0.01,
+		VolUnit:      1,
+		MinVol:       1,
+		PriceScale:   2,
+		VolScale:     4,
+		ContractSize: 0.001,
+		LastPrice:    3000,
+		BestBid:      2999,
+		BestAsk:      3000,
+		Volume:       1,
+	}
+
+	mockSubClient := mocks.NewMockClient(ctrl)
+	mockSubClient.EXPECT().SwitchMarginMode(gomock.Any(), "ETH_USDT", shared.MarginModeIsolated, 0, shared.SideOpenLong).Return(nil)
+	mockSubClient.EXPECT().SupportLeverageOnOrder().Return(true).AnyTimes()
+
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name: "mexc",
+			},
+		},
+		AccountProviders: map[string]*app.AccountProvider{
+			"mexc_sub1": {
+				AccountID:    "mexc_sub1",
+				ExchangeName: "mexc",
+				Client:       mockSubClient,
+			},
+		},
+	}
+
+	globalCfg := testConfigWithReversion("mexc_sub1", "mexc", &config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 1.0,
+		},
+	})
+	c := cache.New(5*time.Minute, 10*time.Minute)
+
+	strategyInst := reversion.NewStrategy(engine, globalCfg, nil, c, slog.Default())
+
+	mockClock := mocks.NewMockClock(ctrl)
+	mockClock.EXPECT().Now().Return(now).AnyTimes()
+	mockClock.EXPECT().LatencyMs().Return(int64(15)).AnyTimes()
+	mockClock.EXPECT().Until(gomock.Any()).Return(50 * time.Millisecond).AnyTimes()
+	mockClock.EXPECT().Sleep(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	strategyInst.SetTestFallbacks(mockClock, nil, nil)
+
+	confirmedEvt := reversion.ConfirmedEvent{
+		ReqID:      "req-sub1-rev",
+		AccountID:  "mexc_sub1",
+		Symbol:     "ETH_USDT",
+		Exchange:   "mexc",
+		SettleTime: now.Add(1 * time.Second),
+		Candidate:  cand,
+	}
+
+	mockPriceStore := mocks.NewMockPriceReader(ctrl)
+	mockPriceStore.EXPECT().GetPrice(gomock.Any(), gomock.Any(), gomock.Any()).Return(&store.PriceData{BestBid: 3000, BestAsk: 3001, LastPrice: 3000.5}, nil).AnyTimes()
+
+	stores := map[string]strategy.FundingStoreSet{
+		"mexc": fakeFundingStoreSet{
+			price: mockPriceStore,
+		},
+	}
+	require.NoError(t, strategyInst.Start(context.Background(), stores))
+
+	require.NoError(t, bus.Publish(reversion.TopicReversionConfirmed, confirmedEvt))
+
+	select {
+	case msg := <-intentSub:
+		var receivedIntent futures.OrderIntentEvent
+		require.NoError(t, json.Unmarshal(msg.Payload, &receivedIntent))
+		assert.Equal(t, "req-sub1-rev", receivedIntent.ReqID)
+		assert.Equal(t, "mexc_sub1", receivedIntent.AccountID)
+		assert.Equal(t, "ETH_USDT", receivedIntent.Symbol)
+		assert.Equal(t, futures.StrategyFundingReversion, receivedIntent.StrategyType)
 	case <-time.After(3 * time.Second):
 		t.Fatal("Timeout waiting for OrderIntentEvent on futures.TopicOrderIntent")
 	}

@@ -41,6 +41,14 @@ func TestExternalOrderID(t *testing.T) {
 	assert.Equal(t, 30, len(idOrangex))
 }
 
+func TestGenerateClientOrderID(t *testing.T) {
+	t.Parallel()
+
+	oid := orders.GenerateClientOrderID("bybit")
+	assert.Len(t, oid, 32)
+	assert.NotEmpty(t, oid)
+}
+
 func TestOrderResultIsSuccess(t *testing.T) {
 	t.Parallel()
 

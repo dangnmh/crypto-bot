@@ -139,6 +139,17 @@ func (a *OrderExecutionAggregate) Exchange() string {
 	return ""
 }
 
+func (a *OrderExecutionAggregate) AccountID() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, e := range a.uncommittedEvents {
+		if e != nil && e.GetAccountID() != "" {
+			return e.GetAccountID()
+		}
+	}
+	return ""
+}
+
 func (a *OrderExecutionAggregate) MarketType() common.MarketType {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -305,11 +316,18 @@ func (a *OrderExecutionAggregate) HasFilled() bool {
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	if stateRank(a.state) >= stateRank(StateFilled) {
+	if a.state == StateFilled || a.state == StatePositionClosed {
 		return true
 	}
 	for _, evt := range a.uncommittedEvents {
-		if _, ok := evt.(OrderFilledEvent); ok {
+		switch e := evt.(type) {
+		case OrderFilledEvent:
+			return true
+		case OrderOutcomeResolvedEvent:
+			if e.Outcome == common.OutcomeFilled || e.Outcome == common.OutcomePartiallyFilled {
+				return true
+			}
+		case OrderPositionClosedEvent:
 			return true
 		}
 	}
@@ -606,6 +624,9 @@ func applyEventBase(r *common.OrderTradeRecordEvent, evt common.OrderEvent) {
 	}
 	if ex := evt.GetExchange(); ex != "" {
 		r.Exchange = ex
+	}
+	if acc := evt.GetAccountID(); acc != "" {
+		r.AccountID = acc
 	}
 	if mt := evt.GetMarketType(); mt != "" {
 		r.MarketType = string(mt)

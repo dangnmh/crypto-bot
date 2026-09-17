@@ -14,7 +14,7 @@ var Module = fx.Options(
 		provideOrderDispatcher,
 		NewDilutionMaker,
 		NewDilutionRunner,
-		NewDilutionJob,
+		NewDilutionJobs,
 	),
 )
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,10 +32,11 @@ type OrderCompletedCallback func(ctx context.Context, evt OrderCompletedEvent)
 
 // PositionPnLTracker tracks peak PnL and rolling PnL history for trailing stop evaluations.
 type PositionPnLTracker struct {
-	ReqID    string
-	Exchange string
-	MaxPnL   float64
-	History  []float64
+	ReqID     string
+	AccountID string
+	Exchange  string
+	MaxPnL    float64
+	History   []float64
 }
 
 // OrderManager is a business-agnostic reactive order execution engine using Micro-Events.
@@ -77,7 +79,7 @@ func (m *OrderManager) invokeOnCompletedCallbacks(ctx context.Context, evt Order
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					m.log.ErrorContext(ctx, "OrderCompletedCallback panicked", slog.String("exchange", evt.GetExchange()), slog.String("req_id", evt.GetReqID()), slog.Any("panic", r))
+					m.log.ErrorContext(ctx, "OrderCompletedCallback panicked", slog.String("exchange", evt.GetExchange()), slog.String("account_id", evt.GetAccountID()), slog.String("req_id", evt.GetReqID()), slog.Any("panic", r))
 				}
 			}()
 			fn(ctx, evt)
@@ -98,35 +100,35 @@ func NewOrderManager(
 		return nil, fmt.Errorf("engine is required")
 	}
 	if bus == nil {
-		return nil, fmt.Errorf("eventbus is required")
+		return nil, fmt.Errorf("bus is required")
 	}
 	if repo == nil {
-		return nil, fmt.Errorf("repository is required")
-	}
-	if n == nil {
-		return nil, fmt.Errorf("notifier is required")
+		return nil, fmt.Errorf("repo is required")
 	}
 	if log == nil {
 		log = slog.Default()
 	}
 
-	m := &OrderManager{
+	mgr := &OrderManager{
 		engine:            engine,
 		bus:               bus,
 		repo:              repo,
 		notifier:          n,
-		log:               log.With("component", "GenericOrderManager"),
+		log:               log,
 		combatCoordinator: NewCombatModeCoordinator(log),
 		aggregates:        cache.New(defaultCacheTTL, defaultCleanupInterval),
 		orderIDMapCache:   cache.New(defaultCacheTTL, defaultCleanupInterval),
 		pnlTrackers:       cache.New(defaultCacheTTL, defaultCleanupInterval),
 	}
 
-	if err := m.Init(ctx); err != nil {
-		return nil, fmt.Errorf("failed to init order manager: %w", err)
-	}
+	InitGlobalSubscriptions(ctx, mgr)
 
-	return m, nil
+	return mgr, nil
+}
+
+// OrderExecutionAggregate returns an aggregate for inspection/testing.
+func (m *OrderManager) OrderExecutionAggregate(reqID string) *OrderExecutionAggregate {
+	return m.GetAggregate(reqID)
 }
 
 // Init registers all OrderManager micro-step topic handlers on the event bus and wires personal position stream callbacks.
@@ -167,51 +169,77 @@ func (m *OrderManager) registerCombatTarget(fireTime time.Time, settleTime *time
 	}
 }
 
-func (m *OrderManager) resolveClient(exchangeName string) (ExchangeClient, error) {
-	prov, err := m.engine.GetProvider(exchangeName)
+func (m *OrderManager) resolveAccountProvider(accountID, exchangeName string) (*infraapp.AccountProvider, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accountID != "" {
+		accProv, accErr := m.engine.GetAccountProvider(accountID)
+		if accErr == nil && accProv != nil {
+			return accProv, nil
+		}
+	}
+	prov, err := m.engine.GetAccountProvider(exchangeName)
 	if err != nil {
-		resErr := fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
-		m.log.Error("Failed to resolve exchange client", slog.String("exchange", exchangeName), slog.Any("error", resErr))
+		return nil, fmt.Errorf("failed to get provider for %s (account: %s): %w", exchangeName, accountID, err)
+	}
+	return prov, nil
+}
+
+func (m *OrderManager) resolveClientForAccount(accountID, exchangeName string) (ExchangeClient, error) {
+	prov, err := m.resolveAccountProvider(accountID, exchangeName)
+	if err != nil {
+		resErr := fmt.Errorf("failed to get provider for exchange %q (account %q): %w", exchangeName, accountID, err)
+		m.log.Error("Failed to resolve exchange client", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	if prov == nil || prov.Client == nil {
-		resErr := fmt.Errorf("no exchange client available for exchange %q", exchangeName)
-		m.log.Error("Failed to resolve exchange client", slog.String("exchange", exchangeName), slog.Any("error", resErr))
+		resErr := fmt.Errorf("no exchange client available for exchange %q (account %q)", exchangeName, accountID)
+		m.log.Error("Failed to resolve exchange client", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	return prov.Client, nil
 }
 
-func (m *OrderManager) resolvePositionWatcher(exchangeName string) (PositionWatcher, error) {
-	prov, err := m.engine.GetProvider(exchangeName)
+func (m *OrderManager) resolvePositionWatcherForAccount(accountID, exchangeName string) (PositionWatcher, error) {
+	prov, err := m.resolveAccountProvider(accountID, exchangeName)
 	if err != nil {
-		resErr := fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
-		m.log.Error("Failed to resolve position watcher", slog.String("exchange", exchangeName), slog.Any("error", resErr))
+		resErr := fmt.Errorf("failed to get provider for exchange %q (account %q): %w", exchangeName, accountID, err)
+		m.log.Error("Failed to resolve position watcher", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	if prov == nil || prov.Watcher == nil {
-		resErr := fmt.Errorf("no position watcher available for exchange %q", exchangeName)
-		m.log.Debug("No position watcher available", slog.String("exchange", exchangeName))
+		resErr := fmt.Errorf("no position watcher available for exchange %q (account %q)", exchangeName, accountID)
+		m.log.Debug("No position watcher available", slog.String("exchange", exchangeName), slog.String("account_id", accountID))
 		return nil, resErr
 	}
 	if pw, ok := any(prov.Watcher).(PositionWatcher); ok {
 		return pw, nil
 	}
-	resErr := fmt.Errorf("watcher for exchange %q does not implement PositionWatcher interface", exchangeName)
-	m.log.Debug("Position watcher interface not implemented", slog.String("exchange", exchangeName))
+	resErr := fmt.Errorf("watcher for exchange %q (account %q) does not implement PositionWatcher interface", exchangeName, accountID)
+	m.log.Debug("Position watcher interface not implemented", slog.String("exchange", exchangeName), slog.String("account_id", accountID))
 	return nil, resErr
 }
 
 func (m *OrderManager) resolveAdapter(exchangeName string) (infraws.ExchangeManagerAdapter, error) {
 	prov, err := m.engine.GetProvider(exchangeName)
 	if err != nil {
-		resErr := fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
-		m.log.Debug("Failed to resolve exchange adapter", slog.String("exchange", exchangeName), slog.Any("error", resErr))
+		return nil, fmt.Errorf("failed to get provider for exchange %q: %w", exchangeName, err)
+	}
+	if prov == nil || prov.Adapter == nil {
+		return nil, fmt.Errorf("no exchange adapter available for exchange %q", exchangeName)
+	}
+	return prov.Adapter, nil
+}
+
+func (m *OrderManager) resolveAdapterForAccount(accountID, exchangeName string) (infraws.ExchangeManagerAdapter, error) {
+	prov, err := m.resolveAccountProvider(accountID, exchangeName)
+	if err != nil {
+		resErr := fmt.Errorf("failed to get provider for exchange %q (account %q): %w", exchangeName, accountID, err)
+		m.log.Debug("Failed to resolve exchange adapter", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	if prov == nil || prov.Adapter == nil {
-		resErr := fmt.Errorf("no exchange adapter available for exchange %q", exchangeName)
-		m.log.Debug("Failed to resolve exchange adapter", slog.String("exchange", exchangeName), slog.Any("error", resErr))
+		resErr := fmt.Errorf("no exchange adapter available for exchange %q (account %q)", exchangeName, accountID)
+		m.log.Debug("Failed to resolve exchange adapter", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", resErr))
 		return nil, resErr
 	}
 	return prov.Adapter, nil
@@ -219,7 +247,12 @@ func (m *OrderManager) resolveAdapter(exchangeName string) (infraws.ExchangeMana
 
 // SubscribePositionWatch subscribes to personal private WS channel via Adapter using reference counting.
 func (m *OrderManager) SubscribePositionWatch(ctx context.Context, exchangeName, strategyType, reqID string) {
-	prov, err := m.engine.GetProvider(exchangeName)
+	agg := m.GetAggregate(reqID)
+	if agg == nil || agg.AccountID() == "" {
+		return
+	}
+	accountID := agg.AccountID()
+	prov, err := m.resolveAccountProvider(accountID, exchangeName)
 	if err != nil || prov == nil {
 		return
 	}
@@ -228,20 +261,25 @@ func (m *OrderManager) SubscribePositionWatch(ctx context.Context, exchangeName,
 	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
 	if prov.Adapter != nil {
 		if err := prov.Adapter.SubscribePersonal(ctx, flowID); err != nil {
-			m.log.WarnContext(ctx, "Failed to subscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.Any("error", err))
+			m.log.WarnContext(ctx, "Failed to subscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", err))
 		}
 	}
 }
 
 // UnsubscribePositionWatch unsubscribes personal private WS channel via Adapter when order completes or aborts.
 func (m *OrderManager) UnsubscribePositionWatch(ctx context.Context, exchangeName, strategyType, reqID string) {
-	adapter, err := m.resolveAdapter(exchangeName)
+	agg := m.GetAggregate(reqID)
+	if agg == nil || agg.AccountID() == "" {
+		return
+	}
+	accountID := agg.AccountID()
+	adapter, err := m.resolveAdapterForAccount(accountID, exchangeName)
 	if err != nil {
 		return
 	}
 	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
 	if err := adapter.UnsubscribePersonal(ctx, flowID); err != nil {
-		m.log.WarnContext(ctx, "Failed to unsubscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.Any("error", err))
+		m.log.WarnContext(ctx, "Failed to unsubscribe personal private WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", err))
 	}
 }
 
@@ -253,9 +291,14 @@ func (m *OrderManager) SubscribeTradeWatch(ctx context.Context, exchangeName, st
 	}
 	prov.EnsurePersonalWS(ctx, m.log)
 
+	accountID := ""
+	if agg := m.GetAggregate(reqID); agg != nil {
+		accountID = agg.AccountID()
+	}
+
 	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
 	if err := prov.Adapter.SubscribeTrade(ctx, flowID, symbol); err != nil {
-		m.log.WarnContext(ctx, "Failed to subscribe trade deal WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
+		m.log.WarnContext(ctx, "Failed to subscribe trade deal WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.String("symbol", symbol), slog.Any("error", err))
 	}
 }
 
@@ -265,9 +308,19 @@ func (m *OrderManager) UnsubscribeTradeWatch(ctx context.Context, exchangeName, 
 	if err != nil || adapter == nil {
 		return
 	}
+	accountID := ""
+	if agg := m.GetAggregate(reqID); agg != nil {
+		accountID = agg.AccountID()
+		if symbol == "" {
+			symbol = agg.Symbol()
+		}
+	}
+	if symbol == "" {
+		return
+	}
 	flowID := fmt.Sprintf("%s_%s", strategyType, reqID)
 	if err := adapter.UnsubscribeTrade(ctx, flowID, symbol); err != nil {
-		m.log.WarnContext(ctx, "Failed to unsubscribe trade deal WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
+		m.log.WarnContext(ctx, "Failed to unsubscribe trade deal WS channel via Adapter", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.String("symbol", symbol), slog.Any("error", err))
 	}
 }
 
@@ -306,15 +359,25 @@ func (m *OrderManager) publishEvent(ctx context.Context, topic string, payload a
 	if ex, ok := payload.(interface{ GetExchange() string }); ok {
 		exchangeName = ex.GetExchange()
 	}
-	if exchangeName == "" {
+	accountID := ""
+	if acc, ok := payload.(interface{ GetAccountID() string }); ok {
+		accountID = acc.GetAccountID()
+	}
+	if exchangeName == "" || accountID == "" {
 		if req, ok := payload.(interface{ GetReqID() string }); ok && req.GetReqID() != "" {
 			if agg := m.GetAggregate(req.GetReqID()); agg != nil {
-				exchangeName = agg.Exchange()
+				if exchangeName == "" {
+					exchangeName = agg.Exchange()
+				}
+				if accountID == "" {
+					accountID = agg.AccountID()
+				}
 			}
 		}
 	}
 	m.log.InfoContext(ctx, "OrderManager: Publishing Watermill micro-event",
 		slog.String("exchange", exchangeName),
+		slog.String("account_id", accountID),
 		slog.String("topic", topic),
 		slog.Any("payload", payload),
 	)
@@ -368,11 +431,17 @@ func (m *OrderManager) HasActiveOrder(reqID string) bool {
 
 // GetActiveOrders returns all active (non-terminal) order aggregates for a given exchange and symbol.
 func (m *OrderManager) GetActiveOrders(exchangeName, symbol string) []*OrderExecutionAggregate {
+	return m.GetActiveOrdersForAccount("", exchangeName, symbol)
+}
+
+// GetActiveOrdersForAccount returns active order aggregates matching accountID, exchangeName, and symbol.
+func (m *OrderManager) GetActiveOrdersForAccount(accountID, exchangeName, symbol string) []*OrderExecutionAggregate {
 	var active []*OrderExecutionAggregate
 	items := m.aggregates.Items()
 	for _, item := range items {
 		if agg, ok := item.Object.(*OrderExecutionAggregate); ok {
-			if (exchangeName == "" || agg.Exchange() == exchangeName) &&
+			if (accountID == "" || agg.AccountID() == accountID) &&
+				(exchangeName == "" || agg.Exchange() == exchangeName) &&
 				(symbol == "" || agg.Symbol() == symbol) {
 				state := agg.State()
 				if state != StateCompleted && state != StateAborted && state != StateCanceled {
@@ -397,7 +466,7 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 	orderID := agg.OrderID()
 	clientOrderID := agg.ClientOrderID()
 
-	prov, err := m.engine.GetProvider(exchangeName)
+	prov, err := m.resolveAccountProvider(agg.AccountID(), exchangeName)
 	if err != nil || prov == nil || prov.Client == nil {
 		return fmt.Errorf("failed to resolve exchange provider for %s: %w", exchangeName, err)
 	}
@@ -407,6 +476,7 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 			if err := executor.CancelOrder(ctx, symbol, orderID); err != nil {
 				m.log.WarnContext(ctx, "Failed to cancel order by exchange order ID",
 					slog.String("exchange", exchangeName),
+					slog.String("account_id", agg.AccountID()),
 					slog.String("req_id", reqID), slog.String("order_id", orderID), slog.Any("error", err))
 			}
 		}
@@ -421,6 +491,7 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 	cancelEvt := OrderCanceledEvent{
 		ReqID:         reqID,
 		ClientOrderID: clientOrderID,
+		AccountID:     agg.AccountID(),
 		Symbol:        symbol,
 		Exchange:      exchangeName,
 		MarketType:    agg.MarketType(),
@@ -436,27 +507,41 @@ func (m *OrderManager) CancelOrder(ctx context.Context, reqID string) error {
 	if err := agg.Record(cancelEvt); err != nil {
 		m.log.ErrorContext(ctx, "Failed to record OrderCanceledEvent to aggregate",
 			slog.String("exchange", exchangeName),
+			slog.String("account_id", agg.AccountID()),
 			slog.String("req_id", reqID), slog.Any("error", err))
 	}
 
 	return m.publishEvent(ctx, TopicOrderCanceled, cancelEvt)
 }
 
-// CancelOpenOrders cancels all open resting orders for a symbol on an exchange and cleans up active timers.
-func (m *OrderManager) CancelOpenOrders(ctx context.Context, exchangeName, symbol string) error {
-	prov, err := m.engine.GetProvider(exchangeName)
-	if err != nil || prov == nil || prov.Client == nil {
-		return fmt.Errorf("failed to resolve exchange provider for %s: %w", exchangeName, err)
-	}
-
-	if executor, ok := prov.Client.(exchange.OrderExecutor); ok {
-		if err := executor.CancelAllOpenOrders(ctx, symbol); err != nil {
-			m.log.WarnContext(ctx, "Failed to cancel all open orders on exchange",
-				slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
+// CancelOpenOrders cancels all open resting orders for a symbol on an exchange (optionally scoped to accountID) and cleans up active timers.
+func (m *OrderManager) CancelOpenOrders(ctx context.Context, accountID, exchangeName, symbol string) error {
+	var executor exchange.OrderExecutor
+	if accountID != "" {
+		if accProv, err := m.resolveAccountProvider(accountID, exchangeName); err == nil && accProv != nil {
+			if exec, ok := accProv.Client.(exchange.OrderExecutor); ok {
+				executor = exec
+			}
 		}
 	}
+	if executor == nil {
+		if prov, err := m.engine.GetProvider(exchangeName); err == nil && prov != nil {
+			if exec, ok := prov.Client.(exchange.OrderExecutor); ok {
+				executor = exec
+			}
+		}
+	}
+	if executor == nil {
+		return fmt.Errorf("failed to resolve exchange provider for %s (account: %s)", exchangeName, accountID)
+	}
 
-	activeOrders := m.GetActiveOrders(exchangeName, symbol)
+	if err := executor.CancelAllOpenOrders(ctx, symbol); err != nil {
+		m.log.WarnContext(ctx, "Failed to cancel all open orders on exchange",
+			slog.String("account_id", accountID), slog.String("exchange", exchangeName), slog.String("symbol", symbol), slog.Any("error", err))
+		return fmt.Errorf("cancel all open orders on %s (%s): %w", exchangeName, accountID, err)
+	}
+
+	activeOrders := m.GetActiveOrdersForAccount(accountID, exchangeName, symbol)
 	for _, agg := range activeOrders {
 		m.CancelTimeoutGuard(agg.ReqID())
 	}
@@ -480,6 +565,7 @@ func (m *OrderManager) configureExchangeLeverage(ctx context.Context, client Exc
 		if err != nil {
 			m.log.ErrorContext(ctx, "Change leverage failed",
 				slog.String("exchange", evt.Exchange),
+				slog.String("account_id", evt.AccountID),
 				slog.String("req_id", evt.ReqID),
 				slog.String("symbol", evt.Symbol),
 				slog.Any("error", err))
@@ -491,12 +577,16 @@ func (m *OrderManager) configureExchangeLeverage(ctx context.Context, client Exc
 
 // HandlePreFlight calculates Margin Mode, Position Mode & Risk Limit Leverage.
 func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent) (OrderPreFlightCompletedEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 1] HandlePreFlight",
+	m.log.InfoContext(ctx, "[Micro-Step 1] HandlePreFlight: Switching margin and position mode",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
+		slog.String("symbol", evt.Symbol),
 		slog.String("req_id", evt.GetReqID()),
-		slog.String("symbol", evt.Symbol))
+		slog.String("margin_mode", string(evt.MarginMode)),
+		slog.Int("position_mode", int(evt.PositionMode)),
+		slog.Int("leverage", evt.Leverage))
 
-	client, err := m.resolveClient(evt.Exchange)
+	client, err := m.resolveClientForAccount(evt.AccountID, evt.Exchange)
 	if err != nil {
 		return OrderPreFlightCompletedEvent{}, err
 	}
@@ -509,6 +599,7 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 		if syncer, ok := clock.(SyncerClock); ok {
 			m.log.InfoContext(ctx, "Forcing clock sync on pre-flight",
 				slog.String("exchange", evt.Exchange),
+				slog.String("account_id", evt.AccountID),
 				slog.String("req_id", evt.GetReqID()),
 				slog.String("symbol", evt.Symbol))
 			syncer.SyncNow(ctx)
@@ -522,6 +613,7 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 		if err := client.SwitchMarginMode(ctx, evt.Symbol, evt.MarginMode, evt.Leverage, evt.Side); err != nil {
 			m.log.ErrorContext(ctx, "Switch margin mode failed",
 				slog.String("exchange", evt.Exchange),
+				slog.String("account_id", evt.AccountID),
 				slog.String("req_id", evt.GetReqID()),
 				slog.String("symbol", evt.Symbol),
 				slog.Any("error", err))
@@ -533,6 +625,7 @@ func (m *OrderManager) HandlePreFlight(ctx context.Context, evt OrderIntentEvent
 			if err := switcher.SwitchPositionMode(ctx, evt.Symbol, evt.PositionMode); err != nil {
 				m.log.ErrorContext(ctx, "Switch position mode failed",
 					slog.String("exchange", evt.Exchange),
+					slog.String("account_id", evt.AccountID),
 					slog.String("req_id", evt.GetReqID()),
 					slog.String("symbol", evt.Symbol),
 					slog.Any("error", err))
@@ -564,10 +657,11 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderPr
 		timeout = evt.PositionCloseTimeout * 2
 	}
 	m.log.InfoContext(ctx, "[Micro-Step 2] HandlePositionWatchReady",
+		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.String("strategy", string(evt.StrategyType)),
-		slog.String("exchange", evt.Exchange),
 		slog.Duration("timeout", timeout))
 
 	clock, err := m.resolveClock(evt.Exchange)
@@ -578,11 +672,12 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderPr
 	if !evt.Side.IsClose() {
 		m.SubscribePositionWatch(ctx, evt.Exchange, string(evt.GetStrategyType()), evt.GetReqID())
 
-		posWatcher, _ := m.resolvePositionWatcher(evt.Exchange)
+		posWatcher, _ := m.resolvePositionWatcherForAccount(evt.AccountID, evt.Exchange)
 		if posWatcher != nil {
 			posWatcher.OnPositionUpdate(ctx, evt.Symbol, timeout, func(pos exchange.PersonalPositionUpdate) {
 				m.log.Debug("[Micro-Step 2] HandlePositionUpdate OnPositionUpdate",
 					slog.String("exchange", evt.Exchange),
+					slog.String("account_id", evt.AccountID),
 					slog.String("req_id", evt.GetReqID()),
 					slog.String("symbol", evt.Symbol),
 					slog.Any("pos", pos))
@@ -611,6 +706,7 @@ func (m *OrderManager) HandlePositionWatchReady(ctx context.Context, evt OrderPr
 func (m *OrderManager) HandleFireTiming(ctx context.Context, evt OrderPositionWatchReadyEvent) (OrderFireWindowReachedEvent, error) {
 	m.log.InfoContext(ctx, "[Micro-Step 3] HandleFireTiming",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol))
 
@@ -638,6 +734,7 @@ func (m *OrderManager) HandlePositionUpdate(ctx context.Context, reqID string, p
 	if err != nil {
 		m.log.ErrorContext(ctx, "Failed to resolve clock for position update",
 			slog.String("exchange", agg.Exchange()),
+			slog.String("account_id", agg.AccountID()),
 			slog.String("req_id", reqID),
 			slog.Any("error", err))
 		return
@@ -722,6 +819,7 @@ func (m *OrderManager) handlePositionFilled(
 	evt := OrderFilledEvent{
 		ReqID:           reqID,
 		ClientOrderID:   agg.ClientOrderID(),
+		AccountID:       agg.AccountID(),
 		Symbol:          pos.Symbol,
 		Exchange:        agg.Exchange(),
 		MarketType:      agg.MarketType(),
@@ -763,6 +861,7 @@ func (m *OrderManager) handlePositionClosed(
 	if shouldIgnoreZeroVolumeUpdate(agg, pos, closePrice, closeVolContract, closeVolCoin) {
 		m.log.DebugContext(ctx, "Ignoring 0 volume position update for unopened position aggregate",
 			slog.String("exchange", agg.Exchange()),
+			slog.String("account_id", agg.AccountID()),
 			slog.String("req_id", reqID),
 			slog.String("symbol", pos.Symbol),
 		)
@@ -773,6 +872,7 @@ func (m *OrderManager) handlePositionClosed(
 	evt := OrderPositionClosedEvent{
 		ReqID:            reqID,
 		ClientOrderID:    agg.ClientOrderID(),
+		AccountID:        agg.AccountID(),
 		Symbol:           pos.Symbol,
 		Exchange:         agg.Exchange(),
 		MarketType:       agg.MarketType(),
@@ -794,6 +894,7 @@ func (m *OrderManager) handlePositionClosed(
 	if err := agg.Record(evt); err != nil {
 		m.log.ErrorContext(ctx, "Failed to record OrderPositionClosedEvent to aggregate",
 			slog.String("exchange", agg.Exchange()),
+			slog.String("account_id", agg.AccountID()),
 			slog.String("req_id", reqID),
 			slog.Any("error", err))
 	}
@@ -857,6 +958,7 @@ func (t *PositionPnLTracker) update(log *slog.Logger, pnl float64) bool {
 	if pnl > t.MaxPnL {
 		log.Debug("Position PnL increased",
 			slog.String("exchange", t.Exchange),
+			slog.String("account_id", t.AccountID),
 			slog.String("req_id", t.ReqID),
 			slog.Float64("prev_max", t.MaxPnL),
 			slog.Float64("new_max", pnl),
@@ -868,17 +970,23 @@ func (t *PositionPnLTracker) update(log *slog.Logger, pnl float64) bool {
 }
 
 func (m *OrderManager) getOrInitPnLTracker(ctx context.Context, reqID, symbol, exchangeName string, pnl float64) *PositionPnLTracker {
+	accountID := ""
+	if agg := m.GetAggregate(reqID); agg != nil {
+		accountID = agg.AccountID()
+	}
 	val, found := m.pnlTrackers.Get(reqID)
 	if !found {
 		tracker := &PositionPnLTracker{
-			ReqID:    reqID,
-			Exchange: exchangeName,
-			MaxPnL:   pnl,
-			History:  []float64{pnl},
+			ReqID:     reqID,
+			AccountID: accountID,
+			Exchange:  exchangeName,
+			MaxPnL:    pnl,
+			History:   []float64{pnl},
 		}
 		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
 		m.log.InfoContext(ctx, "Started tracking position PnL",
 			slog.String("exchange", exchangeName),
+			slog.String("account_id", accountID),
 			slog.String("req_id", reqID),
 			slog.String("symbol", symbol),
 			slog.Float64("initial_pnl", pnl),
@@ -889,16 +997,20 @@ func (m *OrderManager) getOrInitPnLTracker(ctx context.Context, reqID, symbol, e
 	tracker, ok := val.(*PositionPnLTracker)
 	if !ok || tracker == nil {
 		tracker := &PositionPnLTracker{
-			ReqID:    reqID,
-			Exchange: exchangeName,
-			MaxPnL:   pnl,
-			History:  []float64{pnl},
+			ReqID:     reqID,
+			AccountID: accountID,
+			Exchange:  exchangeName,
+			MaxPnL:    pnl,
+			History:   []float64{pnl},
 		}
 		m.pnlTrackers.Set(reqID, tracker, defaultCacheTTL)
 		return nil
 	}
 	if tracker.Exchange == "" && exchangeName != "" {
 		tracker.Exchange = exchangeName
+	}
+	if tracker.AccountID == "" && accountID != "" {
+		tracker.AccountID = accountID
 	}
 	return tracker
 }
@@ -915,6 +1027,7 @@ func (m *OrderManager) executePnLBailout(
 ) {
 	m.log.WarnContext(ctx, "Position PnL reduced from peak with confirmed downward momentum, sending immediate close signal",
 		slog.String("exchange", agg.Exchange()),
+		slog.String("account_id", agg.AccountID()),
 		slog.String("req_id", reqID),
 		slog.String("symbol", symbol),
 		slog.Float64("max_pnl", maxPnL),
@@ -932,6 +1045,7 @@ func (m *OrderManager) executePnLBailout(
 	if err != nil {
 		m.log.ErrorContext(ctx, "Failed to execute bailout on PnL reduction",
 			slog.String("exchange", agg.Exchange()),
+			slog.String("account_id", agg.AccountID()),
 			slog.String("req_id", reqID),
 			slog.Any("error", err),
 		)
@@ -940,6 +1054,7 @@ func (m *OrderManager) executePnLBailout(
 	if err := agg.Record(res); err != nil {
 		m.log.ErrorContext(ctx, "Failed to record bailout event",
 			slog.String("exchange", agg.Exchange()),
+			slog.String("account_id", agg.AccountID()),
 			slog.String("req_id", reqID),
 			slog.Any("error", err),
 		)
@@ -1016,7 +1131,7 @@ func buildSubmitOrderRequest(evt OrderFireWindowReachedEvent) exchange.SubmitOrd
 	}
 }
 
-func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient, req exchange.SubmitOrderRequest, exchangeName, reqID string) func(context.Context) (exchange.CreateOrderResult, error) {
+func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient, req exchange.SubmitOrderRequest, exchangeName, accountID, reqID string) func(context.Context) (exchange.CreateOrderResult, error) {
 	pse, ok := client.(exchange.PreSignExecutor)
 	if !ok {
 		return nil
@@ -1025,6 +1140,7 @@ func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient
 	if prepErr != nil {
 		m.log.WarnContext(ctx, "Failed to pre-sign order, falling back to standard create order",
 			slog.String("exchange", exchangeName),
+			slog.String("account_id", accountID),
 			slog.String("req_id", reqID),
 			slog.Any("error", prepErr))
 		return nil
@@ -1032,7 +1148,7 @@ func (m *OrderManager) preparePreSign(ctx context.Context, client ExchangeClient
 	return fn
 }
 
-func (m *OrderManager) preWarmConnection(ctx context.Context, client ExchangeClient, exchangeName string) {
+func (m *OrderManager) preWarmConnection(ctx context.Context, client ExchangeClient, exchangeName, accountID string) {
 	pw, ok := client.(exchange.PreWarmer)
 	if !ok {
 		return
@@ -1041,9 +1157,9 @@ func (m *OrderManager) preWarmConnection(ctx context.Context, client ExchangeCli
 		warmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		if err := pw.PreWarm(warmCtx); err != nil {
-			m.log.Warn("OrderManager: TCP/TLS pre-warm failed", slog.String("exchange", exchangeName), slog.Any("error", err))
+			m.log.Warn("OrderManager: TCP/TLS pre-warm failed", slog.String("exchange", exchangeName), slog.String("account_id", accountID), slog.Any("error", err))
 		} else {
-			m.log.Debug("OrderManager: TCP/TLS connection pre-warmed successfully", slog.String("exchange", exchangeName))
+			m.log.Debug("OrderManager: TCP/TLS connection pre-warmed successfully", slog.String("exchange", exchangeName), slog.String("account_id", accountID))
 		}
 	}()
 }
@@ -1082,6 +1198,7 @@ func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowR
 
 	attrs := []any{
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.Int64("arrive_offset_ms", actualArriveOffsetMs),
@@ -1106,12 +1223,22 @@ func logSettleOffset(ctx context.Context, log *slog.Logger, evt OrderFireWindowR
 
 // HandleExecuteOrder executes order submission REST API.
 func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWindowReachedEvent) (OrderSubmittedEvent, error) {
-	m.log.InfoContext(ctx, "[Micro-Step 4] HandleExecuteOrder",
+	var targetTime time.Time
+	if evt.SettleTime != nil {
+		targetTime = *evt.SettleTime
+	}
+	m.log.InfoContext(ctx, "[Micro-Step 4] HandleOrderSubmission: Dispatching fire order",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
-		slog.String("symbol", evt.Symbol))
+		slog.String("symbol", evt.Symbol),
+		slog.String("side", evt.Side.String()),
+		slog.Float64("price", evt.Price),
+		slog.Float64("volume", evt.Volume),
+		slog.Time("fire_time", evt.FireTime),
+		slog.Time("target_time", targetTime))
 
-	client, err := m.resolveClient(evt.Exchange)
+	client, err := m.resolveClientForAccount(evt.AccountID, evt.Exchange)
 	if err != nil {
 		return OrderSubmittedEvent{}, err
 	}
@@ -1126,9 +1253,9 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWind
 	// Pre-sign and coordinate combat mode if fireTime is scheduled
 	var dispatchFn func(context.Context) (exchange.CreateOrderResult, error)
 	if !evt.FireTime.IsZero() {
-		dispatchFn = m.preparePreSign(ctx, client, req, evt.Exchange, evt.GetReqID())
+		dispatchFn = m.preparePreSign(ctx, client, req, evt.Exchange, evt.AccountID, evt.GetReqID())
 		m.registerCombatTarget(evt.FireTime, evt.SettleTime)
-		m.preWarmConnection(ctx, client, evt.Exchange)
+		m.preWarmConnection(ctx, client, evt.Exchange, evt.AccountID)
 	}
 
 	// Precision sleep right until fireTime immediately before network transmission:
@@ -1146,6 +1273,7 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWind
 	if err != nil {
 		m.log.ErrorContext(ctx, "Create order failed",
 			slog.String("exchange", evt.Exchange),
+			slog.String("account_id", evt.AccountID),
 			slog.String("req_id", evt.GetReqID()),
 			slog.String("symbol", evt.Symbol),
 			slog.Any("error", err))
@@ -1174,11 +1302,11 @@ func (m *OrderManager) HandleExecuteOrder(ctx context.Context, evt OrderFireWind
 
 // HandleTPSLContingency places background TP/SL trigger if not supported inline.
 func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmittedEvent, intent OrderIntentEvent) (*OrderTPSLDispatchedEvent, error) {
-	if evt.TPSLSubmitted || (intent.TakeProfitPrice == 0 && intent.StopLossPrice == 0) {
+	if evt.TPSLSubmitted || (evt.TakeProfitPrice == 0 && evt.StopLossPrice == 0) {
 		return nil, nil
 	}
 
-	client, err := m.resolveClient(evt.Exchange)
+	client, err := m.resolveClientForAccount(evt.AccountID, evt.Exchange)
 	if err != nil {
 		return nil, err
 	}
@@ -1191,6 +1319,7 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 	if !ok {
 		m.log.WarnContext(ctx, "Exchange does not support standalone PlaceTPSL",
 			slog.String("exchange", evt.Exchange),
+			slog.String("account_id", evt.AccountID),
 			slog.String("req_id", evt.GetReqID()),
 			slog.String("symbol", evt.Symbol))
 		return nil, nil
@@ -1198,31 +1327,33 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 
 	volume := evt.Volume
 	if volume <= 0 {
-		volume = intent.Volume
+		volume = evt.Volume
 	}
 
 	m.log.InfoContext(ctx, "[Micro-Step 5A] HandleTPSLContingency",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
-		slog.Float64("tp", intent.TakeProfitPrice),
-		slog.Float64("sl", intent.StopLossPrice),
+		slog.Float64("tp", evt.TakeProfitPrice),
+		slog.Float64("sl", evt.StopLossPrice),
 		slog.Float64("vol", volume),
 	)
 
 	req := exchange.TPSLRequest{
 		Symbol:          evt.Symbol,
-		PositionMode:    intent.PositionMode,
-		Side:            intent.Side,
-		OpenType:        mapOpenType(intent.MarginMode),
-		TakeProfitPrice: intent.TakeProfitPrice,
-		StopLossPrice:   intent.StopLossPrice,
+		PositionMode:    evt.PositionMode,
+		Side:            evt.Side,
+		OpenType:        mapOpenType(evt.MarginMode),
+		TakeProfitPrice: evt.TakeProfitPrice,
+		StopLossPrice:   evt.StopLossPrice,
 		Volume:          volume,
 	}
 
 	if err := provider.PlaceTPSL(ctx, req); err != nil {
 		m.log.ErrorContext(ctx, "PlaceTPSL contingency failed",
 			slog.String("exchange", evt.Exchange),
+			slog.String("account_id", evt.AccountID),
 			slog.String("req_id", evt.GetReqID()),
 			slog.String("symbol", evt.Symbol),
 			slog.Any("error", err))
@@ -1232,6 +1363,7 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 	return &OrderTPSLDispatchedEvent{
 		ReqID:           evt.GetReqID(),
 		ClientOrderID:   evt.GetClientOrderID(),
+		AccountID:       evt.AccountID,
 		Symbol:          evt.Symbol,
 		Exchange:        evt.Exchange,
 		MarketType:      evt.GetMarketType(),
@@ -1239,8 +1371,8 @@ func (m *OrderManager) HandleTPSLContingency(ctx context.Context, evt OrderSubmi
 		PreTopic:        TopicOrderSubmitted,
 		NextTopic:       TopicOrderTPSLDispatched,
 		Timestamp:       clock.Now(),
-		TakeProfitPrice: intent.TakeProfitPrice,
-		StopLossPrice:   intent.StopLossPrice,
+		TakeProfitPrice: evt.TakeProfitPrice,
+		StopLossPrice:   evt.StopLossPrice,
 		DispatchedAt:    clock.Now(),
 	}, nil
 }
@@ -1258,6 +1390,7 @@ func (m *OrderManager) HandleScheduleUnfilledCancelTimeout(ctx context.Context, 
 		if unfilledTimeout <= 0 {
 			m.log.InfoContext(ctx, "Skipping pre-fill timeout schedule for resting maker order (no UnfilledCancelTimeout set)",
 				slog.String("exchange", evt.Exchange),
+				slog.String("account_id", evt.AccountID),
 				slog.String("req_id", evt.GetReqID()),
 				slog.String("symbol", evt.Symbol))
 			return nil
@@ -1265,6 +1398,7 @@ func (m *OrderManager) HandleScheduleUnfilledCancelTimeout(ctx context.Context, 
 
 		m.log.InfoContext(ctx, "Starting pre-fill resting order timeout watchdog",
 			slog.String("exchange", evt.Exchange),
+			slog.String("account_id", evt.AccountID),
 			slog.String("req_id", evt.GetReqID()),
 			slog.String("symbol", evt.Symbol),
 			slog.Duration("unfilled_cancel_timeout", unfilledTimeout))
@@ -1279,6 +1413,7 @@ func (m *OrderManager) HandleScheduleUnfilledCancelTimeout(ctx context.Context, 
 
 	m.log.InfoContext(ctx, "[Micro-Step 5C] HandleScheduleUnfilledCancelTimeout",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.Duration("duration", dur))
@@ -1298,26 +1433,22 @@ func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context
 			return
 		}
 
-		state := agg.State()
 		// Only auto-cancel if order is still resting/submitted (not filled, completed, or aborted)
-		if state == StateSubmitted || state == StateResting || state == StateInit || state == StatePreFlightDone || state == StateFireWindow || state == StatePositionWatchReady {
+		if isCancelableRestingState(agg.State()) {
 			m.log.WarnContext(ctx, "⏱️ Resting order timeout expired without fill; auto-canceling on exchange",
 				slog.String("exchange", exchangeName),
+				slog.String("account_id", agg.AccountID()),
 				slog.String("req_id", reqID),
 				slog.String("order_id", orderID),
 				slog.String("symbol", symbol),
 				slog.Duration("duration", dur),
 			)
 
-			prov, err := m.engine.GetProvider(exchangeName)
-			if err == nil && prov != nil && prov.Client != nil && orderID != "" {
-				if executor, ok := prov.Client.(exchange.OrderExecutor); ok {
-					_ = executor.CancelOrder(ctx, symbol, orderID)
-				}
-			}
+			m.cancelRestingOrderOnTimeout(ctx, agg.AccountID(), exchangeName, symbol, orderID)
 
 			resolvedEvt := OrderOutcomeResolvedEvent{
 				ReqID:        reqID,
+				AccountID:    agg.AccountID(),
 				Symbol:       symbol,
 				Exchange:     exchangeName,
 				MarketType:   mt,
@@ -1332,6 +1463,7 @@ func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context
 			if err := agg.Record(resolvedEvt); err != nil {
 				m.log.ErrorContext(ctx, "Failed to record resting timeout outcome to aggregate",
 					slog.String("exchange", exchangeName),
+					slog.String("account_id", agg.AccountID()),
 					slog.String("req_id", reqID),
 					slog.Any("error", err))
 			}
@@ -1341,6 +1473,28 @@ func (m *OrderManager) scheduleUnfilledCancelTimeoutInternal(ctx context.Context
 
 	m.timers.Store(reqID, timer)
 	return nil
+}
+
+func isCancelableRestingState(state OrderLifecycleState) bool {
+	switch state {
+	case StateSubmitted, StateResting, StateInit, StatePreFlightDone, StateFireWindow, StatePositionWatchReady:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *OrderManager) cancelRestingOrderOnTimeout(ctx context.Context, accountID, exchangeName, symbol, orderID string) {
+	if accountID == "" || orderID == "" {
+		return
+	}
+	prov, err := m.resolveAccountProvider(accountID, exchangeName)
+	if err != nil || prov == nil || prov.Client == nil {
+		return
+	}
+	if executor, ok := prov.Client.(exchange.OrderExecutor); ok {
+		_ = executor.CancelOrder(ctx, symbol, orderID)
+	}
 }
 
 // HandleSchedulePositionCloseTimeout schedules hold timeout watchdog timer upon position fill.
@@ -1358,6 +1512,7 @@ func (m *OrderManager) HandleSchedulePositionCloseTimeout(ctx context.Context, e
 
 	m.log.InfoContext(ctx, "Starting post-fill hold timeout watchdog",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.Duration("duration", dur))
@@ -1376,6 +1531,7 @@ func (m *OrderManager) schedulePositionCloseTimeoutInternal(ctx context.Context,
 		timeoutEvt := OrderTimeoutScheduledEvent{
 			ReqID:         reqID,
 			ClientOrderID: clientOrderID,
+			AccountID:     agg.AccountID(),
 			Symbol:        symbol,
 			Exchange:      exchangeName,
 			MarketType:    mt,
@@ -1398,6 +1554,7 @@ func (m *OrderManager) ScheduleTimeoutTimer(reqID, symbol string, dur time.Durat
 	agg := m.GetAggregate(reqID)
 	m.log.Info("[Micro-Step] ScheduleTimeoutTimer",
 		slog.String("exchange", agg.Exchange()),
+		slog.String("account_id", agg.AccountID()),
 		slog.String("req_id", reqID),
 		slog.String("symbol", symbol),
 		slog.Duration("duration", dur))
@@ -1418,6 +1575,7 @@ func (m *OrderManager) ScheduleTimeoutTimer(reqID, symbol string, dur time.Durat
 	return OrderTimeoutScheduledEvent{
 		ReqID:         reqID,
 		ClientOrderID: agg.ClientOrderID(),
+		AccountID:     agg.AccountID(),
 		Symbol:        symbol,
 		Exchange:      agg.Exchange(),
 		MarketType:    agg.MarketType(),
@@ -1444,6 +1602,7 @@ func (m *OrderManager) CancelTimeoutGuard(reqID string) bool {
 func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderTimeoutScheduledEvent) (OrderTimeoutPositionCheckedEvent, error) {
 	m.log.InfoContext(ctx, "Timeout guard started",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.Duration("timeout", evt.Duration))
@@ -1455,7 +1614,9 @@ func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderT
 
 	var positions []exchange.Position
 	errText := ""
-	client, err := m.resolveClient(evt.Exchange)
+	accountID := evt.AccountID
+
+	client, err := m.resolveClientForAccount(accountID, evt.Exchange)
 	if err != nil {
 		errText = err.Error()
 	} else {
@@ -1464,6 +1625,7 @@ func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderT
 			errText = errQuery.Error()
 			m.log.ErrorContext(ctx, "Timeout guard failed to query position",
 				slog.String("exchange", evt.Exchange),
+				slog.String("account_id", evt.AccountID),
 				slog.String("req_id", evt.GetReqID()),
 				slog.String("symbol", evt.Symbol),
 				slog.Any("error", errQuery))
@@ -1484,6 +1646,7 @@ func (m *OrderManager) HandleWaitTimeoutDeadline(ctx context.Context, evt OrderT
 	return OrderTimeoutPositionCheckedEvent{
 		ReqID:         evt.GetReqID(),
 		ClientOrderID: evt.GetClientOrderID(),
+		AccountID:     evt.AccountID,
 		Symbol:        evt.Symbol,
 		Exchange:      evt.Exchange,
 		MarketType:    evt.GetMarketType(),
@@ -1512,12 +1675,19 @@ func (m *OrderManager) HandleOutcomeWatcher(ctx context.Context, evt OrderSubmit
 	exchangeOrderID, _ := m.GetExchangeOrderIDByReqID(evt.GetReqID())
 	m.log.InfoContext(ctx, "[Micro-Step 6] HandleOutcomeWatcher",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", evt.AccountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol),
 		slog.String("client_order_id", evt.GetClientOrderID()),
 		slog.String("exchange_order_id", exchangeOrderID))
 
-	order, err := m.pollOrderUntilTerminal(ctx, evt.Exchange, evt.Symbol, exchangeOrderID)
+	accountID := evt.AccountID
+	if accountID == "" {
+		if agg := m.GetAggregate(evt.GetReqID()); agg != nil {
+			accountID = agg.AccountID()
+		}
+	}
+	order, err := m.pollOrderUntilTerminal(ctx, accountID, evt.Exchange, evt.Symbol, exchangeOrderID)
 
 	outcome, filledVol, avgPrice := classifyOrderOutcome(order)
 	reason := ""
@@ -1535,6 +1705,7 @@ func (m *OrderManager) HandleOutcomeWatcher(ctx context.Context, evt OrderSubmit
 	return OrderOutcomeResolvedEvent{
 		ReqID:         evt.GetReqID(),
 		ClientOrderID: evt.GetClientOrderID(),
+		AccountID:     evt.AccountID,
 		Symbol:        evt.Symbol,
 		Exchange:      evt.Exchange,
 		MarketType:    evt.GetMarketType(),
@@ -1550,8 +1721,8 @@ func (m *OrderManager) HandleOutcomeWatcher(ctx context.Context, evt OrderSubmit
 	}, nil
 }
 
-func (m *OrderManager) pollOrderUntilTerminal(ctx context.Context, exchangeName, symbol, exchangeOrderID string) (*exchange.OrderInfo, error) {
-	client, err := m.resolveClient(exchangeName)
+func (m *OrderManager) pollOrderUntilTerminal(ctx context.Context, accountID, exchangeName, symbol, exchangeOrderID string) (*exchange.OrderInfo, error) {
+	client, err := m.resolveClientForAccount(accountID, exchangeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1605,12 +1776,20 @@ func classifyOrderOutcome(order *exchange.OrderInfo) (OrderOutcome, float64, flo
 
 // HandleTimeoutCheck checks open position HoldVol when timeout expires.
 func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutScheduledEvent) (*OrderTimeoutExpiredEvent, error) {
+	accountID := evt.AccountID
+	if accountID == "" {
+		if agg := m.GetAggregate(evt.GetReqID()); agg != nil {
+			accountID = agg.AccountID()
+		}
+	}
+
 	m.log.InfoContext(ctx, "[Micro-Step 7] HandleTimeoutCheck",
 		slog.String("exchange", evt.Exchange),
+		slog.String("account_id", accountID),
 		slog.String("req_id", evt.GetReqID()),
 		slog.String("symbol", evt.Symbol))
 
-	client, err := m.resolveClient(evt.Exchange)
+	client, err := m.resolveClientForAccount(accountID, evt.Exchange)
 	if err != nil {
 		return nil, fmt.Errorf("query position on timeout failed: %w", err)
 	}
@@ -1623,6 +1802,7 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 	if err != nil {
 		m.log.ErrorContext(ctx, "GetOpenPositions on timeout failed",
 			slog.String("exchange", evt.Exchange),
+			slog.String("account_id", accountID),
 			slog.String("req_id", evt.GetReqID()),
 			slog.String("symbol", evt.Symbol),
 			slog.Any("error", err))
@@ -1645,6 +1825,7 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 	return &OrderTimeoutExpiredEvent{
 		ReqID:         evt.GetReqID(),
 		ClientOrderID: evt.GetClientOrderID(),
+		AccountID:     accountID,
 		Symbol:        evt.Symbol,
 		Exchange:      evt.Exchange,
 		MarketType:    evt.GetMarketType(),
@@ -1659,13 +1840,18 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 
 // HandleExecuteBailout performs high-priority emergency force close position with retries.
 func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchangeName, symbol string, side shared.Side, volume float64, reason string) (OrderBailoutExecutedEvent, error) {
+	accountID := ""
+	if agg := m.GetAggregate(reqID); agg != nil {
+		accountID = agg.AccountID()
+	}
 	m.log.WarnContext(ctx, "[Micro-Step 8] HandleExecuteBailout",
 		slog.String("exchange", exchangeName),
+		slog.String("account_id", accountID),
 		slog.String("req_id", reqID),
 		slog.String("symbol", symbol),
 		slog.String("reason", reason))
 
-	client, err := m.resolveClient(exchangeName)
+	client, err := m.resolveClientForAccount(accountID, exchangeName)
 	if err != nil {
 		return OrderBailoutExecutedEvent{}, err
 	}
@@ -1688,6 +1874,7 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 	if err := client.CloseAllPositions(ctx, symbol); err != nil {
 		m.log.ErrorContext(ctx, "CloseAllPositions bailout failed, entering ClosePosition retry loop",
 			slog.String("exchange", exchangeName),
+			slog.String("account_id", accountID),
 			slog.String("req_id", reqID),
 			slog.String("symbol", symbol),
 			slog.Any("error", err))
@@ -1710,6 +1897,7 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 		}, bo, func(err error, d time.Duration) {
 			m.log.WarnContext(ctx, "ClosePosition bailout retry failed",
 				slog.String("exchange", exchangeName),
+				slog.String("account_id", accountID),
 				slog.String("req_id", reqID),
 				slog.String("symbol", symbol),
 				slog.Int("attempt", attempt),
@@ -1725,6 +1913,7 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 	return OrderBailoutExecutedEvent{
 		ReqID:           reqID,
 		ClientOrderID:   agg.ClientOrderID(),
+		AccountID:       accountID,
 		Symbol:          symbol,
 		Exchange:        exchangeName,
 		MarketType:      agg.MarketType(),
@@ -1767,12 +1956,12 @@ func normalizeVolume(volContract, volCoin, contractSize float64) (float64, float
 	return volContract, volCoin
 }
 
-func (m *OrderManager) fetchClosedPnL(ctx context.Context, exchangeName, symbol, exchangeOrderID string, contractSize float64) pnlMetrics {
+func (m *OrderManager) fetchClosedPnL(ctx context.Context, accountID, exchangeName, symbol, exchangeOrderID string, contractSize float64) pnlMetrics {
 	var metrics pnlMetrics
 	if exchangeOrderID == "" {
 		return metrics
 	}
-	client, err := m.resolveClient(exchangeName)
+	client, err := m.resolveClientForAccount(accountID, exchangeName)
 	if err != nil || client == nil {
 		return metrics
 	}
@@ -1809,6 +1998,7 @@ func (m *OrderManager) fetchClosedPnL(ctx context.Context, exchangeName, symbol,
 	if errRetry != nil {
 		m.log.WarnContext(ctx, "Failed to fetch closed PnL metrics after backoff retries",
 			slog.String("exchange", exchangeName),
+			slog.String("account_id", accountID),
 			slog.String("symbol", symbol),
 			slog.String("order_id", exchangeOrderID),
 			slog.Any("error", errRetry))
@@ -2035,9 +2225,16 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 		return OrderCompletedEvent{}, fmt.Errorf("failed to resolve clock: %w", err)
 	}
 
+	agg := m.GetAggregate(reqID)
+	accountID := ""
+	if agg != nil {
+		accountID = agg.AccountID()
+	}
+
 	if err := clock.Sleep(ctx, time.Second*30); err != nil {
 		m.log.Error("[Micro-Step 9] HandleEnrichAndComplete sleep error",
 			slog.String("exchange", exchangeName),
+			slog.String("account_id", accountID),
 			slog.String("req_id", reqID),
 			slog.String("symbol", symbol),
 			slog.Any("error", err))
@@ -2046,6 +2243,7 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 	exchangeOrderID, _ := m.GetExchangeOrderIDByReqID(reqID)
 	m.log.InfoContext(ctx, "[Micro-Step 9] HandleEnrichAndComplete",
 		slog.String("exchange", exchangeName),
+		slog.String("account_id", accountID),
 		slog.String("req_id", reqID),
 		slog.String("symbol", symbol),
 		slog.String("client_order_id", clientOrderID),
@@ -2053,7 +2251,10 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 		slog.String("strategy", string(strategyType)),
 		slog.String("outcome", string(outcome)))
 
-	agg := m.GetAggregate(reqID)
+	agg = m.GetAggregate(reqID)
+	if agg != nil {
+		accountID = agg.AccountID()
+	}
 	details := m.extractAggregateCompletedDetails(agg)
 
 	contractSize := details.contractSize
@@ -2061,7 +2262,7 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 		contractSize = 1.0
 	}
 
-	pnl := m.fetchClosedPnL(ctx, exchangeName, symbol, exchangeOrderID, contractSize)
+	pnl := m.fetchClosedPnL(ctx, accountID, exchangeName, symbol, exchangeOrderID, contractSize)
 	if pnl.status == exchange.OrderStateCanceled {
 		outcome = OutcomeCanceledNoFill
 	}
@@ -2071,6 +2272,7 @@ func (m *OrderManager) HandleEnrichAndComplete(ctx context.Context, exchangeName
 		ReqID:            reqID,
 		RefID:            details.refID,
 		ClientOrderID:    clientOrderID,
+		AccountID:        accountID,
 		Symbol:           symbol,
 		Exchange:         exchangeName,
 		MarketType:       MarketTypeFuture,

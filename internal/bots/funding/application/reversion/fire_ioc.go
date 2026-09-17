@@ -90,6 +90,7 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 	orderIntent := futures.OrderIntentEvent{
 		ReqID:                   evt.ReqID,
 		ClientOrderID:           evt.ExternalID,
+		AccountID:               evt.AccountID,
 		Symbol:                  evt.Symbol,
 		Exchange:                evt.Exchange,
 		MarketType:              futures.MarketTypeFuture,
@@ -244,9 +245,12 @@ func (r *StatelessRunner) handleFireTimingReady(ctx context.Context, evt FireTim
 		c.Slippage = decmath.Mul(decmath.Div(math.Abs(decmath.Sub(ioc, refPrice)), refPrice), 100.0)
 	}
 
-	safety := r.globalCfg.Reversion.Safety
+	maxImpact := 0.0
+	if revCfg := r.getReversionConfig(); revCfg != nil {
+		maxImpact = revCfg.Safety.MaxImpactRatio
+	}
 	c.SafetyResult = c.ApplySafetySizing(fundingdomain.SafetyLimits{
-		MaxImpactRatio: safety.MaxImpactRatio,
+		MaxImpactRatio: maxImpact,
 		MinVol24USD:    c.Config.MinVol24USD,
 	})
 	passed := c.SafetyResult != nil && c.SafetyResult.Passed

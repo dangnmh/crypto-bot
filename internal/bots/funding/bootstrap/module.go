@@ -30,13 +30,11 @@ import (
 
 // ConfigPaths contains the startup configuration file paths supplied by the CLI.
 type ConfigPaths struct {
-	System     string
-	Exchange   string
-	Bot        string
-	Blacklist  string
-	Reversion  string
-	Obfuscator string
-	Dilution   string
+	Accounts  string
+	System    string
+	Exchange  string
+	Blacklist string
+	Reversion string
 }
 
 // Module wires the funding bot dependency graph and lifecycle.
@@ -93,13 +91,21 @@ func provideLogger(lc fx.Lifecycle, cfg *fundingconfig.SystemConfig) *slog.Logge
 }
 
 func provideFundingConfig(paths ConfigPaths, cfg *fundingconfig.SystemConfig) (*fundingconfig.Config, error) {
-	return fundingconfig.Load(cfg, paths.Bot, paths.Blacklist, paths.Reversion, paths.Obfuscator, paths.Dilution)
+	if paths.Accounts == "" {
+		return nil, fmt.Errorf("accounts manifest path (-accounts) is required")
+	}
+	return fundingconfig.Load(cfg, paths.Accounts, paths.Blacklist, paths.Reversion)
 }
 
 func provideNotifierConfig(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Config) notifier.Config {
 	enabled := false
-	if fundingCfg != nil && fundingCfg.Reversion != nil {
-		enabled = fundingCfg.Reversion.Notifier.Enabled
+	if fundingCfg != nil {
+		for _, acc := range fundingCfg.Accounts {
+			if acc.Reversion != nil && acc.Reversion.Notifier.Enabled {
+				enabled = true
+				break
+			}
+		}
 	}
 
 	return notifier.Config{
@@ -110,6 +116,15 @@ func provideNotifierConfig(cfg *fundingconfig.SystemConfig, fundingCfg *fundingc
 	}
 }
 
+func appendUniqueExchange(list []string, seen map[string]bool, rawExch string) []string {
+	exch := strings.ToLower(strings.TrimSpace(rawExch))
+	if exch != "" && !seen[exch] {
+		seen[exch] = true
+		return append(list, exch)
+	}
+	return list
+}
+
 func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
 	if fundingCfg == nil {
 		return nil
@@ -117,34 +132,20 @@ func collectActiveExchanges(fundingCfg *fundingconfig.Config) []string {
 	var activeExchanges []string
 	seen := make(map[string]bool)
 
-	// Case 1: Configured scanner (collect from Symbols if configured scanner is enabled)
-	isConfigured := fundingCfg.Reversion == nil || fundingCfg.Reversion.Scanners.Configured
-	if isConfigured {
-		for i := range fundingCfg.Symbols {
-			sym := &fundingCfg.Symbols[i]
+	for _, acc := range fundingCfg.Accounts {
+		if acc == nil || !acc.Account.Enabled {
+			continue
+		}
+		activeExchanges = appendUniqueExchange(activeExchanges, seen, acc.Account.Exchange)
+		for i := range acc.Symbols {
+			sym := &acc.Symbols[i]
 			if fundingCfg.Blacklist != nil && fundingCfg.Blacklist.IsBlacklisted(sym.Exchange, sym.Symbol) {
 				continue
 			}
-			exch := strings.ToLower(strings.TrimSpace(sym.Exchange))
-			if exch != "" && !seen[exch] {
-				seen[exch] = true
-				activeExchanges = append(activeExchanges, exch)
-			}
+			activeExchanges = appendUniqueExchange(activeExchanges, seen, sym.Exchange)
 		}
 	}
 
-	// Case 2: Schedule scanner (collect from Reversion Schedule)
-	if fundingCfg.Reversion != nil {
-		for exch, enabled := range fundingCfg.Reversion.Scanners.Schedule {
-			if enabled {
-				exch = strings.ToLower(strings.TrimSpace(exch))
-				if exch != "" && !seen[exch] {
-					seen[exch] = true
-					activeExchanges = append(activeExchanges, exch)
-				}
-			}
-		}
-	}
 	return activeExchanges
 }
 
@@ -152,17 +153,45 @@ func provideEngine(cfg *fundingconfig.SystemConfig, fundingCfg *fundingconfig.Co
 	activeExchanges := collectActiveExchanges(fundingCfg)
 
 	var timeSyncInterval time.Duration
-	if fundingCfg != nil && fundingCfg.Reversion != nil {
-		timeSyncInterval = time.Duration(fundingCfg.Reversion.Sync.Time)
+	if fundingCfg != nil {
+		for _, acc := range fundingCfg.Accounts {
+			if acc.Reversion != nil && acc.Reversion.Sync.Time > 0 {
+				dur := time.Duration(acc.Reversion.Sync.Time)
+				if timeSyncInterval == 0 || dur < timeSyncInterval {
+					timeSyncInterval = dur
+				}
+			}
+		}
 	}
 
-	return infraapp.NewEngine(context.Background(), infraapp.EngineConfig{
+	engine, err := infraapp.NewEngine(context.Background(), infraapp.EngineConfig{
 		SystemConfig:     &cfg.SystemConfig,
 		HTTPClient:       httpClient,
 		Logger:           log,
 		ActiveExchanges:  activeExchanges,
 		TimeSyncInterval: timeSyncInterval,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	if fundingCfg != nil && len(fundingCfg.Accounts) > 0 {
+		factoryCfg := infraapp.ProviderFactoryConfig{
+			SystemConfig: &cfg.SystemConfig,
+			HTTPClient:   httpClient,
+			Logger:       log,
+			Bus:          engine.Bus,
+		}
+		for accID, accCfg := range fundingCfg.Accounts {
+			accProv, err := infraapp.BuildAccountProvider(context.Background(), accCfg.Account, factoryCfg)
+			if err != nil {
+				return nil, fmt.Errorf("build account provider for %q: %w", accID, err)
+			}
+			engine.AccountProviders[accID] = accProv
+		}
+	}
+
+	return engine, nil
 }
 
 func provideGoCache() *cache.Cache {

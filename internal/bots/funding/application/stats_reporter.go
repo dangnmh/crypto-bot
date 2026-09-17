@@ -46,10 +46,10 @@ type StatsReportJob struct {
 }
 
 func isStatsReporterEnabled(cfg *fundingconfig.Config) bool {
-	if cfg == nil || cfg.Reversion == nil {
+	if cfg == nil || cfg.CommonReversion == nil {
 		return false
 	}
-	return cfg.Reversion.StatsReporter.Enabled
+	return cfg.CommonReversion.StatsReporter.Enabled
 }
 
 // NewStatsReportJob creates a new StatsReportJob.

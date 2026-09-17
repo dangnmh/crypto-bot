@@ -1,0 +1,42 @@
+{
+  "accounts": [
+    {
+      "id": "mexc_main",
+      "exchange": "mexc_futures",
+      "enabled": true,
+      "env": {
+        "apiKey": "MEXC_API_KEY",
+        "apiSecret": "MEXC_API_SECRET"
+      },
+      "configs": {
+        "reversion": "accounts/mexc_main/reversion.jsonc",
+        "obfuscator": "accounts/mexc_main/obfuscator.jsonc",
+        "dilution": "accounts/mexc_main/dilution.jsonc",
+        "funding": "accounts/mexc_main/funding.jsonc"
+      },
+      "scanners": {
+        "configured": true,
+        "schedule": false
+      }
+    },
+    {
+      "id": "mexc_sub",
+      "exchange": "mexc_futures",
+      "enabled": false,
+      "env": {
+        "apiKey": "MEXC_API_KEY",
+        "apiSecret": "MEXC_API_SECRET"
+      },
+      "configs": {
+        "reversion": "accounts/mexc_sub/reversion.jsonc",
+        "obfuscator": "accounts/mexc_sub/obfuscator.jsonc",
+        "dilution": "accounts/mexc_sub/dilution.jsonc",
+        "funding": "accounts/mexc_sub/funding.jsonc"
+      },
+      "scanners": {
+        "configured": true,
+        "schedule": false
+      }
+    }
+  ]
+}

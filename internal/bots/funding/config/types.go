@@ -26,8 +26,9 @@ const (
 
 // SymbolConfig represents per-symbol trading settings loaded from funding.json.
 type SymbolConfig struct {
+	AccountID           string       `json:"account_id,omitempty"`
 	Symbol              string       `json:"symbol" validate:"required"`
-	Exchange            string       `json:"exchange" validate:"required,supported_exchange"`
+	Exchange            string       `json:"exchange,omitempty" validate:"omitempty,supported_exchange"`
 	SimulateSettle      string       `json:"simulateSettle"`
 	MaxPriceDiffPercent float64      `json:"maxPriceDiffPercent"`
 	MarginUSDT          float64      `json:"marginUSDT" validate:"gt=0"`
@@ -63,33 +64,28 @@ type PriceTrackerConfig struct {
 }
 
 type ObfuscatorConfig struct {
-	Enabled        bool                              `json:"enabled"`
-	PollInterval   types.Duration                    `json:"pollInterval" validate:"required"`
-	Jitter         types.Duration                    `json:"jitter,omitempty"`
-	LookbackWindow types.Duration                    `json:"lookbackWindow" validate:"required"`
-	Exchanges      map[string]ExchangeObfuscationCfg `json:"exchanges" validate:"dive"`
-}
-
-type ExchangeObfuscationCfg struct {
-	Enabled             bool    `json:"enabled"`
-	NetPnLThresholdUSDT float64 `json:"netPnLThresholdUSDT" validate:"gte=0"`
-	MinNotionalUSD      float64 `json:"minNotionalUSD" validate:"gt=0"`
-	MaxNotionalUSD      float64 `json:"maxNotionalUSD" validate:"gt=0,gtefield=MinNotionalUSD"`
-	MarginUSDT          float64 `json:"marginUSDT" validate:"gt=0"`
-	Leverage            int     `json:"leverage" validate:"gte=1"`
-	TakeProfitPct       float64 `json:"takeProfitPct" validate:"gt=0"`
-	StopLossPct         float64 `json:"stopLossPct" validate:"gt=0"`
-	MaxPriceDiffPercent float64 `json:"maxPriceDiffPercent,omitempty" validate:"omitempty,gt=0"`
-	MinHoldSec          int     `json:"minHoldSec" validate:"gt=0"`
-	MaxHoldSec          int     `json:"maxHoldSec" validate:"gt=0,gtefield=MinHoldSec"`
-	MaxActiveOrders     int     `json:"maxActiveOrders" validate:"gt=0"`
-	SacrificeLossPct    float64 `json:"sacrificeLossPct" validate:"gt=0,lte=100"`
-	MaxDailyLossUSD     float64 `json:"maxDailyLossUSD" validate:"gt=0"`
+	Enabled             bool           `json:"enabled"`
+	PollInterval        types.Duration `json:"pollInterval" validate:"omitempty"`
+	Jitter              types.Duration `json:"jitter,omitempty"`
+	LookbackWindow      types.Duration `json:"lookbackWindow" validate:"omitempty"`
+	NetPnLThresholdUSDT float64        `json:"netPnLThresholdUSDT" validate:"omitempty,gte=0"`
+	MinNotionalUSD      float64        `json:"minNotionalUSD" validate:"omitempty,gt=0"`
+	MaxNotionalUSD      float64        `json:"maxNotionalUSD" validate:"omitempty,gt=0,gtefield=MinNotionalUSD"`
+	MarginUSDT          float64        `json:"marginUSDT" validate:"omitempty,gt=0"`
+	Leverage            int            `json:"leverage" validate:"omitempty,gte=1"`
+	TakeProfitPct       float64        `json:"takeProfitPct" validate:"omitempty,gt=0"`
+	StopLossPct         float64        `json:"stopLossPct" validate:"omitempty,gt=0"`
+	MaxPriceDiffPercent float64        `json:"maxPriceDiffPercent,omitempty" validate:"omitempty,gt=0"`
+	MinHoldSec          int            `json:"minHoldSec" validate:"omitempty,gt=0"`
+	MaxHoldSec          int            `json:"maxHoldSec" validate:"omitempty,gt=0,gtefield=MinHoldSec"`
+	MaxActiveOrders     int            `json:"maxActiveOrders" validate:"omitempty,gt=0"`
+	SacrificeLossPct    float64        `json:"sacrificeLossPct" validate:"omitempty,gt=0,lte=100"`
+	MaxDailyLossUSD     float64        `json:"maxDailyLossUSD" validate:"omitempty,gt=0"`
 }
 
 // OrderNotionalUSD computes the notional order value in USD based on MarginUSDT and Leverage,
 // clamped between MinNotionalUSD and MaxNotionalUSD.
-func (c ExchangeObfuscationCfg) OrderNotionalUSD() float64 {
+func (c ObfuscatorConfig) OrderNotionalUSD() float64 {
 	baseNotional := c.MarginUSDT * float64(c.Leverage)
 	if c.MinNotionalUSD > 0 && baseNotional < c.MinNotionalUSD {
 		baseNotional = c.MinNotionalUSD
@@ -100,29 +96,27 @@ func (c ExchangeObfuscationCfg) OrderNotionalUSD() float64 {
 	return baseNotional
 }
 
-type DilutionConfig struct {
-	Enabled      bool                           `json:"enabled"`
-	PollInterval types.Duration                 `json:"pollInterval" validate:"required"`
-	Jitter       types.Duration                 `json:"jitter,omitempty"`
-	Exchanges    map[string]ExchangeDilutionCfg `json:"exchanges" validate:"dive"`
-}
+// ExchangeObfuscationCfg is an alias to ObfuscatorConfig for per-account obfuscation parameters.
+type ExchangeObfuscationCfg = ObfuscatorConfig
 
-type ExchangeDilutionCfg struct {
+type DilutionConfig struct {
 	Enabled               bool           `json:"enabled"`
-	Symbol                string         `json:"symbol" validate:"required"`
-	MaxPositionUSD        float64        `json:"maxPositionUSD" validate:"gt=0"`
-	Leverage              int            `json:"leverage" validate:"gte=1"`
-	MarginUSD             float64        `json:"marginUSD" validate:"gt=0"`
+	PollInterval          types.Duration `json:"pollInterval" validate:"omitempty"`
+	Jitter                types.Duration `json:"jitter,omitempty"`
+	Symbol                string         `json:"symbol" validate:"omitempty"`
+	MaxPositionUSD        float64        `json:"maxPositionUSD" validate:"omitempty,gt=0"`
+	Leverage              int            `json:"leverage" validate:"omitempty,gte=1"`
+	MarginUSD             float64        `json:"marginUSD" validate:"omitempty,gt=0"`
 	UnfilledCancelTimeout types.Duration `json:"unfilledCancelTimeout,omitempty"`
-	PositionCloseTimeout  types.Duration `json:"positionCloseTimeout" validate:"required"`
+	PositionCloseTimeout  types.Duration `json:"positionCloseTimeout" validate:"omitempty"`
 	TakeProfitPct         float64        `json:"takeProfitPct,omitempty" validate:"omitempty,gt=0"`
 	StopLossPct           float64        `json:"stopLossPct,omitempty" validate:"omitempty,gt=0"`
-	SpreadOffsetTicks     int            `json:"spreadOffsetTicks" validate:"gte=0"`
+	SpreadOffsetTicks     int            `json:"spreadOffsetTicks" validate:"omitempty,gte=0"`
 }
 
 // OrderNotionalUSD computes the notional order value in USD based on MarginUSD and Leverage,
 // capped at MaxPositionUSD if specified.
-func (c ExchangeDilutionCfg) OrderNotionalUSD() float64 {
+func (c DilutionConfig) OrderNotionalUSD() float64 {
 	notional := c.MarginUSD * float64(c.Leverage)
 	if c.MaxPositionUSD > 0 && notional > c.MaxPositionUSD {
 		return c.MaxPositionUSD
@@ -130,28 +124,62 @@ func (c ExchangeDilutionCfg) OrderNotionalUSD() float64 {
 	return notional
 }
 
+// ExchangeDilutionCfg is an alias to DilutionConfig for per-account dilution parameters.
+type ExchangeDilutionCfg = DilutionConfig
+
 type ReversionConfig struct {
 	RawFundingReversionConfig
 	Sync          SyncConfig              `json:"sync"`
 	Safety        SafetyConfig            `json:"safety"`
-	Scanners      ScannersConfig          `json:"scanners"`
 	Notifier      ReversionNotifierConfig `json:"notifier"`
 	StatsReporter StatsReporterConfig     `json:"statsReporter"`
 	PriceTracker  PriceTrackerConfig      `json:"priceTracker"`
 }
 
-// FundingConfig represents the array of symbol configurations loaded from funding.jsonc.
+// AccountReversionConfig defines account-level overrides for funding reversion.
+type AccountReversionConfig struct {
+	ExchangeReversionConfig
+}
+
 // FundingConfig represents the array of symbol configurations loaded from funding.jsonc.
 type FundingConfig []SymbolConfig
 
-// Config is the root configuration containing System, Symbols, Blacklist, Reversion, Obfuscator, and Dilution configs.
+// AccountBotConfig represents the isolated strategy configurations and account details for one account.
+type AccountBotConfig struct {
+	Account    sysconfig.AccountConfig `json:"account" validate:"required"`
+	Reversion  *ReversionConfig        `json:"reversion" validate:"required"`
+	Obfuscator *ObfuscatorConfig       `json:"obfuscator" validate:"omitempty"`
+	Dilution   *DilutionConfig         `json:"dilution" validate:"omitempty"`
+	Symbols    []SymbolConfig          `json:"symbols,omitempty"`
+}
+
+// LoadPaths contains the file paths required to load a full funding bot configuration.
+type LoadPaths struct {
+	AccountsPath        string `validate:"required"`
+	BlacklistPath       string `validate:"required"`
+	CommonReversionPath string `validate:"required"`
+}
+
+// Config is the root configuration containing System, Blacklist, and Accounts configs.
 type Config struct {
-	System     *SystemConfig     `json:"-" validate:"required"`
-	Symbols    []SymbolConfig    `json:"-" validate:"dive"`
-	Blacklist  *BlacklistConfig  `json:"-"`
-	Reversion  *ReversionConfig  `json:"-" validate:"required"`
-	Obfuscator *ObfuscatorConfig `json:"-" validate:"omitempty"`
-	Dilution   *DilutionConfig   `json:"-" validate:"omitempty"`
+	System          *SystemConfig                `json:"-" validate:"required"`
+	CommonReversion *ReversionConfig             `json:"-" validate:"required"`
+	Blacklist       *BlacklistConfig             `json:"-" validate:"required"`
+	Accounts        map[string]*AccountBotConfig `json:"-" validate:"dive"`
+}
+
+// AllSymbols returns all symbols across all configured accounts.
+func (c *Config) AllSymbols() []SymbolConfig {
+	if c == nil {
+		return nil
+	}
+	var all []SymbolConfig
+	for _, acc := range c.Accounts {
+		if acc != nil {
+			all = append(all, acc.Symbols...)
+		}
+	}
+	return all
 }
 
 type RawFundingReversionConfig struct {
@@ -219,4 +247,49 @@ func (b BlacklistConfig) IsBlacklisted(exchange, symbol string) bool {
 		}
 	}
 	return false
+}
+
+// DefaultAccountID is the fallback account identifier.
+const (
+	DefaultAccountID    = "default"
+	DefaultTestExchange = "mexc_futures"
+)
+
+// NewTestConfig creates a *Config for testing with a default account containing the given ReversionConfig.
+func NewTestConfig(rev *ReversionConfig, symbols ...SymbolConfig) *Config {
+	if rev == nil {
+		rev = &ReversionConfig{}
+	}
+	syms := make([]SymbolConfig, len(symbols))
+	copy(syms, symbols)
+	for i := range syms {
+		if syms[i].AccountID == "" {
+			syms[i].AccountID = DefaultAccountID
+		}
+		if syms[i].Exchange == "" {
+			syms[i].Exchange = DefaultTestExchange
+		}
+	}
+	return &Config{
+		System:          &SystemConfig{},
+		CommonReversion: rev,
+		Accounts: map[string]*AccountBotConfig{
+			DefaultAccountID: {
+				Account: sysconfig.AccountConfig{
+					ID:       DefaultAccountID,
+					Exchange: DefaultTestExchange,
+					Enabled:  true,
+					Scanners: sysconfig.AccountScannersConfig{
+						Configured: true,
+						Schedule:   true,
+					},
+				},
+				Reversion:  rev,
+				Obfuscator: &ObfuscatorConfig{},
+				Dilution:   &DilutionConfig{},
+				Symbols:    syms,
+			},
+		},
+		Blacklist: &BlacklistConfig{},
+	}
 }

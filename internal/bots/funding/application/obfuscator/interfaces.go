@@ -18,7 +18,7 @@ type EngineProviderGetter interface {
 
 // PnLReportReader queries aggregated symbol PnL metrics for loss budget obfuscation logic.
 type PnLReportReader interface {
-	GetSymbolPnLSummaries(ctx context.Context, exchange string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error)
+	GetAccountSymbolPnLSummaries(ctx context.Context, accountID, exchange string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error)
 }
 
 // OrderManagerDispatcher defines the order execution contract with OrderManager.
@@ -44,6 +44,9 @@ type MarketInfo struct {
 
 // ObfuscationSpec contains parameters for a generated dummy order.
 type ObfuscationSpec struct {
+	AccountID       string
+	ReqID           string
+	ClientOrderID   string
 	OriginReqID     string
 	Exchange        string
 	Symbol          string

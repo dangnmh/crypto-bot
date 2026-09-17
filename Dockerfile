@@ -1,7 +1,7 @@
 # ==========================================
 # Stage 1: Build static Go binary
 # ==========================================
-FROM golang:1.27-alpine AS builder
+FROM golang:alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git gcc musl-dev
@@ -21,7 +21,6 @@ ARG COMMIT=none
 ARG BUILD_TIME=unknown
 
 # Build the executables targeting cmd/funding and cmd/penny_jumper
-# Bitwarden SDK requires CGO to be enabled (CGO_ENABLED=1) to link its C-bindings
 # -tags "netgo,osusergo" forces Go pure-network async resolver, eliminating musl libc DNS blocking
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
     go build -tags "netgo,osusergo" -ldflags="-w -s -X crypto-bot/pkg/version.Version=${VERSION} -X crypto-bot/pkg/version.Commit=${COMMIT} -X crypto-bot/pkg/version.BuildTime=${BUILD_TIME}" -o bin/funding-bot ./cmd/funding && \

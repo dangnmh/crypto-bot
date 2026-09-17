@@ -83,8 +83,9 @@ func registerEventSubscription[T ReversionEvent](
 		exch := evt.GetExchange()
 		reqID := evt.GetReqID()
 		symbol := evt.GetSymbol()
+		accountID := evt.GetAccountID()
 		traceCtx := observability.WithRequestIDValue(msgCtx, reqID)
-		clonedRunner := runner.clone(exch, reqID, symbol)
+		clonedRunner := runner.clone(accountID, exch, reqID, symbol)
 		return action(traceCtx, clonedRunner, evt)
 	})
 }

@@ -32,6 +32,7 @@ type mockExchangeClient struct {
 	tpslPlaced           bool
 	cancelOrderCalled    bool
 	cancelAllCalled      bool
+	cancelAllErr         error
 }
 
 func (m *mockExchangeClient) SwitchMarginMode(ctx context.Context, symbol string, mode shared.MarginMode, leverage int, side shared.Side) error {
@@ -70,7 +71,7 @@ func (m *mockExchangeClient) CancelOrder(ctx context.Context, symbol, orderID st
 
 func (m *mockExchangeClient) CancelAllOpenOrders(ctx context.Context, symbol string) error {
 	m.cancelAllCalled = true
-	return nil
+	return m.cancelAllErr
 }
 
 func (m *mockExchangeClient) ClosePosition(ctx context.Context, symbol string, side shared.Side, volume float64, positionMode shared.PositionMode, leverage int) error {
@@ -186,6 +187,7 @@ func createTestOrderIntent() futures.OrderIntentEvent {
 		ReqID:                "req-001",
 		ClientOrderID:        "client-oid-001",
 		Symbol:               "BTCUSDT",
+		AccountID:            "mexc",
 		Exchange:             "MEXC",
 		StrategyType:         futures.StrategyFundingReversion,
 		Timestamp:            time.Now(),
@@ -278,6 +280,12 @@ func runTimeoutCheckTest(t *testing.T, ctx context.Context, mgr *futures.OrderMa
 }
 
 func runBailoutTest(t *testing.T, ctx context.Context, mgr *futures.OrderManager, client *mockExchangeClient) {
+	agg := mgr.GetAggregate("req-bailout-001")
+	_ = agg.Record(futures.OrderIntentEvent{
+		ReqID:     "req-bailout-001",
+		AccountID: "mexc",
+		Exchange:  "mexc",
+	})
 	bailout, err := mgr.HandleExecuteBailout(ctx, "req-bailout-001", "mexc", "BTCUSDT", shared.SideCloseLong, 1.0, "timeout")
 	if err != nil {
 		t.Fatalf("HandleExecuteBailout failed: %v", err)
@@ -334,6 +342,61 @@ func TestOrderSubmittedEvent_GetNotifyMessage(t *testing.T) {
 	assert.Contains(t, msg, "• Order ID: 2279963257363092992")
 	assert.Contains(t, msg, "• Client ID: 12082026170000PROMTOOBITFUTURES")
 	assert.Contains(t, msg, "• Req ID: 12082026170000PROMTOOBITFUTURES")
+}
+
+func TestOrderEvents_GetNotifyMessage_WithAccountID(t *testing.T) {
+	t.Parallel()
+
+	// Submitted
+	subEvt := futures.OrderSubmittedEvent{
+		ReqID:         "req-sub-001",
+		ClientOrderID: "cid-sub-001",
+		AccountID:     "mexc_main",
+		Symbol:        "BTCUSDT",
+		Exchange:      "mexc",
+		StrategyType:  futures.StrategyFundingReversion,
+		Side:          shared.SideOpenLong,
+		Price:         50000,
+		Volume:        1,
+	}
+	assert.Contains(t, subEvt.GetNotifyMessage(), "• Account ID: mexc_main")
+
+	// Aborted
+	abortEvt := futures.OrderAbortedEvent{
+		ReqID:         "req-abort-001",
+		ClientOrderID: "cid-abort-001",
+		AccountID:     "mexc_sub1",
+		Symbol:        "ETHUSDT",
+		Exchange:      "mexc",
+		StrategyType:  futures.StrategyFundingReversion,
+		Reason:        "insufficient_balance",
+	}
+	assert.Contains(t, abortEvt.GetNotifyMessage(), "• Account ID: mexc_sub1")
+
+	// Completed Canceled
+	compCanceled := futures.OrderCompletedEvent{
+		ReqID:         "req-comp-001",
+		ClientOrderID: "cid-comp-001",
+		AccountID:     "bybit_main",
+		Symbol:        "BTCUSDT",
+		Exchange:      "bybit",
+		StrategyType:  futures.StrategyFundingReversion,
+		Outcome:       futures.OutcomeCanceledNoFill,
+	}
+	assert.Contains(t, compCanceled.GetNotifyMessage(), "• Account ID: bybit_main")
+
+	// Completed Filled
+	compFilled := futures.OrderCompletedEvent{
+		ReqID:         "req-comp-002",
+		ClientOrderID: "cid-comp-002",
+		AccountID:     "bybit_main",
+		Symbol:        "BTCUSDT",
+		Exchange:      "bybit",
+		StrategyType:  futures.StrategyFundingReversion,
+		Outcome:       futures.OutcomeFilled,
+		Side:          shared.SideOpenLong,
+	}
+	assert.Contains(t, compFilled.GetNotifyMessage(), "• Account ID: bybit_main")
 }
 
 type mockNotifier struct {
@@ -418,6 +481,7 @@ func TestOrderManager_Dispatch_EDD(t *testing.T) {
 			intent := futures.OrderIntentEvent{
 				ReqID:        tt.reqID,
 				Symbol:       tt.symbol,
+				AccountID:    "mexc",
 				Exchange:     "MEXC",
 				StrategyType: futures.StrategyFundingReversion,
 				Timestamp:    time.Now(),
@@ -769,8 +833,9 @@ func TestOrderCompletedEvent_PropagatesRefID(t *testing.T) {
 	assert.NoError(t, mgr.Init(context.Background()))
 
 	intent := futures.OrderIntentEvent{
-		ReqID: "req-ref-001",
-		RefID: "orig-trade-999",
+		ReqID:     "req-ref-001",
+		AccountID: "mexc",
+		RefID:     "orig-trade-999",
 	}
 	assert.NoError(t, mgr.GetAggregate(intent.GetReqID()).Record(intent))
 
@@ -814,6 +879,7 @@ func TestHandlePreFlight_CloseOrder_SkipsModeSwitches(t *testing.T) {
 	intent := futures.OrderIntentEvent{
 		ReqID:        "req-close-001",
 		Symbol:       "BTCUSDT",
+		AccountID:    "mexc",
 		Exchange:     "MEXC",
 		StrategyType: futures.StrategyDilution,
 		Timestamp:    time.Now(),
@@ -858,6 +924,7 @@ func TestOrderManager_CancelOrder(t *testing.T) {
 	err = agg.Record(futures.OrderSubmittedEvent{
 		ReqID:        "req-cancel-001",
 		Symbol:       "BTCUSDT",
+		AccountID:    "mexc",
 		Exchange:     "MEXC",
 		StrategyType: futures.StrategyDilution,
 		OrderType:    futures.OrderTypePostOnly,
@@ -895,9 +962,90 @@ func TestOrderManager_CancelOpenOrders(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, mgr.Init(context.Background()))
 
-	err = mgr.CancelOpenOrders(context.Background(), "MEXC", "BTCUSDT")
+	// Test basic cancel with accountID
+	err = mgr.CancelOpenOrders(context.Background(), "mexc_main", "MEXC", "BTCUSDT")
 	assert.NoError(t, err)
 	assert.True(t, client.cancelAllCalled)
+
+	// Test multi-account isolation: OrderManager should only cancel guards for matching account
+	t.Run("cancels timeout guards only for specified account", func(t *testing.T) {
+		t.Parallel()
+		b := eventbus.New(slog.Default())
+		c := &mockExchangeClient{}
+		eng := &app.Engine{
+			Providers: map[string]*app.ExchangeProvider{
+				"mexc": {
+					Client:   c,
+					TimeSync: newTestTimeSync(c),
+				},
+			},
+		}
+		om, err := futures.NewOrderManager(context.Background(), eng, b, &mockTradeRepo{}, &mockNotifier{}, nil)
+		require.NoError(t, err)
+		require.NoError(t, om.Init(context.Background()))
+
+		// Create active orders for Account 1 and Account 2
+		evtAcc1 := futures.OrderIntentEvent{
+			ReqID:      "req-acc1",
+			AccountID:  "acc-1",
+			Symbol:     "BTCUSDT",
+			Exchange:   "MEXC",
+			MarketType: futures.MarketTypeFuture,
+		}
+		evtAcc2 := futures.OrderIntentEvent{
+			ReqID:      "req-acc2",
+			AccountID:  "acc-2",
+			Symbol:     "BTCUSDT",
+			Exchange:   "MEXC",
+			MarketType: futures.MarketTypeFuture,
+		}
+
+		agg1 := om.GetAggregate("req-acc1")
+		require.NoError(t, agg1.Record(evtAcc1))
+		agg2 := om.GetAggregate("req-acc2")
+		require.NoError(t, agg2.Record(evtAcc2))
+
+		// Cancel open orders specifically for Account 1
+		err = om.CancelOpenOrders(context.Background(), "acc-1", "MEXC", "BTCUSDT")
+		require.NoError(t, err)
+
+		// Verify GetActiveOrdersForAccount returns only Account 2 for acc-2
+		acc1Orders := om.GetActiveOrdersForAccount("acc-1", "MEXC", "BTCUSDT")
+		acc2Orders := om.GetActiveOrdersForAccount("acc-2", "MEXC", "BTCUSDT")
+		assert.Len(t, acc1Orders, 1)
+		assert.Len(t, acc2Orders, 1)
+	})
+
+	t.Run("returns error and retains guards when exchange cancellation fails", func(t *testing.T) {
+		t.Parallel()
+		b := eventbus.New(slog.Default())
+		c := &mockExchangeClient{cancelAllErr: errors.New("network timeout")}
+		eng := &app.Engine{
+			Providers: map[string]*app.ExchangeProvider{
+				"mexc": {
+					Client:   c,
+					TimeSync: newTestTimeSync(c),
+				},
+			},
+		}
+		om, err := futures.NewOrderManager(context.Background(), eng, b, &mockTradeRepo{}, &mockNotifier{}, nil)
+		require.NoError(t, err)
+		require.NoError(t, om.Init(context.Background()))
+
+		evtAcc := futures.OrderIntentEvent{
+			ReqID:      "req-fail",
+			AccountID:  "acc-1",
+			Symbol:     "BTCUSDT",
+			Exchange:   "MEXC",
+			MarketType: futures.MarketTypeFuture,
+		}
+		agg := om.GetAggregate("req-fail")
+		require.NoError(t, agg.Record(evtAcc))
+
+		err = om.CancelOpenOrders(context.Background(), "acc-1", "MEXC", "BTCUSDT")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "network timeout")
+	})
 }
 
 func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
@@ -922,6 +1070,7 @@ func TestOrderManager_RestingTimeoutAutoCancel(t *testing.T) {
 	submittedEvt := futures.OrderSubmittedEvent{
 		ReqID:                 "req-resting-timeout-001",
 		Symbol:                "BTCUSDT",
+		AccountID:             "mexc",
 		Exchange:              "mexc",
 		StrategyType:          futures.StrategyDilution,
 		OrderType:             futures.OrderTypePostOnly,
@@ -967,6 +1116,7 @@ func TestOrderManager_SkipPreFlight(t *testing.T) {
 	intent := futures.OrderIntentEvent{
 		ReqID:         "req-skip-pf-001",
 		Symbol:        "BTCUSDT",
+		AccountID:     "mexc",
 		Exchange:      "mexc",
 		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     time.Now(),
@@ -1035,6 +1185,7 @@ func TestHandlePositionUpdate_PnLTrailingStop_ImmediateExit(t *testing.T) {
 	assert.NoError(t, agg.Record(futures.OrderIntentEvent{
 		ReqID:                   reqID,
 		Symbol:                  "BTCUSDT",
+		AccountID:               "mexc",
 		Exchange:                "mexc",
 		StrategyType:            futures.StrategyFundingReversion,
 		Side:                    shared.SideOpenLong,
@@ -1130,6 +1281,7 @@ func TestHandlePositionUpdate_PnLTrailing_DisabledByDefault(t *testing.T) {
 	assert.NoError(t, agg.Record(futures.OrderIntentEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
+		AccountID:    "mexc",
 		Exchange:     "mexc",
 		StrategyType: futures.StrategyFundingReversion,
 		Side:         shared.SideOpenLong,
@@ -1181,6 +1333,7 @@ func TestHandleTradeUpdate_PnLTrailingStop_ViaDealStream(t *testing.T) {
 	assert.NoError(t, agg.Record(futures.OrderIntentEvent{
 		ReqID:                   reqID,
 		Symbol:                  "BTCUSDT",
+		AccountID:               "mexc",
 		Exchange:                "mexc",
 		StrategyType:            futures.StrategyFundingReversion,
 		Side:                    shared.SideOpenShort, // Short position
@@ -1315,6 +1468,7 @@ func TestHandleExecuteOrder_PreWarmerTriggered(t *testing.T) {
 	fireWindow := futures.OrderFireWindowReachedEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
+		AccountID:    "bybit",
 		Exchange:     "bybit",
 		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
@@ -1362,6 +1516,7 @@ func TestHandleExecuteOrder_PreSignExecutor(t *testing.T) {
 	fireWindow := futures.OrderFireWindowReachedEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
+		AccountID:    "bybit",
 		Exchange:     "bybit",
 		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
@@ -1410,6 +1565,7 @@ func TestHandleExecuteOrder_PreSignFallback_OnError(t *testing.T) {
 	fireWindow := futures.OrderFireWindowReachedEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
+		AccountID:    "bybit",
 		Exchange:     "bybit",
 		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
@@ -1456,6 +1612,7 @@ func TestHandleExecuteOrder_StandardClient_NoPreSign(t *testing.T) {
 	fireWindow := futures.OrderFireWindowReachedEvent{
 		ReqID:        reqID,
 		Symbol:       "BTCUSDT",
+		AccountID:    "bybit",
 		Exchange:     "bybit",
 		StrategyType: futures.StrategyFundingReversion,
 		Timestamp:    time.Now(),
@@ -1502,6 +1659,7 @@ func TestOrderManager_CombatModeIntegration(t *testing.T) {
 	intent := futures.OrderIntentEvent{
 		ReqID:         "combat-test-1",
 		Symbol:        "BTCUSDT",
+		AccountID:     "bybit",
 		Exchange:      "bybit",
 		StrategyType:  futures.StrategyFundingReversion,
 		Timestamp:     time.Now(),
@@ -1523,4 +1681,81 @@ func TestOrderManager_CombatModeIntegration(t *testing.T) {
 	err = mgr.Shutdown(ctx)
 	assert.NoError(t, err)
 	assert.False(t, mgr.CombatCoordinator().IsActive(), "combat mode should be inactive after Shutdown")
+}
+
+func TestOrderManager_MultiAccountRouting(t *testing.T) {
+	t.Parallel()
+
+	clientMain := &mockExchangeClient{}
+	clientSub1 := &mockExchangeClient{}
+
+	bus := eventbus.New(slog.Default())
+	ctx := context.Background()
+	repo := &mockTradeRepo{}
+	noti := &mockNotifier{}
+
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc": {
+				Name:     "mexc",
+				Client:   clientMain,
+				TimeSync: newTestTimeSync(clientMain),
+			},
+		},
+		AccountProviders: map[string]*app.AccountProvider{
+			"mexc_main": {
+				AccountID:    "mexc_main",
+				ExchangeName: "mexc",
+				Client:       clientMain,
+			},
+			"mexc_sub1": {
+				AccountID:    "mexc_sub1",
+				ExchangeName: "mexc",
+				Client:       clientSub1,
+			},
+		},
+	}
+
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, nil)
+	require.NoError(t, err)
+
+	// 1. Order for sub1 account
+	intentSub1 := futures.OrderIntentEvent{
+		ReqID:        "sub1-order-1",
+		AccountID:    "mexc_sub1",
+		Exchange:     "mexc",
+		Symbol:       "BTCUSDT",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Leverage:     10,
+		MarginMode:   shared.MarginModeCross,
+	}
+
+	_, err = mgr.HandlePreFlight(ctx, intentSub1)
+	require.NoError(t, err)
+
+	assert.True(t, clientSub1.marginModeSwitched, "sub1 client should have margin mode switched")
+	assert.False(t, clientMain.marginModeSwitched, "main client should not have been called")
+
+	// 2. Order for main account
+	intentMain := futures.OrderIntentEvent{
+		ReqID:        "main-order-1",
+		AccountID:    "mexc_main",
+		Exchange:     "mexc",
+		Symbol:       "BTCUSDT",
+		StrategyType: futures.StrategyFundingReversion,
+		Timestamp:    time.Now(),
+		Side:         shared.SideOpenLong,
+		OrderType:    futures.OrderTypeIOC,
+		Leverage:     10,
+		MarginMode:   shared.MarginModeCross,
+	}
+
+	_, err = mgr.HandlePreFlight(ctx, intentMain)
+	require.NoError(t, err)
+
+	assert.True(t, clientMain.marginModeSwitched, "main client should have margin mode switched")
 }

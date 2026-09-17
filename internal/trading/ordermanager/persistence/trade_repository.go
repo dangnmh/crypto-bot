@@ -27,11 +27,12 @@ const (
 // TradeRecord is the GORM database entity representing a trade execution and PnL record.
 type TradeRecord struct {
 	ReqID            string      `gorm:"column:req_id;primaryKey;size:64"`
+	AccountID        string      `gorm:"column:account_id;size:64;index:idx_acc_sym_ex;not null;default:''"`
 	ClientOrderID    string      `gorm:"column:client_order_id;size:64;index"`
 	ExchangeOrderID  string      `gorm:"column:exchange_order_id;size:64;index"`
-	Symbol           string      `gorm:"column:symbol;size:32;index:idx_sym_ex;not null"`
+	Symbol           string      `gorm:"column:symbol;size:32;index:idx_acc_sym_ex;index:idx_sym_ex;not null"`
 	NormalizedSymbol string      `gorm:"column:normalized_symbol;size:32;index;not null"`
-	Exchange         string      `gorm:"column:exchange;size:32;index:idx_sym_ex;not null"`
+	Exchange         string      `gorm:"column:exchange;size:32;index:idx_acc_sym_ex;index:idx_sym_ex;not null"`
 	MarketType       string      `gorm:"column:market_type;size:16;index:idx_sym_ex;not null;default:'FUTURE'"`
 	StrategyType     string      `gorm:"column:strategy_type;size:32;index:idx_sym_ex;not null"`
 	Side             shared.Side `gorm:"column:side;size:16;not null"`
@@ -98,25 +99,33 @@ func NewGormTradeRepository(db *gorm.DB) *GormTradeRepository {
 	return &GormTradeRepository{db: db}
 }
 
-// GetSymbolPnLSummaries aggregates funding net profit and obfuscator net PnL grouped by symbol for the exchange within the since window.
-func (r *GormTradeRepository) GetSymbolPnLSummaries(ctx context.Context, exchange string, since time.Time) ([]SymbolPnLSummary, error) {
+// GetAccountSymbolPnLSummaries aggregates funding net profit and obfuscator net PnL grouped by symbol for the account and exchange within the since window.
+func (r *GormTradeRepository) GetAccountSymbolPnLSummaries(ctx context.Context, accountID, exchange string, since time.Time) ([]SymbolPnLSummary, error) {
 	if r.db == nil {
 		return nil, nil
 	}
-	var summaries []SymbolPnLSummary
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Table("trades").
 		Select("exchange, symbol, MAX(normalized_symbol) AS normalized_symbol, "+
 			"SUM(CASE WHEN UPPER(strategy_type) IN ('FUNDING_REVERSION', 'FUNDING_ARBITRAGE') AND net_pnl > 0 THEN net_pnl ELSE 0 END) AS funding_net_profit, "+
 			"SUM(CASE WHEN UPPER(strategy_type) = 'OBFUSCATOR' THEN net_pnl ELSE 0 END) AS obfuscator_net_pnl").
-		Where("exchange = ? AND created_at >= ?", exchange, since).
-		Group("exchange, symbol").
+		Where("exchange = ? AND created_at >= ?", exchange, since)
+	if accountID != "" {
+		query = query.Where("account_id = ?", accountID)
+	}
+	var summaries []SymbolPnLSummary
+	err := query.Group("exchange, symbol").
 		Order("funding_net_profit DESC").
 		Find(&summaries).Error
 	if err != nil {
-		return nil, fmt.Errorf("fetch symbol pnl summaries: %w", err)
+		return nil, fmt.Errorf("fetch account symbol pnl summaries: %w", err)
 	}
 	return summaries, nil
+}
+
+// GetSymbolPnLSummaries aggregates funding net profit and obfuscator net PnL grouped by symbol for the exchange within the since window.
+func (r *GormTradeRepository) GetSymbolPnLSummaries(ctx context.Context, exchange string, since time.Time) ([]SymbolPnLSummary, error) {
+	return r.GetAccountSymbolPnLSummaries(ctx, "", exchange, since)
 }
 
 // MarkObfuscated marks a trade record as obfuscated by setting its obfuscated_at timestamp.
@@ -151,6 +160,7 @@ func (r *GormTradeRepository) Save(ctx context.Context, evt common.OrderTradeRec
 
 	trade := &TradeRecord{
 		ReqID:            evt.ReqID,
+		AccountID:        evt.GetAccountID(),
 		ClientOrderID:    clientOID,
 		ExchangeOrderID:  exchangeOID,
 		Symbol:           evt.Symbol,

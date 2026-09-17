@@ -49,6 +49,7 @@ const (
 	OutcomeCanceledNoFill  = common.OutcomeCanceledNoFill
 	OutcomeCanceled        = common.OutcomeCanceled
 	OutcomeAborted         = common.OutcomeAborted
+	OutcomeBailout         = common.OutcomeBailout
 	OutcomeResting         = common.OutcomeResting
 	OutcomeRejected        = common.OutcomeRejected
 	OutcomeExpired         = common.OutcomeExpired

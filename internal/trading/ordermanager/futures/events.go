@@ -44,6 +44,7 @@ type BaseExecutionEvent struct {
 	ReqID         string              `json:"req_id,omitempty"`
 	RefID         string              `json:"ref_id,omitempty"`
 	ClientOrderID string              `json:"client_order_id,omitempty"`
+	AccountID     string              `json:"account_id,omitempty"`
 	Symbol        string              `json:"symbol"`
 	Exchange      string              `json:"exchange,omitempty"`
 	MarketType    common.MarketType   `json:"market_type,omitempty"`
@@ -55,6 +56,7 @@ type BaseExecutionEvent struct {
 
 func (b BaseExecutionEvent) GetReqID() string                     { return b.ReqID }
 func (b BaseExecutionEvent) GetClientOrderID() string             { return b.ClientOrderID }
+func (b BaseExecutionEvent) GetAccountID() string                 { return b.AccountID }
 func (b BaseExecutionEvent) GetSymbol() string                    { return b.Symbol }
 func (b BaseExecutionEvent) GetExchange() string                  { return b.Exchange }
 func (b BaseExecutionEvent) GetMarketType() common.MarketType     { return b.MarketType }
@@ -163,8 +165,16 @@ func (e OrderSubmittedEvent) GetNotifyMessage() string {
 	frStr := fmt.Sprintf("%s%.1f%%", frSign, fundingRate*100)
 	vol24Str := fmt.Sprintf("$%s", strings.ToLower(formatutil.FormatCompactUSD(vol24h)))
 	sideStr := formatSideString(e.Side)
+	accountID := e.AccountID
+	if accountID == "" {
+		accountID = e.GetAccountID()
+	}
+	accountLine := ""
+	if accountID != "" {
+		accountLine = fmt.Sprintf("\n• Account ID: %s", accountID)
+	}
 
-	return fmt.Sprintf("🟡 [%s] [%s] [SUBMITTED]\n• Symbol: %s | Side: %s\n• Margin: %s USDT | Leverage: %dx\n• Price: %s | Size: %s USDT\n• FR: %s | Vol24h: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+	return fmt.Sprintf("🟡 [%s] [%s] [SUBMITTED]\n• Symbol: %s | Side: %s\n• Margin: %s USDT | Leverage: %dx\n• Price: %s | Size: %s USDT\n• FR: %s | Vol24h: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s%s",
 		stratName,
 		e.Exchange,
 		e.Symbol,
@@ -178,6 +188,7 @@ func (e OrderSubmittedEvent) GetNotifyMessage() string {
 		orderID,
 		e.ClientOrderID,
 		e.ReqID,
+		accountLine,
 	)
 }
 
@@ -329,8 +340,16 @@ func (e OrderAbortedEvent) GetNotifyMessage() string {
 	if reqID == "" {
 		reqID = defaultNotAvailable
 	}
+	accountID := e.AccountID
+	if accountID == "" {
+		accountID = e.GetAccountID()
+	}
+	accountLine := ""
+	if accountID != "" {
+		accountLine = fmt.Sprintf("\n• Account ID: %s", accountID)
+	}
 
-	return fmt.Sprintf("🔴 [%s] [%s] [ABORTED]\n• Symbol: %s\n• Reason: %s\n• Error: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+	return fmt.Sprintf("🔴 [%s] [%s] [ABORTED]\n• Symbol: %s\n• Reason: %s\n• Error: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s%s",
 		stratName,
 		e.Exchange,
 		e.Symbol,
@@ -339,6 +358,7 @@ func (e OrderAbortedEvent) GetNotifyMessage() string {
 		orderID,
 		clientID,
 		reqID,
+		accountLine,
 	)
 }
 
@@ -465,7 +485,15 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 		if reasonStr == "" {
 			reasonStr = defaultNotAvailable
 		}
-		return fmt.Sprintf("🔵 [%s] [%s] [%s]\n• Symbol: %s\n• Outcome: %s\n• Reason: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+		accountID := e.AccountID
+		if accountID == "" {
+			accountID = e.GetAccountID()
+		}
+		accountLine := ""
+		if accountID != "" {
+			accountLine = fmt.Sprintf("\n• Account ID: %s", accountID)
+		}
+		return fmt.Sprintf("🔵 [%s] [%s] [%s]\n• Symbol: %s\n• Outcome: %s\n• Reason: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s%s",
 			stratName,
 			e.Exchange,
 			strings.ToUpper(string(e.Outcome)),
@@ -475,6 +503,7 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 			orderID,
 			clientID,
 			reqID,
+			accountLine,
 		)
 	}
 
@@ -511,8 +540,16 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 	if clientID == "" {
 		clientID = defaultNotAvailable
 	}
+	accountID := e.AccountID
+	if accountID == "" {
+		accountID = e.GetAccountID()
+	}
+	accountLine := ""
+	if accountID != "" {
+		accountLine = fmt.Sprintf("\n• Account ID: %s", accountID)
+	}
 
-	return fmt.Sprintf("%s [%s] [%s] [COMPLETED]\n• Symbol: %s\n• PnL: %s [%s] | Side: %s\n• FR: %s | Vol24h: %s\n• Price: %s | Size: %s\n• Fees: Exec: %s | Funding: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s",
+	return fmt.Sprintf("%s [%s] [%s] [COMPLETED]\n• Symbol: %s\n• PnL: %s [%s] | Side: %s\n• FR: %s | Vol24h: %s\n• Price: %s | Size: %s\n• Fees: Exec: %s | Funding: %s\n• Order ID: %s\n• Client ID: %s\n• Req ID: %s%s",
 		emoji,
 		stratName,
 		e.Exchange,
@@ -529,6 +566,7 @@ func (e OrderCompletedEvent) GetNotifyMessage() string {
 		orderID,
 		clientID,
 		e.ReqID,
+		accountLine,
 	)
 }
 

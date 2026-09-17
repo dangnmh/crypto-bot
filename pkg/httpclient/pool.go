@@ -3,8 +3,10 @@ package httpclient
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"time"
 
 	"crypto-bot/pkg/tracectx"
@@ -22,6 +24,10 @@ type PoolConfig struct {
 	TLSHandshakeTimeout time.Duration
 	DisableCompression  bool
 	Timeout             time.Duration
+
+	// Network binding options (EIP / Proxy)
+	LocalAddr *net.TCPAddr
+	ProxyURL  *url.URL
 
 	// Resilience Configuration
 	EnableRetry      bool
@@ -139,6 +145,18 @@ func NewPool(cfg PoolConfig) *http.Client {
 		IdleConnTimeout:     cfg.IdleConnTimeout,
 		TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
 		DisableCompression:  cfg.DisableCompression,
+	}
+
+	if cfg.LocalAddr != nil {
+		transport.DialContext = (&net.Dialer{
+			LocalAddr: cfg.LocalAddr,
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext
+	}
+
+	if cfg.ProxyURL != nil {
+		transport.Proxy = http.ProxyURL(cfg.ProxyURL)
 	}
 
 	traceTransport := &traceRoundTripper{next: transport, logger: cfg.Logger}

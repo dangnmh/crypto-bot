@@ -42,6 +42,7 @@ type ContractSpec struct {
 // This is a domain value object — it mirrors what the config provides
 // but belongs to the domain, not the config package.
 type TradeConfig struct {
+	AccountID           string
 	Symbol              string
 	Exchange            string
 	SimulateSettle      string

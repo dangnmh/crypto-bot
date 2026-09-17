@@ -3,13 +3,11 @@
 # Included by root Makefile (make/local.mk)
 # ──────────────────────────────────────────────────────────────────────
 
+FUNDING_ACCOUNTS   ?= ./configs/funding/local/accounts.jsonc
 FUNDING_SYS        ?= ./configs/funding/local/system.jsonc
 FUNDING_EXCH       ?= ./configs/funding/local/exchange.jsonc
-FUNDING_BOT        ?= ./configs/funding/local/funding.jsonc
 FUNDING_BLK        ?= ./configs/funding/local/blacklist.jsonc
 FUNDING_REV        ?= ./configs/funding/local/reversion.jsonc
-FUNDING_OBF        ?= ./configs/funding/local/obfuscator.jsonc
-FUNDING_DIL        ?= ./configs/funding/local/dilution.jsonc
 
 PENNY_JUMPER_SYS   ?= ./configs/penny_jumper/local/system.jsonc
 PENNY_JUMPER_EXCH  ?= ./configs/penny_jumper/local/exchange.jsonc
@@ -19,7 +17,7 @@ PENNY_JUMPER_BLK   ?= ./configs/penny_jumper/local/blacklist.jsonc
 # ── Local Run ─────────────────────────────────────────────────────────
 .PHONY: run/funding
 run/funding: ## Run Funding Bot with local configuration
-	$(GO) run ./cmd/funding -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -bot $(FUNDING_BOT) -blacklist $(FUNDING_BLK) -reversion $(FUNDING_REV) -obfuscator $(FUNDING_OBF) -dilution $(FUNDING_DIL)
+	$(GO) run ./cmd/funding -accounts $(FUNDING_ACCOUNTS) -sys $(FUNDING_SYS) -exch $(FUNDING_EXCH) -blacklist $(FUNDING_BLK) -reversion $(FUNDING_REV)
 
 .PHONY: run/penny-jumper
 run/penny-jumper: ## Run Penny Jumper Bot with local configuration

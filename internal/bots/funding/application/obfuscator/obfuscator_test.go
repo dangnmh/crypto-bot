@@ -3,8 +3,10 @@ package obfuscator_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -12,11 +14,13 @@ import (
 	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
+	sysconfig "crypto-bot/internal/infrastructure/config"
 	"crypto-bot/internal/infrastructure/exchange"
 	"crypto-bot/internal/trading/ordermanager/futures"
 	ordermanagerpersistence "crypto-bot/internal/trading/ordermanager/persistence"
 	"crypto-bot/pkg/types"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,7 +82,7 @@ type mockPnLReader struct {
 	err       error
 }
 
-func (m *mockPnLReader) GetSymbolPnLSummaries(ctx context.Context, exchangeName string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error) {
+func (m *mockPnLReader) GetAccountSymbolPnLSummaries(ctx context.Context, accountID, exchangeName string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -198,8 +202,14 @@ func TestOrderGenerator(t *testing.T) {
 		SacrificeLossPct:    50.0,
 		MaxDailyLossUSD:     200.0,
 	}
-	spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 30.0, "req-123")
+	spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "binance", "ETHUSDT", 30.0, "req-123")
 	require.NoError(t, err)
+	_, parseErr := uuid.Parse(spec.ReqID)
+	require.NoError(t, parseErr, "expected ReqID to be a valid UUID")
+	expectedLen := exchange.MaxClientOrderIDLength(spec.Exchange)
+	assert.Len(t, spec.ClientOrderID, expectedLen)
+	assert.True(t, regexp.MustCompile(fmt.Sprintf(`^[a-zA-Z0-9]{%d}$`, expectedLen)).MatchString(spec.ClientOrderID), "expected ClientOrderID to be alphanumeric")
+	assert.Equal(t, "mexc_main", spec.AccountID)
 	assert.Equal(t, "req-123", spec.OriginReqID)
 	assert.Equal(t, "binance", spec.Exchange)
 	assert.Equal(t, "ETHUSDT", spec.Symbol)
@@ -217,7 +227,7 @@ func TestOrderGenerator(t *testing.T) {
 		t.Parallel()
 		levCfg := cfg
 		levCfg.Leverage = 10
-		levSpec, err := gen.GenerateSpec(context.Background(), levCfg, "binance", "ETHUSDT", 30.0, "req-lev")
+		levSpec, err := gen.GenerateSpec(context.Background(), "mexc_main", levCfg, "binance", "ETHUSDT", 30.0, "req-lev")
 		require.NoError(t, err)
 		assert.Equal(t, 10, levSpec.Leverage)
 		assert.Equal(t, 50.0, levSpec.NotionalUSDT) // 5.0 * 10 = 50.0
@@ -327,7 +337,7 @@ func TestOrderGenerator_DepthScenarios(t *testing.T) {
 				MaxDailyLossUSD:     200.0,
 			}
 
-			spec, err := gen.GenerateSpec(context.Background(), cfg, "mexc", "BTCUSDT", 30.0, "req-scenario")
+			spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "mexc", "BTCUSDT", 30.0, "req-scenario")
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantSide, spec.Side)
 			assert.Equal(t, tt.wantNotion, spec.NotionalUSDT)
@@ -355,7 +365,7 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 			SacrificeLossPct: 50.0,
 			MaxDailyLossUSD:  200.0,
 		}
-		spec, err := gen.GenerateSpec(context.Background(), cfg, "unknown", "BTCUSDT", 10.0, "req-noprov")
+		spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "unknown", "BTCUSDT", 10.0, "req-noprov")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenShort, spec.Side)
 		assert.Equal(t, 10.0, spec.NotionalUSDT)
@@ -386,7 +396,7 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 			SacrificeLossPct: 50.0,
 			MaxDailyLossUSD:  200.0,
 		}
-		spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "BTCUSDT", 10.0, "req-oberr")
+		spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "binance", "BTCUSDT", 10.0, "req-oberr")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenShort, spec.Side)
 	})
@@ -415,12 +425,12 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 			SacrificeLossPct: 50.0,
 			MaxDailyLossUSD:  200.0,
 		}
-		spec1, err := gen.GenerateSpec(context.Background(), cfg, "bybit", "BTCUSDT", 10.0, "req-cache")
+		spec1, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "bybit", "BTCUSDT", 10.0, "req-cache")
 		require.NoError(t, err)
 		assert.Equal(t, 2.5, spec1.ContractSize)
 
 		// Second call uses cached contract detail
-		spec2, err := gen.GenerateSpec(context.Background(), cfg, "bybit", "BTCUSDT", 10.0, "req-cache")
+		spec2, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "bybit", "BTCUSDT", 10.0, "req-cache")
 		require.NoError(t, err)
 		assert.Equal(t, 2.5, spec2.ContractSize)
 	})
@@ -467,7 +477,7 @@ func TestOrderGenerator_EdgeCases(t *testing.T) {
 			SacrificeLossPct: 50.0,
 			MaxDailyLossUSD:  200.0,
 		}
-		spec, err := gen.GenerateSpec(context.Background(), cfg, "toobit_futures", "BLUR-SWAP-USDT", 10.0, "req-blur")
+		spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "toobit_futures", "BLUR-SWAP-USDT", 10.0, "req-blur")
 		require.NoError(t, err)
 		assert.Equal(t, 0.1981, spec.Price) // IOC limit price for Short with 0.5% slippage (0.199 - 0.000995 -> 0.1981)
 		assert.Equal(t, 50.0, spec.Volume)  // 10 / 0.199 = 50.25 -> 50 contracts (volScale=0)
@@ -513,7 +523,7 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 			MaxHoldSec:          5,
 		}
 		// totalBid(10) > totalAsk(5) -> Long side
-		spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 10.0, "req-slip-long")
+		spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "binance", "ETHUSDT", 10.0, "req-slip-long")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenLong, spec.Side)
 		// BestAsk = 101.0, slippage = 101 * 0.01 = 1.01 -> IOC limit price = 102.01
@@ -556,7 +566,7 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 			MaxHoldSec:          5,
 		}
 		// totalAsk(15) > totalBid(5) -> Short side
-		spec, err := shortGen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 10.0, "req-slip-short")
+		spec, err := shortGen.GenerateSpec(context.Background(), "mexc_main", cfg, "binance", "ETHUSDT", 10.0, "req-slip-short")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenShort, spec.Side)
 		// BestBid = 100.0, slippage = 100 * 0.01 = 1.00 -> IOC limit price = 99.00
@@ -579,7 +589,7 @@ func TestOrderGenerator_IOCSlippageCalculation(t *testing.T) {
 			MaxHoldSec:     5,
 		}
 		// totalBid(10) > totalAsk(5) -> Long side
-		spec, err := gen.GenerateSpec(context.Background(), cfg, "binance", "ETHUSDT", 10.0, "req-slip-default")
+		spec, err := gen.GenerateSpec(context.Background(), "mexc_main", cfg, "binance", "ETHUSDT", 10.0, "req-slip-default")
 		require.NoError(t, err)
 		assert.Equal(t, shared.SideOpenLong, spec.Side)
 		// BestAsk = 101.0, slippage = 101 * 0.005 = 0.505 -> 101.505 snapped to tick floor = 101.50
@@ -597,6 +607,8 @@ func TestObfuscatorRunner(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := &obfuscator.ObfuscationSpec{
+		ReqID:           "test-req-id-obf",
+		ClientOrderID:   "testclientorderid12345678901234",
 		OriginReqID:     "orig-999",
 		Exchange:        "bybit",
 		Symbol:          "SOLUSDT",
@@ -623,7 +635,9 @@ func TestObfuscatorRunner(t *testing.T) {
 
 	evt, ok := disp.events[0].(futures.OrderIntentEvent)
 	require.True(t, ok)
+	assert.Equal(t, "test-req-id-obf", evt.ReqID)
 	assert.Equal(t, "orig-999", evt.RefID)
+	assert.Equal(t, "testclientorderid12345678901234", evt.ClientOrderID)
 	assert.Equal(t, "bybit", evt.Exchange)
 	assert.Equal(t, "SOLUSDT", evt.Symbol)
 	assert.Equal(t, shared.SideOpenShort, evt.Side)
@@ -640,6 +654,31 @@ func TestObfuscatorRunner(t *testing.T) {
 	assert.Equal(t, 1500000.0, evt.Vol24hUSDT)
 	assert.Equal(t, 0.0001, evt.FundingRate)
 
+	t.Run("uses provided ReqID and ClientOrderID when present", func(t *testing.T) {
+		t.Parallel()
+		customDisp := &mockDispatcher{}
+		r, err := obfuscator.NewObfuscatorRunner(customDisp, clock, logger)
+		require.NoError(t, err)
+
+		customSpec := &obfuscator.ObfuscationSpec{
+			ReqID:         "custom-req-id-obf",
+			ClientOrderID: "customobfclientoidxx",
+			OriginReqID:   "orig-custom",
+			Exchange:      "bybit",
+			Symbol:        "SOLUSDT",
+			Side:          shared.SideOpenLong,
+		}
+
+		err = r.Execute(context.Background(), customSpec)
+		require.NoError(t, err)
+		require.Len(t, customDisp.events, 1)
+
+		customEvt, ok := customDisp.events[0].(futures.OrderIntentEvent)
+		require.True(t, ok)
+		assert.Equal(t, "custom-req-id-obf", customEvt.ReqID)
+		assert.Equal(t, "customobfclientoidxx", customEvt.ClientOrderID)
+	})
+
 	t.Run("defaults order type to OrderTypeIOC when empty", func(t *testing.T) {
 		t.Parallel()
 		emptyDisp := &mockDispatcher{}
@@ -647,17 +686,19 @@ func TestObfuscatorRunner(t *testing.T) {
 		require.NoError(t, err)
 
 		emptySpec := &obfuscator.ObfuscationSpec{
-			OriginReqID:  "orig-empty",
-			Exchange:     "bybit",
-			Symbol:       "SOLUSDT",
-			Side:         shared.SideOpenLong,
-			NotionalUSDT: 25.0,
-			MarginUSDT:   5.0,
-			Leverage:     5,
-			Price:        150.0,
-			Volume:       0.166,
-			ContractSize: 1.0,
-			HoldDuration: 10 * time.Second,
+			ReqID:         "empty-req-id",
+			ClientOrderID: "empty-client-id",
+			OriginReqID:   "orig-empty",
+			Exchange:      "bybit",
+			Symbol:        "SOLUSDT",
+			Side:          shared.SideOpenLong,
+			NotionalUSDT:  25.0,
+			MarginUSDT:    5.0,
+			Leverage:      5,
+			Price:         150.0,
+			Volume:        0.166,
+			ContractSize:  1.0,
+			HoldDuration:  10 * time.Second,
 		}
 		err = r.Execute(context.Background(), emptySpec)
 		require.NoError(t, err)
@@ -672,6 +713,26 @@ func TestObfuscatorRunner(t *testing.T) {
 		t.Parallel()
 		err := runner.Execute(context.Background(), nil)
 		require.Error(t, err)
+	})
+
+	t.Run("fails when ReqID is empty", func(t *testing.T) {
+		t.Parallel()
+		specMissingReqID := &obfuscator.ObfuscationSpec{
+			ReqID:         "",
+			ClientOrderID: "someclientorderid123",
+		}
+		err := runner.Execute(context.Background(), specMissingReqID)
+		require.ErrorContains(t, err, "ReqID cannot be empty")
+	})
+
+	t.Run("fails when ClientOrderID is empty", func(t *testing.T) {
+		t.Parallel()
+		specMissingCOID := &obfuscator.ObfuscationSpec{
+			ReqID:         "some-req-id",
+			ClientOrderID: "",
+		}
+		err := runner.Execute(context.Background(), specMissingCOID)
+		require.ErrorContains(t, err, "ClientOrderID cannot be empty")
 	})
 
 	t.Run("returns error when missing dependencies", func(t *testing.T) {
@@ -759,26 +820,21 @@ func TestObfuscatorJob(t *testing.T) {
 	}
 
 	cfg := fundingconfig.ObfuscatorConfig{
-		Enabled:        true,
-		PollInterval:   types.Duration(1 * time.Minute),
-		LookbackWindow: types.Duration(1 * time.Hour),
-		Exchanges: map[string]fundingconfig.ExchangeObfuscationCfg{
-			"binance": {
-				Enabled:             true,
-				SacrificeLossPct:    50.0,
-				NetPnLThresholdUSDT: 10.0,
-				MinNotionalUSD:      10.0,
-				MaxNotionalUSD:      50.0,
-				MarginUSDT:          10.0,
-				Leverage:            1,
-				MinHoldSec:          5,
-				MaxHoldSec:          10,
-				MaxDailyLossUSD:     200.0,
-			},
-		},
+		Enabled:             true,
+		PollInterval:        types.Duration(1 * time.Minute),
+		LookbackWindow:      types.Duration(1 * time.Hour),
+		SacrificeLossPct:    50.0,
+		NetPnLThresholdUSDT: 10.0,
+		MinNotionalUSD:      10.0,
+		MaxNotionalUSD:      50.0,
+		MarginUSDT:          10.0,
+		Leverage:            1,
+		MinHoldSec:          5,
+		MaxHoldSec:          10,
+		MaxDailyLossUSD:     200.0,
 	}
 
-	job, err := obfuscator.NewObfuscatorJob(cfg, pnlReader, gen, runner, clock, logger)
+	job, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", cfg, pnlReader, gen, runner, clock, logger)
 	require.NoError(t, err)
 
 	err = job.Tick(context.Background())
@@ -807,7 +863,7 @@ func TestObfuscatorJob(t *testing.T) {
 		t.Parallel()
 		disabledCfg := cfg
 		disabledCfg.Enabled = false
-		disJob, err := obfuscator.NewObfuscatorJob(disabledCfg, pnlReader, gen, runner, clock, logger)
+		disJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", disabledCfg, pnlReader, gen, runner, clock, logger)
 		require.NoError(t, err)
 		err = disJob.Start(context.Background(), nil)
 		require.NoError(t, err)
@@ -815,7 +871,7 @@ func TestObfuscatorJob(t *testing.T) {
 
 	t.Run("Start and Stop lifecycle", func(t *testing.T) {
 		t.Parallel()
-		startJob, err := obfuscator.NewObfuscatorJob(cfg, pnlReader, gen, runner, clock, logger)
+		startJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", cfg, pnlReader, gen, runner, clock, logger)
 		require.NoError(t, err)
 		err = startJob.Start(context.Background(), nil)
 		require.NoError(t, err)
@@ -827,7 +883,7 @@ func TestObfuscatorJob(t *testing.T) {
 		t.Parallel()
 		jitterCfg := cfg
 		jitterCfg.Jitter = types.Duration(10 * time.Second)
-		startJob, err := obfuscator.NewObfuscatorJob(jitterCfg, pnlReader, gen, runner, clock, logger)
+		startJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", jitterCfg, pnlReader, gen, runner, clock, logger)
 		require.NoError(t, err)
 		err = startJob.Start(context.Background(), nil)
 		require.NoError(t, err)
@@ -838,7 +894,7 @@ func TestObfuscatorJob(t *testing.T) {
 	t.Run("Tick handles PnL reader query error gracefully", func(t *testing.T) {
 		t.Parallel()
 		errReader := &mockPnLReader{err: errors.New("db query error")}
-		errJob, err := obfuscator.NewObfuscatorJob(cfg, errReader, gen, runner, clock, logger)
+		errJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", cfg, errReader, gen, runner, clock, logger)
 		require.NoError(t, err)
 		err = errJob.Tick(context.Background())
 		require.NoError(t, err)
@@ -860,19 +916,17 @@ func TestObfuscatorJob(t *testing.T) {
 				},
 			},
 		}
-		errJob, err := obfuscator.NewObfuscatorJob(cfg, oneReader, gen, errRunner, clock, logger)
+		errJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", cfg, oneReader, gen, errRunner, clock, logger)
 		require.NoError(t, err)
 		err = errJob.Tick(context.Background())
 		require.NoError(t, err)
 	})
 
-	t.Run("Tick skips disabled exchange", func(t *testing.T) {
+	t.Run("Tick skips disabled job", func(t *testing.T) {
 		t.Parallel()
 		disExchCfg := cfg
-		disExchCfg.Exchanges = map[string]fundingconfig.ExchangeObfuscationCfg{
-			"binance": {Enabled: false, Leverage: 1, SacrificeLossPct: 50.0, MaxDailyLossUSD: 200.0},
-		}
-		disExchJob, err := obfuscator.NewObfuscatorJob(disExchCfg, pnlReader, gen, runner, clock, logger)
+		disExchCfg.Enabled = false
+		disExchJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", disExchCfg, pnlReader, gen, runner, clock, logger)
 		require.NoError(t, err)
 		err = disExchJob.Tick(context.Background())
 		require.NoError(t, err)
@@ -881,18 +935,9 @@ func TestObfuscatorJob(t *testing.T) {
 	t.Run("Tick respects MaxActiveOrders", func(t *testing.T) {
 		t.Parallel()
 		maxCfg := cfg
-		maxCfg.Exchanges = map[string]fundingconfig.ExchangeObfuscationCfg{
-			"binance": {
-				Enabled:          true,
-				SacrificeLossPct: 50.0,
-				MinNotionalUSD:   10.0,
-				MaxNotionalUSD:   50.0,
-				MarginUSDT:       5.0,
-				Leverage:         1,
-				MaxActiveOrders:  1,
-				MaxDailyLossUSD:  200.0,
-			},
-		}
+		maxCfg.MaxActiveOrders = 1
+		maxCfg.MarginUSDT = 5.0
+
 		multiReader := &mockPnLReader{
 			summaries: []ordermanagerpersistence.SymbolPnLSummary{
 				{Exchange: "binance", Symbol: "BTCUSDT", FundingNetProfit: 20.0},
@@ -902,7 +947,7 @@ func TestObfuscatorJob(t *testing.T) {
 		countDisp := &mockDispatcher{}
 		countRunner, err := obfuscator.NewObfuscatorRunner(countDisp, clock, logger)
 		require.NoError(t, err)
-		maxJob, err := obfuscator.NewObfuscatorJob(maxCfg, multiReader, gen, countRunner, clock, logger)
+		maxJob, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "binance", maxCfg, multiReader, gen, countRunner, clock, logger)
 		require.NoError(t, err)
 		err = maxJob.Tick(context.Background())
 		require.NoError(t, err)
@@ -937,26 +982,21 @@ func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
 	require.NoError(t, err)
 
 	baseCfg := fundingconfig.ObfuscatorConfig{
-		Enabled:        true,
-		PollInterval:   types.Duration(time.Minute),
-		LookbackWindow: types.Duration(24 * time.Hour),
-		Exchanges: map[string]fundingconfig.ExchangeObfuscationCfg{
-			"toobit_futures": {
-				Enabled:             true,
-				NetPnLThresholdUSDT: 10.0,
-				MinNotionalUSD:      10.0,
-				MaxNotionalUSD:      500.0,
-				MarginUSDT:          50.0,
-				Leverage:            1,
-				TakeProfitPct:       0.5,
-				StopLossPct:         0.5,
-				MinHoldSec:          10,
-				MaxHoldSec:          60,
-				MaxActiveOrders:     2,
-				SacrificeLossPct:    50.0, // 50% target loss
-				MaxDailyLossUSD:     200.0,
-			},
-		},
+		Enabled:             true,
+		PollInterval:        types.Duration(time.Minute),
+		LookbackWindow:      types.Duration(24 * time.Hour),
+		NetPnLThresholdUSDT: 10.0,
+		MinNotionalUSD:      10.0,
+		MaxNotionalUSD:      500.0,
+		MarginUSDT:          50.0,
+		Leverage:            1,
+		TakeProfitPct:       0.5,
+		StopLossPct:         0.5,
+		MinHoldSec:          10,
+		MaxHoldSec:          60,
+		MaxActiveOrders:     2,
+		SacrificeLossPct:    50.0, // 50% target loss
+		MaxDailyLossUSD:     200.0,
 	}
 
 	t.Run("triggers order when remaining loss budget exists", func(t *testing.T) {
@@ -978,7 +1018,7 @@ func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
 			},
 		}
 
-		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		job, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "toobit_futures", baseCfg, reader, gen, runner, clock, logger)
 		require.NoError(t, err)
 
 		err = job.Tick(context.Background())
@@ -1011,7 +1051,7 @@ func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
 			},
 		}
 
-		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		job, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "toobit_futures", baseCfg, reader, gen, runner, clock, logger)
 		require.NoError(t, err)
 
 		err = job.Tick(context.Background())
@@ -1039,7 +1079,7 @@ func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
 			},
 		}
 
-		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		job, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "toobit_futures", baseCfg, reader, gen, runner, clock, logger)
 		require.NoError(t, err)
 
 		err = job.Tick(context.Background())
@@ -1066,12 +1106,69 @@ func TestObfuscatorJob_DynamicLossBudget(t *testing.T) {
 			},
 		}
 
-		job, err := obfuscator.NewObfuscatorJob(baseCfg, reader, gen, runner, clock, logger)
+		job, err := obfuscator.NewObfuscatorJobForAccount("test_acc", "toobit_futures", baseCfg, reader, gen, runner, clock, logger)
 		require.NoError(t, err)
 
 		err = job.Tick(context.Background())
 		require.NoError(t, err)
 
 		assert.Empty(t, disp.events, "expected no orders for profit below threshold")
+	})
+}
+
+func TestNewObfuscatorJobs_MultipleAccounts(t *testing.T) {
+	t.Parallel()
+
+	clock := &mockClock{now: time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)}
+	logger := slog.Default()
+	engine := &mockEngineProviderGetter{client: &mockExchangeClient{}}
+	gen, err := obfuscator.NewOrderGenerator(engine)
+	require.NoError(t, err)
+	disp := &mockDispatcher{}
+	runner, err := obfuscator.NewObfuscatorRunner(disp, clock, logger)
+	require.NoError(t, err)
+
+	t.Run("nil root config", func(t *testing.T) {
+		t.Parallel()
+		jobs, err := obfuscator.NewObfuscatorJobs(nil, nil, gen, runner, clock, logger)
+		require.ErrorContains(t, err, "missing required root config")
+		require.Nil(t, jobs)
+	})
+
+	t.Run("empty accounts", func(t *testing.T) {
+		t.Parallel()
+		emptyCfg := &fundingconfig.Config{
+			Accounts: map[string]*fundingconfig.AccountBotConfig{},
+		}
+		jobs, err := obfuscator.NewObfuscatorJobs(emptyCfg, nil, gen, runner, clock, logger)
+		require.NoError(t, err)
+		require.Nil(t, jobs)
+	})
+
+	t.Run("multiple accounts initialization and sorting", func(t *testing.T) {
+		t.Parallel()
+		cfg := &fundingconfig.Config{
+			Accounts: map[string]*fundingconfig.AccountBotConfig{
+				"acc_b": {
+					Account:    sysconfig.AccountConfig{ID: "acc_b", Exchange: "binance"},
+					Obfuscator: &fundingconfig.ObfuscatorConfig{Enabled: false},
+				},
+				"acc_a": {
+					Account:    sysconfig.AccountConfig{ID: "acc_a", Exchange: "binance"},
+					Obfuscator: &fundingconfig.ObfuscatorConfig{Enabled: true},
+				},
+				"acc_c": {
+					Account:    sysconfig.AccountConfig{ID: "acc_c", Exchange: "binance"},
+					Obfuscator: nil,
+				},
+			},
+		}
+		jobs, err := obfuscator.NewObfuscatorJobs(cfg, nil, gen, runner, clock, logger)
+		require.NoError(t, err)
+		require.Len(t, jobs, 2)
+		assert.Equal(t, "acc_a", jobs[0].AccountID())
+		assert.True(t, jobs[0].Enabled())
+		assert.Equal(t, "acc_b", jobs[1].AccountID())
+		assert.False(t, jobs[1].Enabled())
 	})
 }

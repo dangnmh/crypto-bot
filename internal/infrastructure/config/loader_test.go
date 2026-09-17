@@ -13,19 +13,16 @@ import (
 )
 
 func TestInitializeBase_Success(t *testing.T) {
-	t.Setenv("MEXC_API_KEY", "test-key")
-	t.Setenv("MEXC_API_SECRET", "test-secret")
+	t.Parallel()
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.example.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "wss://ws.example.com",
-						PrivateURL: "wss://ws.example.com",
-					},
+			"mexc_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://api.example.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:  "wss://ws.example.com",
+					PrivateURL: "wss://ws.example.com",
 				},
 			},
 		},
@@ -34,24 +31,22 @@ func TestInitializeBase_Success(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "test-key", cfg.ExchangeConfig["mexc"].APIKey)
-	assert.Equal(t, "test-secret", cfg.ExchangeConfig["mexc"].APISecret)
+	assert.Equal(t, "dev", cfg.Env)
+	assert.Equal(t, "info", cfg.Logging.Level)
+	assert.Equal(t, 3100, cfg.APIServer.Port)
 }
 
 func TestInitializeBase_Defaults(t *testing.T) {
-	t.Setenv("MEXC_API_KEY", "key")
-	t.Setenv("MEXC_API_SECRET", "secret")
+	t.Parallel()
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.example.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "wss://ws.example.com",
-						PrivateURL: "wss://ws.example.com",
-					},
+			"mexc_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://api.example.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:  "wss://ws.example.com",
+					PrivateURL: "wss://ws.example.com",
 				},
 			},
 		},
@@ -61,25 +56,22 @@ func TestInitializeBase_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify defaults are applied.
-	assert.Equal(t, 30, cfg.ExchangeConfig["mexc"].GetFutureEndpoint().WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 30, cfg.ExchangeConfig["mexc_futures"].WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
 func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
-	t.Setenv("MEXC_API_KEY", "key")
-	t.Setenv("MEXC_API_SECRET", "secret")
+	t.Parallel()
 
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.example.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:         "wss://ws.example.com",
-						PrivateURL:        "wss://ws.example.com",
-						MaxPairsPerWSConn: 50,
-					},
+			"mexc_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://api.example.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:         "wss://ws.example.com",
+					PrivateURL:        "wss://ws.example.com",
+					MaxPairsPerWSConn: 50,
 				},
 			},
 		},
@@ -89,70 +81,20 @@ func TestInitializeBase_NoOverrideExistingDefaults(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, 50, cfg.ExchangeConfig["mexc"].GetFutureEndpoint().WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, 50, cfg.ExchangeConfig["mexc_futures"].WebSocket.MaxPairsPerWSConn)
 	assert.Equal(t, "debug", cfg.Logging.Level)
 }
 
-func TestInitializeBase_MissingAPIKey(t *testing.T) {
-	_ = os.Unsetenv("MEXC_API_KEY")
-	t.Setenv("MEXC_API_SECRET", "secret")
-
-	cfg := &config.SystemConfig{
-		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.example.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "wss://ws.example.com",
-						PrivateURL: "wss://ws.example.com",
-					},
-				},
-			},
-		},
-	}
-
-	err := config.InitializeBase(cfg)
-	assert.Error(t, err)
-}
-
-func TestInitializeBase_MissingAPISecret(t *testing.T) {
-	t.Setenv("MEXC_API_KEY", "key")
-	_ = os.Unsetenv("MEXC_API_SECRET")
-
-	cfg := &config.SystemConfig{
-		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.example.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "wss://ws.example.com",
-						PrivateURL: "wss://ws.example.com",
-					},
-				},
-			},
-		},
-	}
-
-	err := config.InitializeBase(cfg)
-	assert.Error(t, err)
-}
-
 func TestInitializeBase_MissingBaseURL(t *testing.T) {
-	t.Setenv("MEXC_API_KEY", "key")
-	t.Setenv("MEXC_API_SECRET", "secret")
-
+	t.Parallel()
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "wss://ws.example.com",
-						PrivateURL: "wss://ws.example.com",
-					},
+			"mexc_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:  "wss://ws.example.com",
+					PrivateURL: "wss://ws.example.com",
 				},
 			},
 		},
@@ -163,19 +105,15 @@ func TestInitializeBase_MissingBaseURL(t *testing.T) {
 }
 
 func TestInitializeBase_MissingPublicURL(t *testing.T) {
-	t.Setenv("MEXC_API_KEY", "key")
-	t.Setenv("MEXC_API_SECRET", "secret")
-
+	t.Parallel()
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.example.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "",
-						PrivateURL: "wss://ws.example.com",
-					},
+			"mexc_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://api.example.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:  "",
+					PrivateURL: "wss://ws.example.com",
 				},
 			},
 		},
@@ -186,19 +124,15 @@ func TestInitializeBase_MissingPublicURL(t *testing.T) {
 }
 
 func TestInitializeBase_SeparatePublicPrivateWSURLs(t *testing.T) {
-	t.Setenv("BYBIT_API_KEY", "key")
-	t.Setenv("BYBIT_API_SECRET", "secret")
-
+	t.Parallel()
 	cfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"bybit": config.APIConfig{
-				Future: &config.RESTConfig{
-					Enable:  true,
-					BaseURL: "https://api.bybit.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:  "wss://stream.bybit.com/v5/public/linear",
-						PrivateURL: "wss://stream.bybit.com/v5/private",
-					},
+			"bybit_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://api.bybit.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:  "wss://stream.bybit.com/v5/public/linear",
+					PrivateURL: "wss://stream.bybit.com/v5/private",
 				},
 			},
 		},
@@ -207,9 +141,9 @@ func TestInitializeBase_SeparatePublicPrivateWSURLs(t *testing.T) {
 	err := config.InitializeBase(cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "wss://stream.bybit.com/v5/public/linear", cfg.ExchangeConfig["bybit"].GetFutureEndpoint().WebSocket.PublicEndpoint())
-	assert.Equal(t, "wss://stream.bybit.com/v5/private", cfg.ExchangeConfig["bybit"].GetFutureEndpoint().WebSocket.PrivateEndpoint())
-	assert.Equal(t, 30, cfg.ExchangeConfig["bybit"].GetFutureEndpoint().WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, "wss://stream.bybit.com/v5/public/linear", cfg.ExchangeConfig["bybit_futures"].WebSocket.PublicEndpoint())
+	assert.Equal(t, "wss://stream.bybit.com/v5/private", cfg.ExchangeConfig["bybit_futures"].WebSocket.PrivateEndpoint())
+	assert.Equal(t, 30, cfg.ExchangeConfig["bybit_futures"].WebSocket.MaxPairsPerWSConn)
 }
 
 func TestEndpointConfig_TradeModeAndTradeURL(t *testing.T) {
@@ -343,49 +277,49 @@ func TestValidateExchangeConfig_TradeModeBybitAndBinance(t *testing.T) {
 	}{
 		{
 			name:      "bybit ws mode with tradeURL is valid",
-			exchange:  "bybit",
+			exchange:  "bybit_futures",
 			tradeMode: "ws",
 			tradeURL:  "wss://stream.bybit.com/v5/trade",
 			wantError: false,
 		},
 		{
 			name:      "bybit ws mode without tradeURL fails validation",
-			exchange:  "bybit",
+			exchange:  "bybit_futures",
 			tradeMode: "ws",
 			tradeURL:  "",
 			wantError: true,
 		},
 		{
 			name:      "bybit http mode without tradeURL is valid",
-			exchange:  "bybit",
+			exchange:  "bybit_futures",
 			tradeMode: "http",
 			tradeURL:  "",
 			wantError: false,
 		},
 		{
 			name:      "binance ws mode with tradeURL is valid",
-			exchange:  "binance",
+			exchange:  "binance_futures",
 			tradeMode: "ws",
 			tradeURL:  "wss://ws-fapi.binance.com/ws-fapi/v1",
 			wantError: false,
 		},
 		{
 			name:      "binance ws mode without tradeURL fails validation",
-			exchange:  "binance",
+			exchange:  "binance_futures",
 			tradeMode: "ws",
 			tradeURL:  "",
 			wantError: true,
 		},
 		{
 			name:      "binance http mode without tradeURL is valid",
-			exchange:  "binance",
+			exchange:  "binance_futures",
 			tradeMode: "http",
 			tradeURL:  "",
 			wantError: false,
 		},
 		{
 			name:      "binance with invalid tradeMode fails validation",
-			exchange:  "binance",
+			exchange:  "binance_futures",
 			tradeMode: "invalid_mode",
 			tradeURL:  "wss://ws-fapi.binance.com/ws-fapi/v1",
 			wantError: true,
@@ -396,18 +330,15 @@ func TestValidateExchangeConfig_TradeModeBybitAndBinance(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := config.ExchangeConfig{
-				tt.exchange: config.APIConfig{
-					APIKey:    "test-key",
-					APISecret: "test-secret",
-					Future: &config.RESTConfig{
-						Enable:    true,
-						BaseURL:   "https://api.example.com",
-						TradeMode: tt.tradeMode,
-						WebSocket: config.WebSocketConfig{
-							PublicURL:  "wss://ws.example.com",
-							PrivateURL: "wss://ws.example.com",
-							TradeURL:   tt.tradeURL,
-						},
+				tt.exchange: config.EndpointConfig{
+					Enable:    true,
+					BaseURL:   "https://api.example.com",
+					TradeMode: tt.tradeMode,
+					TradeURL:  tt.tradeURL,
+					WebSocket: config.WebSocketConfig{
+						PublicURL:  "wss://ws.example.com",
+						PrivateURL: "wss://ws.example.com",
+						TradeURL:   tt.tradeURL,
 					},
 				},
 			}
@@ -420,4 +351,133 @@ func TestValidateExchangeConfig_TradeModeBybitAndBinance(t *testing.T) {
 			}
 		})
 	}
+}
+
+//nolint:paralleltest,gosec // mock test keys mutate process environment with t.Setenv
+func TestLoadAccountCredentials(t *testing.T) {
+	t.Setenv("ENV_VAR_MOCK_1", "mexc-key-123")
+	t.Setenv("ENV_VAR_MOCK_2", "mexc-secret-456")
+	t.Setenv("ENV_VAR_MOCK_3", "okx-pass-789")
+
+	t.Run("successful credential load without passphrase", func(t *testing.T) {
+		acc := &config.AccountConfig{
+			ID:       "mexc_main",
+			Exchange: "mexc_futures",
+			Enabled:  true,
+			Env: config.AccountEnvMapping{
+				APIKey:    "ENV_VAR_MOCK_1",
+				APISecret: "ENV_VAR_MOCK_2",
+			},
+		}
+		err := config.LoadAccountCredentials(acc)
+		require.NoError(t, err)
+		assert.Equal(t, "mexc-key-123", acc.APIKey)
+		assert.Equal(t, "mexc-secret-456", acc.APISecret)
+	})
+
+	t.Run("successful credential load with passphrase", func(t *testing.T) {
+		acc := &config.AccountConfig{
+			ID:       "okx_sub1",
+			Exchange: "okx_futures",
+			Enabled:  true,
+			Env: config.AccountEnvMapping{
+				APIKey:     "ENV_VAR_MOCK_1",
+				APISecret:  "ENV_VAR_MOCK_2",
+				Passphrase: "ENV_VAR_MOCK_3",
+			},
+		}
+		err := config.LoadAccountCredentials(acc)
+		require.NoError(t, err)
+		assert.Equal(t, "okx-pass-789", acc.APIPassphrase)
+	})
+
+	t.Run("fails when passphrase missing for exchange requiring it", func(t *testing.T) {
+		acc := &config.AccountConfig{
+			ID:       "okx_sub2",
+			Exchange: "okx_futures",
+			Enabled:  true,
+			Env: config.AccountEnvMapping{
+				APIKey:    "ENV_VAR_MOCK_1",
+				APISecret: "ENV_VAR_MOCK_2",
+			},
+		}
+		err := config.LoadAccountCredentials(acc)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "requires passphrase")
+	})
+
+	t.Run("fails when mapped env variable is unset", func(t *testing.T) {
+		acc := &config.AccountConfig{
+			ID:       "mexc_missing",
+			Exchange: "mexc_futures",
+			Enabled:  true,
+			Env: config.AccountEnvMapping{
+				APIKey:    "NON_EXISTENT_KEY",
+				APISecret: "ENV_VAR_MOCK_2",
+			},
+		}
+		err := config.LoadAccountCredentials(acc)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "NON_EXISTENT_KEY")
+	})
+
+	t.Run("skips disabled account", func(t *testing.T) {
+		acc := &config.AccountConfig{
+			ID:       "mexc_disabled",
+			Exchange: "mexc_futures",
+			Enabled:  false,
+			Env: config.AccountEnvMapping{
+				APIKey:    "NON_EXISTENT_KEY",
+				APISecret: "NON_EXISTENT_SECRET",
+			},
+		}
+		err := config.LoadAccountCredentials(acc)
+		require.NoError(t, err)
+		assert.Empty(t, acc.APIKey)
+	})
+}
+
+func TestLoadAccountsManifest(t *testing.T) {
+	t.Setenv("ENV_ACC1_KEY", "key1")
+	t.Setenv("ENV_ACC1_SECRET", "secret1")
+	t.Setenv("ENV_ACC2_KEY", "key2")
+	t.Setenv("ENV_ACC2_SECRET", "secret2")
+
+	dir := t.TempDir()
+	manifestPath := dir + "/accounts.jsonc"
+	content := `{
+		"accounts": [
+			{
+				"id": "acc_01",
+				"exchange": "mexc_futures",
+				"enabled": true,
+				"outboundIP": "172.16.0.10",
+				"env": {
+					"apiKey": "ENV_ACC1_KEY",
+					"apiSecret": "ENV_ACC1_SECRET"
+				}
+			},
+			{
+				"id": "acc_02",
+				"exchange": "bybit_futures",
+				"enabled": true,
+				"outboundIP": "172.16.0.11",
+				"env": {
+					"apiKey": "ENV_ACC2_KEY",
+					"apiSecret": "ENV_ACC2_SECRET"
+				}
+			}
+		]
+	}`
+	require.NoError(t, os.WriteFile(manifestPath, []byte(content), 0o600))
+
+	manifest, err := config.LoadAccountsManifest(manifestPath)
+	require.NoError(t, err)
+	require.Len(t, manifest.Accounts, 2)
+	assert.Equal(t, "acc_01", manifest.Accounts[0].ID)
+	assert.Equal(t, "key1", manifest.Accounts[0].APIKey)
+	assert.Equal(t, "172.16.0.10", manifest.Accounts[0].OutboundIP)
+	assert.Equal(t, "acc_02", manifest.Accounts[1].ID)
+	assert.Equal(t, "key2", manifest.Accounts[1].APIKey)
+	assert.Equal(t, "172.16.0.11", manifest.Accounts[1].OutboundIP)
 }

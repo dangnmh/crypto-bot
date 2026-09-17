@@ -203,14 +203,10 @@ func TestDefaultProviderFactories_SpotFuturesEnabled(t *testing.T) {
 
 	sysCfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Spot:   &config.RESTConfig{Enable: true, BaseURL: "https://api.mexc.com"},
-				Future: &config.RESTConfig{Enable: false, BaseURL: "https://contract.mexc.com"},
-			},
-			"toobit": config.APIConfig{
-				Spot:   &config.RESTConfig{Enable: false, BaseURL: "https://api.toobit.com"},
-				Future: &config.RESTConfig{Enable: true, BaseURL: "https://api.toobit.com"},
-			},
+			"mexc_spot":      config.EndpointConfig{Enable: true, BaseURL: "https://api.mexc.com"},
+			"mexc_futures":   config.EndpointConfig{Enable: false, BaseURL: "https://contract.mexc.com"},
+			"toobit_spot":    config.EndpointConfig{Enable: false, BaseURL: "https://api.toobit.com"},
+			"toobit_futures": config.EndpointConfig{Enable: true, BaseURL: "https://api.toobit.com"},
 		},
 	}
 
@@ -236,24 +232,22 @@ func TestDefaultProviderFactories_BothSpotAndFuturesEnabled(t *testing.T) {
 
 	sysCfg := &config.SystemConfig{
 		ExchangeConfig: config.ExchangeConfig{
-			"mexc": config.APIConfig{
-				Spot: &config.EndpointConfig{
-					Enable:  true,
-					BaseURL: "https://api.mexc.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:         "wss://wbs-api.mexc.com/ws",
-						PrivateURL:        "wss://wbs-api.mexc.com/ws",
-						MaxPairsPerWSConn: 30,
-					},
+			"mexc_spot": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://api.mexc.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:         "wss://wbs-api.mexc.com/ws",
+					PrivateURL:        "wss://wbs-api.mexc.com/ws",
+					MaxPairsPerWSConn: 30,
 				},
-				Future: &config.EndpointConfig{
-					Enable:  true,
-					BaseURL: "https://contract.mexc.com",
-					WebSocket: config.WebSocketConfig{
-						PublicURL:         "wss://contract.mexc.com/edge",
-						PrivateURL:        "wss://contract.mexc.com/edge",
-						MaxPairsPerWSConn: 30,
-					},
+			},
+			"mexc_futures": config.EndpointConfig{
+				Enable:  true,
+				BaseURL: "https://contract.mexc.com",
+				WebSocket: config.WebSocketConfig{
+					PublicURL:         "wss://contract.mexc.com/edge",
+					PrivateURL:        "wss://contract.mexc.com/edge",
+					MaxPairsPerWSConn: 30,
 				},
 			},
 		},

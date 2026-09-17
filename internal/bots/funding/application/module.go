@@ -64,11 +64,23 @@ func ProvideFundingBot(
 	orderMgr *futures.OrderManager,
 	statsReporter *StatsReportJob,
 	priceTracker *PriceTrackJob,
-	obfuscatorJob *obfuscator.ObfuscatorJob,
-	dilutionJob *dilution.DilutionJob,
+	obfuscatorJobs []*obfuscator.ObfuscatorJob,
+	dilutionJobs []*dilution.DilutionJob,
 	log *slog.Logger,
 ) infraapp.Bot {
-	bgStrats := []strategy.BackgroundStrategy{reversionStrategy, statsReporter, priceTracker, obfuscatorJob, dilutionJob}
+	bgStrats := []strategy.BackgroundStrategy{reversionStrategy, statsReporter, priceTracker}
+
+	for _, job := range obfuscatorJobs {
+		if job != nil && job.Enabled() {
+			bgStrats = append(bgStrats, job)
+		}
+	}
+	for _, job := range dilutionJobs {
+		if job != nil && job.Enabled() {
+			bgStrats = append(bgStrats, job)
+		}
+	}
+
 	return NewFundingBot(
 		cfg, sysCfg, engine, n,
 		bgStrats,

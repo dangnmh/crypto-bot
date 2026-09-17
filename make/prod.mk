@@ -146,8 +146,12 @@ apply-bot-configs: ## Hot-reload configs for a specific bot (Usage: make apply-b
 		else echo "configs/$$BASE_TYPE/prod"; fi; \
 	fi); \
 	echo "==> Applying ConfigMap $(bot)-configs to server [$(server)] from $$DIR (Kubeconfig: $(ACTIVE_KUBECONFIG))..."; \
+	FILES_ARGS=""; \
+	for f in $$(cd "$$DIR" && find . -name "*.jsonc" | sed 's|^\./||'); do \
+		FILES_ARGS="$$FILES_ARGS --from-file=$$f=$$DIR/$$f"; \
+	done; \
 	$(KCTL) create configmap $(bot)-configs \
-		--from-file="$$DIR" \
+		$$FILES_ARGS \
 		-n default -o yaml --dry-run=client | $(KCTL) apply -f -
 	$(KCTL) rollout restart deployment/$(bot) -n default
 
@@ -155,14 +159,12 @@ apply-bot-configs: ## Hot-reload configs for a specific bot (Usage: make apply-b
 apply-fd-configs: ## Hot-reload Funding Bot configs to K8s (Usage: make apply-fd-configs [server=sg] [dir=PATH])
 	@CFG_DIR=$$(if [ -n "$(dir)" ]; then echo "$(dir)"; else echo "$(FD_CONFIG_DIR)"; fi); \
 	echo "==> Applying Funding Bot configs to server [$(server)] from $$CFG_DIR (Kubeconfig: $(ACTIVE_KUBECONFIG))..."; \
+	FILES_ARGS=""; \
+	for f in $$(cd "$$CFG_DIR" && find . -name "*.jsonc" | sed 's|^\./||'); do \
+		FILES_ARGS="$$FILES_ARGS --from-file=$$f=$$CFG_DIR/$$f"; \
+	done; \
 	$(KCTL) create configmap funding-configs \
-		--from-file="$$CFG_DIR/system.jsonc" \
-		--from-file="$$CFG_DIR/exchange.jsonc" \
-		--from-file="$$CFG_DIR/funding.jsonc" \
-		--from-file="$$CFG_DIR/blacklist.jsonc" \
-		--from-file="$$CFG_DIR/reversion.jsonc" \
-		--from-file="$$CFG_DIR/obfuscator.jsonc" \
-		--from-file="$$CFG_DIR/dilution.jsonc" \
+		$$FILES_ARGS \
 		-n default -o yaml --dry-run=client | $(KCTL) apply -f -
 	$(KCTL) rollout restart deployment -l bot_type=funding -n default
 

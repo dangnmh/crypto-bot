@@ -2,6 +2,7 @@ package bootstrap_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,13 +22,10 @@ func TestModuleDependencyGraph(t *testing.T) {
 	t.Parallel()
 
 	err := fx.ValidateApp(bootstrap.Module(bootstrap.ConfigPaths{
-		System:     "system.jsonc",
-		Exchange:   "exchange.jsonc",
-		Bot:        "funding.jsonc",
-		Blacklist:  "blacklist.jsonc",
-		Reversion:  "reversion.jsonc",
-		Obfuscator: "obfuscator.jsonc",
-		Dilution:   "dilution.jsonc",
+		Accounts:  "accounts.jsonc",
+		System:    "system.jsonc",
+		Exchange:  "exchange.jsonc",
+		Blacklist: "blacklist.jsonc",
 	}))
 	require.NoError(t, err)
 }
@@ -45,15 +43,11 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 		"notifier": {"enabled": false}
 	}`), 0o600))
 	require.NoError(t, os.WriteFile(exchangePath, []byte(`{
-		"exchange": {
-			"mexc": {
-				"enable": true,
-				"future": {
-					"enable": true,
-					"baseURL": "https://example.test",
-					"websocket": {"publicURL": "wss://example.test/ws", "privateURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
-				}
-			}
+		"mexc_futures": {
+			"enable": true,
+			"accountType": "futures",
+			"baseURL": "https://example.test",
+			"websocket": {"publicURL": "wss://example.test/ws", "privateURL": "wss://example.test/ws", "maxPairsPerWSConn": 2}
 		}
 	}`), 0o600))
 	require.NoError(t, os.WriteFile(fundingPath, []byte(`[
@@ -63,10 +57,36 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	reversionPath := filepath.Join(dir, "reversion.jsonc")
 	obfuscatorPath := filepath.Join(dir, "obfuscator.jsonc")
 	dilutionPath := filepath.Join(dir, "dilution.jsonc")
+	accountsPath := filepath.Join(dir, "accounts.jsonc")
 	require.NoError(t, os.WriteFile(blacklistPath, []byte("{}"), 0o600))
-	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true, "scanners": {"configured": true}}`), 0o600))
+	require.NoError(t, os.WriteFile(reversionPath, []byte(`{"enabled": true}`), 0o600))
 	require.NoError(t, os.WriteFile(obfuscatorPath, []byte(`{"enabled": false, "pollInterval": "1m", "lookbackWindow": "24h"}`), 0o600))
 	require.NoError(t, os.WriteFile(dilutionPath, []byte(`{"enabled": false, "pollInterval": "5s"}`), 0o600))
+
+	accountsContent := fmt.Sprintf(`{
+		"accounts": [
+			{
+				"id": "mexc_main",
+				"exchange": "mexc_futures",
+				"enabled": true,
+				"scanners": {
+					"configured": true,
+					"schedule": true
+				},
+				"env": {
+					"apiKey": "MEXC_API_KEY",
+					"apiSecret": "MEXC_API_SECRET"
+				},
+				"configs": {
+					"reversion": %q,
+					"obfuscator": %q,
+					"dilution": %q,
+					"funding": %q
+				}
+			}
+		]
+	}`, reversionPath, obfuscatorPath, dilutionPath, fundingPath)
+	require.NoError(t, os.WriteFile(accountsPath, []byte(accountsContent), 0o600))
 
 	var (
 		log        *slog.Logger
@@ -80,13 +100,11 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 
 	app := fx.New(
 		bootstrap.Module(bootstrap.ConfigPaths{
-			System:     systemPath,
-			Exchange:   exchangePath,
-			Bot:        fundingPath,
-			Blacklist:  blacklistPath,
-			Reversion:  reversionPath,
-			Obfuscator: obfuscatorPath,
-			Dilution:   dilutionPath,
+			Accounts:  accountsPath,
+			System:    systemPath,
+			Exchange:  exchangePath,
+			Blacklist: blacklistPath,
+			Reversion: reversionPath,
 		}),
 		fx.Populate(&log, &systemCfg, &fundingCfg, &httpClient, &engine, &bot, &n),
 		fx.NopLogger,
@@ -102,5 +120,5 @@ func TestModuleProvidesRuntimeDependencies(t *testing.T) {
 	require.NotNil(t, bot)
 	require.NotNil(t, n)
 	require.True(t, systemCfg.DryRun)
-	require.Len(t, fundingCfg.Symbols, 1)
+	require.Len(t, fundingCfg.AllSymbols(), 1)
 }

@@ -10,82 +10,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAPIConfigSpotFutureToggle(t *testing.T) {
+func TestEndpointConfig_DirectMapping(t *testing.T) {
 	t.Parallel()
 	rawJSON := `{
 		"enable": true,
-		"spot": {
-			"enable": true,
-			"baseURL": "https://api.mexc.com",
-			"websocket": {
-				"publicURL": "wss://wbs-api.mexc.com/ws",
-				"privateURL": "wss://wbs-api.mexc.com/ws",
-				"maxPairsPerWSConn": 30
-			}
-		},
-		"future": {
-			"enable": false,
-			"baseURL": "https://contract.mexc.com",
-			"websocket": {
-				"publicURL": "wss://contract.mexc.com/edge",
-				"privateURL": "wss://contract.mexc.com/edge",
-				"maxPairsPerWSConn": 30
-			}
+		"baseURL": "https://contract.mexc.com",
+		"websocket": {
+			"publicURL": "wss://contract.mexc.com/edge",
+			"privateURL": "wss://contract.mexc.com/edge",
+			"maxPairsPerWSConn": 30
 		}
 	}`
 
-	var apiCfg config.APIConfig
-	err := json.Unmarshal([]byte(rawJSON), &apiCfg)
+	var ep config.EndpointConfig
+	err := json.Unmarshal([]byte(rawJSON), &ep)
 	require.NoError(t, err)
 
-	assert.True(t, apiCfg.IsEnabled())
-	assert.True(t, apiCfg.Spot.Enable)
-	assert.Equal(t, "https://api.mexc.com", apiCfg.Spot.BaseURL)
-	assert.False(t, apiCfg.Future.Enable)
-	assert.Equal(t, "https://contract.mexc.com", apiCfg.Future.BaseURL)
-	assert.Equal(t, "wss://wbs-api.mexc.com/ws", apiCfg.Spot.WebSocket.PublicURL)
-	assert.Equal(t, "wss://wbs-api.mexc.com/ws", apiCfg.Spot.WebSocket.PrivateURL)
-	assert.Equal(t, "wss://contract.mexc.com/edge", apiCfg.Future.WebSocket.PublicURL)
-	assert.Equal(t, "wss://contract.mexc.com/edge", apiCfg.Future.WebSocket.PrivateURL)
+	assert.True(t, ep.IsEnabled())
+	assert.Equal(t, "https://contract.mexc.com", ep.BaseURL)
+	assert.Equal(t, "wss://contract.mexc.com/edge", ep.WebSocket.PublicURL)
+	assert.Equal(t, "wss://contract.mexc.com/edge", ep.WebSocket.PrivateURL)
+	assert.Equal(t, 30, ep.WebSocket.MaxPairsPerWSConn)
+	assert.Equal(t, "http", ep.GetTradeMode())
 }
 
-func TestAPIConfig_GetSpotAndFutureEndpoints(t *testing.T) {
+func TestExchangeConfig_ExactNameMap(t *testing.T) {
 	t.Parallel()
 	rawJSON := `{
-		"enable": true,
-		"spot": {
+		"mexc_futures": {
 			"enable": true,
 			"baseURL": "https://api.mexc.com",
-			"websocket": {
-				"publicURL": "wss://wbs-api.mexc.com/ws",
-				"privateURL": "wss://wbs-api.mexc.com/ws",
-				"maxPairsPerWSConn": 30
-			}
-		},
-		"future": {
-			"enable": false,
-			"baseURL": "https://contract.mexc.com",
 			"websocket": {
 				"publicURL": "wss://contract.mexc.com/edge",
 				"privateURL": "wss://contract.mexc.com/edge",
 				"maxPairsPerWSConn": 30
 			}
+		},
+		"bybit_futures": {
+			"enable": false,
+			"baseURL": "https://api.bybit.com",
+			"accountType": "unified",
+			"websocket": {
+				"publicURL": "wss://stream.bybit.com/v5/public/linear",
+				"privateURL": "wss://stream.bybit.com/v5/private"
+			}
 		}
 	}`
 
-	var apiCfg config.APIConfig
-	err := json.Unmarshal([]byte(rawJSON), &apiCfg)
+	var exchMap config.ExchangeConfig
+	err := json.Unmarshal([]byte(rawJSON), &exchMap)
 	require.NoError(t, err)
 
-	spotEP := apiCfg.GetSpotEndpoint()
-	assert.True(t, spotEP.Enable)
-	assert.Equal(t, "https://api.mexc.com", spotEP.BaseURL)
-	assert.Equal(t, "wss://wbs-api.mexc.com/ws", spotEP.WebSocket.PublicURL)
-	assert.Equal(t, "wss://wbs-api.mexc.com/ws", spotEP.WebSocket.PrivateURL)
+	require.Contains(t, exchMap, "mexc_futures")
+	assert.True(t, exchMap["mexc_futures"].IsEnabled())
+	assert.Equal(t, "https://api.mexc.com", exchMap["mexc_futures"].BaseURL)
 
-	futEP := apiCfg.GetFutureEndpoint()
-	assert.False(t, futEP.Enable)
-	assert.Equal(t, "https://contract.mexc.com", futEP.BaseURL)
-	assert.Equal(t, "wss://contract.mexc.com/edge", futEP.WebSocket.PublicURL)
-	assert.Equal(t, "wss://contract.mexc.com/edge", futEP.WebSocket.PrivateURL)
+	require.Contains(t, exchMap, "bybit_futures")
+	assert.False(t, exchMap["bybit_futures"].IsEnabled())
+	assert.Equal(t, "unified", exchMap["bybit_futures"].AccountType)
 }

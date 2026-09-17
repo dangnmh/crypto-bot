@@ -1,4 +1,4 @@
-// Package toolconfig provides configuration loading with Bitwarden fallback for CLI tools.
+// Package toolconfig provides configuration loading for CLI tools.
 package toolconfig
 
 import (
@@ -27,7 +27,7 @@ func Load(configPath string) (*sysconfig.SystemConfig, error) {
 	cfg.ExchangeConfig = exchCfg.ExchangeConfig
 
 	// Use standard main-app config initialization, which dynamically loads env
-	// variables, handles Bitwarden fallback for all exchanges, and performs validations.
+	// variables and performs validations.
 	if err := sysconfig.InitializeBase(cfg); err != nil {
 		return nil, fmt.Errorf("initialize base config: %w", err)
 	}

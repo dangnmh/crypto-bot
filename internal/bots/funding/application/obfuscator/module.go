@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	fundingconfig "crypto-bot/internal/bots/funding/config"
 	shared "crypto-bot/internal/domain"
 	infraapp "crypto-bot/internal/infrastructure/app"
 	"crypto-bot/internal/trading/ordermanager/futures"
@@ -21,7 +20,7 @@ var Module = fx.Options(
 		ProvideOrderGenerator,
 		ProvideObfuscatorDispatcher,
 		ProvideObfuscatorRunner,
-		ProvideObfuscatorJob,
+		NewObfuscatorJobs,
 	),
 	fx.Invoke(
 		RegisterObfuscatorCompletionCallback,
@@ -52,32 +51,8 @@ func ProvideObfuscatorRunner(
 
 type noopPnLReader struct{}
 
-func (noopPnLReader) GetSymbolPnLSummaries(ctx context.Context, exch string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error) {
+func (noopPnLReader) GetAccountSymbolPnLSummaries(ctx context.Context, accountID, exch string, since time.Time) ([]ordermanagerpersistence.SymbolPnLSummary, error) {
 	return nil, nil
-}
-
-// ProvideObfuscatorJob provides an ObfuscatorJob instance.
-func ProvideObfuscatorJob(
-	cfg *fundingconfig.Config,
-	repo futures.TradeRepository,
-	gen *OrderGenerator,
-	runner *ObfuscatorRunner,
-	clock shared.Clock,
-	log *slog.Logger,
-) (*ObfuscatorJob, error) {
-	var pnlReader PnLReportReader
-	if reader, ok := repo.(PnLReportReader); ok {
-		pnlReader = reader
-	} else {
-		pnlReader = noopPnLReader{}
-	}
-
-	obfCfg := fundingconfig.ObfuscatorConfig{}
-	if cfg != nil && cfg.Obfuscator != nil {
-		obfCfg = *cfg.Obfuscator
-	}
-
-	return NewObfuscatorJob(obfCfg, pnlReader, gen, runner, clock, log)
 }
 
 // ObfuscatorCallbackParams contains dependencies for registering completion callback.

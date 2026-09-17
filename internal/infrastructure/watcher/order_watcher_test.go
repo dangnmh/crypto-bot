@@ -125,3 +125,59 @@ func TestOrderWatcher_OnTradeUpdate_Callback(t *testing.T) {
 		assert.Fail(t, "timeout waiting for trade callback")
 	}
 }
+
+func TestAccountOrderWatcher_AccountPositionAndExchangeTradeScoping(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	bus := eventbus.New(logger)
+	defer func() { _ = bus.Close() }()
+
+	exchangeWatcher := watcher.NewOrderWatcher(bus, "mexc_futures", logger)
+	mainAccountWatcher := watcher.NewAccountOrderWatcher(bus, "mexc_futures", "mexc_main", logger)
+	subAccountWatcher := watcher.NewAccountOrderWatcher(bus, "mexc_futures", "mexc_sub", logger)
+
+	posCalledMain := make(chan exchange.PersonalPositionUpdate, 1)
+	tradeCalledMain := make(chan []domain.PublicTrade, 1)
+
+	mainAccountWatcher.OnPositionUpdate(context.Background(), "AVA_USDT", 2*time.Second, func(pos exchange.PersonalPositionUpdate) {
+		posCalledMain <- pos
+	})
+	mainAccountWatcher.OnTradeUpdate(context.Background(), "AVA_USDT", 2*time.Second, func(trades []domain.PublicTrade) {
+		tradeCalledMain <- trades
+	})
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Sub account position update should NOT trigger main account listener
+	subAccountWatcher.PublishPosition(exchange.PersonalPositionUpdate{
+		Symbol:          "AVA_USDT",
+		HoldVolContract: 99,
+	})
+
+	// Main account position update SHOULD trigger main account listener
+	mainAccountWatcher.PublishPosition(exchange.PersonalPositionUpdate{
+		Symbol:          "AVA_USDT",
+		HoldVolContract: 5,
+	})
+
+	// Exchange watcher publishes public trades -> Main account listener SHOULD receive them!
+	exchangeWatcher.PublishTrades("AVA_USDT", []domain.PublicTrade{
+		{Symbol: "AVA_USDT", Price: 1.23, Volume: 10},
+	})
+
+	select {
+	case pos := <-posCalledMain:
+		assert.Equal(t, 5.0, pos.HoldVolContract)
+	case <-time.After(2 * time.Second):
+		assert.Fail(t, "timeout waiting for account position callback")
+	}
+
+	select {
+	case trades := <-tradeCalledMain:
+		assert.Len(t, trades, 1)
+		assert.Equal(t, 1.23, trades[0].Price)
+	case <-time.After(2 * time.Second):
+		assert.Fail(t, "timeout waiting for exchange public trade callback on account watcher")
+	}
+}

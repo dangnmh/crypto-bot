@@ -1,0 +1,11 @@
+{
+  "takeProfitPct": 1.5,
+  "stopLossPct": 2,
+  "bufferTime": "-20ms",
+  "postSettleTimeout": "6s",
+  "minVol24USD": 500000,
+  "minFundingRate": 0.3,
+  "leverage": 6,
+  "marginUSD": 5,
+  "maxCandidateTrade": 1
+}

@@ -43,23 +43,29 @@ func (c WebSocketConfig) TradeEndpoint() string {
 	return c.TradeURL
 }
 
-type APIEndpointConfig struct {
-	BaseURL string `json:"baseURL"`
-}
-
 const (
 	TradeModeHTTP    = "http"
 	TradeModeWS      = "ws"
 	DefaultTradeMode = TradeModeHTTP
 )
 
+// EndpointConfig defines connection parameters for an exchange endpoint.
 type EndpointConfig struct {
-	Enable    bool              `json:"enable"`
-	BaseURL   string            `json:"baseURL"`
-	API       APIEndpointConfig `json:"api"`
-	WebSocket WebSocketConfig   `json:"websocket"`
-	TradeMode string            `json:"tradeMode,omitempty" validate:"oneof=http ws"`
-	TradeURL  string            `json:"tradeURL,omitempty" validate:"required_if=TradeMode ws"`
+	Enable      bool            `json:"enable"`
+	BaseURL     string          `json:"baseURL"`
+	AccountType string          `json:"accountType,omitempty"`
+	TradeMode   string          `json:"tradeMode,omitempty" validate:"omitempty,oneof=http ws"`
+	TradeURL    string          `json:"tradeURL,omitempty" validate:"required_if=TradeMode ws"`
+	WebSocket   WebSocketConfig `json:"websocket"`
+
+	// Resolved credentials populated at runtime from environment variables or account configs
+	APIKey        string `json:"-"`
+	APISecret     string `json:"-"`
+	APIPassphrase string `json:"-"`
+}
+
+func (e EndpointConfig) IsEnabled() bool {
+	return e.Enable
 }
 
 func (e EndpointConfig) GetTradeMode() string {
@@ -76,6 +82,14 @@ func (e EndpointConfig) TradeEndpoint() string {
 	return e.WebSocket.TradeURL
 }
 
+func (e EndpointConfig) GetSpotEndpoint() EndpointConfig {
+	return e
+}
+
+func (e EndpointConfig) GetFutureEndpoint() EndpointConfig {
+	return e
+}
+
 func (e *EndpointConfig) UnmarshalJSON(data []byte) error {
 	type Alias EndpointConfig
 	aux := &struct {
@@ -85,9 +99,6 @@ func (e *EndpointConfig) UnmarshalJSON(data []byte) error {
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
-	}
-	if e.BaseURL == "" && e.API.BaseURL != "" {
-		e.BaseURL = e.API.BaseURL
 	}
 	if e.TradeMode == "" {
 		e.TradeMode = DefaultTradeMode
@@ -101,35 +112,9 @@ func (e *EndpointConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// APIConfig is an alias for EndpointConfig representing exact-name endpoint configs.
+type APIConfig = EndpointConfig
 type RESTConfig = EndpointConfig
-
-// APIConfig holds API connection parameters.
-type APIConfig struct {
-	Spot          *EndpointConfig `json:"spot,omitempty"`
-	Future        *EndpointConfig `json:"future,omitempty"`
-	APIKey        string          `json:"-"`
-	APISecret     string          `json:"-"`
-	APIPassphrase string          `json:"-"`
-	AccountType   string          `json:"accountType,omitempty"`
-}
-
-func (a APIConfig) IsEnabled() bool {
-	return (a.Spot != nil && a.Spot.Enable) || (a.Future != nil && a.Future.Enable)
-}
-
-func (a APIConfig) GetSpotEndpoint() EndpointConfig {
-	if a.Spot != nil {
-		return *a.Spot
-	}
-	return EndpointConfig{}
-}
-
-func (a APIConfig) GetFutureEndpoint() EndpointConfig {
-	if a.Future != nil {
-		return *a.Future
-	}
-	return EndpointConfig{}
-}
 
 const (
 	BybitAccountTypeStandard = "standard"
@@ -176,9 +161,19 @@ type SystemConfig struct {
 	Env            string          `json:"env"`
 	Logging        LoggingConfig   `json:"logging"`
 	DryRun         bool            `json:"dryRun"`
-	ExchangeConfig ExchangeConfig  `json:"exchange"`
+	ExchangeConfig ExchangeConfig  `json:"-"`
 	NotiConfig     NotiConfig      `json:"notifier"`
 	APIServer      APIServerConfig `json:"api_server"`
+}
+
+// HasEnabledExchange checks if at least one exchange configuration is enabled.
+func (c *SystemConfig) HasEnabledExchange() bool {
+	for name := range c.ExchangeConfig {
+		if c.ExchangeConfig[name].IsEnabled() {
+			return true
+		}
+	}
+	return false
 }
 
 const (
@@ -205,7 +200,7 @@ const (
 
 type ExchangeSpec struct {
 	RequiresPassphrase bool
-	Validate           func(cfg APIConfig) error
+	Validate           func(cfg EndpointConfig) error
 }
 
 var ExchangeSpecs = map[string]ExchangeSpec{
@@ -228,7 +223,7 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	PionexName:      {},
 	HotcoinName:     {},
 	BybitName: {
-		Validate: func(cfg APIConfig) error {
+		Validate: func(cfg EndpointConfig) error {
 			if !IsSupportedBybitAccountType(cfg.AccountType) {
 				return fmt.Errorf("unsupported account type: %s", cfg.AccountType)
 			}
@@ -237,7 +232,20 @@ var ExchangeSpecs = map[string]ExchangeSpec{
 	},
 }
 
-// SupportedExchanges contains the list of all supported exchange identifiers.
+// NormalizeExchangeName extracts the base exchange identifier (e.g. "mexc_futures" -> "mexc").
+func NormalizeExchangeName(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.TrimSuffix(strings.TrimSuffix(s, "_futures"), "_spot")
+	return s
+}
+
+// GetExchangeSpec returns the ExchangeSpec for an exact or base exchange name.
+func GetExchangeSpec(name string) (ExchangeSpec, bool) {
+	spec, ok := ExchangeSpecs[NormalizeExchangeName(name)]
+	return spec, ok
+}
+
+// SupportedExchanges contains the list of all supported base exchange identifiers.
 var SupportedExchanges []string
 
 func init() {
@@ -248,12 +256,54 @@ func init() {
 	slices.Sort(SupportedExchanges)
 }
 
-// ExchangeConfig maps exchange names to their API configurations.
-type ExchangeConfig map[string]APIConfig
+// IsSupportedExchange checks if a name corresponds to a supported exchange (exact or base name).
+func IsSupportedExchange(name string) bool {
+	_, ok := GetExchangeSpec(name)
+	return ok
+}
+
+// ExchangeConfig maps exact exchange names (e.g. "mexc_futures", "bybit_futures") directly to EndpointConfig.
+type ExchangeConfig map[string]EndpointConfig
 
 type NotiConfig struct {
 	Enabled                bool   `json:"enable"`
 	TelegramChatID         string `json:"-"`
 	TelegramCriticalChatID string `json:"-"`
 	TelegramBotToken       string `json:"-"`
+}
+
+// AccountEnvMapping maps an account to the specific environment variable names providing its credentials.
+type AccountEnvMapping struct {
+	APIKey     string `json:"apiKey" validate:"required"`
+	APISecret  string `json:"apiSecret" validate:"required"`
+	Passphrase string `json:"passphrase,omitempty"`
+}
+
+// AccountScannersConfig defines scanners toggles for an account.
+type AccountScannersConfig struct {
+	Configured bool `json:"configured"`
+	Schedule   bool `json:"schedule"`
+}
+
+// AccountConfig defines configuration for an individual exchange account.
+type AccountConfig struct {
+	ID          string                `json:"id" validate:"required"`
+	Exchange    string                `json:"exchange" validate:"required"`
+	Enabled     bool                  `json:"enabled"`
+	OutboundIP  string                `json:"outboundIP,omitempty"`
+	ProxyURL    string                `json:"proxyURL,omitempty"`
+	AccountType string                `json:"accountType,omitempty"`
+	Env         AccountEnvMapping     `json:"env"`
+	Configs     map[string]string     `json:"configs,omitempty"`
+	Scanners    AccountScannersConfig `json:"scanners"`
+
+	// Resolved credentials populated at runtime from environment variables
+	APIKey        string `json:"-"`
+	APISecret     string `json:"-"`
+	APIPassphrase string `json:"-"`
+}
+
+// AccountsManifest represents the root structure of accounts.jsonc.
+type AccountsManifest struct {
+	Accounts []AccountConfig `json:"accounts" validate:"dive"`
 }

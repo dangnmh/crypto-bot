@@ -48,7 +48,7 @@ Không bắt đầu rollout nếu các điều kiện này chưa đạt.
 | Permission | Chỉ futures/order permissions cần thiết; không withdrawal |
 | Scope | Tách prod/staging/dev key; không reuse |
 | IP allowlist | Bật nếu exchange hỗ trợ |
-| Storage | Bitwarden project production, không `.env` plaintext |
+| Storage | Vault / Kubernetes Secret store, không `.env` plaintext |
 | Logging | Không log key, secret, passphrase, signature, raw signed payload |
 
 ### Rotation Procedure
@@ -56,7 +56,7 @@ Không bắt đầu rollout nếu các điều kiện này chưa đạt.
 | Step | Action | Expected result |
 |---|---|---|
 | 1 | Tạo key mới với quyền tối thiểu | Key chưa được bot dùng |
-| 2 | Lưu key mới vào Bitwarden prod project | Loader đọc được secret mới |
+| 2 | Lưu key mới vào Vault / Secret store production | Loader đọc được secret mới qua env |
 | 3 | Restart staging/prod dry-run bằng key mới | Auth, signing, metadata calls pass |
 | 4 | Chạy một settlement cycle giới hạn hoặc paper/live-zero-size nếu hỗ trợ | Không có auth/signature error |
 | 5 | Disable key cũ sau khi xác nhận key mới ổn | Không còn dependency key cũ |
@@ -69,7 +69,7 @@ Kích hoạt khi có nghi ngờ leak, unexpected auth behavior, hoặc exchange 
 1. Bật kill switch hoặc disable Reversion trong config.
 2. Revoke key hiện tại trên exchange.
 3. Tạo key mới với permission tối thiểu.
-4. Update Bitwarden prod project.
+4. Update Vault / Secret store production.
 5. Restart bot ở dry-run hoặc limited mode.
 6. Chỉ enable live sau khi auth/signing và account state reconciliation pass.
 
@@ -91,7 +91,7 @@ Kích hoạt khi có nghi ngờ leak, unexpected auth behavior, hoặc exchange 
 
 | Error class | Examples | Bot action | Alert |
 |---|---|---|---|
-| Config/secret missing | Bitwarden item missing, invalid JSONC | Fail startup | Critical |
+| Config/secret missing | Environment secret missing, invalid JSONC | Fail startup | Critical |
 | Permission/auth | invalid key, signature error, permission denied | Stop live trading, disable Reversion | Critical |
 | Time sync | RTT/drift above threshold | Abort candidate before IOC | Warning if isolated, critical if repeated |
 | Exchange validation | stop-limit price invalid, tick/scale mismatch | Abort cycle, record exchange error | Warning, critical if repeated |
@@ -229,7 +229,7 @@ Không tăng stage nếu có critical alert chưa được đóng bằng root ca
 
 | Area | Owner role |
 |---|---|
-| Key rotation | Operator with exchange and Bitwarden access |
+| Key rotation | Operator with exchange and secret management access |
 | Runtime config | Bot operator |
 | Monitoring/alerts | Infrastructure owner |
 | Strategy tuning | Strategy owner, using journal evidence only |
