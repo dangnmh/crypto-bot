@@ -23,7 +23,7 @@ resource "kubernetes_config_map_v1" "bot_configs" {
     for f in fileset(
       startswith(each.value.config_dir, "/") ? each.value.config_dir : "${path.module}/${each.value.config_dir}",
       "**/*.jsonc"
-    ) : f => file("${startswith(each.value.config_dir, "/") ? each.value.config_dir : "${path.module}/${each.value.config_dir}"}/${f}")
+    ) : replace(f, "/", ".") => file("${startswith(each.value.config_dir, "/") ? each.value.config_dir : "${path.module}/${each.value.config_dir}"}/${f}")
   }
 }
 

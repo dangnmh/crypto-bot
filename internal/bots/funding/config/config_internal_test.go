@@ -34,6 +34,18 @@ func TestResolveAccountConfigPath(t *testing.T) {
 	resolvedWithDot := resolveAccountConfigPath(tmpDir, "./accounts/mexc_main/reversion.jsonc")
 	assert.Equal(t, targetFile, resolvedWithDot)
 
-	// 4. Non-existent file returns path joined with baseDir
+	// 4. Flattened filenames for Kubernetes ConfigMap (dots or underscores)
+	flatDotDir := t.TempDir()
+	flatDotFile := filepath.Join(flatDotDir, "accounts.mexc_main.reversion.jsonc")
+	require.NoError(t, os.WriteFile(flatDotFile, []byte("{}"), 0o600))
+	assert.Equal(t, flatDotFile, resolveAccountConfigPath(flatDotDir, "accounts/mexc_main/reversion.jsonc"))
+	assert.Equal(t, flatDotFile, resolveAccountConfigPath(flatDotDir, "./accounts/mexc_main/reversion.jsonc"))
+
+	flatUnderDir := t.TempDir()
+	flatUnderFile := filepath.Join(flatUnderDir, "accounts_mexc_main_reversion.jsonc")
+	require.NoError(t, os.WriteFile(flatUnderFile, []byte("{}"), 0o600))
+	assert.Equal(t, flatUnderFile, resolveAccountConfigPath(flatUnderDir, "accounts/mexc_main/reversion.jsonc"))
+
+	// 5. Non-existent file returns path joined with baseDir
 	assert.Equal(t, filepath.Join(tmpDir, "nonexistent.jsonc"), resolveAccountConfigPath(tmpDir, "nonexistent.jsonc"))
 }

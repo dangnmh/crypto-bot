@@ -136,6 +136,18 @@ func resolveAccountConfigPath(baseDir, rawPath string) string {
 		if _, err := os.Stat(rel); err == nil {
 			return rel
 		}
+
+		// Also support flattened filenames for Kubernetes ConfigMaps where slashes are replaced by dots or underscores
+		cleanRel := strings.TrimPrefix(filepath.Clean(rawPath), "."+string(filepath.Separator))
+		cleanRel = strings.TrimPrefix(cleanRel, string(filepath.Separator))
+		flatDot := filepath.Join(baseDir, strings.ReplaceAll(cleanRel, "/", "."))
+		if _, err := os.Stat(flatDot); err == nil {
+			return flatDot
+		}
+		flatUnder := filepath.Join(baseDir, strings.ReplaceAll(cleanRel, "/", "_"))
+		if _, err := os.Stat(flatUnder); err == nil {
+			return flatUnder
+		}
 	}
 	if _, err := os.Stat(rawPath); err == nil {
 		return rawPath

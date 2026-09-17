@@ -148,7 +148,8 @@ apply-bot-configs: ## Hot-reload configs for a specific bot (Usage: make apply-b
 	echo "==> Applying ConfigMap $(bot)-configs to server [$(server)] from $$DIR (Kubeconfig: $(ACTIVE_KUBECONFIG))..."; \
 	FILES_ARGS=""; \
 	for f in $$(cd "$$DIR" && find . -name "*.jsonc" | sed 's|^\./||'); do \
-		FILES_ARGS="$$FILES_ARGS --from-file=$$f=$$DIR/$$f"; \
+		key=$$(echo "$$f" | tr '/' '.'); \
+		FILES_ARGS="$$FILES_ARGS --from-file=$$key=$$DIR/$$f"; \
 	done; \
 	$(KCTL) create configmap $(bot)-configs \
 		$$FILES_ARGS \
@@ -161,11 +162,16 @@ apply-fd-configs: ## Hot-reload Funding Bot configs to K8s (Usage: make apply-fd
 	echo "==> Applying Funding Bot configs to server [$(server)] from $$CFG_DIR (Kubeconfig: $(ACTIVE_KUBECONFIG))..."; \
 	FILES_ARGS=""; \
 	for f in $$(cd "$$CFG_DIR" && find . -name "*.jsonc" | sed 's|^\./||'); do \
-		FILES_ARGS="$$FILES_ARGS --from-file=$$f=$$CFG_DIR/$$f"; \
+		key=$$(echo "$$f" | tr '/' '.'); \
+		FILES_ARGS="$$FILES_ARGS --from-file=$$key=$$CFG_DIR/$$f"; \
 	done; \
 	$(KCTL) create configmap funding-configs \
 		$$FILES_ARGS \
 		-n default -o yaml --dry-run=client | $(KCTL) apply -f -
+	@if ! $(KCTL) get deployment funding -n default -o jsonpath='{.spec.template.spec.containers[0].args}' 2>/dev/null | grep -q -- "-accounts"; then \
+		echo "==> Updating deployment/funding args to multi-account format..."; \
+		$(KCTL) patch deployment funding -n default --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/args", "value": ["-accounts", "/app/configs/accounts.jsonc", "-sys", "/app/configs/system.jsonc", "-exch", "/app/configs/exchange.jsonc", "-blacklist", "/app/configs/blacklist.jsonc", "-reversion", "/app/configs/reversion.jsonc"]}]'; \
+	fi
 	$(KCTL) rollout restart deployment -l bot_type=funding -n default
 
 .PHONY: apply-pj-configs
