@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+
+	fundingdomain "crypto-bot/internal/bots/funding/domain"
+	shared "crypto-bot/internal/domain"
+	"crypto-bot/internal/infrastructure/exchange"
 )
 
 func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitCompleteEvent) error {
@@ -54,6 +58,8 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 
 	r.log.InfoContext(ctx, "FR OK", slog.String("symbol", c.Symbol), slog.Float64("fr", fundingRate*100))
 
+	r.checkDepthImbalance(ctx, &c)
+
 	base := nextReversionBase(waitEvt.BaseReversionEvent, c.Symbol, r.deps.Clock.Now())
 	base.FundingRate = fundingRate
 	evt := ConfirmedEvent{
@@ -62,4 +68,53 @@ func (r *StatelessRunner) handleRecheck(ctx context.Context, waitEvt WaitComplet
 	}
 
 	return r.publishEvent(ctx, TopicReversionConfirmed, evt)
+}
+
+func (r *StatelessRunner) checkDepthImbalance(ctx context.Context, c *fundingdomain.Candidate) {
+	if c == nil {
+		return
+	}
+	ob, err := r.fetchOrderBook(ctx, c.Symbol)
+	if err != nil {
+		r.log.WarnContext(ctx, "Failed to fetch orderbook for depth imbalance check",
+			slog.String("symbol", c.Symbol),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Near-market depth evaluation (within 1% of BBO, 1.5x threshold)
+	res := fundingdomain.EvaluateDepthImbalance(ob, c.Side, 0.01, 1.5)
+	c.ImbalanceRatio = res.Ratio
+
+	if res.SuggestSkip {
+		r.log.WarnContext(ctx, "⚠️ [DEPTH_IMBALANCE] High risk detected - suggest SKIP (logging only, entering order)",
+			slog.String("symbol", c.Symbol),
+			slog.String("side", c.Side.String()),
+			slog.Float64("ratio", res.Ratio),
+			slog.Float64("bid_notional", res.BidNotional),
+			slog.Float64("ask_notional", res.AskNotional),
+			slog.String("reason", res.SkipReason),
+		)
+	} else {
+		r.log.InfoContext(ctx, "🟢 [DEPTH_IMBALANCE] Depth balance favorable",
+			slog.String("symbol", c.Symbol),
+			slog.String("side", c.Side.String()),
+			slog.Float64("ratio", res.Ratio),
+			slog.Float64("bid_notional", res.BidNotional),
+			slog.Float64("ask_notional", res.AskNotional),
+		)
+	}
+}
+
+func (r *StatelessRunner) fetchOrderBook(ctx context.Context, symbol string) (*shared.OrderBook, error) {
+	if r.deps.DepthStore != nil {
+		if ob, err := r.deps.DepthStore.GetDepth(ctx, symbol); err == nil && ob != nil && len(ob.Bids) > 0 && len(ob.Asks) > 0 {
+			return ob, nil
+		}
+	}
+	if dp, ok := r.deps.Client.(exchange.DepthProvider); ok {
+		return dp.GetDepth(ctx, symbol)
+	}
+	return nil, fmt.Errorf("no depth provider or depth store available for %s", symbol)
 }

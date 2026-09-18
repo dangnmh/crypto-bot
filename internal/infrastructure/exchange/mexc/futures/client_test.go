@@ -613,64 +613,80 @@ func TestFuturesClient_ClosePosition(t *testing.T) {
 	assert.Equal(t, float64(5), capturedReq["leverage"])
 }
 
+func newCloseAllMockServer(t *testing.T) (*httptest.Server, *[]map[string]any) {
+	var mu sync.Mutex
+	closedOrders := make([]map[string]any, 0)
+	positions := map[string]float64{
+		"BTC_USDT": 2.0,
+		"ETH_USDT": 10.0,
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/private/planorder/cancel_all", "/api/v1/private/order/cancel_all":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"code":0}`))
+		case "/api/v1/private/position/open_positions":
+			mu.Lock()
+			posList := make([]map[string]any, 0)
+			if v, ok := positions["BTC_USDT"]; ok && v > 0 {
+				posList = append(posList, map[string]any{
+					"positionId":   12345,
+					"symbol":       "BTC_USDT",
+					"positionType": 1,
+					"holdVol":      v,
+					"leverage":     10,
+				})
+			}
+			if v, ok := positions["ETH_USDT"]; ok && v > 0 {
+				posList = append(posList, map[string]any{
+					"positionId":   67890,
+					"symbol":       "ETH_USDT",
+					"positionType": 2,
+					"holdVol":      v,
+					"leverage":     5,
+				})
+			}
+			mu.Unlock()
+			respBytes, _ := json.Marshal(map[string]any{
+				"success": true,
+				"code":    0,
+				"data":    posList,
+			})
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(respBytes)
+		case "/api/v1/private/order/create":
+			bodyBytes, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
+
+			var reqMap map[string]any
+			assert.NoError(t, json.Unmarshal(bodyBytes, &reqMap))
+
+			mu.Lock()
+			closedOrders = append(closedOrders, reqMap)
+			sym, _ := reqMap["symbol"].(string)
+			vol, _ := reqMap["vol"].(float64)
+			if v, ok := positions[sym]; ok {
+				positions[sym] = v - vol
+			}
+			mu.Unlock()
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"close-123","ts":1670000000000}}`))
+		default:
+			t.Fatalf("unexpected request to %s", r.URL.Path)
+		}
+	}))
+	return server, &closedOrders
+}
+
 func TestFuturesClient_CloseAllPositions(t *testing.T) {
 	t.Parallel()
 
-	setupMockServer := func() (*httptest.Server, *[]map[string]any) {
-		var mu sync.Mutex
-		closedOrders := make([]map[string]any, 0)
-
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			switch r.URL.Path {
-			case "/api/v1/private/planorder/cancel_all", "/api/v1/private/order/cancel_all":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"success":true,"code":0}`))
-			case "/api/v1/private/position/open_positions":
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{
-					"success": true,
-					"code": 0,
-					"data": [
-						{
-							"positionId": 12345,
-							"symbol": "BTC_USDT",
-							"positionType": 1,
-							"holdVol": 2.0,
-							"leverage": 10
-						},
-						{
-							"positionId": 67890,
-							"symbol": "ETH_USDT",
-							"positionType": 2,
-							"holdVol": 10.0,
-							"leverage": 5
-						}
-					]
-				}`))
-			case "/api/v1/private/order/create":
-				bodyBytes, err := io.ReadAll(r.Body)
-				assert.NoError(t, err)
-
-				var reqMap map[string]any
-				assert.NoError(t, json.Unmarshal(bodyBytes, &reqMap))
-
-				mu.Lock()
-				closedOrders = append(closedOrders, reqMap)
-				mu.Unlock()
-
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"success":true,"code":0,"data":{"orderId":"close-123","ts":1670000000000}}`))
-			default:
-				t.Fatalf("unexpected request to %s", r.URL.Path)
-			}
-		}))
-		return server, &closedOrders
-	}
-
 	t.Run("all symbols", func(t *testing.T) {
 		t.Parallel()
-		server, closedOrders := setupMockServer()
+		server, closedOrders := newCloseAllMockServer(t)
 		defer server.Close()
 
 		client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})
@@ -681,7 +697,7 @@ func TestFuturesClient_CloseAllPositions(t *testing.T) {
 
 	t.Run("targeted symbol", func(t *testing.T) {
 		t.Parallel()
-		server, closedOrders := setupMockServer()
+		server, closedOrders := newCloseAllMockServer(t)
 		defer server.Close()
 
 		client := futures.NewClient(server.Client(), server.URL, "key", "secret", config.LoggingConfig{})

@@ -28,6 +28,8 @@ type blackboxExchangeClient struct {
 	getOrderErr        error
 	closeAllErr        error
 	closePositionErr   error
+	closePositionHook  func(vol float64)
+	closeAllHook       func()
 	orderState         shared.OrderState
 	dealVol            float64
 	openPositions      []exchange.Position
@@ -77,6 +79,11 @@ func (m *blackboxExchangeClient) CancelOrder(ctx context.Context, symbol, orderI
 func (m *blackboxExchangeClient) ClosePosition(ctx context.Context, symbol string, side shared.Side, volume float64, positionMode shared.PositionMode, leverage int) error {
 	m.closePositionCalls.Add(1)
 	m.mu.Lock()
+	if m.closePositionHook != nil {
+		m.closePositionHook(volume)
+	} else if m.closePositionErr == nil {
+		m.openPositions = nil
+	}
 	defer m.mu.Unlock()
 	return m.closePositionErr
 }
@@ -84,6 +91,11 @@ func (m *blackboxExchangeClient) ClosePosition(ctx context.Context, symbol strin
 func (m *blackboxExchangeClient) CloseAllPositions(ctx context.Context, symbol string) error {
 	m.closeAllCalls.Add(1)
 	m.mu.Lock()
+	if m.closeAllHook != nil {
+		m.closeAllHook()
+	} else if m.closeAllErr == nil {
+		m.openPositions = nil
+	}
 	defer m.mu.Unlock()
 	return m.closeAllErr
 }
@@ -116,6 +128,9 @@ func (m *blackboxExchangeClient) GetOpenPositions(ctx context.Context, symbol st
 	defer m.mu.Unlock()
 	if m.openPositions != nil {
 		return m.openPositions, nil
+	}
+	if (m.closePositionCalls.Load() > 0 && m.closePositionErr == nil) || (m.closeAllCalls.Load() > 0 && m.closeAllErr == nil) {
+		return nil, nil
 	}
 	return []exchange.Position{
 		{Symbol: symbol, HoldVolContract: 1.0},
@@ -477,6 +492,73 @@ func TestBlackBox_EmergencyBailoutRetryLoop_ContextCancelled(t *testing.T) {
 	}
 	if client.closePositionCalls.Load() < 1 {
 		t.Errorf("expected at least 1 ClosePosition call, got %d", client.closePositionCalls.Load())
+	}
+}
+
+// Test 3c: Emergency Bailout Partial Fill with Backoff Retry.
+func TestBlackBox_EmergencyBailout_PartialFillRetry(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := &blackboxExchangeClient{
+		openPositions: []exchange.Position{
+			{Symbol: "BTCUSDT", HoldVolContract: 10.0},
+		},
+	}
+	// On CloseAllPositions, partial fill occurs: leaves 4.0 contracts
+	client.closeAllHook = func() {
+		client.openPositions = []exchange.Position{
+			{Symbol: "BTCUSDT", HoldVolContract: 4.0},
+		}
+	}
+	// On follow-up ClosePosition, fills remaining 4.0 contracts
+	client.closePositionHook = func(vol float64) {
+		if vol != 4.0 {
+			t.Errorf("expected remaining vol 4.0, got %v", vol)
+		}
+		client.openPositions = []exchange.Position{}
+	}
+
+	bus := eventbus.New(slog.Default())
+	repo := &blackboxTradeRepo{}
+	noti := &blackboxNotifier{}
+	engine := &app.Engine{
+		Bus: bus,
+		Providers: map[string]*app.ExchangeProvider{
+			"bybit": {
+				Name:     "bybit",
+				Client:   client,
+				TimeSync: newTestTimeSync(client),
+			},
+		},
+	}
+	mgr, err := futures.NewOrderManager(ctx, engine, bus, repo, noti, slog.Default())
+	if err != nil {
+		t.Fatalf("failed to create order manager: %v", err)
+	}
+
+	agg := mgr.GetAggregate("req-bailout-bb-003")
+	_ = agg.Record(futures.OrderIntentEvent{
+		ReqID:     "req-bailout-bb-003",
+		AccountID: "bybit",
+		Exchange:  "bybit",
+	})
+
+	bailoutEvt, err := mgr.HandleExecuteBailout(ctx, "req-bailout-bb-003", "bybit", "BTCUSDT", shared.SideOpenLong, 10.0, "timeout_expired")
+	if err != nil {
+		t.Fatalf("HandleExecuteBailout failed: %v", err)
+	}
+
+	if client.closeAllCalls.Load() != 1 {
+		t.Errorf("expected 1 CloseAllPositions call, got %d", client.closeAllCalls.Load())
+	}
+	if client.closePositionCalls.Load() != 1 {
+		t.Errorf("expected 1 ClosePosition retry call, got %d", client.closePositionCalls.Load())
+	}
+	if bailoutEvt.CloseRetryCount != 1 {
+		t.Errorf("expected CloseRetryCount 1, got %d", bailoutEvt.CloseRetryCount)
 	}
 }
 

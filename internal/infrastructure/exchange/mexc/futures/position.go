@@ -113,29 +113,31 @@ func (c *Client) GetOpenPositions(ctx context.Context, symbol string) ([]exchang
 	return positions, nil
 }
 
-// CloseAllPositions closes all open positions for a symbol (or all symbols if symbol is empty) and cancels pending plan and open orders.
-func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
-	_ = c.rawCancelAllPlanOrders(ctx, mexcCancelAllPlanOrdersRequest{Symbol: symbol})
-	_ = c.rawCancelAllOpenOrders(ctx, mexcCancelAllOpenOrdersRequest{Symbol: symbol})
-
-	positions, err := c.GetOpenPositions(ctx, symbol)
-	if err != nil {
-		return err
-	}
-
+func filterActivePositions(positions []exchange.Position, targetSymbol string) []exchange.Position {
+	var active []exchange.Position
 	for i := range positions {
 		pos := positions[i]
-		if symbol != "" && pos.Symbol != symbol {
+		if targetSymbol != "" && pos.Symbol != targetSymbol {
 			continue
 		}
 		vol := pos.HoldVolCoin
 		if vol == 0 {
 			vol = pos.HoldVolContract
 		}
-		if vol <= 0 {
-			continue
+		if vol > 0 {
+			active = append(active, pos)
 		}
+	}
+	return active
+}
 
+func (c *Client) closeActivePositions(ctx context.Context, positions []exchange.Position) error {
+	for i := range positions {
+		pos := positions[i]
+		vol := pos.HoldVolCoin
+		if vol == 0 {
+			vol = pos.HoldVolContract
+		}
 		side := domain.SideCloseShort
 		if pos.PositionType == exchange.PositionTypeLong {
 			side = domain.SideCloseLong
@@ -146,6 +148,20 @@ func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
 		}
 	}
 	return nil
+}
+
+// CloseAllPositions closes all open positions for a symbol (or all symbols if symbol is empty) and cancels pending plan and open orders.
+func (c *Client) CloseAllPositions(ctx context.Context, symbol string) error {
+	_ = c.rawCancelAllPlanOrders(ctx, mexcCancelAllPlanOrdersRequest{Symbol: symbol})
+	_ = c.rawCancelAllOpenOrders(ctx, mexcCancelAllOpenOrdersRequest{Symbol: symbol})
+
+	positions, err := c.GetOpenPositions(ctx, symbol)
+	if err != nil {
+		return err
+	}
+
+	active := filterActivePositions(positions, symbol)
+	return c.closeActivePositions(ctx, active)
 }
 
 // ClosePosition closes one position leg using a reduce-only market order.

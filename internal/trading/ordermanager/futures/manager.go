@@ -1838,6 +1838,24 @@ func (m *OrderManager) HandleTimeoutCheck(ctx context.Context, evt OrderTimeoutS
 	}, nil
 }
 
+func sumRemainingHoldVolume(positions []exchange.Position, symbol string) float64 {
+	var remaining float64
+	for i := range positions {
+		p := positions[i]
+		if symbol != "" && p.Symbol != symbol {
+			continue
+		}
+		v := p.HoldVolCoin
+		if v == 0 {
+			v = p.HoldVolContract
+		}
+		if v > 0 {
+			remaining += v
+		}
+	}
+	return remaining
+}
+
 // HandleExecuteBailout performs high-priority emergency force close position with retries.
 func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchangeName, symbol string, side shared.Side, volume float64, reason string) (OrderBailoutExecutedEvent, error) {
 	accountID := ""
@@ -1871,43 +1889,55 @@ func (m *OrderManager) HandleExecuteBailout(ctx context.Context, reqID, exchange
 		closeSide = side
 	}
 
-	if err := client.CloseAllPositions(ctx, symbol); err != nil {
-		m.log.ErrorContext(ctx, "CloseAllPositions bailout failed, entering ClosePosition retry loop",
+	errCloseAll := client.CloseAllPositions(ctx, symbol)
+	if errCloseAll != nil {
+		m.log.WarnContext(ctx, "CloseAllPositions initial bailout attempt failed, proceeding to retry loop",
 			slog.String("exchange", exchangeName),
 			slog.String("account_id", accountID),
 			slog.String("req_id", reqID),
 			slog.String("symbol", symbol),
-			slog.Any("error", err))
-		bo := backoff.WithContext(
-			backoff.WithMaxRetries(
-				backoff.NewExponentialBackOff(
-					backoff.WithInitialInterval(time.Second),
-					backoff.WithMaxInterval(2*time.Second),
-					backoff.WithRandomizationFactor(0.5),
-				),
-				10,
-			),
-			ctx,
-		)
+			slog.Any("error", errCloseAll))
+	}
 
-		var attempt int
-		errClose := backoff.RetryNotify(func() error {
-			attempt++
-			return client.ClosePosition(ctx, symbol, closeSide, volume, posMode, leverage)
-		}, bo, func(err error, d time.Duration) {
-			m.log.WarnContext(ctx, "ClosePosition bailout retry failed",
-				slog.String("exchange", exchangeName),
-				slog.String("account_id", accountID),
-				slog.String("req_id", reqID),
-				slog.String("symbol", symbol),
-				slog.Int("attempt", attempt),
-				slog.Duration("backoff", d),
-				slog.Any("error", err))
-		})
-		retries = attempt
-		if errClose != nil {
-			return OrderBailoutExecutedEvent{}, fmt.Errorf("bailout failed after %d retries: %w", retries, errClose)
+	bOff := backoff.NewExponentialBackOff()
+	bOff.InitialInterval = 100 * time.Millisecond
+	bOff.MaxInterval = 1 * time.Second
+	bOff.RandomizationFactor = 0.2
+	bOff.Multiplier = 1.5
+	bo := backoff.WithContext(backoff.WithMaxRetries(bOff, 10), ctx)
+
+	var attempt int
+	errClose := backoff.RetryNotify(func() error {
+		positions, err := client.GetOpenPositions(ctx, symbol)
+		if err != nil {
+			return fmt.Errorf("failed to query open positions: %w", err)
 		}
+
+		remainingVol := sumRemainingHoldVolume(positions, symbol)
+		if remainingVol <= 0 {
+			return nil
+		}
+
+		attempt++
+		closeVol := remainingVol
+		if err := client.ClosePosition(ctx, symbol, closeSide, closeVol, posMode, leverage); err != nil {
+			return fmt.Errorf("ClosePosition for remaining vol %v failed: %w", closeVol, err)
+		}
+
+		return fmt.Errorf("position %s still open (remaining vol: %v)", symbol, closeVol)
+	}, bo, func(err error, d time.Duration) {
+		m.log.WarnContext(ctx, "ClosePosition bailout retry in progress",
+			slog.String("exchange", exchangeName),
+			slog.String("account_id", accountID),
+			slog.String("req_id", reqID),
+			slog.String("symbol", symbol),
+			slog.Int("attempt", attempt),
+			slog.Duration("backoff", d),
+			slog.Any("error", err))
+	})
+	retries = attempt
+	if errClose != nil {
+		return OrderBailoutExecutedEvent{}, fmt.Errorf("bailout failed after %d retries: %w", retries, errClose)
 	}
 
 	return OrderBailoutExecutedEvent{

@@ -95,6 +95,9 @@ func (m *mockExchangeClient) GetOrder(ctx context.Context, symbol, orderID strin
 }
 
 func (m *mockExchangeClient) GetOpenPositions(ctx context.Context, symbol string) ([]exchange.Position, error) {
+	if m.allClosed {
+		return nil, nil
+	}
 	return []exchange.Position{
 		{Symbol: symbol, HoldVolContract: 1.0},
 	}, nil

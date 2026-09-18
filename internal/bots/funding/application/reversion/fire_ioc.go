@@ -131,6 +131,7 @@ func (r *StatelessRunner) dispatchOrderManagerIntent(
 			"ioc_price":         iocPrice,
 			"take_profit_price": tpPrice,
 			"stop_loss_price":   slPrice,
+			"imbalance_ratio":   cand.ImbalanceRatio,
 		},
 	}
 

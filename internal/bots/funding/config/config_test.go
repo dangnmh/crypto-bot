@@ -1547,9 +1547,7 @@ func TestMaxImpactRatio_GreaterThan100_NoDoubleDivision(t *testing.T) {
 		},
 	}
 	acc := &config.AccountReversionConfig{
-		ExchangeReversionConfig: config.ExchangeReversionConfig{
-			MarginUSD: 500,
-		},
+		MarginUSD: 500,
 	}
 
 	merged := config.MergeReversionConfig(base, acc)
