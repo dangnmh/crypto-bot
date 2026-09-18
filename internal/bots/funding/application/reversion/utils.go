@@ -147,11 +147,11 @@ func (r *StatelessRunner) resolveRunnerComponents(exch, accountID string) (excha
 		if accProv.Client != nil {
 			client = accProv.Client
 		}
-		if accProv.Adapter != nil {
-			wsSub = accProv.Adapter
-		}
 		if accProv.Watcher != nil {
 			orderNotifier = accProv.Watcher
+		}
+		if wsSub == nil && accProv.Adapter != nil {
+			wsSub = accProv.Adapter
 		}
 	}
 

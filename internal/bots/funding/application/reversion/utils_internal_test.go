@@ -704,3 +704,44 @@ func TestFormatReversionNotification_FormatMatch(t *testing.T) {
 • Req ID: 31082026230000ZORAMEXCFUTURESFUNDING_REVERSION`
 	assert.Equal(t, expectedCand, formattedCand)
 }
+
+func TestStatelessRunner_ResolveRunnerComponents_PublicWSSubRemainsExchangeProvider(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	exchClient := mocks.NewMockClient(ctrl)
+	accClient := mocks.NewMockClient(ctrl)
+	exchangeAdapter := infraws.NewExchangeManagerAdapter(nil)
+	accountAdapter := infraws.NewExchangeManagerAdapter(nil)
+
+	exchProv := &app.ExchangeProvider{
+		Client:  exchClient,
+		Adapter: exchangeAdapter,
+	}
+	accProv := &app.AccountProvider{
+		AccountID: "mexc_main",
+		Client:    accClient,
+		Adapter:   accountAdapter,
+	}
+
+	engine := &app.Engine{
+		Providers: map[string]*app.ExchangeProvider{
+			"mexc_futures": exchProv,
+		},
+		AccountProviders: map[string]*app.AccountProvider{
+			"mexc_main": accProv,
+		},
+	}
+
+	runner := &StatelessRunner{
+		engine: engine,
+		log:    reversionTestLogger(),
+	}
+
+	client, wsSub, orderNotifier, clock := runner.resolveRunnerComponents("mexc_futures", "mexc_main")
+	require.NotNil(t, wsSub)
+	assert.Same(t, exchangeAdapter, wsSub, "Public market data wsSub must use ExchangeProvider's adapter, not AccountProvider's adapter")
+	assert.Same(t, accClient, client, "Order execution client must use AccountProvider's client")
+	assert.Nil(t, orderNotifier)
+	assert.Nil(t, clock)
+}
