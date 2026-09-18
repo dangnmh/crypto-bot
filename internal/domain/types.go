@@ -51,6 +51,11 @@ func (s Side) IsLong() bool {
 	return s == SideOpenLong || s == SideCloseLong
 }
 
+// IsShort returns true if the side opens or closes a short position.
+func (s Side) IsShort() bool {
+	return s == SideOpenShort || s == SideCloseShort
+}
+
 // IsClose returns true if the side is a position closing order (SideCloseLong or SideCloseShort).
 func (s Side) IsClose() bool {
 	return s == SideCloseLong || s == SideCloseShort

@@ -262,9 +262,12 @@ func applyReversionDefaults(r *ReversionConfig) {
 		r.TradeSide = "both"
 	}
 
-	// Normalize Safety limit percentage (guard against repeated division)
-	if r.Safety.MaxImpactRatio > 1 {
-		r.Safety.MaxImpactRatio /= 100
+	// Normalize Safety limit percentage (guard against repeated division via normalized flag)
+	if !r.Safety.normalized {
+		if r.Safety.MaxImpactRatio > 1 {
+			r.Safety.MaxImpactRatio /= 100
+		}
+		r.Safety.normalized = true
 	}
 }
 

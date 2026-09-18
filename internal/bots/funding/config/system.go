@@ -24,6 +24,7 @@ type SafetyConfig struct {
 	MaxLatency          types.Duration `json:"maxLatency"`
 	MaxPriceDiffPercent float64        `json:"maxPriceDiffPercent"`
 	MaxSymbolUSDTPrice  float64        `json:"maxSymbolUSDTPrice"`
+	normalized          bool
 }
 
 // LoadSystemConfig loads the system configuration from the given path.

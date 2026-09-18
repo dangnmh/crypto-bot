@@ -1538,3 +1538,25 @@ func TestLoad_RealConfigs(t *testing.T) {
 		})
 	}
 }
+
+func TestMaxImpactRatio_GreaterThan100_NoDoubleDivision(t *testing.T) {
+	t.Parallel()
+	base := &config.ReversionConfig{
+		Safety: config.SafetyConfig{
+			MaxImpactRatio: 250, // 250%
+		},
+	}
+	acc := &config.AccountReversionConfig{
+		ExchangeReversionConfig: config.ExchangeReversionConfig{
+			MarginUSD: 500,
+		},
+	}
+
+	merged := config.MergeReversionConfig(base, acc)
+	// Must be 2.5 (250 / 100), NOT 0.025 (double divided by 100)
+	assert.InDelta(t, 2.5, merged.Safety.MaxImpactRatio, 1e-9)
+
+	// Additional merge must not divide again
+	mergedAgain := config.MergeReversionConfig(merged, acc)
+	assert.InDelta(t, 2.5, mergedAgain.Safety.MaxImpactRatio, 1e-9)
+}
