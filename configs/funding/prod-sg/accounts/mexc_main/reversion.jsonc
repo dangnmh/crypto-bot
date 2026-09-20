@@ -7,6 +7,6 @@
   "minFundingRate": 0.5,
   "maxCandidateTrade": 2,
   "maxMarginUSDOfCandidate": 500,
-  "bufferTime": "105ms", // 108ms paid funding fee
+  "bufferTime": "103ms", // 105ms paid funding fee
   "postSettleTimeout": "2s"
 }
