@@ -6,8 +6,8 @@
   "minVol24USD": 5000000,
   "minFundingRate": 0.5,
   "maxCandidateTrade": 2,
-  "maxMarginUSDOfCandidate": 500,
+  "maxMarginUSDOfCandidate": 200,
   // fire_time = settle_time - (RTT/2 + bufferTime) => lower bufferTime = later fireTime (arrives later)
-  "bufferTime": "85ms", // 92ms paid funding fee
+  "bufferTime": "80ms", // 85ms paid funding fee
   "postSettleTimeout": "1s"
 }
