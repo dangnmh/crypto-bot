@@ -22,50 +22,73 @@ KCTL              := $(KCTL_ENV) kubectl
 # ── Terraform Multi-Server Workspace & Runner ─────────────────────────
 TF_DIR := deploy/terraform
 TF_WS  := $(if $(filter sg prod-sg,$(server)),sg,default)
-TF_RUN = @terraform -chdir=$(TF_DIR) workspace select $(TF_WS) >/dev/null 2>&1 || terraform -chdir=$(TF_DIR) workspace new $(TF_WS) >/dev/null 2>&1; terraform -chdir=$(TF_DIR)
+TF_RUN = @$(KCTL_ENV) terraform -chdir=$(TF_DIR) workspace select $(TF_WS) >/dev/null 2>&1 || $(KCTL_ENV) terraform -chdir=$(TF_DIR) workspace new $(TF_WS) >/dev/null 2>&1; $(KCTL_ENV) terraform -chdir=$(TF_DIR)
+AUTO_APPROVE_FLAG := $(if $(filter true 1 yes,$(auto)),-auto-approve,)
 
 # ── Terraform Infrastructure & Deployments ────────────────────────────
 .PHONY: tf-init
 tf-init: ## Initialize Terraform providers and backend (Usage: make tf-init [server=sg])
-	terraform -chdir=$(TF_DIR) init
+	$(KCTL_ENV) terraform -chdir=$(TF_DIR) init
 
 .PHONY: tf-apply
-tf-apply: ## Apply all Terraform configurations (Usage: make tf-apply [server=sg])
-	$(TF_RUN) apply $(TFVARS_FLAG)
+tf-apply: ## Apply all Terraform configurations (Usage: make tf-apply [server=sg] [auto=true])
+	$(TF_RUN) apply $(TFVARS_FLAG) $(AUTO_APPROVE_FLAG)
 
 .PHONY: tf-destroy
-tf-destroy: ## Destroy all Terraform configurations (Usage: make tf-destroy [server=sg])
-	$(TF_RUN) destroy $(TFVARS_FLAG)
+tf-destroy: ## Destroy all Terraform configurations (Usage: make tf-destroy [server=sg] [auto=true])
+	$(TF_RUN) destroy $(TFVARS_FLAG) $(AUTO_APPROVE_FLAG)
 
 .PHONY: tf-apply-bots
-tf-apply-bots: ## Apply changes to all trading bot deployments (Usage: make tf-apply-bots [server=sg])
-	$(TF_RUN) apply $(TFVARS_FLAG) \
+tf-apply-bots: ## Apply changes to all trading bot deployments (Usage: make tf-apply-bots [server=sg] [auto=true])
+	$(TF_RUN) apply $(TFVARS_FLAG) $(AUTO_APPROVE_FLAG) \
 		-target=kubernetes_deployment_v1.bot \
 		-target=kubernetes_config_map_v1.bot_configs \
 		-target=kubernetes_service_v1.bot
 
 .PHONY: tf-apply-bot
-tf-apply-bot: ## Apply Terraform changes to a specific bot (Usage: make tf-apply-bot bot=NAME [server=sg])
+tf-apply-bot: ## Apply Terraform changes to a specific bot (Usage: make tf-apply-bot bot=NAME [server=sg] [auto=true])
 	@if [ -z "$(bot)" ]; then echo "Error: 'bot' argument required (e.g. make tf-apply-bot bot=funding [server=sg])"; exit 1; fi
-	$(TF_RUN) apply $(TFVARS_FLAG) \
+	$(TF_RUN) apply $(TFVARS_FLAG) $(AUTO_APPROVE_FLAG) \
 		-target='kubernetes_deployment_v1.bot["$(bot)"]' \
 		-target='kubernetes_config_map_v1.bot_configs["$(bot)"]' \
 		-target='kubernetes_service_v1.bot["$(bot)"]'
 
+.PHONY: tf-apply-fd
+tf-apply-fd: ## Start / deploy Funding Bot via Terraform (Usage: make tf-apply-fd [server=sg] [auto=true])
+	@$(MAKE) tf-apply-bot bot=funding server=$(server) auto=$(auto)
+
+.PHONY: tf-start-fd
+tf-start-fd: tf-apply-fd ## Alias for tf-apply-fd (Usage: make tf-start-fd [server=sg] [auto=true])
+
+.PHONY: tf-apply-pj
+tf-apply-pj: ## Start / deploy Penny Jumper via Terraform (Usage: make tf-apply-pj [server=sg] [auto=true])
+	@$(MAKE) tf-apply-bot bot=penny-jumper server=$(server) auto=$(auto)
+
+.PHONY: tf-start-pj
+tf-start-pj: tf-apply-pj ## Alias for tf-apply-pj (Usage: make tf-start-pj [server=sg] [auto=true])
+
 .PHONY: tf-destroy-bots
-tf-destroy-bots: ## Destroy all trading bot deployments (Usage: make tf-destroy-bots [server=sg])
-	$(TF_RUN) destroy $(TFVARS_FLAG) \
+tf-destroy-bots: ## Destroy all trading bot deployments (Usage: make tf-destroy-bots [server=sg] [auto=true])
+	$(TF_RUN) destroy $(TFVARS_FLAG) $(AUTO_APPROVE_FLAG) \
 		-target=kubernetes_deployment_v1.bot \
 		-target=kubernetes_config_map_v1.bot_configs \
 		-target=kubernetes_service_v1.bot
 
 .PHONY: tf-destroy-bot
-tf-destroy-bot: ## Destroy Terraform resources for a specific bot (Usage: make tf-destroy-bot bot=NAME [server=sg])
+tf-destroy-bot: ## Destroy Terraform resources for a specific bot (Usage: make tf-destroy-bot bot=NAME [server=sg] [auto=true])
 	@if [ -z "$(bot)" ]; then echo "Error: 'bot' argument required (e.g. make tf-destroy-bot bot=funding [server=sg])"; exit 1; fi
-	$(TF_RUN) destroy $(TFVARS_FLAG) \
+	$(TF_RUN) destroy $(TFVARS_FLAG) $(AUTO_APPROVE_FLAG) \
 		-target='kubernetes_deployment_v1.bot["$(bot)"]' \
 		-target='kubernetes_config_map_v1.bot_configs["$(bot)"]' \
 		-target='kubernetes_service_v1.bot["$(bot)"]'
+
+.PHONY: tf-destroy-fd
+tf-destroy-fd: ## Destroy Funding Bot via Terraform (Usage: make tf-destroy-fd [server=sg] [auto=true])
+	@$(MAKE) tf-destroy-bot bot=funding server=$(server) auto=$(auto)
+
+.PHONY: tf-destroy-pj
+tf-destroy-pj: ## Destroy Penny Jumper via Terraform (Usage: make tf-destroy-pj [server=sg] [auto=true])
+	@$(MAKE) tf-destroy-bot bot=penny-jumper server=$(server) auto=$(auto)
 
 .PHONY: tf-apply-proxy
 tf-apply-proxy: ## Apply changes only to dedicated AI proxy deployment (Usage: make tf-apply-proxy [server=sg])
